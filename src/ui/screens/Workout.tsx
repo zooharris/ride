@@ -23,7 +23,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
   const plannedEntry = params.get('date') ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id) : undefined;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -106,7 +106,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, basis }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr' }) {
+function SessionScreen({ w, backHref, planned, basis, maxHr }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number }) {
   const [adding, setAdding] = useState(false);
   const estimated = Math.round((w.exercises ?? []).reduce((s, e) => s + ((e.holdSeconds ?? 0) * (e.reps === 'each side' ? 2 : 1) + 15) * (e.sets ?? 1) + (e.sets && !e.holdSeconds ? e.sets * 75 : 0), 0) / 60);
   const minutes = w.minutes ?? w.walk?.minutes ?? (estimated || 30);
@@ -125,9 +125,11 @@ function SessionScreen({ w, backHref, planned, basis }: { w: NonNullable<ReturnT
           <div class="stats" style="margin-top:10px">
             <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
             <div class="stat"><div class="v">{Math.round(w.walk.hrLow * 100)}–{Math.round(w.walk.hrHigh * 100)}%</div><div class="l">of max heart rate</div></div>
+            {maxHr > 0 && <div class="stat"><div class="v">{Math.round(maxHr * w.walk.hrLow)}–{Math.round(maxHr * w.walk.hrHigh)}</div><div class="l">beats per minute (your max {maxHr})</div></div>}
+            {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate target{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
             {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
           </div>
-          <p class="muted small" style="margin-top:10px">Talk-in-full-sentences effort. On a flat treadmill the pack is what gets heart rate into zone 2; raise speed or weight until it settles there, and back off if it drifts higher.</p>
+          <p class="muted small" style="margin-top:10px">{w.walk.hrHigh <= 0.6 ? 'Very easy: this is recovery, so if the heart rate climbs, slow down.' : w.walk.hrLow >= 0.68 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the target, and back off if it drifts higher.</p>
         </section>
       )}
 

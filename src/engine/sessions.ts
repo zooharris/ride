@@ -54,7 +54,8 @@ export function generateStrength(intent: StrengthIntent): Workout {
       equipment: pick.equipment,
     });
   }
-  const tss = Math.round(intent.minutes / 60 * (intent.level === 'build' ? 45 : intent.level === 'light' ? 20 : 32));
+  const effort = intent.level === 'build' ? 7 : intent.level === 'light' ? 4 : intent.level === 'maintain' ? 5 : 6;
+  const tss = estimateSessionTss({ kind: 'strength', minutes: intent.minutes, effort });
   return {
     id: `gen-${newId()}`,
     name: `Strength ${intent.variant}: ${intent.variant === 'A' ? 'legs and trunk' : 'upper body and posterior chain'}`,
@@ -68,6 +69,7 @@ export function generateStrength(intent: StrengthIntent): Workout {
     blocks: [],
     exercises,
     estimatedTss: tss,
+    effort,
     minutes: intent.minutes,
     source: 'generated',
   };
@@ -138,17 +140,43 @@ export function generateWalk(intent: WalkIntent): Workout {
     setting: intent.where === 'outdoor' ? 'outdoor' : 'indoor',
     blocks: [],
     walk: { minutes: intent.minutes, hrLow: 0.6, hrHigh: 0.7, packKg: intent.packKg },
-    estimatedTss: Math.round(intent.minutes / 60 * 38),
+    estimatedTss: estimateSessionTss({ kind: 'walk', walk: { minutes: intent.minutes, hrLow: 0.6, hrHigh: 0.7, packKg: intent.packKg } }),
     minutes: intent.minutes,
     source: 'generated',
   };
 }
 
+/**
+ * Training stress per hour for a non-ride session, so the calendar, the planner
+ * and the builders all estimate the same way.
+ *  - Walks go by the heart-rate target: the same heart-rate TSS Intervals.icu
+ *    would credit a recorded walk with (threshold taken as 92% of max), plus a
+ *    little for a weighted pack.
+ *  - Strength goes by planned effort (RPE 1–10), the same curve used when a
+ *    session is logged with an effort rating.
+ *  - Mobility is a flat, small amount.
+ */
+export function sessionTssPerHour(kind: Workout['kind'], opts: { hrLow?: number; hrHigh?: number; packKg?: number; effort?: number } = {}): number {
+  if (kind === 'walk') {
+    const mid = ((opts.hrLow ?? 0.6) + (opts.hrHigh ?? 0.7)) / 2;
+    const intensity = mid / 0.92;
+    return intensity * intensity * 100 + (opts.packKg ?? 0) * 0.5;
+  }
+  if (kind === 'mobility') return 8;
+  if (kind === 'strength') { const r = opts.effort ?? 6; return r * r * (50 / 49); }
+  return 0;
+}
+
+/** Estimated training stress for a built or ready-made non-ride session. */
+export function estimateSessionTss(w: Pick<Workout, 'kind' | 'minutes' | 'walk' | 'effort'>): number {
+  const minutes = w.walk?.minutes ?? w.minutes ?? 0;
+  return Math.round(minutes / 60 * sessionTssPerHour(w.kind, { ...w.walk, effort: w.effort }));
+}
+
 /** Training stress to credit a non-ride session with when it is logged by hand. */
 export function loggedTss(w: Workout, seconds: number, rpe?: number): number {
   const hours = seconds / 3600;
-  if (w.kind === 'walk') return Math.round(hours * 38);
+  if (w.kind === 'walk') return Math.round(hours * sessionTssPerHour('walk', w.walk));
   if (w.kind === 'mobility') return Math.round(hours * 8);
-  const r = rpe ?? 6;
-  return Math.round(hours * r * r * (50 / 49));
+  return Math.round(hours * sessionTssPerHour('strength', { effort: rpe ?? 6 }));
 }

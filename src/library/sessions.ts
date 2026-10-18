@@ -1,5 +1,5 @@
 import type { Equipment, Exercise, Workout } from '../engine/types';
-import { generateMobility, generateStrength, generateWalk } from '../engine/sessions';
+import { estimateSessionTss, generateMobility, generateStrength, generateWalk } from '../engine/sessions';
 import { exercisesFor, type Pattern } from './strength';
 import { MOBILITY } from './mobility';
 
@@ -30,14 +30,14 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   }
 
   // Themed strength sessions
-  const themed: Array<{ id: string; name: string; minutes: number; purpose: string; physiology?: string; patterns: Pattern[]; sets: number; reps: string; load: string; only?: Equipment[]; prefer?: string[] }> = [
-    { id: 'core-hips', name: 'Core and hips (20 min)', minutes: 20, purpose: 'A short trunk and hip session for any day; no fatigue to carry into tomorrow’s ride.', physiology: 'A stable pelvis and trunk let the legs deliver power without the upper body absorbing it.', patterns: ['trunk', 'hip', 'trunk', 'hip', 'trunk'], sets: 2, reps: '12–15', load: 'Bodyweight or light; quality over load', prefer: ['dead-bug', 'clamshell', 'side-plank', 'side-lying-leg-raise', 'bird-dog'] },
-    { id: 'posture', name: 'Upper body and posture (30 min)', minutes: 30, purpose: 'Push and pull for the shoulders, upper back and neck that hours on the hoods round forward.', patterns: ['pull', 'push', 'pull', 'push', 'trunk'], sets: 3, reps: '10–12', load: 'Moderate; strict form, full range' },
-    { id: 'single-leg', name: 'Single-leg strength (35 min)', minutes: 35, purpose: 'Every exercise on one leg at a time, the way the pedal stroke works; finds and fixes the weaker side.', physiology: 'One-sided strength and hip control; the difference between legs is often what limits a sprint or a standing climb.', patterns: ['single-leg', 'single-leg', 'hinge', 'hip', 'trunk'], sets: 3, reps: '8–10 per side', load: 'Moderate; the weaker side sets the weight' },
-    { id: 'glutes-hams', name: 'Glutes and hamstrings (35 min)', minutes: 35, purpose: 'The posterior chain: what pulls the pedal through the bottom of the stroke and keeps the low back out of trouble.', patterns: ['hinge', 'hinge', 'single-leg', 'hip', 'trunk'], sets: 3, reps: '8–10', load: 'Moderate to heavy on the hinges' },
-    { id: 'power', name: 'Legs: power (30 min)', minutes: 30, purpose: 'Fewer reps, moved fast: strength that turns into a sprint or a kick over a rise.', physiology: 'Rate of force development falls with age faster than strength itself; moving loads quickly keeps it.', patterns: ['hinge', 'squat', 'single-leg', 'trunk'], sets: 4, reps: '5', load: 'Moderate, moved as fast as control allows; long rests', prefer: ['db-swing', 'goblet-squat', 'step-up', 'hollow-hold'] },
-    { id: 'anywhere', name: 'Bodyweight anywhere (25 min)', minutes: 25, purpose: 'No equipment: a hotel room or a living-room floor is enough.', patterns: ['squat', 'single-leg', 'hinge', 'push', 'trunk', 'hip'], sets: 3, reps: '12–15', load: 'Bodyweight; slow and controlled', only: ['bodyweight'] },
-    { id: 'express', name: 'Full body express (25 min)', minutes: 25, purpose: 'One of everything in under half an hour for a busy day.', patterns: ['squat', 'hinge', 'push', 'pull', 'trunk'], sets: 2, reps: '10', load: 'Moderate; keep moving between exercises' },
+  const themed: Array<{ id: string; name: string; minutes: number; purpose: string; physiology?: string; patterns: Pattern[]; sets: number; reps: string; load: string; only?: Equipment[]; prefer?: string[]; effort: number }> = [
+    { id: 'core-hips', effort: 4, name: 'Core and hips (20 min)', minutes: 20, purpose: 'A short trunk and hip session for any day; no fatigue to carry into tomorrow’s ride.', physiology: 'A stable pelvis and trunk let the legs deliver power without the upper body absorbing it.', patterns: ['trunk', 'hip', 'trunk', 'hip', 'trunk'], sets: 2, reps: '12–15', load: 'Bodyweight or light; quality over load', prefer: ['dead-bug', 'clamshell', 'side-plank', 'side-lying-leg-raise', 'bird-dog'] },
+    { id: 'posture', effort: 6, name: 'Upper body and posture (30 min)', minutes: 30, purpose: 'Push and pull for the shoulders, upper back and neck that hours on the hoods round forward.', patterns: ['pull', 'push', 'pull', 'push', 'trunk'], sets: 3, reps: '10–12', load: 'Moderate; strict form, full range' },
+    { id: 'single-leg', effort: 6, name: 'Single-leg strength (35 min)', minutes: 35, purpose: 'Every exercise on one leg at a time, the way the pedal stroke works; finds and fixes the weaker side.', physiology: 'One-sided strength and hip control; the difference between legs is often what limits a sprint or a standing climb.', patterns: ['single-leg', 'single-leg', 'hinge', 'hip', 'trunk'], sets: 3, reps: '8–10 per side', load: 'Moderate; the weaker side sets the weight' },
+    { id: 'glutes-hams', effort: 6, name: 'Glutes and hamstrings (35 min)', minutes: 35, purpose: 'The posterior chain: what pulls the pedal through the bottom of the stroke and keeps the low back out of trouble.', patterns: ['hinge', 'hinge', 'single-leg', 'hip', 'trunk'], sets: 3, reps: '8–10', load: 'Moderate to heavy on the hinges' },
+    { id: 'power', effort: 7, name: 'Legs: power (30 min)', minutes: 30, purpose: 'Fewer reps, moved fast: strength that turns into a sprint or a kick over a rise.', physiology: 'Rate of force development falls with age faster than strength itself; moving loads quickly keeps it.', patterns: ['hinge', 'squat', 'single-leg', 'trunk'], sets: 4, reps: '5', load: 'Moderate, moved as fast as control allows; long rests', prefer: ['db-swing', 'goblet-squat', 'step-up', 'hollow-hold'] },
+    { id: 'anywhere', effort: 5, name: 'Bodyweight anywhere (25 min)', minutes: 25, purpose: 'No equipment: a hotel room or a living-room floor is enough.', patterns: ['squat', 'single-leg', 'hinge', 'push', 'trunk', 'hip'], sets: 3, reps: '12–15', load: 'Bodyweight; slow and controlled', only: ['bodyweight'] },
+    { id: 'express', effort: 6, name: 'Full body express (25 min)', minutes: 25, purpose: 'One of everything in under half an hour for a busy day.', patterns: ['squat', 'hinge', 'push', 'pull', 'trunk'], sets: 2, reps: '10', load: 'Moderate; keep moving between exercises' },
   ];
   for (const t of themed) {
     const have = t.only ?? eq;
@@ -52,7 +52,7 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
       const isHold = /plank|dead bug|bird dog|pallof|wall sit|hollow|carry/i.test(pick.name);
       exercises.push({ name: pick.name, sets: t.sets, reps: isHold ? undefined : pick.unilateral && !/per side/.test(t.reps) ? `${t.reps} per side` : t.reps, holdSeconds: isHold ? 40 : undefined, load: pick.loadable ? t.load : 'Bodyweight; slow and controlled', cue: pick.cue, why: pick.why, equipment: pick.equipment });
     }
-    out.push({ id: `lib-str-${t.id}`, name: t.name, kind: 'strength', family: 'recovery', purpose: t.purpose, physiology: t.physiology, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises, estimatedTss: Math.round(t.minutes / 60 * (t.id === 'power' ? 40 : t.id === 'core-hips' ? 20 : 32)), minutes: t.minutes, source: 'library' });
+    out.push({ id: `lib-str-${t.id}`, name: t.name, kind: 'strength', family: 'recovery', purpose: t.purpose, physiology: t.physiology, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises, effort: t.effort, estimatedTss: estimateSessionTss({ kind: 'strength', minutes: t.minutes, effort: t.effort }), minutes: t.minutes, source: 'library' });
   }
 
   // Mobility by focus, the planner's own routines
@@ -82,8 +82,8 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
 
   // Walks
   const where = eq.includes('treadmill') ? 'treadmill' : 'outdoor';
-  const walk = (id: string, w: Workout, patch: Partial<Workout> = {}) => out.push({ ...fix(w, id), ...patch });
-  walk('lib-walk-20-easy', generateWalk({ minutes: 20, where, reason: 'A recovery walk: easy, unhurried, blood through the legs the day after a hard ride.' }), { name: 'Recovery walk 20 min', walk: { minutes: 20, hrLow: 0.5, hrHigh: 0.6 }, estimatedTss: 6 });
+  const walk = (id: string, w: Workout, patch: Partial<Workout> = {}) => { const m = { ...fix(w, id), ...patch }; out.push({ ...m, estimatedTss: estimateSessionTss(m) }); };
+  walk('lib-walk-20-easy', generateWalk({ minutes: 20, where, reason: 'A recovery walk: easy, unhurried, blood through the legs the day after a hard ride.' }), { name: 'Recovery walk 20 min', walk: { minutes: 20, hrLow: 0.5, hrHigh: 0.6 } });
   walk('lib-walk-30', generateWalk({ minutes: 30, where, reason: 'A short aerobic walk for a day the bike cannot be used.' }));
   walk('lib-walk-45', generateWalk({ minutes: 45, where, reason: 'Forty-five minutes of zone 2 on foot.' }));
   walk('lib-walk-45-pack', generateWalk({ minutes: 45, packKg: 9, where, reason: 'Zone 2 with a light pack: more work per minute and some load for the bones.' }));
@@ -91,6 +91,6 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   walk('lib-walk-60-heavy', generateWalk({ minutes: 60, packKg: 13.6, where, reason: 'An hour under a 30 lb pack: the legs and back work like a long seated climb, with the bone loading riding never gives.' }), { name: 'Weighted walk 1:00, heavy pack' });
   walk('lib-walk-90', generateWalk({ minutes: 90, where, reason: 'A long walk in zone 2: ninety minutes of aerobic work that costs the legs very little.' }), { name: 'Long walk 1:30' });
   if (where === 'treadmill') walk('lib-walk-incline', generateWalk({ minutes: 40, where, reason: 'Set the treadmill to a steady 8–12% grade and walk briskly without holding on: glutes and calves work like a climb and heart rate reaches zone 2 with no pack.' }), { name: 'Incline walk 40 min', walk: { minutes: 40, hrLow: 0.6, hrHigh: 0.72 } });
-  walk('lib-walk-brisk', generateWalk({ minutes: 30, where, reason: 'Thirty minutes at the top of zone 2 into low zone 3: a brisk walk with purpose, arms swinging, for a day with no time for more.' }), { name: 'Brisk walk 30 min', walk: { minutes: 30, hrLow: 0.68, hrHigh: 0.78 }, estimatedTss: 24 });
+  walk('lib-walk-brisk', generateWalk({ minutes: 30, where, reason: 'Thirty minutes at the top of zone 2 into low zone 3: a brisk walk with purpose, arms swinging, for a day with no time for more.' }), { name: 'Brisk walk 30 min', walk: { minutes: 30, hrLow: 0.68, hrHigh: 0.78 } });
   return out;
 }

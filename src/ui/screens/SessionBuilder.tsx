@@ -6,6 +6,7 @@ import { EXERCISES, type Pattern } from '../../library/strength';
 import { MOBILITY, type Target } from '../../library/mobility';
 import { db } from '../../data/db';
 import { newId } from '../../engine/workout';
+import { estimateSessionTss } from '../../engine/sessions';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { go } from '../router';
@@ -23,6 +24,17 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const [equipment, setEquipment] = useState<Equipment[]>(getCurrentEquipment());
   const [saved, setSaved] = useState(false);
   const [date, setDate] = useState(today());
+  const [effort, setEffort] = useState<number>(source?.effort ?? 6);
+  const [hrLow, setHrLow] = useState(Math.round((source?.walk?.hrLow ?? 0.6) * 100));
+  const [hrHigh, setHrHigh] = useState(Math.round((source?.walk?.hrHigh ?? 0.7) * 100));
+  const maxHr = data.profile?.maxHr ?? 0;
+  const walkSpec = { minutes, hrLow: hrLow / 100, hrHigh: hrHigh / 100, packKg: packLb ? packLb / 2.2 : undefined };
+  const tss = estimateSessionTss({ kind, minutes, walk: kind === 'walk' ? walkSpec : undefined, effort: kind === 'strength' ? effort : undefined });
+  const WALK_TARGETS: Array<[string, number, number, string]> = [
+    ['Recovery', 50, 60, 'very easy; the day after a hard ride'],
+    ['Zone 2', 60, 70, 'talk in full sentences; the default'],
+    ['Brisk', 68, 78, 'purposeful; top of zone 2 into zone 3'],
+  ];
 
   const pool = kind === 'strength' ? EXERCISES.filter((e) => e.equipment.some((q) => equipment.includes(q))) : [];
   const add = (e: Exercise) => setExercises([...exercises, e]);
@@ -37,8 +49,9 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
       purpose: purpose.trim() || (kind === 'walk' ? 'A zone 2 walk.' : `Built in the app: ${exercises.length} ${kind === 'strength' ? 'exercises' : 'stretches'}.`),
       phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], source: 'mine', minutes,
       exercises: kind === 'walk' ? undefined : exercises,
-      walk: kind === 'walk' ? { minutes, hrLow: 0.6, hrHigh: 0.7, packKg: packLb ? packLb / 2.2 : undefined } : undefined,
-      estimatedTss: kind === 'walk' ? Math.round(minutes / 60 * 38) : kind === 'strength' ? Math.round(minutes / 60 * 32) : Math.round(minutes / 60 * 8),
+      walk: kind === 'walk' ? walkSpec : undefined,
+      effort: kind === 'strength' ? effort : undefined,
+      estimatedTss: tss,
     };
     await db.workouts.put(w);
     if (then === 'date') await db.planned.put({ id: newId(), date, workoutId: w.id, basis: data.profile!.basis, status: 'planned' });
@@ -52,15 +65,37 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   return (
     <div>
       <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
-      <div class="page-head"><h1>{existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `Build a ${KIND_LABEL[kind].toLowerCase()} session`}</h1></div>
+      <div class="page-head">
+        <h1>{existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `Build a ${KIND_LABEL[kind].toLowerCase()} session`}</h1>
+        <span class="muted small" title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>
+      </div>
       <div class="form">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder={kind === 'strength' ? 'Tuesday legs' : kind === 'walk' ? 'Lunchtime walk' : 'Evening stretch'} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>
         <div class="field"><label>Minutes</label><input type="number" min="5" value={minutes} onInput={(e) => setMinutes(Number((e.target as HTMLInputElement).value) || 30)} /></div>
         {kind === 'walk' && <div class="field"><label>Pack weight (lb, 0 for none)</label><input type="number" min="0" value={packLb} onInput={(e) => setPackLb(Number((e.target as HTMLInputElement).value) || 0)} /></div>}
+        {kind === 'strength' && (
+          <div class="field"><label>Planned effort (sets the TSS estimate)</label>
+            <select value={effort} onChange={(e) => setEffort(Number((e.target as HTMLSelectElement).value))}>
+              {[[3, '3 · very easy: mobility-like, no strain'], [4, '4 · easy: light weights, long rests'], [5, '5 · light: moderate weights, reps in reserve'], [6, '6 · moderate: working weights, 2 reps in reserve'], [7, '7 · hard: heavy, 1 rep in reserve on the last set'], [8, '8 · very hard: near maximal on main lifts']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select></div>
+        )}
       </div>
 
-      {kind === 'walk' && <p class="muted small" style="margin-top:12px">Target: zone 2 by heart rate, 60–70% of max, talk-in-full-sentences effort.</p>}
+      {kind === 'walk' && (
+        <section class="section">
+          <h2>Heart-rate target</h2>
+          <p class="muted small" style="margin:6px 0 10px;max-width:64ch">Walks go by heart rate, not power: there is no power meter on foot, and a treadmill’s readout is not comparable to a bike’s. The target is a share of your maximum heart rate.</p>
+          <div class="chips" style="margin-bottom:10px">
+            {WALK_TARGETS.map(([l, lo, hi, d]) => <button key={l} class={`chip${hrLow === lo && hrHigh === hi ? ' on' : ''}`} title={d} onClick={() => { setHrLow(lo); setHrHigh(hi); }}>{l} {lo}–{hi}%</button>)}
+          </div>
+          <div class="form">
+            <div class="field"><label>Low (% of max heart rate)</label><input type="number" min="40" max="95" value={hrLow} onInput={(e) => setHrLow(Math.min(95, Math.max(40, Number((e.target as HTMLInputElement).value) || 60)))} /></div>
+            <div class="field"><label>High (% of max heart rate)</label><input type="number" min="45" max="100" value={hrHigh} onInput={(e) => setHrHigh(Math.min(100, Math.max(45, Number((e.target as HTMLInputElement).value) || 70)))} /></div>
+          </div>
+          <p class="small" style="margin-top:10px">{maxHr ? <>That is <b>{Math.round(maxHr * hrLow / 100)}–{Math.round(maxHr * hrHigh / 100)} bpm</b> for your max of {maxHr}.</> : 'Set your max heart rate in Settings to see this in beats per minute.'}{hrHigh <= hrLow && <span style="color:var(--bad)"> The high end must be above the low end.</span>}</p>
+        </section>
+      )}
 
       {kind === 'strength' && (
         <section class="section">
@@ -105,8 +140,8 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
       )}
 
       <div class="row wrap" style="margin-top:22px;gap:8px;align-items:center">
-        <button class="btn primary" onClick={() => save('library')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0)}>Save to My Workouts</button>
-        <button class="btn" onClick={() => save('date')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0)}>Save and put on {date === today() ? 'today' : fmtDate(date)}</button>
+        <button class="btn primary" onClick={() => save('library')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0) || (kind === 'walk' && hrHigh <= hrLow)}>Save to My Workouts</button>
+        <button class="btn" onClick={() => save('date')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0) || (kind === 'walk' && hrHigh <= hrLow)}>Save and put on {date === today() ? 'today' : fmtDate(date)}</button>
         <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date to put it on" />
         <a class="btn quiet" href="#/library">Cancel</a>
         {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}?`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}

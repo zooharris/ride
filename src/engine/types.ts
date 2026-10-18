@@ -84,6 +84,8 @@ export interface Workout {
   walk?: WalkSpec;
   /** Rough training stress for non-ride sessions (rides compute theirs from the blocks). */
   estimatedTss?: number;
+  /** Planned effort for strength sessions, 1–10 (RPE); drives the estimate. */
+  effort?: number;
   /** Intended duration for non-ride sessions. */
   minutes?: number;
   source: 'library' | 'mine' | 'generated';

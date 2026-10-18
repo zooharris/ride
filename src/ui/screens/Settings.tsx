@@ -5,7 +5,7 @@ import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { downloadBackup, restoreBackup } from '../../data/backup';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
-import { testConnection, type IntervalsCredentials } from '../../sync/intervals';
+import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { APP_NAME } from '../../appName';
 import { ZONE_VAR } from '../Profile';
 
@@ -33,7 +33,19 @@ export function Settings({ data }: { data: AppData }) {
     await setSetting('claudeKey', claudeKey.trim());
     await setSetting('coachNote', null);
     notify();
-    setMsg({ ok: true, text: 'Saved.' });
+    const before = data.profile!;
+    const changed = p.ftp !== before.ftp || p.lthr !== before.lthr || p.maxHr !== before.maxHr;
+    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+    if (changed && c?.apiKey) {
+      try {
+        await pushAthleteNumbers(c, { ftp: p.ftp, lthr: p.lthr, maxHr: p.maxHr });
+        setMsg({ ok: true, text: `Saved, and FTP ${p.ftp} W / LTHR ${p.lthr} bpm sent to Intervals.icu so Garmin targets use the new numbers.` });
+      } catch (e) {
+        setMsg({ ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to Garmin use the FTP Intervals.icu has.` });
+      }
+    } else {
+      setMsg({ ok: true, text: 'Saved.' });
+    }
   }
 
   async function connect() {
@@ -79,7 +91,7 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section" style="margin-top:0">
         <h2>Intervals.icu</h2>
-        <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device.</p>
+        <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold HR and max HR are kept in step both ways: change them here and they are sent to Intervals.icu; change them there (or let Garmin detect a new FTP) and the next sync brings them here.</p>
         <div class="form">
           <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} /></div>
           <div class="field"><label>API key</label><input type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>

@@ -1,7 +1,7 @@
 import { db, getSetting } from '../data/db';
 import { addDays, rideTss, today } from '../engine/load';
 import type { IntervalsCredentials } from './intervals';
-import { fetchRides, fetchWellness } from './intervals';
+import { fetchRides, fetchWellness, testConnection } from './intervals';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -21,7 +21,13 @@ export async function syncAll(): Promise<{ rides: number; wellness: number }> {
   const first = !state?.lastActivitySync;
   const oldest = addDays(today(), first ? -120 : -14);
   const newest = addDays(today(), 1);
-  const profile = await db.profile.get('me');
+  // Intervals.icu is where FTP and thresholds live (Garmin feeds it); keep the profile in step.
+  let profile = await db.profile.get('me');
+  const numbers = await testConnection(c);
+  if (profile) {
+    const next = { ...profile, ftp: numbers.ftp ?? profile.ftp, lthr: numbers.lthr ?? profile.lthr, maxHr: numbers.maxHr ?? profile.maxHr, restingHr: numbers.restingHr ?? profile.restingHr, weightKg: numbers.weight ?? profile.weightKg };
+    if (JSON.stringify(next) !== JSON.stringify(profile)) { await db.profile.put(next); profile = next; }
+  }
 
   const rides = await fetchRides(c, oldest, newest);
   for (const r of rides) {

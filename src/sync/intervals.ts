@@ -47,7 +47,6 @@ async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit 
   return (await res.json()) as T;
 }
 
-/** A cheap call that proves the credentials work and returns the athlete's name. */
 export interface AthleteNumbers {
   name: string;
   ftp?: number;
@@ -57,10 +56,14 @@ export interface AthleteNumbers {
   weight?: number;
 }
 
+/**
+ * The athlete's numbers as Intervals.icu holds them. FTP, LTHR and max HR live in
+ * the per-sport settings (the "Ride" entry); weight and resting HR on the athlete.
+ * Also proves the credentials work.
+ */
 export async function testConnection(c: IntervalsCredentials): Promise<AthleteNumbers> {
   const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
-  const settings = Array.isArray(a.sportSettings) ? (a.sportSettings as Array<Record<string, unknown>>) : [];
-  const sport = settings.find((s) => (s.types as string[] | undefined)?.includes('Ride')) ?? settings[0];
+  const sport = rideSettings(a);
   return {
     name: String(a.name ?? ''),
     ftp: num(sport?.ftp) ?? num(a.icu_ftp),
@@ -69,6 +72,28 @@ export async function testConnection(c: IntervalsCredentials): Promise<AthleteNu
     restingHr: num(a.icu_resting_hr),
     weight: num(a.icu_weight) ?? num(a.weight),
   };
+}
+
+function rideSettings(athlete: Record<string, unknown>): Record<string, unknown> | undefined {
+  const settings = Array.isArray(athlete.sportSettings) ? (athlete.sportSettings as Array<Record<string, unknown>>) : [];
+  return settings.find((s) => (s.types as string[] | undefined)?.includes('Ride')) ?? settings[0];
+}
+
+/**
+ * Push FTP, LTHR and max HR to Intervals.icu. This matters: Intervals.icu turns
+ * the app's "% of FTP" into watts with ITS FTP before the workout reaches Garmin,
+ * so the two must agree. Only the fields given are changed.
+ */
+export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: number; lthr?: number; maxHr?: number }): Promise<void> {
+  const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
+  const sport = rideSettings(a);
+  if (!sport || sport.id == null) throw new IntervalsError('Intervals.icu has no cycling sport settings to update; open its Settings page once and save, then try again.');
+  const body: Record<string, unknown> = {};
+  if (n.ftp) body.ftp = n.ftp;
+  if (n.lthr) body.lthr = n.lthr;
+  if (n.maxHr) body.max_hr = n.maxHr;
+  if (Object.keys(body).length === 0) return;
+  await call(c, `/athlete/${c.athleteId}/sport-settings/${sport.id}`, { method: 'PUT', body: JSON.stringify(body) });
 }
 
 interface IcuActivity {

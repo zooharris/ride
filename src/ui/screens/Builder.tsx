@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, notify } from '../store';
 import { WorkoutProfile, ZONE_VAR } from '../Profile';
@@ -50,6 +50,16 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   ]);
   const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => { setSaved(null); }, [rows, name]);
+  const initial = useRef({ name, purpose, family, rows: JSON.stringify(rows) });
+  const dirty = name !== initial.current.name || purpose !== initial.current.purpose || family !== initial.current.family || JSON.stringify(rows) !== initial.current.rows;
+  function reset() {
+    if (dirty && !confirm('Reset the builder to where it started? Your edits here will be lost.')) return;
+    setName(initial.current.name); setPurpose(initial.current.purpose); setFamily(initial.current.family); setRows(JSON.parse(initial.current.rows));
+  }
+  function cancel() {
+    if (dirty && !saved && !confirm('Leave without saving? Your edits here will be lost.')) return;
+    go('library');
+  }
 
   const blocks = toBlocks(rows);
   const stats = workoutStats(blocks);
@@ -99,7 +109,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
 
   return (
     <div>
-      <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
+      <button class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px" onClick={cancel}>‹ Library</button>
       <div class="page-head">
         <h1>{existing ? 'Edit workout' : 'Build a workout'}</h1>
         <span class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)}</span>
@@ -180,7 +190,9 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
       <div class="row wrap" style="margin-top:22px;gap:8px">
         <button class="btn primary" onClick={() => save('library')} disabled={!name.trim() || rows.length === 0}>Save to My Workouts</button>
         <button class="btn" onClick={() => save('today')} disabled={!name.trim() || rows.length === 0}>Save and ride today</button>
-        {existing && <button class="btn quiet" onClick={async () => { await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
+        <button class="btn quiet" onClick={reset} disabled={!dirty}>Reset</button>
+        <button class="btn quiet" onClick={cancel}>Cancel</button>
+        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}? It also comes off any calendar day it is on.`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
       </div>
       {saved && <p class="msg ok" style="margin-top:10px">Saved.</p>}
     </div>

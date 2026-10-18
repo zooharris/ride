@@ -143,10 +143,12 @@ export function Today({ data }: { data: AppData }) {
       </div>
 
       {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
+      <div class="today-grid">
+      <div class="today-main">
       {connected === false && (
         <div class="panel accent" style="margin-bottom:14px">
           <b>Connect Intervals.icu</b>
-          <p class="muted small" style="margin-top:4px">That is the pipe to your Garmin. Add your athlete ID and API key in Settings, and rides and wellness will start arriving.</p>
+          <p class="muted small" style="margin-top:4px">That is how workouts reach your bike computer and finished activities come back. Add your athlete ID and API key in Settings.</p>
           <a class="btn sm" href="#/settings" style="margin-top:10px">Open Settings</a>
         </div>
       )}
@@ -218,7 +220,8 @@ export function Today({ data }: { data: AppData }) {
           <p class="muted" style="font-size:15px;line-height:1.6">{note}</p>
         </section>
       )}
-
+      </div>
+      <div class="today-side">
       <section class="section">
         <div class="row between" style="margin-bottom:10px">
           <h2>Readiness</h2>
@@ -234,13 +237,13 @@ export function Today({ data }: { data: AppData }) {
           ))}
         </div>
         <p class="faint small" style="margin-top:8px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own recent normal. Green is better than normal, red worse.</p>
-        {data.wellness.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting HR appear once Intervals.icu is connected and your watch has synced.</p>}
+        {data.wellness.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
       </section>
 
       <section class="section">
         <div class="row between" style="margin-bottom:10px">
           <h2>Fitness</h2>
-          <div class="stats" style="gap:4px 18px;grid-template-columns:repeat(3,max-content)">
+          <div class="stats" style="gap:4px 16px;grid-template-columns:repeat(3,max-content);margin-left:auto">
             <div class="stat"><div class="v" style="font-size:18px;color:var(--z2)">{fit?.ctl.toFixed(0) ?? '–'}</div><div class="l">Fitness</div></div>
             <div class="stat"><div class="v" style="font-size:18px;color:var(--z5)">{fit?.atl.toFixed(0) ?? '–'}</div><div class="l">Fatigue</div></div>
             <div class="stat"><div class="v" style="font-size:18px">{fit ? (fit.tsb > 0 ? '+' : '') + fit.tsb.toFixed(0) : '–'}</div><div class="l">Form</div></div>
@@ -248,6 +251,8 @@ export function Today({ data }: { data: AppData }) {
         </div>
         <FitnessChart series={series.slice(-84)} />
       </section>
+      </div>
+      </div>
     </div>
   );
 }
@@ -256,7 +261,7 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
   const upcoming = data.planned.filter((p) => p.date > date && p.status !== 'completed').sort((a, b) => a.date.localeCompare(b.date));
   if (!upcoming.length) return null;
   const nextDate = upcoming[0].date;
-  const items = upcoming.filter((p) => p.date === nextDate).map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
+  const items = plannedOn(upcoming, nextDate, (id) => findWorkout(data.mine, id)?.kind ?? 'ride').map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
   if (!items.length) return null;
   const days = Math.round((Date.parse(nextDate) - Date.parse(date)) / 864e5);
   return (

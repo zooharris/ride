@@ -15,6 +15,7 @@ import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
 import type { Equipment, Fitness, SessionKind } from '../../engine/types';
+import { KIND_ICON } from '../icons';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -84,6 +85,14 @@ export function Plan({ data }: { data: AppData }) {
     try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters); setCheck(null); go('calendar'); } finally { setBusy(false); }
   }
 
+  const DEFAULT_AV: Availability = { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
+  async function resetForm() {
+    if (!confirm('Reset the goal and your week to what was last saved?')) return;
+    const saved = await getSetting<Saved | null>('planRequest', null);
+    if (saved && saved.availability.equipment) { setGoal(saved.goal); setAv(saved.availability); setMasters(saved.masters); }
+    else { setGoal(DEFAULT_GOAL); setAv(DEFAULT_AV); setMasters(profile.masters); }
+    setPlan(null);
+  }
   const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
   const toggleOutdoor = (i: number) => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.outdoor[k] : !!av.outdoor[k])) });
   const toggleNoBike = (i: number) => setAv({ ...av, noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.noBike?.[k] : !!av.noBike?.[k])) });
@@ -211,7 +220,10 @@ export function Plan({ data }: { data: AppData }) {
         </div>
       </section>
 
-      <button class="btn primary block" style="margin-top:20px" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Build the plan</button>
+      <div class="row" style="margin-top:20px;gap:8px">
+        <button class="btn primary" style="flex:1" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Build the plan</button>
+        <button class="btn quiet" onClick={resetForm}>Reset</button>
+      </div>
 
       {plan && (
         <div id="plan-result">
@@ -271,7 +283,10 @@ export function Plan({ data }: { data: AppData }) {
             </div>
           </section>
 
-          <button class="btn primary block" style="margin-top:20px" onClick={apply} disabled={busy}>{busy ? 'Placing…' : 'Put this plan on the calendar'}</button>
+          <div class="row" style="margin-top:20px;gap:8px">
+            <button class="btn primary" style="flex:1" onClick={apply} disabled={busy}>{busy ? 'Placing…' : 'Put this plan on the calendar'}</button>
+            <button class="btn quiet" onClick={() => { setPlan(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Discard</button>
+          </div>
           {msg && <p class="msg ok" style="margin-top:10px">{msg}</p>}
           <p class="faint small" style="margin-top:10px">Rides already on the calendar from this week on are replaced. Completed rides are kept. The plan is re-checked as rides and wellness arrive.</p>
         </div>
@@ -308,9 +323,9 @@ export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength:
 export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--z2)', strength: 'var(--strength)', mobility: 'var(--z3)', walk: 'var(--z4)' };
 
 export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolean }) {
-  const size = big ? 54 : 30;
-  const glyph = kind === 'strength' ? 'S' : kind === 'walk' ? 'W' : 'M';
-  return <div style={`width:${size}px;height:${big ? 28 : 16}px;flex:0 0 ${size}px;border-radius:4px;background:color-mix(in srgb, ${KIND_COLOR[kind]} 22%, transparent);color:${KIND_COLOR[kind]};display:flex;align-items:center;justify-content:center;font-size:${big ? 13 : 10}px;font-weight:700`}>{glyph}</div>;
+  const I = KIND_ICON[kind];
+  const w = big ? 54 : 30, h = big ? 28 : 16;
+  return <div class="kind-tile" style={`width:${w}px;height:${h}px;flex:0 0 ${w}px;background:color-mix(in srgb, ${KIND_COLOR[kind]} 18%, transparent);color:${KIND_COLOR[kind]}`}><I size={big ? 16 : 11} /></div>;
 }
 
 const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer', weight: 'Lose weight', general: 'General fitness' };

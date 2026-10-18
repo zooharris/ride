@@ -23,13 +23,20 @@ export function Settings({ data }: { data: AppData }) {
 
   useEffect(() => {
     getSetting<IntervalsCredentials | null>('intervals', null).then((c) => c && setCreds(c));
-    getSetting<string>('claudeKey', '').then(setClaudeKey);
-    getSetting<boolean>('coachAuto', false).then(setCoachAuto);
+    getSetting<string>('claudeKey', '').then((k) => { setClaudeKey(k); setSavedKey(k); });
+    getSetting<boolean>('coachAuto', false).then((v) => { setCoachAuto(v); setSavedAuto(v); });
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
     getSetting<string | null>('lastAutoBackup', null).then(setLastAuto);
   }, []);
 
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
+  const [savedKey, setSavedKey] = useState('');
+  const [savedAuto, setSavedAuto] = useState(false);
+  const dirty = JSON.stringify(p) !== JSON.stringify(data.profile) || claudeKey !== savedKey || coachAuto !== savedAuto;
+  function discard() {
+    if (!confirm('Discard the changes on this page?')) return;
+    setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setMsg(null);
+  }
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
 
   async function save() {
@@ -37,6 +44,7 @@ export function Settings({ data }: { data: AppData }) {
     await setSetting('claudeKey', claudeKey.trim());
     await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
     await setSetting('coachNote', null);
+    setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim());
     notify();
     const before = data.profile!;
     const changed = p.ftp !== before.ftp || p.lthr !== before.lthr || p.maxHr !== before.maxHr;
@@ -117,7 +125,7 @@ export function Settings({ data }: { data: AppData }) {
 
   return (
     <div>
-      <div class="page-head"><h1>Settings</h1><button class="btn primary sm" onClick={save}>Save</button></div>
+      <div class="page-head"><h1>Settings</h1><div class="row">{dirty && <button class="btn sm quiet" onClick={discard}>Discard changes</button>}<button class="btn primary sm" onClick={save} disabled={!dirty}>Save</button></div></div>
       {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
 
       <section class="section" style="margin-top:0">

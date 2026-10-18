@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, cancelPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import { applyPlan, buildPlan, cancelPlan, getActivePlan, isPlanSession, markChecked, replan, type ActivePlan } from '../planService';
 import type { Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
@@ -57,8 +57,8 @@ export function Plan({ data }: { data: AppData }) {
 
   async function apply() {
     if (!plan) return;
-    const future = data.planned.filter((p) => p.date >= today() && p.status !== 'completed');
-    if (future.length && !confirm(`Rides and sessions already on the calendar from today onward are replaced where the plan differs. Continue?`)) return;
+    const future = data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && isPlanSession(p, data));
+    if (future.length && !confirm(`Sessions the current plan put on the calendar from today onward are replaced where the new plan differs. Anything you added by hand stays. Continue?`)) return;
     setBusy(true);
     try {
       await applyPlan(data, plan, goal, av, masters);
@@ -72,8 +72,8 @@ export function Plan({ data }: { data: AppData }) {
   }
 
   async function cancel() {
-    const pending = data.planned.filter((p) => p.date >= today() && p.status !== 'completed').length;
-    if (!confirm(`Cancel this plan? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done are kept.`)) return;
+    const pending = data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && isPlanSession(p, data)).length;
+    if (!confirm(`Cancel this plan? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
     try { await cancelPlan(data); setActive(null); setCheck(null); setPlan(null); } finally { setBusy(false); }
   }

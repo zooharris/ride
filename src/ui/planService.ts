@@ -14,6 +14,7 @@ import { findWorkout, notify } from './store';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
+  id: string;
   goal: Goal;
   availability: Availability;
   masters: boolean;
@@ -47,7 +48,10 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
 export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean): Promise<{ added: number; removed: number; kept: number }> {
   const from = today();
   const profile = data.profile as Profile;
-  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed');
+  const previous = await getActivePlan();
+  const planId = previous?.id ?? newId();
+  // Only sessions a plan put there are replaced; anything added by hand stays.
+  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && isPlanSession(p, data));
   const incoming = plan.weeks.flatMap((w) => w.sessions.filter((s) => s.date >= from).map((s) => ({ s, label: w.label })));
   const sig = (date: string, kind: string, name: string) => `${date}|${kind}|${name}`;
   const keep = new Map<string, true>();
@@ -71,12 +75,18 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     removed++;
   }
   await db.workouts.bulkPut(toAdd.map((x) => x.s.workout));
-  await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label })));
+  await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId })));
   added = toAdd.length;
-  const active: ActivePlan = { goal, availability, masters, start: plan.weeks[0]?.start ?? from, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
+  const active: ActivePlan = { id: planId, goal, availability, masters, start: plan.weeks[0]?.start ?? from, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
   await setSetting('activePlan', active);
   notify();
   return { added, removed, kept };
+}
+
+/** Did a plan put this on the calendar? Older plan entries carry no id but point at generated sessions. */
+export function isPlanSession(p: { planId?: string; workoutId: string }, data: AppData): boolean {
+  if (p.planId) return true;
+  return findWorkout(data.mine, p.workoutId)?.source === 'generated';
 }
 
 /** Re-run the planner from today and explain the differences. */
@@ -103,7 +113,7 @@ export async function replan(data: AppData): Promise<Replan | null> {
  */
 export async function cancelPlan(data: AppData): Promise<{ removed: number }> {
   const from = today();
-  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed');
+  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && isPlanSession(p, data));
   const c = await credentials();
   for (const p of future) {
     if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* a stale event is harmless */ } }

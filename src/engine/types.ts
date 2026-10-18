@@ -107,6 +107,8 @@ export interface PlannedWorkout {
   icuEventId?: number;
   activityId?: string;
   note?: string;
+  /** Set when a plan put this on the calendar; hand-added sessions have none. */
+  planId?: string;
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
   rpe?: number;
   loggedSeconds?: number;

@@ -12,7 +12,7 @@ const profile: Profile = {
 };
 
 const sweetSpot: Workout = {
-  id: 'ss', name: '3 x 10 sweet spot', family: 'sweetspot', purpose: '', phases: ['base'], bases: ['power', 'hr'], source: 'library',
+  id: 'ss', name: '3 x 10 sweet spot', family: 'sweetspot', purpose: '', phases: ['base'], bases: ['power', 'hr'], source: 'library', setting: 'any',
   blocks: [
     { kind: 'step', seconds: 600, intensity: 0.55, label: 'Warm up' },
     { kind: 'repeat', times: 3, label: 'Sweet spot', steps: [

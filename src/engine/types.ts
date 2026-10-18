@@ -52,6 +52,8 @@ export interface Workout {
   phases: Phase[];
   /** Which bases this workout works on. Short VO2max and sprint work is power-only. */
   bases: Basis[];
+  /** Where it is meant to be ridden. Outdoor rides carry a long warm-up and finish in zone 2; indoor ones are compact. */
+  setting: 'outdoor' | 'indoor' | 'any';
   blocks: WorkoutBlock[];
   source: 'library' | 'mine';
 }

@@ -7,7 +7,7 @@ const step = (minutes: number, intensity: number, extra: Partial<WorkoutStep> = 
 const warm = (minutes = 10) => step(minutes, 0.5, { intensityHigh: 0.65, label: 'Warm up' });
 const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down' });
 const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
-const lib = (w: Omit<Workout, 'source'>): Workout => ({ ...w, source: 'library' });
+const lib = (w: Omit<Workout, 'source' | 'setting'>): Workout => ({ ...w, source: 'library', setting: 'indoor' });
 
 export const INDOOR: Workout[] = [
   // Endurance with structure, for a trainer that gets boring

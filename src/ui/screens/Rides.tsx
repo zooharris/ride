@@ -53,21 +53,22 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const p = data.planned.find((x) => x.activityId === r.id);
   const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
   const c = w ? scoreRide(w, r) : undefined;
-  const items: Array<[string, string | number | undefined]> = [
-    ['Moving time', clock(r.seconds)],
+  const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
+  const items: Array<[string, string | number | undefined, string?]> = [
+    ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
     ['Distance', distance(r.distanceM, profile)],
-    ['Climbing', elevation(r.elevationM, profile)],
-    ['TSS', r.tss],
-    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined],
-    ['Average power', r.averagePower ? `${r.averagePower} W` : undefined],
-    ['Intensity', r.intensityFactor?.toFixed(2)],
-    ['Average HR', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined],
-    ['Max HR', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
-    ['Cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined],
-    ['Efficiency factor', r.efficiencyFactor?.toFixed(2)],
-    ['Decoupling', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined],
-    ['Temperature', r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined],
-    ['FTP that day', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined],
+    ['Total climbing', elevation(r.elevationM, profile)],
+    ['Training load (TSS)', r.tss, 'How much the ride cost you. An hour flat out at FTP is 100'],
+    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, 'What the ride felt like in steady watts; surges count more than coasting'],
+    ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
+    ['Intensity factor', r.intensityFactor?.toFixed(2), 'Normalized power over FTP. 0.70 is endurance, 1.00 is threshold'],
+    ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, 'Over the whole ride'],
+    ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
+    ['Average cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined, 'Over the whole ride, while pedalling'],
+    ['Efficiency factor', r.efficiencyFactor?.toFixed(2), 'Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving'],
+    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, 'How much HR rose for the same power in the second half. Under 5% on a long ride is a sign of good aerobic base'],
+    ['Average temperature', tempF],
+    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
   ];
   const zones = r.powerZoneSeconds ?? r.hrZoneSeconds;
   const zTotal = zones?.reduce((a, b) => a + b, 0) || 1;
@@ -85,6 +86,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {zones && (
         <section class="section">
           <h2>Time in zone</h2>
+          <p class="faint small" style="margin-bottom:8px">Share of the ride spent in each {r.powerZoneSeconds ? 'power' : 'heart-rate'} zone.</p>
           <div style="display:flex;height:14px;border-radius:4px;overflow:hidden;gap:2px">
             {zones.map((s, i) => s > 0 && <div key={i} style={`flex:${s};background:${ZONE_VAR[Math.min(i, 6)]}`} title={`Z${i + 1}: ${clock(s)}`} />)}
           </div>
@@ -96,7 +98,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       <section class="section">
         <h2>Numbers</h2>
         <table class="steps">
-          {items.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => <tr key={k}><td colSpan={2} class="muted">{k}</td><td class="r num" colSpan={2}>{v}</td></tr>)}
+          {items.filter(([, v]) => v !== undefined && v !== '').map(([k, v, hint]) => (
+            <tr key={k}>
+              <td colSpan={2}>{k}{hint && <div class="faint small" style="font-weight:400;line-height:1.35;margin-top:2px">{hint}</div>}</td>
+              <td class="r num" colSpan={2}>{v}</td>
+            </tr>
+          ))}
         </table>
       </section>
     </div>

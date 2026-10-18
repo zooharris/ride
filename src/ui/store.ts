@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
-import { db, loadProfile } from '../data/db';
-import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
+import { db, getSetting, loadProfile } from '../data/db';
+import type { Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
+import { readyMadeSessions } from '../library/sessions';
+import { newId } from '../engine/workout';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
@@ -37,10 +39,38 @@ export function useAppData(): AppData {
   return data;
 }
 
+/** Ready-made strength, mobility and walk sessions, built for the equipment the rider told the planner about. */
+let readyCache: { key: string; list: Workout[] } = { key: '', list: [] };
+export const DEFAULT_EQUIPMENT: Equipment[] = ['bodyweight', 'dumbbells', 'bench', 'outdoor-walk'];
+export function readyMade(equipment: Equipment[] = currentEquipment): Workout[] {
+  const key = [...equipment].sort().join(',');
+  if (readyCache.key !== key) readyCache = { key, list: readyMadeSessions(equipment) };
+  return readyCache.list;
+}
+let currentEquipment: Equipment[] = DEFAULT_EQUIPMENT;
+export function setCurrentEquipment(e: Equipment[]): void { if (e.length) currentEquipment = e; }
+export function getCurrentEquipment(): Equipment[] { return currentEquipment; }
+getSetting<{ availability?: { equipment?: Equipment[] } } | null>('planRequest', null).then((s) => { if (s?.availability?.equipment?.length) setCurrentEquipment(s.availability.equipment); }).catch(() => {});
+
 export function allWorkouts(mine: Workout[]): Workout[] {
-  return [...mine, ...LIBRARY];
+  return [...mine, ...LIBRARY, ...readyMade()];
 }
 
 export function findWorkout(mine: Workout[], id: string): Workout | undefined {
-  return mine.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
+  return mine.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id) ?? readyMade().find((w) => w.id === id);
+}
+
+/**
+ * Put a workout on a date. A ready-made session is stored as its own copy
+ * first, so the calendar entry keeps exactly what was chosen even if the
+ * rider's equipment changes later.
+ */
+export async function scheduleWorkout(w: Workout, date: string, basis: 'power' | 'hr'): Promise<void> {
+  let id = w.id;
+  if (w.source === 'library' && w.kind !== 'ride') {
+    id = `gen-${newId()}`;
+    await db.workouts.put({ ...w, id, source: 'generated' });
+  }
+  await db.planned.put({ id: newId(), date, workoutId: id, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned' });
+  notify();
 }

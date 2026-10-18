@@ -12,6 +12,7 @@ import type { Basis, PlannedWorkout, WorkoutStep } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { KIND_LABEL, KindDot } from './Plan';
+import { AddToDate } from './Library';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -22,7 +23,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
   const plannedEntry = params.get('date') ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id) : undefined;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -105,7 +106,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout }) {
+function SessionScreen({ w, backHref, planned, basis }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr' }) {
+  const [adding, setAdding] = useState(false);
   const estimated = Math.round((w.exercises ?? []).reduce((s, e) => s + ((e.holdSeconds ?? 0) * (e.reps === 'each side' ? 2 : 1) + 15) * (e.sets ?? 1) + (e.sets && !e.holdSeconds ? e.sets * 75 : 0), 0) / 60);
   const minutes = w.minutes ?? w.walk?.minutes ?? (estimated || 30);
   return (
@@ -154,6 +156,13 @@ function SessionScreen({ w, backHref, planned }: { w: NonNullable<ReturnType<typ
           <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} /></div>
         </section>
       )}
+
+      <div class="row wrap" style="margin-top:22px;gap:8px">
+        {!planned && <button class="btn primary" onClick={() => setAdding(true)}>Add to a date</button>}
+        {w.source === 'mine' ? <a class="btn quiet" href={`#/build/${w.id}`}>Edit</a> : <a class="btn quiet" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
+        {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
+      </div>
+      {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}
     </div>
   );
 }

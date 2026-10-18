@@ -206,3 +206,21 @@ describe('ride analysis', () => {
     expect(ds.length).toBeLessThanOrEqual(101);
   });
 });
+
+describe('ready-made sessions', () => {
+  it('builds strength, mobility and walks for the rider’s equipment with unique ids', async () => {
+    const { readyMadeSessions } = await import('../library/sessions');
+    const list = readyMadeSessions(['bodyweight', 'dumbbells', 'bench', 'treadmill']);
+    expect(new Set(list.map((w) => w.id)).size).toBe(list.length);
+    expect(list.filter((w) => w.kind === 'strength').length).toBe(8);
+    expect(list.filter((w) => w.kind === 'mobility').length).toBe(5);
+    expect(list.filter((w) => w.kind === 'walk').length).toBe(4);
+    for (const w of list) { expect(w.minutes).toBeGreaterThan(0); expect(w.source).toBe('library'); }
+    for (const w of list.filter((w) => w.kind === 'strength')) for (const e of w.exercises ?? []) expect(e.equipment.some((q) => ['bodyweight', 'dumbbells', 'bench'].includes(q))).toBe(true);
+    expect(list.find((w) => w.kind === 'walk')?.setting).toBe('indoor');
+  });
+  it('keeps bodyweight-only riders to bodyweight exercises', async () => {
+    const { readyMadeSessions } = await import('../library/sessions');
+    for (const w of readyMadeSessions(['bodyweight']).filter((w) => w.kind === 'strength')) for (const e of w.exercises ?? []) expect(e.equipment).toContain('bodyweight');
+  });
+});

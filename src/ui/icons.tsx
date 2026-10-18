@@ -17,4 +17,4 @@ export const Icon = {
   send: (p: { size?: number }) => <svg {...base} width={p.size ?? 16} height={p.size ?? 16}><path d="M4 12l16-8-6 16-2-7z" /></svg>,
 };
 
-export const KIND_ICON: Record<SessionKind, (p: { size?: number }) => preact.JSX.Element> = { ride: Icon.ride, strength: Icon.strength, mobility: Icon.mobility, walk: Icon.walk };
+export const KIND_ICON: Record<SessionKind, (p: { size?: number }) => preact.JSX.Element> = { ride: Icon.ride, strength: Icon.strength, mobility: Icon.mobility, walk: Icon.walk, other: Icon.sync };

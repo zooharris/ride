@@ -55,7 +55,7 @@ export interface Plan {
 const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.max(0, Math.min(1, t));
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const dateOfSlot = (weekStart: string, slot: number) => addDays(weekStart, (slot - dow(weekStart) + 7) % 7);
-const KIND_ORDER: Record<SessionKind, number> = { ride: 0, walk: 1, strength: 2, mobility: 3 };
+const KIND_ORDER: Record<SessionKind, number> = { ride: 0, walk: 1, strength: 2, mobility: 3, other: 4 };
 const dow = (date: string) => new Date(date + 'T00:00:00').getDay();
 
 export function planWeeks(goal: Goal, start: string): number {

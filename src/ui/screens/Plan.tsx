@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
+import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, getActivePlan, isPlanSession, markChecked, replan, type ActivePlan } from '../planService';
@@ -53,6 +54,7 @@ export function Plan({ data }: { data: AppData }) {
     setPlan(p);
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
+    setCurrentEquipment(av.equipment);
     setTimeout(() => document.getElementById('plan-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
@@ -319,8 +321,8 @@ function Projection({ series, required, taperStart }: { series: Fitness[]; requi
   );
 }
 
-export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk' };
-export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--z2)', strength: 'var(--strength)', mobility: 'var(--z3)', walk: 'var(--z4)' };
+export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk', other: 'Other' };
+export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--z2)', strength: 'var(--strength)', mobility: 'var(--z3)', walk: 'var(--z4)', other: 'var(--z1)' };
 
 export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolean }) {
   const I = KIND_ICON[kind];

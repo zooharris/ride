@@ -9,6 +9,8 @@ import { Rides } from './screens/Rides';
 import { Settings } from './screens/Settings';
 import { Onboarding } from './screens/Onboarding';
 import { Builder } from './screens/Builder';
+import { SessionBuilder } from './screens/SessionBuilder';
+import { findWorkout } from './store';
 import { Plan } from './screens/Plan';
 import { Icon } from './icons';
 
@@ -32,7 +34,16 @@ export function App() {
     case 'calendar': screen = <Calendar data={data} />; break;
     case 'library': screen = <Library data={data} />; break;
     case 'workout': screen = <WorkoutScreen data={data} id={id} params={route.params} />; break;
-    case 'build': screen = <Builder key={id ?? route.params.get('copy') ?? 'new'} data={data} id={id} copyId={route.params.get('copy') ?? undefined} />; break;
+    case 'build': {
+      const copyId = route.params.get('copy') ?? undefined;
+      const source = id ? findWorkout(data.mine, id) : copyId ? findWorkout(data.mine, copyId) : undefined;
+      const kind = (source?.kind ?? route.params.get('kind') ?? 'ride') as string;
+      const key = id ?? copyId ?? `new-${kind}`;
+      screen = kind === 'strength' || kind === 'mobility' || kind === 'walk'
+        ? <SessionBuilder key={key} data={data} kind={kind} id={id} copyId={copyId} />
+        : <Builder key={key} data={data} id={id} copyId={copyId} />;
+      break;
+    }
     case 'plan': screen = <Plan data={data} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;

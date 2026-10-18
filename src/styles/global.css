@@ -146,6 +146,8 @@ p { margin: 0; }
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--radius-s); overflow: hidden; }
 .seg button { padding: 7px 12px; background: transparent; border: 0; color: var(--ink-2); cursor: pointer; }
 .seg button.on { background: var(--bg-3); color: var(--ink); }
+.seg button { display: inline-flex; align-items: center; gap: 6px; }
+.seg button svg { opacity: .8; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 13px; background: transparent; color: var(--ink-2); cursor: pointer; }
 .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }

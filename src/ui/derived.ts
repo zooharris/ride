@@ -26,7 +26,7 @@ export function weekStart(date: string, firstDay = 1): string {
 }
 
 export function plannedOn(planned: PlannedWorkout[], date: string, kindOf?: (workoutId: string) => string): PlannedWorkout[] {
-  const order: Record<string, number> = { ride: 0, walk: 1, strength: 2, mobility: 3 };
+  const order: Record<string, number> = { ride: 0, walk: 1, strength: 2, mobility: 3, other: 4 };
   const list = planned.filter((p) => p.date === date);
   return kindOf ? list.sort((a, b) => (order[kindOf(a.workoutId)] ?? 0) - (order[kindOf(b.workoutId)] ?? 0)) : list;
 }

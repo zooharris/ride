@@ -43,7 +43,7 @@ export type Family =
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'any';
 
-export type SessionKind = 'ride' | 'strength' | 'mobility' | 'walk';
+export type SessionKind = 'ride' | 'strength' | 'mobility' | 'walk' | 'other';
 
 /** One exercise in a strength or mobility session, with what to do and why. */
 export interface Exercise {

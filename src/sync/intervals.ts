@@ -124,18 +124,18 @@ interface IcuActivity {
 }
 
 /** How Intervals.icu activity types map onto the app's session kinds. Anything else is ignored. */
-export function sportOf(type: string): SessionKind | null {
+export function sportOf(type: string): SessionKind {
   if (/Ride/.test(type) || type === 'Velomobile') return 'ride';
   if (/^(Walk|Hike|Rucking)$/.test(type)) return 'walk';
   if (/^(WeightTraining|Workout|Crossfit|HIIT)$/.test(type)) return 'strength';
   if (/^(Yoga|Pilates|Stretching|Mobility)$/.test(type)) return 'mobility';
-  return null;
+  return 'other';   // runs, swims, rows, anything else: counted toward load, never planned
 }
 
 /** Every activity Intervals.icu holds for the window, whatever recorded it. */
 export async function fetchRides(c: IntervalsCredentials, oldest: string, newest: string): Promise<Ride[]> {
   const list = await call<IcuActivity[]>(c, `/athlete/${c.athleteId}/activities?oldest=${oldest}&newest=${newest}`);
-  return list.filter((a) => sportOf(a.type ?? '') !== null).map(toRide);
+  return list.map(toRide);
 }
 
 function toRide(a: IcuActivity): Ride {
@@ -145,7 +145,7 @@ function toRide(a: IcuActivity): Ride {
     startTime: a.start_date_local,
     name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
-    sport: sportOf(a.type ?? 'Ride') ?? 'ride',
+    sport: sportOf(a.type ?? 'Ride'),
     seconds: a.moving_time ?? a.elapsed_time ?? 0,
     distanceM: a.distance,
     elevationM: a.total_elevation_gain,

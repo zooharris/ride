@@ -6,6 +6,15 @@ export interface Settings {
   value: unknown;
 }
 
+export interface StreamSet {
+  id: string;               // activity id
+  time: number[];           // seconds from start
+  watts?: number[];
+  heartrate?: number[];
+  cadence?: number[];
+  intervals?: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
+}
+
 export interface SyncState {
   key: 'intervals';
   athleteId: string;
@@ -27,6 +36,7 @@ class RideDb extends Dexie {
   rides!: Table<Ride, string>;
   wellness!: Table<Wellness, string>;
   sync!: Table<SyncState, string>;
+  streams!: Table<StreamSet, string>;
 
   constructor() {
     super('ride');
@@ -39,6 +49,7 @@ class RideDb extends Dexie {
       wellness: 'date',
       sync: 'key',
     });
+    this.version(2).stores({ streams: 'id' });
   }
 }
 

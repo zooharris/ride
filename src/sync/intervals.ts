@@ -258,6 +258,31 @@ export async function createManualActivity(c: IntervalsCredentials, a: { date: s
   return String(res.id ?? '');
 }
 
+/**
+ * Second-by-second data for one activity, plus the intervals Intervals.icu
+ * detected. Streams come as a list of {type, data}; intervals as a list with
+ * start/end indices and averages.
+ */
+export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[]; cadence?: number[]; intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }> }> {
+  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence`);
+  const by = (t: string) => list.find((x) => x.type === t)?.data;
+  const time = by('time') ?? [];
+  let intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }> = [];
+  try {
+    const iv = await call<{ icu_intervals?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(c, `/activity/${activityId}/intervals`);
+    const arr = Array.isArray(iv) ? iv : (iv.icu_intervals ?? []);
+    intervals = arr.map((x) => ({
+      label: typeof x.label === 'string' ? x.label : undefined,
+      type: typeof x.type === 'string' ? x.type : undefined,
+      start: Number(x.start_time ?? x.start_index ?? 0),
+      end: Number(x.end_time ?? x.end_index ?? 0),
+      avgWatts: num(x.average_watts),
+      avgHr: num(x.average_heartrate),
+    }));
+  } catch { /* intervals are optional */ }
+  return { time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), intervals };
+}
+
 export async function deleteEvent(c: IntervalsCredentials, eventId: number): Promise<void> {
   await call(c, `/athlete/${c.athleteId}/events/${eventId}`, { method: 'DELETE' });
 }

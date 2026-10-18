@@ -181,3 +181,28 @@ describe('library', () => {
     expect(workoutStats(l.blocks).seconds).toBe(195 * 60);
   });
 });
+
+describe('ride analysis', () => {
+  it('compares each planned step with the ridden average and counts hits', async () => {
+    const { analyseRide, downsample } = await import('./analysis');
+    const seconds = workoutStats(sweetSpot.blocks).seconds;
+    const time = Array.from({ length: seconds }, (_, i) => i);
+    // ride the plan: 230 W in the sweet-spot steps (target 220–230 at FTP 250), 130 W elsewhere, except the last effort at 190 W
+    const steps: Array<[number, number, number]> = [];
+    let t = 0;
+    for (const st of flattenSteps(sweetSpot.blocks)) { steps.push([t, t + st.seconds, st.intensity]); t += st.seconds; }
+    let effort = 0;
+    const watts = time.map((s) => {
+      const st = steps.find(([a, b]) => s >= a && s < b)!;
+      if (st[2] >= 0.85) { if (s === st[0]) effort++; return effort === 3 ? 190 : 228; }
+      return 130;
+    });
+    const a = analyseRide(sweetSpot, profile, 'power', time, watts);
+    expect(a.workSteps).toBe(3);
+    expect(a.workHit).toBe(2);
+    expect(a.summary).toMatch(/2 of 3 work intervals on target, 1 under/);
+    const ds = downsample(time, watts, 100);
+    expect(ds.length).toBeGreaterThan(80);
+    expect(ds.length).toBeLessThanOrEqual(101);
+  });
+});

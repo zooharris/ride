@@ -5,6 +5,13 @@ import { distance, elevation, fmtDate } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import { ZONE_VAR } from '../Profile';
 import type { Ride } from '../../engine/types';
+import { useEffect, useState } from 'preact/hooks';
+import { db, type StreamSet } from '../../data/db';
+import { credentials } from '../../sync/syncService';
+import { fetchStreams } from '../../sync/intervals';
+import { analyseRide, type Analysis } from '../../engine/analysis';
+import { RideTrace } from '../RideTrace';
+import { KIND_LABEL } from './Plan';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -52,7 +59,31 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const profile = data.profile!;
   const p = data.planned.find((x) => x.activityId === r.id);
   const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
-  const c = w ? scoreRide(w, r) : undefined;
+  const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
+  const [streams, setStreams] = useState<StreamSet | null | undefined>(undefined);
+  const [streamErr, setStreamErr] = useState<string | null>(null);
+  const basis: 'power' | 'hr' = r.normalizedPower ? 'power' : 'hr';
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const cached = await db.streams.get(r.id);
+      if (cached) { if (alive) setStreams(cached); return; }
+      const cred = await credentials();
+      if (!cred) { if (alive) setStreams(null); return; }
+      try {
+        const st = await fetchStreams(cred, r.id);
+        const set: StreamSet = { id: r.id, ...st };
+        await db.streams.put(set);
+        if (alive) setStreams(set);
+      } catch (e) {
+        if (alive) { setStreams(null); setStreamErr((e as Error).message); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [r.id]);
+
+  const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate) : undefined;
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
   const items: Array<[string, string | number | undefined, string?]> = [
     ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
@@ -77,11 +108,40 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       <a href="#/rides" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Rides</a>
       <p class="muted small">{fmtDate(r.date)}</p>
       <h1>{r.name}</h1>
+      {r.sport !== 'ride' && <p class="muted small" style="margin-top:4px">{KIND_LABEL[r.sport]} · {r.type}</p>}
       {c && w && (
         <div class="panel" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {w.name}</span>
-          <p class="muted small" style="margin-top:4px">{c.reason}</p>
+          <p class="muted small" style="margin-top:4px">{c.reason}{analysis ? ` ${analysis.summary}` : ''}</p>
         </div>
+      )}
+
+      {r.sport === 'ride' && (
+        <section class="section">
+          <h2>{basis === 'power' ? 'Power' : 'Heart rate'} through the ride</h2>
+          <p class="faint small" style="margin:4px 0 8px">{analysis ? 'The shaded bands are the planned targets for each step; the line is what you rode.' : 'The line is what you rode. Rides done from a plan show the planned targets as shaded bands.'}</p>
+          {streams === undefined ? <div class="empty small">Loading the recording from Intervals.icu…</div>
+            : streams === null ? <div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording.'}</div>
+            : <RideTrace streams={streams} analysis={analysis} ftp={profile.ftp} basis={basis} />}
+        </section>
+      )}
+
+      {analysis && analysis.steps.some((s) => s.work) && (
+        <section class="section">
+          <h2>Intervals against plan</h2>
+          <table class="steps" style="margin-top:8px">
+            <tr><td colSpan={2} class="faint small">Step</td><td class="r faint small">Target</td><td class="r faint small">Ridden</td></tr>
+            {analysis.steps.filter((s) => s.work).map((s) => (
+              <tr key={s.index}>
+                <td><span class="z" style={`background:${s.hit ? 'var(--good)' : (s.actual ?? 0) < s.targetLow ? 'var(--warn)' : 'var(--z5)'}`} /></td>
+                <td>{s.label}<div class="faint small">{clock(s.endSec - s.startSec)}{s.actualHr ? ` · HR ${s.actualHr}` : ''}</div></td>
+                <td class="r num">{s.targetLow}{s.targetHigh !== s.targetLow ? `–${s.targetHigh}` : ''}</td>
+                <td class="r num" style={`color:${s.hit ? 'var(--good)' : 'var(--ink)'}`}>{s.actual ?? '–'}</td>
+              </tr>
+            ))}
+          </table>
+          <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. Compared by laying the plan along elapsed time, so a long pause mid-ride shifts the windows; pressing lap on the computer keeps them aligned.</p>
+        </section>
       )}
       {zones && (
         <section class="section">

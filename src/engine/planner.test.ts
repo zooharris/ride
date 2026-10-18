@@ -236,3 +236,23 @@ describe('planner', () => {
     expect(seq).toHaveLength(15);
   });
 });
+
+describe('adaptation', () => {
+  it('reviews the week and diffs a replan against the calendar', async () => {
+    const { reviewLastWeek, diffPlan } = await import('./adapt');
+    const plan = generatePlan(req());
+    const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
+    // calendar = the plan as applied, with one future ride renamed to stand for a change
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const })));
+    const same = diffPlan(planned, workouts, plan, today);
+    expect(same).toHaveLength(0);
+    const altered = generatePlan(req({ availability: { ...req().availability, hours: [4, 0.5, 1.5, 0.5, 1.5, 0, 2] } }));
+    const diff = diffPlan(planned, workouts, altered, today);
+    expect(diff.length).toBeGreaterThan(0);
+    // a missed session last week is reported
+    const lastWeek = [{ id: 'm', date: addDays(today, -3), workoutId: plan.weeks[0].sessions[0].workout.id, basis: 'power' as const, status: 'missed' as const }];
+    const review = reviewLastWeek(lastWeek, workouts, [], today);
+    expect(review.missed).toBe(1);
+    expect(review.lines[0]).toMatch(/was missed/);
+  });
+});

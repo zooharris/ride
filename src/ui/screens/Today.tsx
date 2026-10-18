@@ -12,7 +12,9 @@ import { sendWorkout } from '../../sync/intervals';
 import { notify } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart } from '../FitnessChart';
-import { KIND_LABEL, KindDot } from './Plan';
+import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { applyPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import type { Replan } from '../../engine/adapt';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -32,8 +34,39 @@ export function Today({ data }: { data: AppData }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [active, setActive] = useState<ActivePlan | null>(null);
+  const [check, setCheck] = useState<Replan | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
+
+  // Once a day, after the data have had a chance to arrive, the plan checks itself.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const a = await getActivePlan();
+      if (!alive) return;
+      setActive(a);
+      if (a && a.lastCheck !== date && data.rides.length) {
+        const r = await replan(data);
+        if (alive && r) setCheck(r);
+        await markChecked();
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.rides.length, data.planned.length]);
+
+  async function applyCheck() {
+    if (!check || !active) return;
+    setChecking(true);
+    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters); setCheck(null); setMsg({ ok: true, text: 'Plan updated on the calendar.' }); } finally { setChecking(false); }
+  }
+
+  async function recheckNow() {
+    setChecking(true);
+    try { setCheck(await replan(data)); await markChecked(); } finally { setChecking(false); }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -104,6 +137,16 @@ export function Today({ data }: { data: AppData }) {
           <p class="muted small" style="margin-top:4px">That is the pipe to your Garmin. Add your athlete ID and API key in Settings, and rides and wellness will start arriving.</p>
           <a class="btn sm" href="#/settings" style="margin-top:10px">Open Settings</a>
         </div>
+      )}
+
+      {active && (
+        <section class="panel" style="margin-bottom:14px;padding:12px 16px">
+          <div class="row between">
+            <div class="small"><b>{active.goal.kind === 'event' ? active.goal.name || 'Event plan' : 'Training plan'}</b>{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null}</div>
+            {!check && <button class="btn sm quiet" onClick={recheckNow} disabled={checking}>{checking ? 'Checking…' : 'Re-check'}</button>}
+          </div>
+          {check && (check.changes.length > 0 || check.review.missed > 0 || check.review.lines.length > 0) && <ReplanView check={check} onApply={applyCheck} busy={checking} />}
+        </section>
       )}
 
       {workout && plan && stats ? (

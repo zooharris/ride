@@ -197,8 +197,8 @@ export function generatePlan(req: PlanRequest): Plan {
       const mins = k === 0 ? longMinutes : Math.round(Math.min(av.hours[slot] * 60, longMinutes * secondScale));
       const reason = phase === 'recovery' ? 'Recovery week: the long ride stays so the body remembers, but shorter and easy.'
         : phase === 'taper' ? 'Taper: enough riding to stay sharp, not enough to add fatigue.'
-        : d.requiredLongest ? `Building toward one ride of ${hoursText(d.requiredLongest / 3600)} before the taper; ${k ? 'the second long day of the week, kept shorter.' : `this week ${hoursText(mins / 60)}.`}`
-        : `The long ride is where aerobic durability is built; ${hoursText(mins / 60)} this week.`;
+        : d.requiredLongest ? `Building toward one ride of ${hoursText(d.requiredLongest / 3600)} before the taper${k ? '; the second long day of the week' : ''}. Steady zone 2, fuel from the first half hour.`
+        : `The long ride is where aerobic durability is built${k ? '; the second long day of the week' : ''}. Steady zone 2, fuel from the first half hour.`;
       plan.push({ slot, intent: { type: phase === 'recovery' ? 'endurance' : 'long', minutes: mins, progression: progress, outdoor: av.outdoor[slot] ?? true, reason } });
     });
 

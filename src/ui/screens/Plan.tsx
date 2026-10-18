@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { notify } from '../store';
+
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { generatePlan, type Availability, type Plan as GeneratedPlan } from '../../engine/planner';
+import { applyPlan, buildPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import type { Replan } from '../../engine/adapt';
+import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
 import { addDays, today } from '../../engine/load';
-import { clock, newId } from '../../engine/workout';
-import { db, getSetting, setSetting } from '../../data/db';
-import { credentials } from '../../sync/syncService';
-import { deleteEvent } from '../../sync/intervals';
-import { fmtDate, weekStart } from '../derived';
+import { clock } from '../../engine/workout';
+import { getSetting, setSetting } from '../../data/db';
+import { fmtDate } from '../derived';
 import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
@@ -36,21 +36,19 @@ export function Plan({ data }: { data: AppData }) {
   const [busy, setBusy] = useState(false);
   const [msg] = useState<string | null>(null);
   const [curve, setCurve] = useState<PowerCurve | undefined>(undefined);
+  const [active, setActive] = useState<ActivePlan | null>(null);
+  const [check, setCheck] = useState<Replan | null>(null);
 
   useEffect(() => {
     getSetting<Saved | null>('planRequest', null).then((s) => { if (s && s.availability.equipment) { setGoal(s.goal); setAv(s.availability); setMasters(s.masters); } });
     getSetting<{ curve: PowerCurve } | null>('powerCurve', null).then((c) => setCurve(c?.curve));
+    getActivePlan().then(setActive);
   }, []);
 
   const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }), [data.rides, data.wellness, data.planned, curve, profile]);
 
-  const longKmh = useMemo(() => {
-    const longs = data.rides.filter((r) => r.seconds >= 7200 && r.averageSpeedMs);
-    return longs.length ? (longs.reduce((s, r) => s + (r.averageSpeedMs ?? 0), 0) / longs.length) * 3.6 : undefined;
-  }, [data.rides]);
-
-  function build() {
-    const p = generatePlan({ start: weekStart(today()), notBefore: today(), goal, availability: av, basis: profile.basis, masters, profile, assessment, longRideKmh: longKmh });
+  async function build() {
+    const p = await buildPlan(data, goal, av, masters);
     setPlan(p);
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
@@ -59,23 +57,24 @@ export function Plan({ data }: { data: AppData }) {
 
   async function apply() {
     if (!plan) return;
-    const first = today();
-    const future = data.planned.filter((p) => p.date >= first && p.status !== 'completed');
-    if (future.length && !confirm(`${future.length} planned ride${future.length > 1 ? 's' : ''} from ${fmtDate(first)} onward will be replaced by this plan. Continue?`)) return;
+    const future = data.planned.filter((p) => p.date >= today() && p.status !== 'completed');
+    if (future.length && !confirm(`Rides and sessions already on the calendar from today onward are replaced where the plan differs. Continue?`)) return;
     setBusy(true);
     try {
-      const c = await credentials();
-      for (const p of future) {
-        if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* stale events are harmless */ } }
-        await db.planned.delete(p.id);
-      }
-      const workouts = plan.weeks.flatMap((w) => w.sessions.map((s) => s.workout));
-      await db.workouts.bulkPut(workouts);
-      await db.planned.bulkAdd(plan.weeks.flatMap((w) => w.sessions.filter((s) => s.date >= first).map((s) => ({ id: newId(), date: s.date, workoutId: s.workout.id, basis: profile.basis, status: 'planned' as const, note: w.label }))));
-      await setSetting('activePlan', { goal, start: first, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projectedCtl: plan.projectedCtl, appliedAt: new Date().toISOString() });
-      notify();
+      await applyPlan(data, plan, goal, av, masters);
       go('calendar');
     } finally { setBusy(false); }
+  }
+
+  async function recheck() {
+    setBusy(true);
+    try { setCheck(await replan(data)); await markChecked(); } finally { setBusy(false); }
+  }
+
+  async function applyCheck() {
+    if (!check || !active) return;
+    setBusy(true);
+    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters); setCheck(null); go('calendar'); } finally { setBusy(false); }
   }
 
   const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
@@ -90,6 +89,19 @@ export function Plan({ data }: { data: AppData }) {
     <div>
       <a href="#/calendar" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Calendar</a>
       <div class="page-head"><h1>Plan</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
+
+      {active && (
+        <section class="panel accent" style="margin-bottom:22px">
+          <div class="row between">
+            <div>
+              <b>{active.goal.kind === 'event' ? active.goal.name || 'Event' : GOAL_LABEL[active.goal.kind]}</b>
+              <div class="muted small">{active.goal.kind === 'event' ? `${fmtDate(active.goal.date, { month: 'long', day: 'numeric' })} · ` : ''}on the calendar since {fmtDate(active.start, { month: 'short', day: 'numeric' })}{active.requiredCtl ? ` · goal wants fitness ${active.requiredCtl}` : ''}</div>
+            </div>
+            <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>
+          </div>
+          {check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
+        </section>
+      )}
 
       <section>
         <h2>What your data say</h2>
@@ -289,6 +301,32 @@ export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolea
   const size = big ? 54 : 30;
   const glyph = kind === 'strength' ? 'S' : kind === 'walk' ? 'W' : 'M';
   return <div style={`width:${size}px;height:${big ? 28 : 16}px;flex:0 0 ${size}px;border-radius:4px;background:color-mix(in srgb, ${KIND_COLOR[kind]} 22%, transparent);color:${KIND_COLOR[kind]};display:flex;align-items:center;justify-content:center;font-size:${big ? 13 : 10}px;font-weight:700`}>{glyph}</div>;
+}
+
+const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer', weight: 'Lose weight', general: 'General fitness' };
+
+export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: () => void; busy: boolean }) {
+  const r = check.review;
+  return (
+    <div style="margin-top:12px">
+      <div class="small"><b>Last week:</b> {r.completed} of {r.planned} done{r.missed ? `, ${r.missed} missed` : ''}.</div>
+      {r.lines.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
+      <div class="hr" />
+      <div class="small"><b>What the re-check says</b></div>
+      {check.summary.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
+      {check.changes.length > 0 && (
+        <div class="stack" style="margin-top:10px;gap:4px">
+          {check.changes.slice(0, 12).map((c, i) => (
+            <div class="small" key={i}><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}</div>
+          ))}
+          {check.changes.length > 12 && <div class="faint small">and {check.changes.length - 12} more</div>}
+        </div>
+      )}
+      <div class="row" style="margin-top:12px">
+        {check.changes.length > 0 ? <button class="btn primary sm" onClick={onApply} disabled={busy}>Apply these changes</button> : <span class="muted small">Nothing to change.</span>}
+      </div>
+    </div>
+  );
 }
 
 function verdictColor(v: string) { return { 'on-track': 'var(--good)', close: 'var(--warn)', short: 'var(--bad)' }[v] ?? 'var(--line-2)'; }

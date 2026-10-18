@@ -48,15 +48,25 @@ async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit 
 }
 
 /** A cheap call that proves the credentials work and returns the athlete's name. */
-export async function testConnection(c: IntervalsCredentials): Promise<{ name: string; ftp?: number; lthr?: number; weight?: number }> {
+export interface AthleteNumbers {
+  name: string;
+  ftp?: number;
+  lthr?: number;
+  maxHr?: number;
+  restingHr?: number;
+  weight?: number;
+}
+
+export async function testConnection(c: IntervalsCredentials): Promise<AthleteNumbers> {
   const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
-  const sport = Array.isArray(a.sportSettings)
-    ? (a.sportSettings as Array<Record<string, unknown>>).find((s) => (s.types as string[] | undefined)?.includes('Ride'))
-    : undefined;
+  const settings = Array.isArray(a.sportSettings) ? (a.sportSettings as Array<Record<string, unknown>>) : [];
+  const sport = settings.find((s) => (s.types as string[] | undefined)?.includes('Ride')) ?? settings[0];
   return {
     name: String(a.name ?? ''),
     ftp: num(sport?.ftp) ?? num(a.icu_ftp),
     lthr: num(sport?.lthr),
+    maxHr: num(sport?.max_hr),
+    restingHr: num(a.icu_resting_hr),
     weight: num(a.icu_weight) ?? num(a.weight),
   };
 }

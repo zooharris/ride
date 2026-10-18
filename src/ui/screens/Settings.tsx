@@ -42,7 +42,7 @@ export function Settings({ data }: { data: AppData }) {
       const c = { athleteId: creds.athleteId.trim(), apiKey: creds.apiKey.trim() };
       const a = await testConnection(c);
       await setSetting('intervals', c);
-      const next = { ...p, name: p.name || a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, weightKg: a.weight ?? p.weightKg };
+      const next = { ...p, name: p.name || a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg };
       setP(next);
       await saveProfile(next);
       notify();

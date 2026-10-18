@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#101418"/>
+  <!-- a workout silhouette: warm-up, three intervals, cool-down -->
+  <g transform="translate(64 112)">
+    <rect x="0"   y="208" width="56" height="80"  fill="#3C8DD6"/>
+    <rect x="64"  y="96"  width="56" height="192" fill="#E6C84A"/>
+    <rect x="128" y="208" width="40" height="80"  fill="#3C8DD6"/>
+    <rect x="176" y="48"  width="56" height="240" fill="#F08A4B"/>
+    <rect x="240" y="208" width="40" height="80"  fill="#3C8DD6"/>
+    <rect x="288" y="0"   width="56" height="288" fill="#E0485B"/>
+    <rect x="352" y="224" width="32" height="64"  fill="#6B7A8F"/>
+  </g>
+</svg>

@@ -1,5 +1,6 @@
 import { db, getSetting } from '../data/db';
-import { addDays, rideTss, today } from '../engine/load';
+import { addDays, hrTss, rideTss, today } from '../engine/load';
+import { LIBRARY } from '../library/workouts';
 import type { IntervalsCredentials } from './intervals';
 import { fetchPowerCurve, fetchRides, fetchWellness, testConnection } from './intervals';
 
@@ -31,14 +32,27 @@ export async function syncAll(): Promise<{ rides: number; wellness: number }> {
 
   const rides = await fetchRides(c, oldest, newest);
   for (const r of rides) {
-    r.tss = rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0;
+    // Rides score from power or heart rate; walks from heart rate; strength from
+    // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
+    // own load is the fallback whenever the app has nothing better.
+    const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
+    r.tss = r.sport === 'ride' ? (rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0)
+      : r.sport === 'walk' ? (hrOnly || r.icuLoad || Math.round(r.seconds / 3600 * 38))
+      : r.sport === 'strength' ? (r.icuLoad || Math.round(hrOnly * 0.7) || Math.round(r.seconds / 3600 * 32))
+      : (r.icuLoad || Math.round(r.seconds / 3600 * 8));
   }
   await db.rides.bulkPut(rides);
 
-  // Pair completed rides to planned workouts by Intervals event id, else by date.
+  // Pair activities to planned sessions: by Intervals event id, else by date and kind.
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
+  const workouts = await db.workouts.toArray();
+  const kindOf = (workoutId: string) => workouts.find((w) => w.id === workoutId)?.kind ?? LIBRARY.find((w) => w.id === workoutId)?.kind ?? 'ride';
+  const taken = new Set<string>();
   for (const p of planned) {
-    const match = rides.find((r) => (p.icuEventId && r.pairedEventId === p.icuEventId)) ?? rides.find((r) => r.date === p.date);
+    const kind = kindOf(p.workoutId);
+    const match = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId)
+      ?? rides.find((r) => r.date === p.date && r.sport === kind && !taken.has(r.id));
+    if (match) taken.add(match.id);
     if (match && p.status !== 'completed') {
       await db.planned.update(p.id, { status: 'completed', activityId: match.id });
     } else if (!match && p.date < today() && p.status !== 'completed') {

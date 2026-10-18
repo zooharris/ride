@@ -2,8 +2,9 @@ import type { Assessment } from './assessment';
 import { hm } from './assessment';
 import { demand, hoursText, type Demand, type Goal } from './goals';
 import { generateSession, type SessionIntent, type SessionType } from './generate';
+import { generateMobility, generateStrength, generateWalk, type StrengthLevel } from './sessions';
 import { addDays, fitnessSeries } from './load';
-import type { Basis, Fitness, Profile, Workout } from './types';
+import type { Basis, Equipment, Fitness, Profile, SessionKind, Workout } from './types';
 import { workoutStats } from './workout';
 
 /**
@@ -13,13 +14,16 @@ import { workoutStats } from './workout';
  * that the assessment's evidence overrides when it is good enough.
  */
 export interface Availability {
-  hours: number[];        // index 0 = Sunday; 0 means not available
+  hours: number[];        // index 0 = Sunday; time available that day, 0 means none
   outdoor: boolean[];     // ride outdoors on that day when the slot allows
-  strengthDays: number[]; // days with a strength session
+  noBike: boolean[];      // the bike is not available that day (travel, logistics)
+  equipment: Equipment[]; // what the rider has: bodyweight, dumbbells, bench, band, treadmill, outdoor-walk, trainer
+  pins: Array<{ dow: number; kind: SessionKind }>;  // optional standing commitments the plan should honour
 }
 
 export interface PlanRequest {
-  start: string;
+  start: string;          // a Monday; the plan's weeks line up with the calendar
+  notBefore?: string;     // days before this are already gone (today, when the plan starts mid-week)
   goal: Goal;
   availability: Availability;
   basis: Basis;
@@ -31,7 +35,7 @@ export interface PlanRequest {
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
 
-export interface PlannedSession { date: string; type: SessionType; workout: Workout; seconds: number; tss: number; reason: string }
+export interface PlannedSession { date: string; kind: SessionKind; type: SessionType | 'strength' | 'mobility' | 'walk'; workout: Workout; seconds: number; tss: number; reason: string }
 export interface PlanWeek { index: number; start: string; phase: Phase; label: string; targetTss: number; tss: number; hours: number; sessions: PlannedSession[]; note: string }
 
 export interface Plan {
@@ -49,6 +53,9 @@ export interface Plan {
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.max(0, Math.min(1, t));
+const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const dateOfSlot = (weekStart: string, slot: number) => addDays(weekStart, (slot - dow(weekStart) + 7) % 7);
+const KIND_ORDER: Record<SessionKind, number> = { ride: 0, walk: 1, strength: 2, mobility: 3 };
 const dow = (date: string) => new Date(date + 'T00:00:00').getDay();
 
 export function planWeeks(goal: Goal, start: string): number {
@@ -74,13 +81,10 @@ export function phaseSequence(n: number, d: Demand, a: Assessment, goal: Goal, m
   const seq: Phase[] = [...Array(base).fill('base'), ...Array(build).fill('build'), ...Array(peak).fill('peak'), ...Array(taper).fill('taper')];
   // Recovery rhythm: a prior of every third week for masters, every fourth otherwise,
   // shortened to every second when the evidence says long and hard days leave the rider flat.
-  const tired = a.afterLongRide.confidence !== 'none' && a.afterLongRide.value >= 0.45 && a.afterHardRide.confidence !== 'none' && a.afterHardRide.value >= 0.45;
-  const cycle = tired ? 2 : masters ? 3 : 4;
+  const cycle = masters ? 3 : 4;
   for (let i = cycle - 1; i < seq.length - taper - 1; i += cycle) seq[i] = 'recovery';
   decisions.push(`${base} base week${base === 1 ? '' : 's'}, ${build} build, ${peak} peak${taper ? `, ${taper} taper` : ''}: the split follows what the goal rewards (${topEmphasis(d)}) and what your data flag as the limiter (${a.limiters[0]}).`);
-  decisions.push(tired
-    ? 'A recovery week every second week: your mornings after long and hard rides are noticeably flat, so the plan gives fatigue more room to clear.'
-    : `A recovery week every ${cycle} weeks is the starting rhythm${masters ? ' for a masters rider' : ''}; as rides and wellness come in, the plan brings one forward when fatigue says so.`);
+  decisions.push(`A recovery week every ${cycle} weeks is the starting rhythm${masters ? ' for a masters rider' : ''}; as rides and wellness come in, the plan brings one forward when fatigue says so.`);
   return { seq, decisions };
 }
 
@@ -94,9 +98,12 @@ export function generatePlan(req: PlanRequest): Plan {
   const d = demand(goal, profile, a, req.longRideKmh);
   const n = planWeeks(goal, req.start);
   const { seq, decisions } = phaseSequence(n, d, a, goal, req.masters);
-  const slotsAll = [0, 1, 2, 3, 4, 5, 6].filter((i) => (av.hours[i] ?? 0) > 0);
+  const daysWithTime = [0, 1, 2, 3, 4, 5, 6].filter((i) => (av.hours[i] ?? 0) > 0);
+  const slotsAll = daysWithTime.filter((i) => !av.noBike?.[i]);
   const capMinutes = slotsAll.reduce((s, i) => s + av.hours[i] * 60, 0);
   const capTss = capMinutes / 60 * 62;
+  const canWalk = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk');
+  const pinned = (kind: SessionKind) => (av.pins ?? []).filter((p) => p.kind === kind).map((p) => p.dow);
 
   // Load trajectory. Fitness moves by (daily load - fitness) / 42 each day, so a
   // week averaging D a day moves it by about (D - fitness) / 6. To climb by Δ in
@@ -118,14 +125,17 @@ export function generatePlan(req: PlanRequest): Plan {
   let phaseIdx = 0;
   let lastPhase: Phase | null = null;
   const blockLengths = countBlocks(seq);
-  const strength = new Set(av.strengthDays);
   const afterStrengthPenalty = a.afterStrength.confidence === 'none' ? 0.3 : a.afterStrength.value;
   const afterLongPenalty = a.afterLongRide.confidence === 'none' ? 0.3 : a.afterLongRide.value;
   const afterHardPenalty = a.afterHardRide.confidence === 'none' ? 0.3 : a.afterHardRide.value;
+  // Fatigue evidence acts inside the week (an easier day after a hard one, a slightly
+  // lower weekly target), not by multiplying recovery weeks. Only solid evidence counts.
+  const flat = a.afterLongRide.confidence === 'good' && a.afterLongRide.value >= 0.6 && a.afterHardRide.confidence === 'good' && a.afterHardRide.value >= 0.6;
+  const loadScale = flat ? 0.9 : 1;
+  if (flat) decisions.push(`Weekly load is set 10% under what the ramp would ask: your mornings after long rides (score ${a.afterLongRide.value.toFixed(2)}) and after hard rides (${a.afterHardRide.value.toFixed(2)}) are clearly flatter than your baseline, and easy days follow hard ones. If those scores improve, the plan removes the discount when it re-checks.`);
   const startLongest = Math.max(90, Math.round((a.longestRide.confidence === 'none' ? 7200 : a.longestRide.value) / 60));
   let longestPlanned = 0;
   let saidTwoLongs = false;
-  let saidStrength = false;
   let saidDropped = false;
   let loadingSeen = 0;
 
@@ -133,22 +143,26 @@ export function generatePlan(req: PlanRequest): Plan {
     phaseIdx = phase === lastPhase ? phaseIdx + 1 : 0;
     lastPhase = phase;
     const weekStart = addDays(req.start, i * 7);
+    const gone = (slot: number) => req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false;
     const blockLen = blockLengths[i];
     const progress = blockLen > 1 ? phaseIdx / (blockLen - 1) : 1;
     const loadingProgress = loadingWeeks > 1 ? loadingSeen / (loadingWeeks - 1) : 1;
+
+    const daysThisWeek = daysWithTime.filter((d) => !gone(d));
+    const slotsThisWeek = slotsAll.filter((d) => !gone(d));
 
     // Weekly load target.
     let targetTss: number;
     if (phase === 'recovery') targetTss = lastLoading * 0.6;
     else if (phase === 'taper') targetTss = lastLoading * (phaseIdx === 0 && seq.filter((p) => p === 'taper').length === 2 ? 0.55 : 0.45);
-    else { ctl += ramp; targetTss = Math.min(capTss, 7 * (ctl + 6 * ramp)); lastLoading = targetTss; loadingSeen++; }
+    else { ctl += ramp; targetTss = Math.min(capTss, 7 * (ctl + 6 * ramp)) * loadScale; lastLoading = targetTss; loadingSeen++; }
 
     // Session mix for the week.
     const isTest = i === 0 && a.ftpStatus.value !== 'fresh' && goal.kind !== 'weight';
     if (isTest && i === 0) decisions.push(`A test in week 1 because ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)} Later tests are added only when your rides suggest the number has moved.`);
     if (i === 0 && !isTest && a.ftpStatus.confidence !== 'none') decisions.push(`No test scheduled: ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)}`);
     const quality: SessionType[] = [];
-    if (phase === 'base') { quality.push(goal.kind === 'weight' ? 'tempo' : 'sweetspot'); if (slotsAll.length >= 5 && (a.limiters[0] === 'vo2max' || a.limiters[0] === 'anaerobic')) quality.push('tempo'); }
+    if (phase === 'base') { quality.push(goal.kind === 'weight' ? 'tempo' : 'sweetspot'); if (slotsThisWeek.length >= 5 && (a.limiters[0] === 'vo2max' || a.limiters[0] === 'anaerobic')) quality.push('tempo'); }
     if (phase === 'build') {
       // The goal weights the choice; the rider's limiter can override it. A weight or
       // endurance goal leans sub-threshold, but a rider whose data say threshold is the
@@ -156,14 +170,14 @@ export function generatePlan(req: PlanRequest): Plan {
       const wantsThreshold = d.emphasis.threshold * 1.6 + (a.limiters[0] === 'threshold' ? 0.8 : 0) >= 1;
       const wantsVo2 = a.limiters.includes('vo2max') && d.emphasis.vo2max >= 0.6;
       quality.push(wantsVo2 ? 'vo2max' : wantsThreshold ? 'threshold' : 'sweetspot');
-      if (slotsAll.length >= 4) quality.push(quality[0] === 'sweetspot' ? 'tempo' : 'sweetspot');
+      if (slotsThisWeek.length >= 4) quality.push(quality[0] === 'sweetspot' ? 'tempo' : 'sweetspot');
     }
-    if (phase === 'peak') { quality.push(d.emphasis.anaerobic >= 0.8 ? 'anaerobic' : d.emphasis.vo2max >= 0.5 || a.limiters.includes('vo2max') ? 'vo2max' : 'threshold'); if (slotsAll.length >= 4) quality.push('threshold'); }
+    if (phase === 'peak') { quality.push(d.emphasis.anaerobic >= 0.8 ? 'anaerobic' : d.emphasis.vo2max >= 0.5 || a.limiters.includes('vo2max') ? 'vo2max' : 'threshold'); if (slotsThisWeek.length >= 4) quality.push('threshold'); }
     if (phase === 'taper') quality.push('openers');
     if (isTest) quality[0] = 'test';
 
     // Long rides: as many as the slots and the evidence allow.
-    const bySize = [...slotsAll].sort((x, y) => av.hours[y] - av.hours[x]);
+    const bySize = [...slotsThisWeek].sort((x, y) => av.hours[y] - av.hours[x]);
     const longCandidates = bySize.filter((s) => av.hours[s] >= 2);
     const targetLongest = d.requiredLongest ? Math.round(d.requiredLongest / 60) : Math.round(Math.max(startLongest, (av.hours[bySize[0]] ?? 1) * 60));
     let longMinutes = phase === 'recovery' ? Math.min(100, startLongest) : phase === 'taper' ? Math.min(120, targetLongest * 0.5) : Math.round(lerp(startLongest, targetLongest, loadingProgress));
@@ -191,7 +205,7 @@ export function generatePlan(req: PlanRequest): Plan {
     // Quality sessions placed by cost.
     const hardDays = new Set<number>();
     for (const q of quality) {
-      const candidates = slotsAll.filter((s) => !used.has(s) && av.hours[s] >= 0.9);
+      const candidates = slotsThisWeek.filter((s) => !used.has(s) && av.hours[s] >= 0.9);
       if (candidates.length === 0) break;
       const cost = (s: number) => {
         let c = 0;
@@ -199,7 +213,7 @@ export function generatePlan(req: PlanRequest): Plan {
         if (longSlots.includes((s + 6) % 7)) c += 0.5 + afterLongPenalty * 3;
         if (hardDays.has((s + 1) % 7)) c += 0.5 + afterHardPenalty * 2;
         if (longSlots.includes((s + 1) % 7)) c += 0.5 + afterLongPenalty * 1.5;
-        if (strength.has((s + 6) % 7)) c += afterStrengthPenalty * 3;
+        if (pinned('strength').includes((s + 6) % 7)) c += afterStrengthPenalty * 3;
         if (av.hours[s] < 1.5) c += 0.5;
         return c;
       };
@@ -207,7 +221,6 @@ export function generatePlan(req: PlanRequest): Plan {
       // A second hard day that can only land somewhere costly is not worth having; the hours go to zone 2 instead.
       if (hardDays.size > 0 && cost(slot) >= 2.5) { if (!saidDropped) { saidDropped = true; decisions.push('Some weeks carry one hard session instead of two: the only free day for a second one sits right after strength or another hard day, and zone 2 there does more good than a compromised interval session.'); } break; }
       used.add(slot); hardDays.add(slot);
-      if (strength.has((slot + 6) % 7) && !saidStrength) { saidStrength = true; decisions.push(afterStrengthPenalty < 0.15 ? 'Hard rides can follow strength days: your mornings after lifting look like any other.' : `Hard rides land the day after strength only when nothing better is free; ${a.afterStrength.confidence === 'none' ? 'no data yet on how you recover from lifting, so a mild cost is assumed' : 'your data put a cost on it'}.`); }
       const mins = Math.min(av.hours[slot] * 60, q === 'test' ? 75 : q === 'openers' ? 45 : Math.round(lerp(60, 105, progress)));
       const reason = q === 'test' ? `Start of a ${phase} block: a test sets the numbers every target in the block is built on.`
         : q === 'openers' ? 'The day before the event: short efforts to wake the legs without adding fatigue.'
@@ -216,7 +229,7 @@ export function generatePlan(req: PlanRequest): Plan {
     }
 
     // Fillers: endurance where there is at least 45 minutes; easy spin the day after a long ride if long days cost you.
-    for (const s of slotsAll) {
+    for (const s of slotsThisWeek) {
       if (used.has(s) || av.hours[s] * 60 < 45) continue;
       const afterLong = longSlots.includes((s + 6) % 7);
       const easy = afterLong && afterLongPenalty >= 0.4;
@@ -224,12 +237,81 @@ export function generatePlan(req: PlanRequest): Plan {
       plan.push({ slot: s, intent: { type: easy ? 'recovery' : 'endurance', minutes: Math.min(av.hours[s] * 60, easy ? 45 : 120), progression: progress, outdoor: av.outdoor[s] ?? false, reason: easy ? 'Easy spin the day after a long ride, because your data say long days leave a dent.' : 'Zone 2 hours: the quiet work that makes everything else possible.' } });
     }
 
+    // ---- Strength, walks and mobility: allocated by the app, never asked for. ----
+    const extra: PlannedSession[] = [];
+    const rideOn = new Map<number, SessionIntent>(plan.map((p) => [p.slot, p.intent]));
+    const hardOn = (dw: number) => hardDays.has(dw);
+    const longOn = (dw: number) => longSlots.includes(dw);
+    const dateOf = (slot: number) => addDays(weekStart, (slot - dow(weekStart) + 7) % 7);
+
+    // How much strength this week, and how heavy. Masters riders lose muscle and
+    // tendon strength fastest, so they keep two sessions through base and build.
+    let strengthCount = phase === 'base' ? 2 : phase === 'build' ? (req.masters ? 2 : 1) : phase === 'peak' ? 1 : phase === 'taper' ? (phaseIdx === 0 ? 1 : 0) : 1;
+    const level: StrengthLevel = phase === 'base' ? (phaseIdx < 2 && i < 4 ? 'foundation' : 'build') : phase === 'build' ? (quality.length >= 2 ? 'maintain' : 'build') : phase === 'recovery' || phase === 'taper' ? 'light' : 'maintain';
+    const strengthDays: number[] = [];
+    const strengthCost = (dw: number) => {
+      let c = 0;
+      if (hardOn(dw)) c += 5;                                            // never on the same day as intervals
+      if (hardOn((dw + 1) % 7)) c += 1 + afterStrengthPenalty * 3;         // the day before a hard ride, scaled by your data
+      if (longOn((dw + 1) % 7)) c += 0.5 + afterStrengthPenalty * 2;
+      if (longOn(dw)) c += 2;                                             // after a long ride the legs have had enough
+      if (rideOn.has(dw)) c += 1;                                         // sharing a day with an easy ride is fine but not ideal
+      if (strengthDays.includes((dw + 6) % 7) || strengthDays.includes((dw + 1) % 7)) c += 3;  // not on consecutive days
+      if (pinned('strength').includes(dw)) c -= 6;                        // a standing commitment wins
+      return c;
+    };
+    const strengthCandidates = () => daysThisWeek.filter((dw) => !strengthDays.includes(dw) && (av.hours[dw] * 60 - (rideOn.get(dw)?.minutes ?? 0)) >= 25);
+    for (let k = 0; k < strengthCount; k++) {
+      const cands = strengthCandidates().sort((x, y) => strengthCost(x) - strengthCost(y));
+      if (!cands.length) break;
+      const dw = cands[0];
+      if (strengthCost(dw) >= 4) break;
+      strengthDays.push(dw);
+      const freeMin = av.hours[dw] * 60 - (rideOn.get(dw)?.minutes ?? 0);
+      const minutes = Math.round(Math.min(level === 'build' ? 50 : 40, Math.max(25, freeMin)));
+      const reason = level === 'foundation' ? 'Early in the block: moderate loads to groove the movements before the weights go up.'
+        : level === 'build' ? 'Heavier work while the riding is mostly steady; this is the time of year strength is built, not just kept.'
+        : level === 'maintain' ? 'Maintenance: two short sets keep what the base block built while the hard riding takes the energy.'
+        : 'Light and quick, so nothing is lost and nothing is added to fatigue.';
+      const w = generateStrength({ level, minutes, equipment: av.equipment, variant: k === 0 ? 'A' : 'B', weekInBlock: phaseIdx, reason });
+      extra.push({ date: dateOf(dw), kind: 'strength', type: 'strength', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason });
+    }
+    if (i === 0) decisions.push(strengthDays.length
+      ? `Strength ${strengthCount === 2 ? 'twice' : 'once'} a week in ${phase}, placed on days that do not fight the rides (${strengthDays.map((dw) => DAY[dw]).join(' and ')} this week), ${av.equipment.length ? 'built from the equipment you have' : 'bodyweight only, since no equipment is listed'}. The day before a hard ride is avoided in proportion to ${a.afterStrength.confidence === 'none' ? 'an assumed mild cost; there is no data yet on how you recover from lifting' : 'what your mornings after lifting show'}.`
+      : 'No strength session fitted this week: every day with time is already carrying a hard or long ride. Adding 30 minutes on a rest day would make room.');
+
+    // Walks: zone-2 aerobic work for the slots a ride cannot use (too short, or no bike that day).
+    if (canWalk) {
+      const walkDays = daysThisWeek.filter((dw) => !rideOn.has(dw) && !strengthDays.includes(dw) && av.hours[dw] * 60 >= 25 && (av.noBike?.[dw] || av.hours[dw] * 60 < 45));
+      const packKg = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk') ? Math.round(Math.min(11, 7 + loadingProgress * 4)) : undefined;
+      for (const dw of walkDays) {
+        const minutes = Math.min(60, Math.round(av.hours[dw] * 60));
+        const reason = av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from a brisk walk instead of nothing.' : 'Too short a window for a ride worth doing; a zone 2 walk uses it well and adds the impact loading cycling lacks.';
+        const w = generateWalk({ minutes, packKg, where: av.equipment.includes('treadmill') ? 'treadmill' : 'outdoor', reason });
+        extra.push({ date: dateOf(dw), kind: 'walk', type: 'walk', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason });
+      }
+      if (i === 0 && walkDays.length) decisions.push(`Walks fill the ${walkDays.length === 1 ? 'day' : 'days'} a ride cannot use (${walkDays.map((dw) => DAY[dw]).join(', ')}): zone 2 by heart rate, with a light pack that grows through the block.`);
+    }
+
+    // Mobility: short routines after the long ride and after strength.
+    for (const slot of longSlots) {
+      if (phase === 'taper') continue;
+      const w = generateMobility({ focus: 'after-long-ride', minutes: 12, reason: 'Twelve minutes after the long ride: hips, back and hamstrings, while they are warm.' });
+      extra.push({ date: dateOf(slot), kind: 'mobility', type: 'mobility', workout: w, seconds: 12 * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
+    }
+    for (const dw of strengthDays) {
+      const w = generateMobility({ focus: 'after-strength', minutes: 10, reason: 'Ten minutes after lifting: the hips and legs just worked.' });
+      extra.push({ date: dateOf(dw), kind: 'mobility', type: 'mobility', workout: w, seconds: 10 * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
+    }
+    if (i === 0) decisions.push('Mobility is attached to the long ride and to strength days: ten to twelve minutes while the muscles are warm, which is when stretching does the most and costs the least.');
+
     // Fit to the weekly target: shrink or grow the endurance minutes.
     const sessions = buildSessions(plan, weekStart);
-    let total = sessions.reduce((s, x) => s + x.tss, 0);
+    const extraTss = extra.reduce((s, x) => s + x.tss, 0);
+    let total = sessions.reduce((s, x) => s + x.tss, 0) + extraTss;
     const soft = plan.filter((p) => p.intent.type === 'endurance' || p.intent.type === 'long');
     for (let pass = 0; pass < 4 && soft.length; pass++) {
-      const ratio = targetTss / Math.max(1, total);
+      const ratio = (targetTss - extraTss) / Math.max(1, total - extraTss);
       if (ratio > 0.88 && ratio < 1.12) break;
       for (const p of soft) {
         const cap = av.hours[p.slot] * 60;
@@ -238,9 +320,11 @@ export function generatePlan(req: PlanRequest): Plan {
       }
       const re = buildSessions(plan, weekStart);
       sessions.splice(0, sessions.length, ...re);
-      total = sessions.reduce((s, x) => s + x.tss, 0);
+      total = sessions.reduce((s, x) => s + x.tss, 0) + extraTss;
     }
-    sessions.sort((x, y) => x.date.localeCompare(y.date));
+    sessions.push(...extra);
+    sessions.sort((x, y) => x.date.localeCompare(y.date) || KIND_ORDER[x.kind] - KIND_ORDER[y.kind]);
+    if (sessions.length === 0) return;
     for (const s of sessions) if (s.type === 'long' && s.seconds > longestPlanned) longestPlanned = s.seconds;
 
     weeks.push({
@@ -270,7 +354,7 @@ function buildSessions(plan: Array<{ slot: number; intent: SessionIntent }>, wee
     const date = addDays(weekStart, (slot - startDow + 7) % 7);
     const workout = generateSession(intent);
     const st = workoutStats(workout.blocks);
-    return { date, type: intent.type, workout, seconds: st.seconds, tss: st.tss, reason: intent.reason };
+    return { date, kind: 'ride' as const, type: intent.type, workout, seconds: st.seconds, tss: st.tss, reason: intent.reason };
   });
 }
 

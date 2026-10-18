@@ -12,6 +12,7 @@ import { sendWorkout } from '../../sync/intervals';
 import { notify } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart } from '../FitnessChart';
+import { KIND_LABEL, KindDot } from './Plan';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -19,9 +20,12 @@ export function Today({ data }: { data: AppData }) {
   const series = fitnessFromRides(data.rides);
   const fit = fitnessOn(series, date);
   const ready = readinessToday(data.wellness, fit);
-  const plans = plannedOn(data.planned, date);
-  const plan = plans[0];
-  const workout = plan ? findWorkout(data.mine, plan.workoutId) : undefined;
+  const plans = plannedOn(data.planned, date, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
+  const withW = plans.map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
+  const ridePlan = withW.find((x) => x.w!.kind === 'ride');
+  const others = withW.filter((x) => x.w!.kind !== 'ride');
+  const plan = ridePlan?.p;
+  const workout = ridePlan?.w;
   const stats = workout ? workoutStats(workout.blocks) : undefined;
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -119,11 +123,25 @@ export function Today({ data }: { data: AppData }) {
             <a class="btn quiet" href="#/calendar">Change</a>
           </div>
         </section>
-      ) : (
+      ) : others.length === 0 ? (
         <section class="empty">
           <b>Nothing planned today.</b>
-          <p class="small" style="margin-top:6px">Pick something from the library, or take the day.</p>
+          <p class="small" style="margin-top:6px">Pick something from the library, build a plan, or take the day.</p>
           <a class="btn primary sm" href="#/library" style="margin-top:12px">Choose a workout</a>
+        </section>
+      ) : null}
+
+      {others.length > 0 && (
+        <section class="section" style={workout ? '' : 'margin-top:0'}>
+          <h2>{workout ? 'Also today' : 'Today'}</h2>
+          <div class="stack" style="margin-top:8px">
+            {others.map(({ p, w }) => (
+              <a class={`cal-item ${p.status}`} key={p.id} href={`#/workout/${w!.id}?from=today&date=${date}`}>
+                <KindDot kind={w!.kind} big />
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]} · {p.status === 'completed' ? 'done' : 'tap for the details and to log it'}</span></div>
+              </a>
+            ))}
+          </div>
         </section>
       )}
 

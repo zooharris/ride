@@ -12,7 +12,7 @@ const profile: Profile = {
 };
 
 const sweetSpot: Workout = {
-  id: 'ss', name: '3 x 10 sweet spot', family: 'sweetspot', purpose: '', phases: ['base'], bases: ['power', 'hr'], source: 'library', setting: 'any',
+  id: 'ss', name: '3 x 10 sweet spot', family: 'sweetspot', purpose: '', phases: ['base'], bases: ['power', 'hr'], source: 'library', setting: 'any', kind: 'ride',
   blocks: [
     { kind: 'step', seconds: 600, intensity: 0.55, label: 'Warm up' },
     { kind: 'repeat', times: 3, label: 'Sweet spot', steps: [
@@ -119,7 +119,7 @@ describe('load', () => {
 describe('compliance', () => {
   const planned = workoutStats(sweetSpot.blocks);
   const ride = (seconds: number, tss: number): Ride => ({
-    id: 'r', date: '2026-10-18', startTime: '', name: '', type: 'Ride', seconds, tss,
+    id: 'r', date: '2026-10-18', startTime: '', name: '', type: 'Ride', sport: 'ride', seconds, tss,
   });
   it('nailed when within 10%', () => {
     expect(scoreRide(sweetSpot, ride(planned.seconds, planned.tss)).verdict).toBe('nailed');

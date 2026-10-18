@@ -12,7 +12,7 @@
  *   - events: POST /athlete/{id}/events with category WORKOUT and the workout
  *     text in `description`; Intervals.icu pushes it to Garmin Connect.
  */
-import type { Basis, Ride, Wellness, Workout } from '../engine/types';
+import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { renderIntervalsText, workoutStats } from '../engine/workout';
 
 const BASE = 'https://intervals.icu/api/v1';
@@ -123,11 +123,19 @@ interface IcuActivity {
   paired_event_id?: number;
 }
 
-const RIDE_TYPES = new Set(['Ride', 'VirtualRide', 'GravelRide', 'MountainBikeRide', 'EBikeRide']);
+/** How Intervals.icu activity types map onto the app's session kinds. Anything else is ignored. */
+export function sportOf(type: string): SessionKind | null {
+  if (/Ride/.test(type) || type === 'Velomobile') return 'ride';
+  if (/^(Walk|Hike|Rucking)$/.test(type)) return 'walk';
+  if (/^(WeightTraining|Workout|Crossfit|HIIT)$/.test(type)) return 'strength';
+  if (/^(Yoga|Pilates|Stretching|Mobility)$/.test(type)) return 'mobility';
+  return null;
+}
 
+/** Every activity Intervals.icu holds for the window, whatever recorded it. */
 export async function fetchRides(c: IntervalsCredentials, oldest: string, newest: string): Promise<Ride[]> {
   const list = await call<IcuActivity[]>(c, `/athlete/${c.athleteId}/activities?oldest=${oldest}&newest=${newest}`);
-  return list.filter((a) => RIDE_TYPES.has(a.type ?? '')).map(toRide);
+  return list.filter((a) => sportOf(a.type ?? '') !== null).map(toRide);
 }
 
 function toRide(a: IcuActivity): Ride {
@@ -135,8 +143,9 @@ function toRide(a: IcuActivity): Ride {
     id: String(a.id),
     date: a.start_date_local.slice(0, 10),
     startTime: a.start_date_local,
-    name: a.name ?? 'Ride',
+    name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
+    sport: sportOf(a.type ?? 'Ride') ?? 'ride',
     seconds: a.moving_time ?? a.elapsed_time ?? 0,
     distanceM: a.distance,
     elevationM: a.total_elevation_gain,
@@ -228,6 +237,25 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
   };
   const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
   return ev.id;
+}
+
+/**
+ * Record a session done without a device as a manual activity, so Intervals.icu
+ * holds the complete record and the next sync treats it like any other.
+ */
+export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga'; seconds: number; tss: number; rpe?: number; description?: string }): Promise<string> {
+  const body = {
+    start_date_local: `${a.date}T12:00:00`,
+    name: a.name,
+    type: a.type,
+    moving_time: a.seconds,
+    elapsed_time: a.seconds,
+    icu_training_load: a.tss,
+    icu_rpe: a.rpe,
+    description: a.description,
+  };
+  const res = await call<{ id?: string | number; icu_athlete_id?: string }>(c, `/athlete/${c.athleteId}/activities/manual`, { method: 'POST', body: JSON.stringify(body) });
+  return String(res.id ?? '');
 }
 
 export async function deleteEvent(c: IntervalsCredentials, eventId: number): Promise<void> {

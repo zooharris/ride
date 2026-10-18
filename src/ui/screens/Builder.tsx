@@ -74,7 +74,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     if (!name.trim()) return;
     const w: Workout = {
       id: existing?.id ?? `mine-${newId()}`, name: name.trim(), family: fam, purpose: purpose.trim() || `Built in the app: ${clock(stats.seconds)}, ${stats.tss} TSS.`,
-      phases: ['any'], bases: stats.dominantZone >= 5 ? ['power'] : ['power', 'hr'], blocks, source: 'mine', setting: 'any',
+      phases: ['any'], bases: stats.dominantZone >= 5 ? ['power'] : ['power', 'hr'], blocks, source: 'mine', setting: 'any', kind: 'ride',
     };
     await db.workouts.put(w);
     if (then === 'today') {

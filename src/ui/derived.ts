@@ -25,8 +25,10 @@ export function weekStart(date: string, firstDay = 1): string {
   return addDays(date, -diff);
 }
 
-export function plannedOn(planned: PlannedWorkout[], date: string): PlannedWorkout[] {
-  return planned.filter((p) => p.date === date);
+export function plannedOn(planned: PlannedWorkout[], date: string, kindOf?: (workoutId: string) => string): PlannedWorkout[] {
+  const order: Record<string, number> = { ride: 0, walk: 1, strength: 2, mobility: 3 };
+  const list = planned.filter((p) => p.date === date);
+  return kindOf ? list.sort((a, b) => (order[kindOf(a.workoutId)] ?? 0) - (order[kindOf(b.workoutId)] ?? 0)) : list;
 }
 
 export function missedThisWeek(planned: PlannedWorkout[], date = today()): number {

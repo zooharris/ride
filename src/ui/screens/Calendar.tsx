@@ -10,6 +10,7 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import type { Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { deleteEvent, sendWorkout } from '../../sync/intervals';
+import { KIND_LABEL, KindDot } from './Plan';
 
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -41,7 +42,7 @@ export function Calendar({ data }: { data: AppData }) {
     const c = await credentials();
     if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
     const end = addDays(ws, 6);
-    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned');
+    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && (findWorkout(data.mine, p.workoutId)?.kind ?? 'ride') === 'ride');
     if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
     setBusy(ws);
     let sent = 0;
@@ -88,7 +89,7 @@ export function Calendar({ data }: { data: AppData }) {
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
         const t = weekTss(ws);
-        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned').length;
+        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && (findWorkout(data.mine, p.workoutId)?.kind ?? 'ride') === 'ride').length;
         return (
           <section class="section" key={ws} style={offset ? '' : 'margin-top:0'}>
             <div class="row between" style="margin-bottom:8px">
@@ -100,7 +101,7 @@ export function Calendar({ data }: { data: AppData }) {
             </div>
             <div class="cal-week">
               {days.slice(offset, offset + 7).map((d) => {
-                const plans = plannedOn(data.planned, d);
+                const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
                 const rides = data.rides.filter((r) => r.date === d);
                 const isToday = d === today();
                 return (
@@ -114,8 +115,8 @@ export function Calendar({ data }: { data: AppData }) {
                         return (
                           <div class={`cal-item ${p.status}`} key={p.id}>
                             <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
-                              <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} />
-                              <div class="t"><b>{w.name}</b><span>{clock(s.seconds)} · {s.tss} TSS · {p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}{p.note ? ` · ${p.note}` : ''}</span></div>
+                              {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
+                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]} · ${p.status === 'completed' ? 'done' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}</span></div>
                             </a>
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Remove" onClick={() => remove(p.id)}>×</button>}
                           </div>
@@ -126,7 +127,7 @@ export function Calendar({ data }: { data: AppData }) {
                           <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · NP ${r.normalizedPower} W` : r.averageHr ? ` · ${r.averageHr} bpm` : ''}</span></div>
                         </a>
                       ))}
-                      {d >= today() && plans.length === 0 && <button class="cal-add" onClick={() => setPicking(d)}>+ Add workout</button>}
+                      {d >= today() && !plans.some((p) => findWorkout(data.mine, p.workoutId)?.kind === 'ride') && <button class="cal-add" onClick={() => setPicking(d)}>+ Add a ride</button>}
                     </div>
                   </div>
                 );

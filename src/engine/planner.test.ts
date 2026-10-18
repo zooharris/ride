@@ -12,7 +12,7 @@ const today = '2026-10-19';
 
 function ride(date: string, hours: number, IF: number, extra: Partial<Ride> = {}): Ride {
   const seconds = hours * 3600;
-  return { id: date + hours, date, startTime: date, name: 'r', type: 'Ride', seconds, tss: Math.round(seconds * IF * IF / 36), normalizedPower: IF * 250, averageHr: 130 + IF * 40, intensityFactor: IF, ...extra };
+  return { id: date + hours, date, startTime: date, name: 'r', type: 'Ride', sport: 'ride', seconds, tss: Math.round(seconds * IF * IF / 36), normalizedPower: IF * 250, averageHr: 130 + IF * 40, intensityFactor: IF, ...extra };
 }
 
 /** Twelve weeks of a steady rider: two rides a weekend, one midweek, long rides with low drift. */
@@ -31,12 +31,14 @@ function history(): { rides: Ride[]; wellness: Wellness[] } {
 }
 
 const h = history();
-const baseAssessment = assess({ today, profile, rides: h.rides, wellness: h.wellness, planned: [], strengthDays: [2, 4] });
+// strength sessions on record every Tuesday and Thursday, recorded by whatever the rider had
+const strengthActs: Ride[] = h.wellness.filter((w) => [2, 4].includes(new Date(w.date + 'T00:00:00').getDay())).map((w) => ({ id: 's' + w.date, date: w.date, startTime: w.date, name: 'Strength', type: 'WeightTraining', sport: 'strength', seconds: 2400, tss: 25 }));
+const baseAssessment = assess({ today, profile, rides: [...h.rides, ...strengthActs], wellness: h.wellness, planned: [] });
 
 const req = (over: Partial<PlanRequest> = {}): PlanRequest => ({
   start: today,
   goal: { kind: 'event', date: '2027-02-06', name: 'Spring century', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' },
-  availability: { hours: [4, 0, 1.5, 0, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], strengthDays: [1, 3] },
+  availability: { hours: [4, 0.5, 1.5, 0.5, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['dumbbells', 'bench', 'bodyweight', 'treadmill'], pins: [] },
   basis: 'power', masters: true, profile, assessment: baseAssessment, ...over,
 });
 
@@ -58,17 +60,17 @@ describe('assessment', () => {
   });
   it('sees a cost after strength days when HRV drops', () => {
     const w = h.wellness.map((x) => ({ ...x, hrv: [3, 5].includes(new Date(x.date + 'T00:00:00').getDay()) ? 38 : 50 }));
-    const a = assess({ today, profile, rides: h.rides, wellness: w, planned: [], strengthDays: [2, 4] });
+    const a = assess({ today, profile, rides: [...h.rides, ...strengthActs], wellness: w, planned: [] });
     expect(a.afterStrength.value).toBeGreaterThan(0.5);
   });
   it('is honest with no data', () => {
-    const a = assess({ today, profile, rides: [], wellness: [], planned: [], strengthDays: [] });
+    const a = assess({ today, profile, rides: [], wellness: [], planned: [] });
     expect(a.weeklyHours.confidence).toBe('none');
     expect(a.longestRide.confidence).toBe('none');
     expect(a.limiters).toContain('base');
   });
   it('flags a VO2max limiter from the power curve', () => {
-    const a = assess({ today, profile, rides: h.rides, wellness: h.wellness, planned: [], strengthDays: [], powerCurve: [{ seconds: 5, watts: 800 }, { seconds: 60, watts: 380 }, { seconds: 300, watts: 265 }, { seconds: 1200, watts: 258 }] });
+    const a = assess({ today, profile, rides: h.rides, wellness: h.wellness, planned: [], powerCurve: [{ seconds: 5, watts: 800 }, { seconds: 60, watts: 380 }, { seconds: 300, watts: 265 }, { seconds: 1200, watts: 258 }] });
     expect(a.limiters[0]).toBe('vo2max');
   });
 });
@@ -131,18 +133,18 @@ describe('planner', () => {
     const plan = generatePlan(req());
     for (const w of plan.weeks) for (const s of w.sessions) {
       const dw = new Date(s.date + 'T00:00:00').getDay();
-      expect([0, 2, 4, 6]).toContain(dw);
-      expect(s.seconds).toBeLessThanOrEqual(req().availability.hours[dw] * 3600 + 60);
+      expect([0, 1, 2, 3, 4, 6]).toContain(dw);
+      if (s.kind === 'ride') expect([0, 2, 4, 6]).toContain(dw);
+      if (s.kind === 'ride') expect(s.seconds).toBeLessThanOrEqual(req().availability.hours[dw] * 3600 + 60);
     }
   });
   it('puts hard rides after strength only when the data say it is free', () => {
     const costly: Assessment = { ...baseAssessment, afterStrength: { value: 0.8, confidence: 'good', note: 'x' } };
-    const plan = generatePlan(req({ assessment: costly, availability: { hours: [4, 0, 1.5, 1.5, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], strengthDays: [1, 3] } }));
+    const plan = generatePlan(req({ assessment: costly, availability: { hours: [4, 0.5, 1.5, 1.5, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], noBike: [], equipment: ['dumbbells', 'bench'], pins: [{ dow: 1, kind: 'strength' }] } }));
     const build = plan.weeks.find((w) => w.phase === 'build')!;
     const hard = build.sessions.filter((s) => ['threshold', 'sweetspot', 'vo2max', 'test'].includes(s.type));
-    for (const s of hard) expect(new Date(s.date + 'T00:00:00').getDay()).not.toBe(2);   // Tuesday follows Monday strength
-    const free = generatePlan(req());
-    expect(free.decisions.some((d) => d.startsWith('Hard rides can follow strength'))).toBe(true);
+    for (const s of hard) expect(new Date(s.date + 'T00:00:00').getDay()).not.toBe(2);   // Tuesday follows the pinned Monday lift
+    expect(build.sessions.some((s) => s.kind === 'strength' && new Date(s.date + 'T00:00:00').getDay() === 1)).toBe(true);  // the pin is honoured
   });
   it('builds phases from the goal and limiters, tests only when the FTP looks unverified, and tapers', () => {
     const plan = generatePlan(req());
@@ -168,7 +170,7 @@ describe('planner', () => {
     expect(['on-track', 'close', 'short']).toContain(plan.verdict);
     expect(plan.advice).toMatch(/fitness should reach/);
     expect(plan.decisions.length).toBeGreaterThanOrEqual(3);
-    const thin = generatePlan(req({ availability: { hours: [1.5, 0, 1, 0, 1, 0, 1.5], outdoor: [], strengthDays: [] } }));
+    const thin = generatePlan(req({ availability: { hours: [1.5, 0, 1, 0, 1, 0, 1.5], outdoor: [], noBike: [], equipment: [], pins: [] } }));
     expect(thin.verdict).toBe('short');
     expect(thin.advice).toMatch(/available hours are the ceiling/);
   });
@@ -186,6 +188,47 @@ describe('planner', () => {
     expect(weight2.weeks.every((w) => !w.sessions.some((s) => s.type === 'threshold'))).toBe(true);
     const vo2 = generatePlan(req({ goal: { kind: 'vo2max', weeks: 8 } }));
     expect(vo2.weeks.some((w) => w.sessions.some((s) => s.type === 'vo2max'))).toBe(true);
+  });
+  it('allocates strength, walks and mobility without being asked', () => {
+    const plan = generatePlan(req());
+    const base1 = plan.weeks[0];
+    const strength = base1.sessions.filter((s) => s.kind === 'strength');
+    expect(strength).toHaveLength(2);
+    for (const s of strength) {
+      expect(s.workout.exercises!.length).toBeGreaterThanOrEqual(4);
+      expect(s.workout.exercises![0].cue.length).toBeGreaterThan(20);
+      expect(s.workout.exercises!.every((e) => e.equipment.some((q) => ['dumbbells', 'bench', 'bodyweight'].includes(q)))).toBe(true);
+      // never on the same day as a hard ride
+      const dw = new Date(s.date + 'T00:00:00').getDay();
+      expect(base1.sessions.some((x) => x.date === s.date && ['sweetspot', 'threshold', 'vo2max', 'test'].includes(x.type))).toBe(false);
+      expect(dw).not.toBe(5);
+    }
+    // the 30-minute Monday and Wednesday windows are too short for a ride, so they become walks or strength
+    const short = base1.sessions.filter((s) => [1, 3].includes(new Date(s.date + 'T00:00:00').getDay()));
+    expect(short.length).toBeGreaterThanOrEqual(1);
+    expect(short.every((s) => s.kind !== 'ride')).toBe(true);
+    const walks = plan.weeks.flatMap((w) => w.sessions).filter((s) => s.kind === 'walk');
+    expect(walks.length).toBeGreaterThanOrEqual(1);
+    expect(walks[0].workout.walk?.minutes).toBeLessThanOrEqual(30);
+    // mobility follows the long ride
+    const mob = base1.sessions.filter((s) => s.kind === 'mobility');
+    expect(mob.length).toBeGreaterThanOrEqual(1);
+    expect(mob.some((m) => base1.sessions.some((x) => x.date === m.date && x.type === 'long'))).toBe(true);
+    expect(plan.decisions.some((d) => d.startsWith('Strength'))).toBe(true);
+  });
+  it('goes bodyweight-only with no equipment and skips walks without a way to walk', () => {
+    const plan = generatePlan(req({ availability: { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [], noBike: [], equipment: [], pins: [] } }));
+    const strength = plan.weeks[0].sessions.filter((s) => s.kind === 'strength');
+    expect(strength.length).toBeGreaterThan(0);
+    expect(strength[0].workout.exercises!.every((e) => e.equipment.includes('bodyweight'))).toBe(true);
+    expect(plan.weeks[0].sessions.some((s) => s.kind === 'walk')).toBe(false);
+  });
+  it('uses a no-bike day for a walk', () => {
+    const plan = generatePlan(req({ availability: { hours: [3, 1, 1, 0, 1, 0, 3], outdoor: [], noBike: [false, false, true, false, false, false, false], equipment: ['outdoor-walk', 'bodyweight'], pins: [] } }));
+    const tue = plan.weeks.flatMap((w) => w.sessions).filter((s) => new Date(s.date + 'T00:00:00').getDay() === 2);
+    expect(tue.length).toBeGreaterThan(0);
+    expect(tue.some((s) => s.kind === 'ride')).toBe(false);
+    expect(tue.some((s) => s.kind === 'walk' || s.kind === 'strength')).toBe(true);
   });
   it('counts weeks', () => {
     expect(planWeeks({ kind: 'event', date: '2027-02-06', name: '', eventType: 'century', priority: 'A' }, today)).toBe(15);

@@ -39,7 +39,6 @@ export interface AssessmentInput {
   rides: Ride[];
   wellness: Wellness[];
   planned: PlannedWorkout[];
-  strengthDays: number[];
   powerCurve?: PowerCurve;
 }
 
@@ -47,9 +46,11 @@ const none = <T,>(value: T, note: string): Evidence<T> => ({ value, confidence: 
 const ev = <T,>(value: T, n: number, good: number, note: string): Evidence<T> => ({ value, confidence: n >= good ? 'good' : n > 0 ? 'thin' : 'none', note });
 
 export function assess(inp: AssessmentInput): Assessment {
-  const { today, rides, wellness } = inp;
+  const { today, wellness } = inp;
+  const rides = inp.rides.filter((r) => r.sport === 'ride');   // riding metrics come from rides; every activity counts toward load
+  const allActs = inp.rides;
   const from120 = addDays(today, -120);
-  const loads = rides.filter((r) => r.date >= from120).map((r) => ({ date: r.date, tss: r.tss ?? 0 }));
+  const loads = allActs.filter((r) => r.date >= from120).map((r) => ({ date: r.date, tss: r.tss ?? 0 }));
   const series = fitnessSeries(loads, from120, today);
   const fitness = series[series.length - 1] ?? { date: today, ctl: 0, atl: 0, tsb: 0 };
 
@@ -109,11 +110,11 @@ export function assess(inp: AssessmentInput): Assessment {
     const m = mean(deltas) ?? 0;
     return { value: clamp(round2(m * 4), 0, 1), n: deltas.length };
   };
-  const strengthSet = new Set(inp.strengthDays);
-  const afterS = penaltyAfter((d) => strengthSet.has(new Date(d + 'T00:00:00').getDay()));
-  const afterStrength = inp.strengthDays.length
-    ? ev(afterS.value, afterS.n, 6, afterS.n ? (afterS.value < 0.15 ? 'Mornings after strength days look like any other morning; a hard ride after a lift costs you little.' : afterS.value < 0.4 ? 'Mornings after strength days are a little flatter; the plan prefers easy riding then, when it has a choice.' : 'Mornings after strength days are noticeably flatter; the plan keeps hard rides off those days.') : 'No wellness data on mornings after strength days yet; assuming a mild cost.')
-    : none(0.3, 'No strength days given.');
+  const strengthDates = new Set(allActs.filter((r) => r.sport === 'strength').map((r) => r.date));
+  const afterS = penaltyAfter((d) => strengthDates.has(d));
+  const afterStrength = strengthDates.size
+    ? ev(afterS.value, afterS.n, 6, afterS.n ? (afterS.value < 0.15 ? 'Mornings after strength sessions look like any other morning; a hard ride after a lift costs you little.' : afterS.value < 0.4 ? 'Mornings after strength sessions are a little flatter; the plan prefers easy riding then, when it has a choice.' : 'Mornings after strength sessions are noticeably flatter; the plan keeps hard rides off those days.') : 'Strength sessions are on record but no wellness data follows them yet; assuming a mild cost.')
+    : none(0.3, 'No strength sessions on record yet; assuming a mild cost the day after lifting.');
   const longDates = new Set(rides.filter((r) => r.seconds >= 9000).map((r) => r.date));
   const afterL = penaltyAfter((d) => longDates.has(d));
   const afterLongRide = ev(afterL.value, afterL.n, 4, afterL.n ? (afterL.value < 0.15 ? 'You bounce back from long rides; two long days in a row is on the table.' : afterL.value < 0.4 ? 'Long rides leave a small dent the next morning; back-to-back long days are fine with the second one easier.' : 'Long rides leave a clear dent the next morning; the plan spaces them out.') : 'No wellness data after long rides yet; assuming they cost a little.');

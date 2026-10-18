@@ -43,9 +43,34 @@ export type Family =
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'any';
 
+export type SessionKind = 'ride' | 'strength' | 'mobility' | 'walk';
+
+/** One exercise in a strength or mobility session, with what to do and why. */
+export interface Exercise {
+  name: string;
+  sets?: number;
+  reps?: string;            // "8–10", "6 per side"
+  holdSeconds?: number;     // for stretches and holds
+  load?: string;            // "leave 2 reps in reserve", "bodyweight", "15–25 lb pack"
+  cue: string;              // one line on how to do it
+  why?: string;             // what it does for a cyclist
+  equipment: Equipment[];
+}
+
+export type Equipment = 'bodyweight' | 'dumbbells' | 'bench' | 'band' | 'treadmill' | 'outdoor-walk' | 'trainer';
+
+export interface WalkSpec {
+  minutes: number;
+  hrLow: number;            // fraction of max HR
+  hrHigh: number;
+  packKg?: number;          // weighted pack, if any
+}
+
 export interface Workout {
   id: string;
   name: string;
+  /** Rides have blocks; strength and mobility have exercises; walks have a walk spec. */
+  kind: SessionKind;
   family: Family;
   purpose: string;          // one paragraph, what it does for you
   physiology?: string;      // what it targets
@@ -54,7 +79,13 @@ export interface Workout {
   bases: Basis[];
   /** Where it is meant to be ridden. Outdoor rides carry a long warm-up and finish in zone 2; indoor ones are compact. */
   setting: 'outdoor' | 'indoor' | 'any';
-  blocks: WorkoutBlock[];
+  blocks: WorkoutBlock[];   // empty for non-ride sessions
+  exercises?: Exercise[];
+  walk?: WalkSpec;
+  /** Rough training stress for non-ride sessions (rides compute theirs from the blocks). */
+  estimatedTss?: number;
+  /** Intended duration for non-ride sessions. */
+  minutes?: number;
   source: 'library' | 'mine' | 'generated';
 }
 
@@ -76,15 +107,19 @@ export interface PlannedWorkout {
   icuEventId?: number;
   activityId?: string;
   note?: string;
+  /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
+  rpe?: number;
+  loggedSeconds?: number;
 }
 
-/** A completed ride, as stored locally after sync. */
+/** A completed activity from the watch or computer (ride, walk, strength session), as stored locally after sync. */
 export interface Ride {
   id: string;               // Intervals.icu activity id
   date: string;             // YYYY-MM-DD local
   startTime: string;        // ISO local
   name: string;
-  type: string;
+  type: string;             // Intervals.icu activity type: Ride, VirtualRide, Walk, Hike, WeightTraining, Yoga, ...
+  sport: SessionKind;       // what the app treats it as
   seconds: number;          // moving time
   distanceM?: number;
   elevationM?: number;

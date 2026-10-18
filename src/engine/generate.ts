@@ -134,6 +134,7 @@ export function generateSession(intent: SessionIntent): Workout {
   return {
     id: `gen-${newId()}`,
     name,
+    kind: 'ride',
     family,
     purpose: intent.reason,
     physiology: PHYSIOLOGY[type],

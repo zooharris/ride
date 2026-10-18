@@ -37,7 +37,7 @@ function trail(opts: {
   const fill = opts.total - used - 5;
   if (fill > 0) blocks.push(step(fill, 0.6, { intensityHigh: 0.72, label: 'Zone 2 for the rest' }));
   blocks.push(step(5, 0.5, { label: 'Cool down' }));
-  return { ...opts, blocks, source: 'library', setting: 'outdoor' };
+  return { ...opts, blocks, source: 'library', setting: 'outdoor', kind: 'ride' };
 }
 
 const ss = (reps: number, work: number, rest = 5): Set => ({ reps, work, lo: 0.88, hi: 0.93, rest, label: 'Sweet spot' });

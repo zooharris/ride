@@ -10,11 +10,11 @@ import { clock, newId } from '../../engine/workout';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials } from '../../sync/syncService';
 import { deleteEvent } from '../../sync/intervals';
-import { fmtDate } from '../derived';
+import { fmtDate, weekStart } from '../derived';
 import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
-import type { Fitness } from '../../engine/types';
+import type { Equipment, Fitness, SessionKind } from '../../engine/types';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -29,7 +29,7 @@ const DEFAULT_GOAL: Goal = { kind: 'event', date: addDays(today(), 84), name: ''
 export function Plan({ data }: { data: AppData }) {
   const profile = data.profile!;
   const [goal, setGoal] = useState<Goal>(DEFAULT_GOAL);
-  const [av, setAv] = useState<Availability>({ hours: [3, 0, 1, 0, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], strengthDays: [] });
+  const [av, setAv] = useState<Availability>({ hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] });
   const [masters, setMasters] = useState(profile.masters);
   const [plan, setPlan] = useState<GeneratedPlan | null>(null);
   const [openWeek, setOpenWeek] = useState<number | null>(null);
@@ -38,11 +38,11 @@ export function Plan({ data }: { data: AppData }) {
   const [curve, setCurve] = useState<PowerCurve | undefined>(undefined);
 
   useEffect(() => {
-    getSetting<Saved | null>('planRequest', null).then((s) => { if (s) { setGoal(s.goal); setAv(s.availability); setMasters(s.masters); } });
+    getSetting<Saved | null>('planRequest', null).then((s) => { if (s && s.availability.equipment) { setGoal(s.goal); setAv(s.availability); setMasters(s.masters); } });
     getSetting<{ curve: PowerCurve } | null>('powerCurve', null).then((c) => setCurve(c?.curve));
   }, []);
 
-  const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, strengthDays: av.strengthDays, powerCurve: curve }), [data.rides, data.wellness, data.planned, av.strengthDays, curve, profile]);
+  const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }), [data.rides, data.wellness, data.planned, curve, profile]);
 
   const longKmh = useMemo(() => {
     const longs = data.rides.filter((r) => r.seconds >= 7200 && r.averageSpeedMs);
@@ -50,7 +50,7 @@ export function Plan({ data }: { data: AppData }) {
   }, [data.rides]);
 
   function build() {
-    const p = generatePlan({ start: today(), goal, availability: av, basis: profile.basis, masters, profile, assessment, longRideKmh: longKmh });
+    const p = generatePlan({ start: weekStart(today()), notBefore: today(), goal, availability: av, basis: profile.basis, masters, profile, assessment, longRideKmh: longKmh });
     setPlan(p);
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
@@ -59,7 +59,7 @@ export function Plan({ data }: { data: AppData }) {
 
   async function apply() {
     if (!plan) return;
-    const first = plan.weeks[0].start;
+    const first = today();
     const future = data.planned.filter((p) => p.date >= first && p.status !== 'completed');
     if (future.length && !confirm(`${future.length} planned ride${future.length > 1 ? 's' : ''} from ${fmtDate(first)} onward will be replaced by this plan. Continue?`)) return;
     setBusy(true);
@@ -71,7 +71,7 @@ export function Plan({ data }: { data: AppData }) {
       }
       const workouts = plan.weeks.flatMap((w) => w.sessions.map((s) => s.workout));
       await db.workouts.bulkPut(workouts);
-      await db.planned.bulkAdd(plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: newId(), date: s.date, workoutId: s.workout.id, basis: profile.basis, status: 'planned' as const, note: w.label }))));
+      await db.planned.bulkAdd(plan.weeks.flatMap((w) => w.sessions.filter((s) => s.date >= first).map((s) => ({ id: newId(), date: s.date, workoutId: s.workout.id, basis: profile.basis, status: 'planned' as const, note: w.label }))));
       await setSetting('activePlan', { goal, start: first, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projectedCtl: plan.projectedCtl, appliedAt: new Date().toISOString() });
       notify();
       go('calendar');
@@ -80,7 +80,9 @@ export function Plan({ data }: { data: AppData }) {
 
   const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
   const toggleOutdoor = (i: number) => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.outdoor[k] : !!av.outdoor[k])) });
-  const toggleStrength = (i: number) => setAv({ ...av, strengthDays: av.strengthDays.includes(i) ? av.strengthDays.filter((d) => d !== i) : [...av.strengthDays, i].sort() });
+  const toggleNoBike = (i: number) => setAv({ ...av, noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.noBike?.[k] : !!av.noBike?.[k])) });
+  const toggleEquipment = (q: Equipment) => setAv({ ...av, equipment: av.equipment.includes(q) ? av.equipment.filter((e) => e !== q) : [...av.equipment, q] });
+  const setPin = (dow: number, kind: SessionKind | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])] });
   const totalHours = av.hours.reduce((s, h) => s + (h || 0), 0);
   const imperial = profile.units === 'imperial';
 
@@ -150,18 +152,37 @@ export function Plan({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Your week</h2>
-        <p class="faint small" style="margin:4px 0 10px">Hours you can ride each day (0 for none), whether that day is outdoors, and which days you lift. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
+        <p class="faint small" style="margin:4px 0 10px">How much time you have each day, and whether the bike is out that day. The app decides what each slot is for: a ride, strength, a walk, mobility or rest. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
           {DAYS.map((d, i) => (
             <div key={d} class="stack" style="gap:4px;align-items:center">
               <span class="faint small">{d}</span>
-              <input type="number" min="0" max="12" step="0.5" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="width:100%;padding:8px 4px;text-align:center" />
-              <button class={`chip${av.outdoor[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleOutdoor(i)}>{av.outdoor[i] ? 'out' : 'in'}</button>
-              <button class={`chip${av.strengthDays.includes(i) ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleStrength(i)}>lift</button>
+              <input type="number" min="0" max="12" step="0.25" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="width:100%;padding:8px 4px;text-align:center" />
+              <button class={`chip${av.outdoor[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleOutdoor(i)} title="Ride outdoors on this day">{av.outdoor[i] ? 'out' : 'in'}</button>
+              <button class={`chip${av.noBike?.[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleNoBike(i)} title="No bike available this day">{av.noBike?.[i] ? 'no bike' : 'bike'}</button>
             </div>
           ))}
         </div>
-        <div class="row wrap" style="margin-top:12px;gap:18px">
+        <div class="field" style="margin-top:14px"><label>What you have</label>
+          <div class="chips">
+            {([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight only'], ['trainer', 'Indoor trainer'], ['treadmill', 'Treadmill'], ['outdoor-walk', 'Somewhere to walk']] as Array<[Equipment, string]>).map(([q, l]) => (
+              <button key={q} class={`chip${av.equipment.includes(q) ? ' on' : ''}`} onClick={() => toggleEquipment(q)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <details style="margin-top:12px">
+          <summary class="muted small" style="cursor:pointer">Standing commitments (optional)</summary>
+          <p class="faint small" style="margin:6px 0 8px">Only if a day is already spoken for, like a class or a friend you lift with. Otherwise leave these alone and let the plan choose.</p>
+          <div class="row wrap" style="gap:8px">
+            {DAYS.map((d, i) => (
+              <label key={d} class="row small" style="gap:6px"><span class="faint" style="width:28px">{d}</span>
+                <select value={(av.pins ?? []).find((p) => p.dow === i)?.kind ?? ''} onChange={(e) => setPin(i, (e.target as HTMLSelectElement).value as SessionKind | '')} style="min-height:32px;padding:4px 6px">
+                  <option value="">—</option><option value="strength">Strength</option><option value="ride">Ride</option><option value="walk">Walk</option>
+                </select></label>
+            ))}
+          </div>
+        </details>
+        <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Recovery rhythm</label>
             <div class="seg"><button class={masters ? 'on' : ''} onClick={() => setMasters(true)}>Masters (more recovery)</button><button class={!masters ? 'on' : ''} onClick={() => setMasters(false)}>Standard</button></div></div>
           <span class="faint small" style="align-self:flex-end;padding-bottom:10px">Targets in {profile.basis === 'power' ? 'power' : 'heart rate'} (change in Settings).</span>
@@ -200,10 +221,10 @@ export function Plan({ data }: { data: AppData }) {
                   <button class="row between" style="width:100%;background:none;border:0;padding:0;cursor:pointer;text-align:left" onClick={() => setOpenWeek(openWeek === w.index ? null : w.index)}>
                     <div>
                       <b>{w.label}</b> <span class="faint small">· {fmtDate(w.start, { month: 'short', day: 'numeric' })}</span>
-                      <div class="faint small">{w.sessions.length} rides · {w.hours} h · {w.tss} TSS</div>
+                      <div class="faint small">{w.sessions.filter((s) => s.kind === 'ride').length} rides, {w.sessions.filter((s) => s.kind === 'strength').length} strength{w.sessions.some((s) => s.kind === 'walk') ? `, ${w.sessions.filter((s) => s.kind === 'walk').length} walk${w.sessions.filter((s) => s.kind === 'walk').length > 1 ? 's' : ''}` : ''} · {w.hours} h · {w.tss} TSS</div>
                     </div>
                     <div class="row" style="gap:4px">
-                      {w.sessions.map((s) => <div key={s.date} style="width:30px"><WorkoutProfile blocks={s.workout.blocks} height={16} ratio={1.9} /></div>)}
+                      {w.sessions.map((s, k) => s.kind === 'ride' ? <div key={k} style="width:30px"><WorkoutProfile blocks={s.workout.blocks} height={16} ratio={1.9} /></div> : <KindDot key={k} kind={s.kind} />)}
                     </div>
                   </button>
                   {openWeek === w.index && (
@@ -211,11 +232,11 @@ export function Plan({ data }: { data: AppData }) {
                       <p class="faint small" style="margin-bottom:8px">{w.note}</p>
                       <div class="stack">
                         {w.sessions.map((s) => (
-                          <div class="cal-item" key={s.date} style="cursor:default">
-                            <WorkoutProfile blocks={s.workout.blocks} height={28} ratio={2.2} />
+                          <div class="cal-item" key={s.date + s.kind + s.workout.id} style="cursor:default">
+                            {s.kind === 'ride' ? <WorkoutProfile blocks={s.workout.blocks} height={28} ratio={2.2} /> : <KindDot kind={s.kind} big />}
                             <div class="t">
                               <b>{s.workout.name} <span class="faint" style="font-weight:400">· {fmtDate(s.date, { weekday: 'short', day: 'numeric' })}</span></b>
-                              <span>{clock(s.seconds)} · {s.tss} TSS · {FAMILY_LABEL[s.workout.family]}</span>
+                              <span>{clock(s.seconds)} · {s.tss} TSS · {s.kind === 'ride' ? FAMILY_LABEL[s.workout.family] : KIND_LABEL[s.kind]}</span>
                               <div class="muted small" style="margin-top:4px;white-space:normal;line-height:1.4">{s.reason}</div>
                             </div>
                           </div>
@@ -259,6 +280,15 @@ function Projection({ series, required, taperStart }: { series: Fitness[]; requi
       </div>
     </div>
   );
+}
+
+export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk' };
+export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--z2)', strength: 'var(--strength)', mobility: 'var(--z3)', walk: 'var(--z4)' };
+
+export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolean }) {
+  const size = big ? 54 : 30;
+  const glyph = kind === 'strength' ? 'S' : kind === 'walk' ? 'W' : 'M';
+  return <div style={`width:${size}px;height:${big ? 28 : 16}px;flex:0 0 ${size}px;border-radius:4px;background:color-mix(in srgb, ${KIND_COLOR[kind]} 22%, transparent);color:${KIND_COLOR[kind]};display:flex;align-items:center;justify-content:center;font-size:${big ? 13 : 10}px;font-weight:700`}>{glyph}</div>;
 }
 
 function verdictColor(v: string) { return { 'on-track': 'var(--good)', close: 'var(--warn)', short: 'var(--bad)' }[v] ?? 'var(--line-2)'; }

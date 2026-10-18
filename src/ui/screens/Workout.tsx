@@ -8,8 +8,10 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
 import { db } from '../../data/db';
 import { go } from '../router';
-import type { Basis, WorkoutStep } from '../../engine/types';
+import type { Basis, PlannedWorkout, WorkoutStep } from '../../engine/types';
 import { fmtDate } from '../derived';
+import { SessionLog } from '../SessionLog';
+import { KIND_LABEL, KindDot } from './Plan';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -17,9 +19,11 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [basis, setBasis] = useState<Basis>(w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
   const [showText, setShowText] = useState(false);
   if (!w) return <div class="empty">That workout is not in the library.</div>;
-  const s = workoutStats(w.blocks);
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
+  const plannedEntry = params.get('date') ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id) : undefined;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} />;
+  const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
     await db.planned.put({ id: newId(), date, workoutId: w!.id, basis, status: 'planned' });
@@ -83,10 +87,73 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         </table>
       </section>
 
+      {plannedEntry && plannedEntry.status !== 'completed' && (
+        <section class="section">
+          <h2>Rode it without a device?</h2>
+          <p class="faint small" style="margin:4px 0 8px">Normally the ride arrives from Intervals.icu on the next Sync. Use this only when nothing recorded it.</p>
+          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} />
+        </section>
+      )}
+
       <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
         {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(w, basis)}</pre>}
       </section>
+    </div>
+  );
+}
+
+
+/** Strength, mobility and walk sessions: the checklist is the player. */
+function SessionScreen({ w, backHref, planned }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout }) {
+  const estimated = Math.round((w.exercises ?? []).reduce((s, e) => s + ((e.holdSeconds ?? 0) * (e.reps === 'each side' ? 2 : 1) + 15) * (e.sets ?? 1) + (e.sets && !e.holdSeconds ? e.sets * 75 : 0), 0) / 60);
+  const minutes = w.minutes ?? w.walk?.minutes ?? (estimated || 30);
+  return (
+    <div>
+      <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
+      <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min</span></div>
+      <h1>{w.name}</h1>
+      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.</p>}
+      <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
+      {w.physiology && <p class="faint small">{w.physiology}</p>}
+
+      {w.walk && (
+        <section class="section">
+          <h2>The walk</h2>
+          <div class="stats" style="margin-top:10px">
+            <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
+            <div class="stat"><div class="v">{Math.round(w.walk.hrLow * 100)}–{Math.round(w.walk.hrHigh * 100)}%</div><div class="l">of max heart rate</div></div>
+            {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
+          </div>
+          <p class="muted small" style="margin-top:10px">Talk-in-full-sentences effort. On a flat treadmill the pack is what gets heart rate into zone 2; raise speed or weight until it settles there, and back off if it drifts higher.</p>
+        </section>
+      )}
+
+      {w.exercises && (
+        <section class="section">
+          <h2>{w.kind === 'strength' ? 'Exercises' : 'Stretches'}</h2>
+          <div class="stack" style="margin-top:10px">
+            {w.exercises.map((e, i) => (
+              <div class="panel" key={i} style="padding:12px 14px">
+                <div class="row between">
+                  <b>{e.name}</b>
+                  <span class="num small muted">{e.sets ? `${e.sets} × ` : ''}{e.reps ?? (e.holdSeconds ? `${e.holdSeconds} s${e.sets ? '' : ' hold'}` : '')}</span>
+                </div>
+                {e.load && <div class="small" style="margin-top:4px;color:var(--ink-2)">{e.load}</div>}
+                <div class="small" style="margin-top:6px;line-height:1.45">{e.cue}</div>
+                {e.why && <div class="faint small" style="margin-top:4px;line-height:1.4">{e.why}</div>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {planned && (
+        <section class="section">
+          <h2>Log it</h2>
+          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} /></div>
+        </section>
+      )}
     </div>
   );
 }

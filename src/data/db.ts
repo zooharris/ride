@@ -45,7 +45,8 @@ class RideDb extends Dexie {
 export const db = new RideDb();
 
 // Workouts saved before `setting` existed get the neutral value on read.
-db.workouts.hook('reading', (w) => (w && !w.setting ? { ...w, setting: 'any' } : w));
+db.workouts.hook('reading', (w) => (w ? { ...w, setting: w.setting ?? 'any', kind: w.kind ?? 'ride' } : w));
+db.rides.hook('reading', (r) => (r && !r.sport ? { ...r, sport: 'ride' } : r));
 
 export const DEFAULT_PROFILE: Profile = {
   name: '',

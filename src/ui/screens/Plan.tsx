@@ -1,20 +1,265 @@
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
+import { notify } from '../store';
+import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
+import { generatePlan, type Availability, type Plan as GeneratedPlan } from '../../engine/planner';
+import type { Goal, EventType } from '../../engine/goals';
+import { hoursText } from '../../engine/goals';
+import { addDays, today } from '../../engine/load';
+import { clock, newId } from '../../engine/workout';
+import { db, getSetting, setSetting } from '../../data/db';
+import { credentials } from '../../sync/syncService';
+import { deleteEvent } from '../../sync/intervals';
+import { fmtDate } from '../derived';
+import { WorkoutProfile } from '../Profile';
+import { go } from '../router';
+import { FAMILY_LABEL } from '../../library/workouts';
+import type { Fitness } from '../../engine/types';
 
-/**
- * The plan builder is being rebuilt as an assessment-driven planner (see the
- * design proposal). Until it lands, this screen says so rather than offering a
- * stopgap. The engine work in progress lives in src/engine/planner.ts.
- */
-export function Plan(_: { data: AppData }) {
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const EVENT_TYPES: Array<[EventType, string]> = [
+  ['century', 'Century or long endurance ride'], ['gran-fondo', 'Gran fondo or hard sportive'], ['climbing', 'Climbing event'],
+  ['time-trial', 'Time trial'], ['group-ride', 'Fast group ride or race'], ['multi-day', 'Multi-day tour'], ['other', 'Something else'],
+];
+
+interface Saved { goal: Goal; availability: Availability; masters: boolean }
+
+const DEFAULT_GOAL: Goal = { kind: 'event', date: addDays(today(), 84), name: '', eventType: 'century', priority: 'A' };
+
+export function Plan({ data }: { data: AppData }) {
+  const profile = data.profile!;
+  const [goal, setGoal] = useState<Goal>(DEFAULT_GOAL);
+  const [av, setAv] = useState<Availability>({ hours: [3, 0, 1, 0, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], strengthDays: [] });
+  const [masters, setMasters] = useState(profile.masters);
+  const [plan, setPlan] = useState<GeneratedPlan | null>(null);
+  const [openWeek, setOpenWeek] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg] = useState<string | null>(null);
+  const [curve, setCurve] = useState<PowerCurve | undefined>(undefined);
+
+  useEffect(() => {
+    getSetting<Saved | null>('planRequest', null).then((s) => { if (s) { setGoal(s.goal); setAv(s.availability); setMasters(s.masters); } });
+    getSetting<{ curve: PowerCurve } | null>('powerCurve', null).then((c) => setCurve(c?.curve));
+  }, []);
+
+  const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, strengthDays: av.strengthDays, powerCurve: curve }), [data.rides, data.wellness, data.planned, av.strengthDays, curve, profile]);
+
+  const longKmh = useMemo(() => {
+    const longs = data.rides.filter((r) => r.seconds >= 7200 && r.averageSpeedMs);
+    return longs.length ? (longs.reduce((s, r) => s + (r.averageSpeedMs ?? 0), 0) / longs.length) * 3.6 : undefined;
+  }, [data.rides]);
+
+  function build() {
+    const p = generatePlan({ start: today(), goal, availability: av, basis: profile.basis, masters, profile, assessment, longRideKmh: longKmh });
+    setPlan(p);
+    setOpenWeek(1);
+    setSetting('planRequest', { goal, availability: av, masters } as Saved);
+    setTimeout(() => document.getElementById('plan-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  async function apply() {
+    if (!plan) return;
+    const first = plan.weeks[0].start;
+    const future = data.planned.filter((p) => p.date >= first && p.status !== 'completed');
+    if (future.length && !confirm(`${future.length} planned ride${future.length > 1 ? 's' : ''} from ${fmtDate(first)} onward will be replaced by this plan. Continue?`)) return;
+    setBusy(true);
+    try {
+      const c = await credentials();
+      for (const p of future) {
+        if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* stale events are harmless */ } }
+        await db.planned.delete(p.id);
+      }
+      const workouts = plan.weeks.flatMap((w) => w.sessions.map((s) => s.workout));
+      await db.workouts.bulkPut(workouts);
+      await db.planned.bulkAdd(plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: newId(), date: s.date, workoutId: s.workout.id, basis: profile.basis, status: 'planned' as const, note: w.label }))));
+      await setSetting('activePlan', { goal, start: first, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projectedCtl: plan.projectedCtl, appliedAt: new Date().toISOString() });
+      notify();
+      go('calendar');
+    } finally { setBusy(false); }
+  }
+
+  const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
+  const toggleOutdoor = (i: number) => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.outdoor[k] : !!av.outdoor[k])) });
+  const toggleStrength = (i: number) => setAv({ ...av, strengthDays: av.strengthDays.includes(i) ? av.strengthDays.filter((d) => d !== i) : [...av.strengthDays, i].sort() });
+  const totalHours = av.hours.reduce((s, h) => s + (h || 0), 0);
+  const imperial = profile.units === 'imperial';
+
   return (
     <div>
       <a href="#/calendar" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Calendar</a>
-      <div class="page-head"><h1>Plan</h1></div>
-      <div class="empty">
-        <b>The plan builder is on its way.</b>
-        <p class="small" style="margin-top:6px">It will take a goal, your days and hours, and your ride data, and lay a block onto the calendar that it re-checks as rides come in. Until then, add workouts to the calendar from the Library.</p>
-        <a class="btn sm" href="#/library" style="margin-top:12px">Open the Library</a>
+      <div class="page-head"><h1>Plan</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
+
+      <section>
+        <h2>What your data say</h2>
+        <p class="faint small" style="margin:4px 0 10px">The plan is built on these. Grey dots are guesses with no data behind them yet; they firm up as rides and wellness come in.</p>
+        <div class="stack" style="gap:5px">
+          {([assessment.weeklyHours, assessment.longestRide, assessment.decoupling, assessment.efficiencyTrend, assessment.powerProfile, assessment.ftpStatus, assessment.afterStrength, assessment.afterLongRide, assessment.afterHardRide, assessment.compliance, assessment.rampRate] as Evidence<unknown>[]).map((e, i) => (
+            <div class="row" key={i} style="align-items:flex-start;gap:10px">
+              <span class="dot" style={`margin-top:7px;width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${e.confidence === 'good' ? 'var(--good)' : e.confidence === 'thin' ? 'var(--warn)' : 'var(--ink-3)'}`} />
+              <span class="small muted">{e.note}</span>
+            </div>
+          ))}
+        </div>
+        <p class="small" style="margin-top:10px">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p>
+      </section>
+
+      <section class="section">
+        <h2>Goal</h2>
+        <div class="form" style="margin-top:10px">
+          <div class="field"><label>What you are training for</label>
+            <select value={goal.kind} onChange={(e) => {
+              const k = (e.target as HTMLSelectElement).value as Goal['kind'];
+              setGoal(k === 'event' ? { kind: 'event', date: addDays(today(), 84), name: '', eventType: 'century', priority: 'A' }
+                : k === 'ftp' ? { kind: 'ftp', weeks: 12, targetWatts: Math.round(profile.ftp * 1.06) }
+                : k === 'endurance' ? { kind: 'endurance', weeks: 12, targetHours: 4 }
+                : { kind: k, weeks: 12 } as Goal);
+            }}>
+              <option value="event">An event on a date</option>
+              <option value="ftp">Raise FTP</option>
+              <option value="vo2max">Raise VO2max</option>
+              <option value="endurance">Ride longer comfortably</option>
+              <option value="weight">Lose weight</option>
+              <option value="general">General fitness</option>
+            </select>
+          </div>
+          {goal.kind === 'event' && (
+            <>
+              <div class="field"><label>Event name</label><input value={goal.name} placeholder="Seagull Century" onInput={(e) => setGoal({ ...goal, name: (e.target as HTMLInputElement).value })} /></div>
+              <div class="field"><label>Date</label><input type="date" min={addDays(today(), 28)} value={goal.date} onInput={(e) => setGoal({ ...goal, date: (e.target as HTMLInputElement).value })} /></div>
+              <div class="field"><label>Kind of event</label>
+                <select value={goal.eventType} onChange={(e) => setGoal({ ...goal, eventType: (e.target as HTMLSelectElement).value as EventType })}>{EVENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+              <div class="field"><label>Distance ({imperial ? 'miles' : 'km'})</label>
+                <input type="number" value={goal.distanceKm != null ? Math.round(imperial ? goal.distanceKm / 1.609 : goal.distanceKm) : ''} placeholder={imperial ? '100' : '160'} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); setGoal({ ...goal, distanceKm: v ? (imperial ? v * 1.609 : v) : undefined }); }} /></div>
+              <div class="field"><label>Climbing ({imperial ? 'feet' : 'metres'})</label>
+                <input type="number" value={goal.climbingM != null ? Math.round(imperial ? goal.climbingM * 3.281 : goal.climbingM) : ''} placeholder="optional" onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); setGoal({ ...goal, climbingM: v ? (imperial ? v / 3.281 : v) : undefined }); }} /></div>
+              <div class="field"><label>Priority</label>
+                <div class="seg">{(['A', 'B', 'C'] as const).map((p) => <button key={p} class={goal.priority === p ? 'on' : ''} onClick={() => setGoal({ ...goal, priority: p })}>{p}</button>)}</div></div>
+            </>
+          )}
+          {goal.kind !== 'event' && (
+            <div class="field"><label>Weeks</label><input type="number" min="4" max="24" value={goal.weeks} onInput={(e) => setGoal({ ...goal, weeks: Number((e.target as HTMLInputElement).value) || 8 })} /></div>
+          )}
+          {goal.kind === 'ftp' && (
+            <div class="field"><label>Target FTP (watts, now {profile.ftp})</label><input type="number" value={goal.targetWatts} onInput={(e) => setGoal({ ...goal, targetWatts: Number((e.target as HTMLInputElement).value) || profile.ftp })} /></div>
+          )}
+          {goal.kind === 'endurance' && (
+            <div class="field"><label>Ride this long comfortably (hours)</label><input type="number" step="0.5" value={goal.targetHours} onInput={(e) => setGoal({ ...goal, targetHours: Number((e.target as HTMLInputElement).value) || 3 })} /></div>
+          )}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Your week</h2>
+        <p class="faint small" style="margin:4px 0 10px">Hours you can ride each day (0 for none), whether that day is outdoors, and which days you lift. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+          {DAYS.map((d, i) => (
+            <div key={d} class="stack" style="gap:4px;align-items:center">
+              <span class="faint small">{d}</span>
+              <input type="number" min="0" max="12" step="0.5" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="width:100%;padding:8px 4px;text-align:center" />
+              <button class={`chip${av.outdoor[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleOutdoor(i)}>{av.outdoor[i] ? 'out' : 'in'}</button>
+              <button class={`chip${av.strengthDays.includes(i) ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleStrength(i)}>lift</button>
+            </div>
+          ))}
+        </div>
+        <div class="row wrap" style="margin-top:12px;gap:18px">
+          <div class="field"><label>Recovery rhythm</label>
+            <div class="seg"><button class={masters ? 'on' : ''} onClick={() => setMasters(true)}>Masters (more recovery)</button><button class={!masters ? 'on' : ''} onClick={() => setMasters(false)}>Standard</button></div></div>
+          <span class="faint small" style="align-self:flex-end;padding-bottom:10px">Targets in {profile.basis === 'power' ? 'power' : 'heart rate'} (change in Settings).</span>
+        </div>
+      </section>
+
+      <button class="btn primary block" style="margin-top:20px" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Build the plan</button>
+
+      {plan && (
+        <div id="plan-result">
+          <section class="section">
+            <div class="panel" style={`border-color:${verdictColor(plan.verdict)}`}>
+              <b style={`color:${verdictColor(plan.verdict)}`}>{verdictLabel(plan.verdict)}</b>
+              <p style="margin-top:6px;font-size:14px;line-height:1.55">{plan.advice}</p>
+              <p class="muted small" style="margin-top:8px">{plan.demand.why}</p>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>Fitness projection</h2>
+            <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} />
+          </section>
+
+          <section class="section">
+            <h2>Why it looks like this</h2>
+            <ul class="muted small" style="margin:8px 0 0;padding-left:18px;line-height:1.55">
+              {plan.decisions.map((d, i) => <li key={i} style="margin-bottom:6px">{d}</li>)}
+            </ul>
+          </section>
+
+          <section class="section">
+            <h2>Weeks</h2>
+            <div class="stack" style="margin-top:8px">
+              {plan.weeks.map((w) => (
+                <div class="panel" key={w.index} style="padding:10px 12px">
+                  <button class="row between" style="width:100%;background:none;border:0;padding:0;cursor:pointer;text-align:left" onClick={() => setOpenWeek(openWeek === w.index ? null : w.index)}>
+                    <div>
+                      <b>{w.label}</b> <span class="faint small">· {fmtDate(w.start, { month: 'short', day: 'numeric' })}</span>
+                      <div class="faint small">{w.sessions.length} rides · {w.hours} h · {w.tss} TSS</div>
+                    </div>
+                    <div class="row" style="gap:4px">
+                      {w.sessions.map((s) => <div key={s.date} style="width:30px"><WorkoutProfile blocks={s.workout.blocks} height={16} ratio={1.9} /></div>)}
+                    </div>
+                  </button>
+                  {openWeek === w.index && (
+                    <div style="margin-top:10px">
+                      <p class="faint small" style="margin-bottom:8px">{w.note}</p>
+                      <div class="stack">
+                        {w.sessions.map((s) => (
+                          <div class="cal-item" key={s.date} style="cursor:default">
+                            <WorkoutProfile blocks={s.workout.blocks} height={28} ratio={2.2} />
+                            <div class="t">
+                              <b>{s.workout.name} <span class="faint" style="font-weight:400">· {fmtDate(s.date, { weekday: 'short', day: 'numeric' })}</span></b>
+                              <span>{clock(s.seconds)} · {s.tss} TSS · {FAMILY_LABEL[s.workout.family]}</span>
+                              <div class="muted small" style="margin-top:4px;white-space:normal;line-height:1.4">{s.reason}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <button class="btn primary block" style="margin-top:20px" onClick={apply} disabled={busy}>{busy ? 'Placing…' : 'Put this plan on the calendar'}</button>
+          {msg && <p class="msg ok" style="margin-top:10px">{msg}</p>}
+          <p class="faint small" style="margin-top:10px">Rides already on the calendar from this week on are replaced. Completed rides are kept. The plan is re-checked as rides and wellness arrive.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Projection({ series, required, taperStart }: { series: Fitness[]; required: number; taperStart?: string }) {
+  if (series.length < 2) return null;
+  const W = 400, H = 130, pad = 6;
+  const max = Math.max(required || 0, ...series.map((f) => f.ctl)) * 1.08;
+  const x = (i: number) => pad + (i / (series.length - 1)) * (W - pad * 2);
+  const y = (v: number) => H - pad - (v / max) * (H - pad * 2);
+  const path = series.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(f.ctl).toFixed(1)}`).join(' ');
+  const ti = taperStart ? series.findIndex((f) => f.date === taperStart) : -1;
+  return (
+    <div class="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} aria-label="Projected fitness">
+        {required > 0 && <line x1={pad} x2={W - pad} y1={y(required)} y2={y(required)} stroke="var(--accent)" stroke-dasharray="4 4" />}
+        {ti > 0 && <line x1={x(ti)} x2={x(ti)} y1={pad} y2={H - pad} stroke="var(--line-2)" stroke-dasharray="2 3" />}
+        <path d={path} fill="none" stroke="var(--z2)" stroke-width="2.2" />
+      </svg>
+      <div class="row faint small" style="gap:14px;margin-top:6px">
+        <span><span style="color:var(--z2)">—</span> fitness if the plan is followed</span>
+        {required > 0 && <span><span style="color:var(--accent)">- -</span> what the goal wants</span>}
+        {ti > 0 && <span>| taper starts</span>}
       </div>
     </div>
   );
 }
+
+function verdictColor(v: string) { return { 'on-track': 'var(--good)', close: 'var(--warn)', short: 'var(--bad)' }[v] ?? 'var(--line-2)'; }
+function verdictLabel(v: string) { return { 'on-track': 'On track', close: 'Close', short: 'Short of the goal', 'no-target': 'No single number to hit' }[v] ?? v; }

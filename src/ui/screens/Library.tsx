@@ -17,11 +17,11 @@ export function Library({ data }: { data: AppData }) {
         <h1>Library</h1>
         <div class="row"><span class="muted small">{list.length} workouts</span><a class="btn sm primary" href="#/build">Build</a></div>
       </div>
-      {family === 'all' && data.mine.length > 0 && (
+      {family === 'all' && data.mine.some((w) => w.source === 'mine') && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My workouts</h2>
           <div class="grid">
-            {data.mine.map((w) => <Card key={w.id} w={w} mine />)}
+            {data.mine.filter((w) => w.source === 'mine').map((w) => <Card key={w.id} w={w} mine />)}
           </div>
         </section>
       )}

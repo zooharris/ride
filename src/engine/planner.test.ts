@@ -113,6 +113,12 @@ describe('planner', () => {
     const base1 = plan.weeks[0];
     const longs = base1.sessions.filter((s) => s.type === 'long');
     expect(longs).toHaveLength(2);
+    // this rider bounces back from long days (penalty 0), so both long rides are sized by the budget, not a multiplier
+    expect(baseAssessment.afterLongRide.value).toBe(0);
+    const shorter: Assessment = { ...baseAssessment, afterLongRide: { value: 0.3, confidence: 'good', note: 'x' } };
+    const p2 = generatePlan(req({ assessment: shorter }));
+    const l2 = p2.weeks[1].sessions.filter((s) => s.type === 'long').map((s) => s.seconds).sort((x, y) => y - x);
+    expect(l2[1]).toBeLessThan(l2[0]);
     expect(longs.map((s) => new Date(s.date + 'T00:00:00').getDay()).sort()).toEqual([0, 6]);
     expect(plan.decisions.some((d) => d.startsWith('Two long rides'))).toBe(true);
   });
@@ -138,11 +144,14 @@ describe('planner', () => {
     const free = generatePlan(req());
     expect(free.decisions.some((d) => d.startsWith('Hard rides can follow strength'))).toBe(true);
   });
-  it('builds phases from the goal and limiters, with tests at block starts and a taper', () => {
+  it('builds phases from the goal and limiters, tests only when the FTP looks unverified, and tapers', () => {
     const plan = generatePlan(req());
+    // the history has no hard efforts (IF under 0.9), so the FTP in use is unverified: one test in week 1, none after
+    expect(baseAssessment.ftpStatus.value).toBe('stale');
     expect(plan.weeks[0].sessions.some((s) => s.type === 'test')).toBe(true);
-    const firstBuild = plan.weeks.find((w) => w.phase === 'build');
-    expect(firstBuild?.sessions.some((s) => s.type === 'test')).toBe(true);
+    expect(plan.weeks.slice(1).every((w) => !w.sessions.some((s) => s.type === 'test'))).toBe(true);
+    const fresh: Assessment = { ...baseAssessment, ftpStatus: { value: 'fresh', confidence: 'good', note: 'x' } };
+    expect(generatePlan(req({ assessment: fresh })).weeks[0].sessions.some((s) => s.type === 'test')).toBe(false);
     expect(plan.weeks[plan.weeks.length - 1].phase).toBe('taper');
     expect(plan.weeks.some((w) => w.phase === 'recovery')).toBe(true);
     const rec = plan.weeks.find((w) => w.phase === 'recovery')!;
@@ -169,7 +178,12 @@ describe('planner', () => {
     expect(ftp.weeks.some((w) => w.sessions.some((s) => s.type === 'threshold'))).toBe(true);
     const weight = generatePlan(req({ goal: { kind: 'weight', weeks: 8 } }));
     expect(weight.verdict).toBe('no-target');
-    expect(weight.weeks.every((w) => w.sessions.filter((s) => ['threshold', 'vo2max'].includes(s.type)).length === 0)).toBe(true);
+    expect(weight.weeks.every((w) => w.sessions.filter((s) => s.type === 'vo2max').length === 0)).toBe(true);
+    // the goal leans sub-threshold, but this rider's data flag threshold as the limiter, so threshold work still appears
+    expect(weight.weeks.some((w) => w.sessions.some((s) => s.type === 'threshold'))).toBe(true);
+    const noLimiter: Assessment = { ...baseAssessment, limiters: ['base'] };
+    const weight2 = generatePlan(req({ goal: { kind: 'weight', weeks: 8 }, assessment: noLimiter }));
+    expect(weight2.weeks.every((w) => !w.sessions.some((s) => s.type === 'threshold'))).toBe(true);
     const vo2 = generatePlan(req({ goal: { kind: 'vo2max', weeks: 8 } }));
     expect(vo2.weeks.some((w) => w.sessions.some((s) => s.type === 'vo2max'))).toBe(true);
   });

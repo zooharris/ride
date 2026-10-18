@@ -26,6 +26,8 @@ export interface Assessment {
   powerProfile: Evidence<{ p5s: number; p1m: number; p5m: number; p20m: number }>;  // as multiples of FTP
   afterStrength: Evidence<number>;                   // readiness penalty 0..1 the day after a strength day (0 = none seen)
   afterLongRide: Evidence<number>;                   // same, the day after a ride over 2.5 h
+  afterHardRide: Evidence<number>;                   // same, the day after a ride at IF 0.85 or more
+  ftpStatus: Evidence<'fresh' | 'stale' | 'likely-higher' | 'likely-lower'>;   // whether the FTP in use looks right
   compliance: Evidence<number>;                      // share of planned rides completed, last 6 weeks
   limiters: Limiter[];                               // ordered, strongest first
   summary: string[];                                 // sentences for the screen
@@ -116,6 +118,23 @@ export function assess(inp: AssessmentInput): Assessment {
   const afterL = penaltyAfter((d) => longDates.has(d));
   const afterLongRide = ev(afterL.value, afterL.n, 4, afterL.n ? (afterL.value < 0.15 ? 'You bounce back from long rides; two long days in a row is on the table.' : afterL.value < 0.4 ? 'Long rides leave a small dent the next morning; back-to-back long days are fine with the second one easier.' : 'Long rides leave a clear dent the next morning; the plan spaces them out.') : 'No wellness data after long rides yet; assuming they cost a little.');
 
+  const hardDates = new Set(rides.filter((r) => (r.intensityFactor ?? 0) >= 0.85 && r.seconds >= 2400).map((r) => r.date));
+  const afterH = penaltyAfter((d) => hardDates.has(d));
+  const afterHardRide = ev(afterH.value, afterH.n, 4, afterH.n ? (afterH.value < 0.15 ? 'Hard rides do not show in the next morning; two hard days back to back are possible.' : afterH.value < 0.4 ? 'Hard rides leave a small dent the next morning; the plan prefers a gap between them.' : 'Hard rides leave a clear dent the next morning; the plan spaces them well apart.') : 'No wellness data after hard rides yet; assuming a day between them is best.');
+
+  // Is the FTP in use still right? Intervals.icu estimates FTP from hard rides; a
+  // long gap without any hard effort, or an estimate drifting from the number in
+  // use, is what makes a test worth its place.
+  const recentEst = rides.filter((r) => r.date >= addDays(today, -42) && r.eftp).map((r) => r.eftp!);
+  const bestEst = recentEst.length ? Math.max(...recentEst) : 0;
+  const hardRecent = rides.filter((r) => r.date >= addDays(today, -42) && (r.intensityFactor ?? 0) >= 0.9).length;
+  let ftpStatus: Assessment['ftpStatus'];
+  if (!rides.length) ftpStatus = none('stale', 'No rides yet, so a test early on sets the numbers the plan is built on.');
+  else if (bestEst && bestEst >= inp.profile.ftp * 1.03) ftpStatus = ev('likely-higher', recentEst.length, 2, `Intervals.icu's estimate from recent rides is about ${Math.round(bestEst)} W against ${inp.profile.ftp} W in use; a test would likely raise the number.`);
+  else if (bestEst && bestEst <= inp.profile.ftp * 0.94 && hardRecent >= 2) ftpStatus = ev('likely-lower', recentEst.length, 2, `Recent hard rides estimate FTP nearer ${Math.round(bestEst)} W than the ${inp.profile.ftp} W in use; targets may be set too high.`);
+  else if (hardRecent === 0) ftpStatus = ev('stale', 1, 1, 'No hard efforts in six weeks, so the FTP in use is unverified; a test early in the plan is worth it.');
+  else ftpStatus = ev('fresh', hardRecent, 2, 'Recent hard rides agree with the FTP in use; no test needed yet.');
+
   // Compliance over the last six weeks.
   const past = inp.planned.filter((p) => p.date >= addDays(today, -42) && p.date < today);
   const done = past.filter((p) => p.status === 'completed').length;
@@ -132,8 +151,8 @@ export function assess(inp: AssessmentInput): Assessment {
   if (weeklyHours.confidence !== 'none' && hours < 5) limiters.push('base');
   if (limiters.length === 0) limiters.push(decoupling.confidence === 'none' ? 'base' : 'threshold');
 
-  const summary = [weeklyHours, longestRide, decoupling, efficiencyTrend, powerProfile, afterStrength, afterLongRide, compliance, rampRate].map((e) => e.note);
-  return { asOf: today, fitness, rampRate, weeklyHours, weeklyTss, longestRide, decoupling, efficiencyTrend, powerProfile, afterStrength, afterLongRide, compliance, limiters, summary };
+  const summary = [weeklyHours, longestRide, decoupling, efficiencyTrend, powerProfile, ftpStatus, afterStrength, afterLongRide, afterHardRide, compliance, rampRate].map((e) => e.note);
+  return { asOf: today, fitness, rampRate, weeklyHours, weeklyTss, longestRide, decoupling, efficiencyTrend, powerProfile, afterStrength, afterLongRide, afterHardRide, ftpStatus, compliance, limiters, summary };
 }
 
 export const LIMITER_LABEL: Record<Limiter, string> = {

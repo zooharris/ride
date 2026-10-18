@@ -1,7 +1,7 @@
 import { db, getSetting } from '../data/db';
 import { addDays, rideTss, today } from '../engine/load';
 import type { IntervalsCredentials } from './intervals';
-import { fetchRides, fetchWellness, testConnection } from './intervals';
+import { fetchPowerCurve, fetchRides, fetchWellness, testConnection } from './intervals';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -45,6 +45,12 @@ export async function syncAll(): Promise<{ rides: number; wellness: number }> {
       await db.planned.update(p.id, { status: 'missed' });
     }
   }
+
+  // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
+  try {
+    const curve = await fetchPowerCurve(c, addDays(today(), -90), newest);
+    if (curve.length) await db.settings.put({ key: 'powerCurve', value: { asOf: today(), curve } });
+  } catch { /* optional signal */ }
 
   const wellness = await fetchWellness(c, oldest, newest);
   await db.wellness.bulkPut(wellness);

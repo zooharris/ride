@@ -119,6 +119,7 @@ interface IcuActivity {
   icu_zone_times?: Array<{ id: string; secs: number }> | number[];
   icu_hr_zone_times?: number[];
   icu_ftp?: number;
+  icu_eftp?: number;
   paired_event_id?: number;
 }
 
@@ -153,6 +154,7 @@ function toRide(a: IcuActivity): Ride {
     powerZoneSeconds: zoneSeconds(a.icu_zone_times),
     hrZoneSeconds: a.icu_hr_zone_times,
     ftpAtRide: a.icu_ftp,
+    eftp: a.icu_eftp,
     pairedEventId: a.paired_event_id,
   };
 }
@@ -161,6 +163,30 @@ function zoneSeconds(z: IcuActivity['icu_zone_times']): number[] | undefined {
   if (!z) return undefined;
   if (typeof z[0] === 'number') return z as number[];
   return (z as Array<{ secs: number }>).map((x) => x.secs);
+}
+
+/**
+ * Best power over standard durations across a date range, as Intervals.icu
+ * computes it. The response shape has varied; both known forms are read.
+ */
+export async function fetchPowerCurve(c: IntervalsCredentials, oldest: string, newest: string): Promise<Array<{ seconds: number; watts: number }>> {
+  const raw = await call<unknown>(c, `/athlete/${c.athleteId}/power-curves?type=Ride&oldest=${oldest}&newest=${newest}`);
+  const out: Array<{ seconds: number; watts: number }> = [];
+  const take = (secs: unknown, watts: unknown) => {
+    if (Array.isArray(secs) && Array.isArray(watts)) secs.forEach((s, i) => { if (typeof s === 'number' && typeof watts[i] === 'number') out.push({ seconds: s, watts: watts[i] as number }); });
+  };
+  if (Array.isArray(raw)) {
+    for (const item of raw as Array<Record<string, unknown>>) {
+      if (typeof item.secs === 'number' && typeof item.watts === 'number') out.push({ seconds: item.secs, watts: item.watts });
+      else take(item.secs, item.watts);
+    }
+  } else if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    take(o.secs, o.watts);
+    const list = (o.list ?? o.curves) as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(list)) for (const item of list) take(item.secs, item.watts);
+  }
+  return out.sort((a, b) => a.seconds - b.seconds);
 }
 
 interface IcuWellness {

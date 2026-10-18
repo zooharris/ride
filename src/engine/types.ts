@@ -103,6 +103,7 @@ export interface Ride {
   powerZoneSeconds?: number[];
   hrZoneSeconds?: number[];
   ftpAtRide?: number;
+  eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one
   pairedEventId?: number;
 }
 

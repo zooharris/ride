@@ -13,7 +13,8 @@ import { notify } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart } from '../FitnessChart';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
-import { applyPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import type { CoachReview } from '../../coach/claude';
 import type { Replan } from '../../engine/adapt';
 
 export function Today({ data }: { data: AppData }) {
@@ -37,6 +38,7 @@ export function Today({ data }: { data: AppData }) {
   const [active, setActive] = useState<ActivePlan | null>(null);
   const [check, setCheck] = useState<Replan | null>(null);
   const [checking, setChecking] = useState(false);
+  const [review, setReview] = useState<CoachReview | null>(null);
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
 
@@ -110,7 +112,15 @@ export function Today({ data }: { data: AppData }) {
     try {
       const r = await syncAll();
       notify();
-      setMsg({ ok: true, text: `Synced ${r.rides} rides and ${r.wellness} days of wellness.` });
+      setMsg({ ok: true, text: `Synced ${r.rides} activities and ${r.wellness} days of wellness.${r.newIds.length ? ` ${r.newIds.length} new.` : ''}` });
+      if (r.newIds.length) {
+        setBusy('review');
+        try {
+          const fresh = { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: await db.wellness.orderBy('date').toArray() };
+          const out = await coachReviewAfterSync(fresh, r.newIds);
+          if (out) { setReview(out.review); if (out.check) setCheck(out.check); }
+        } catch (e) { setMsg({ ok: false, text: `Synced, but the coach review failed: ${(e as Error).message}` }); }
+      }
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally { setBusy(null); }
@@ -126,7 +136,7 @@ export function Today({ data }: { data: AppData }) {
           <h1>{profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}</h1>
         </div>
         <div class="row">
-          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || connected === false}>{busy === 'sync' ? 'Syncing…' : 'Sync'}</button>
+          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}>{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
         </div>
       </div>
 
@@ -137,6 +147,16 @@ export function Today({ data }: { data: AppData }) {
           <p class="muted small" style="margin-top:4px">That is the pipe to your Garmin. Add your athlete ID and API key in Settings, and rides and wellness will start arriving.</p>
           <a class="btn sm" href="#/settings" style="margin-top:10px">Open Settings</a>
         </div>
+      )}
+
+      {review && (
+        <section class="panel accent" style="margin-bottom:14px;padding:14px 16px">
+          <div class="row between"><b>Coach review of the new activities</b><button class="btn sm quiet" onClick={() => setReview(null)}>Dismiss</button></div>
+          <p style="margin-top:8px;font-size:15px;line-height:1.6">{review.text}</p>
+          {check && check.changes.length > 0 && (
+            <p class="muted small" style="margin-top:8px">{review.applyChanges ? 'Recommends applying the plan changes below.' : 'Recommends leaving the plan as it is for now.'} {review.reason}</p>
+          )}
+        </section>
       )}
 
       {active && (

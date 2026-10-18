@@ -15,6 +15,7 @@ export function Settings({ data }: { data: AppData }) {
   const [p, setP] = useState<Profile>(data.profile!);
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
   const [claudeKey, setClaudeKey] = useState('');
+  const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,6 +23,7 @@ export function Settings({ data }: { data: AppData }) {
   useEffect(() => {
     getSetting<IntervalsCredentials | null>('intervals', null).then((c) => c && setCreds(c));
     getSetting<string>('claudeKey', '').then(setClaudeKey);
+    getSetting<boolean>('coachAuto', false).then(setCoachAuto);
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
   }, []);
 
@@ -31,6 +33,7 @@ export function Settings({ data }: { data: AppData }) {
   async function save() {
     await saveProfile(p);
     await setSetting('claudeKey', claudeKey.trim());
+    await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
     await setSetting('coachNote', null);
     notify();
     const before = data.profile!;
@@ -150,6 +153,9 @@ export function Settings({ data }: { data: AppData }) {
         <h2>Coach (optional)</h2>
         <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a short daily note from a coach who has read your numbers. The key is stored only on this device and calls go straight to Anthropic. Leave blank to skip.</p>
         <div class="field"><label>Claude API key</label><input type="password" autocomplete="off" value={claudeKey} onInput={(e) => setClaudeKey((e.target as HTMLInputElement).value)} placeholder="sk-ant-…" /></div>
+        <div class="field" style="margin-top:12px"><label>Ask Claude after new activities arrive</label>
+          <div class="seg"><button class={coachAuto ? 'on' : ''} onClick={() => setCoachAuto(true)} disabled={!claudeKey.trim()}>On</button><button class={!coachAuto ? 'on' : ''} onClick={() => setCoachAuto(false)}>Off</button></div>
+          <p class="faint small" style="margin-top:6px">On: each time a sync brings in new rides or sessions, Claude reads them with the plan's own re-check and gives a recommendation on Today. Off: the app's re-check works as it does now. Either way, nothing changes on the plan until you approve it.</p></div>
       </section>
 
       <section class="section">

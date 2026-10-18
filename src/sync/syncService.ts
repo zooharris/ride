@@ -15,7 +15,7 @@ export async function credentials(): Promise<IntervalsCredentials | null> {
  * Rides are re-scored with the engine's TSS every time, so a changed FTP
  * updates history consistently.
  */
-export async function syncAll(): Promise<{ rides: number; wellness: number }> {
+export async function syncAll(): Promise<{ rides: number; wellness: number; newIds: string[] }> {
   const c = await credentials();
   if (!c) throw new Error('Connect Intervals.icu in Settings first.');
   const state = await db.sync.get('intervals');
@@ -31,6 +31,8 @@ export async function syncAll(): Promise<{ rides: number; wellness: number }> {
   }
 
   const rides = await fetchRides(c, oldest, newest);
+  const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).map((r) => r.id));
+  const newIds = first ? [] : rides.filter((r) => !known.has(r.id)).map((r) => r.id);
   for (const r of rides) {
     // Rides score from power or heart rate; walks from heart rate; strength from
     // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
@@ -70,5 +72,5 @@ export async function syncAll(): Promise<{ rides: number; wellness: number }> {
   await db.wellness.bulkPut(wellness);
 
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined });
-  return { rides: rides.length, wellness: wellness.length };
+  return { rides: rides.length, wellness: wellness.length, newIds };
 }

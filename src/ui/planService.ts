@@ -1,5 +1,7 @@
 import { db, getSetting, setSetting } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
+import { reviewAfterSync, type CoachReview } from '../coach/claude';
+import { clock } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { today } from '../engine/load';
@@ -127,4 +129,33 @@ export async function cancelPlan(data: AppData): Promise<{ removed: number }> {
 export async function markChecked(): Promise<void> {
   const a = await getActivePlan();
   if (a) await setSetting('activePlan', { ...a, lastCheck: today() });
+}
+
+
+/**
+ * With the setting on and a key present, Claude reviews each batch of new
+ * activities against the plan's own re-check. Nothing is applied here.
+ */
+export async function coachReviewAfterSync(data: AppData, newIds: string[]): Promise<{ review: CoachReview; check: Replan | null } | null> {
+  const on = await getSetting<boolean>('coachAuto', false);
+  const key = await getSetting<string>('claudeKey', '');
+  if (!on || !key || newIds.length === 0) return null;
+  const profile = data.profile as Profile;
+  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
+  const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
+  const active = await getActivePlan();
+  const check = active ? await replan(data) : null;
+  const series = fitnessFromRides(data.rides);
+  const fresh = data.rides.filter((r) => newIds.includes(r.id)).map((r) => `${r.date} ${r.name} (${r.sport}): ${clock(r.seconds)}, ${r.tss ?? '?'} TSS${r.normalizedPower ? `, NP ${r.normalizedPower} W` : ''}${r.averageHr ? `, avg HR ${Math.round(r.averageHr)}` : ''}${r.decoupling != null ? `, HR drift ${r.decoupling.toFixed(1)}%` : ''}`);
+  const goal = active ? (active.goal.kind === 'event' ? `${active.goal.name || 'event'} on ${active.goal.date} (${active.goal.eventType})` : active.goal.kind) : 'no active plan';
+  const review = await reviewAfterSync(key, {
+    profile, date: today(), fitness: fitnessOn(series, today()),
+    assessmentNotes: assessment.summary, goal,
+    verdict: check?.plan.verdict ?? 'n/a', advice: check?.plan.advice ?? '',
+    lastWeek: check?.review.lines ?? [],
+    proposedChanges: check ? [...check.summary, ...check.changes.map((c) => `${c.date}: ${c.note} ${c.before ?? ''}${c.before && c.after ? ' → ' : ''}${c.after ?? ''}`)] : [],
+    newActivities: fresh,
+  });
+  await setSetting('coachReview', review);
+  return { review, check };
 }

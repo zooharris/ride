@@ -283,6 +283,27 @@ export async function fetchStreams(c: IntervalsCredentials, activityId: string):
   return { time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), intervals };
 }
 
+/**
+ * Automatic backup lives as a private note on a far-future calendar date in the
+ * rider's own Intervals.icu account, so a new device can restore it right after
+ * connecting. Nothing but the rider's key can read it.
+ */
+export const BACKUP_DATE = '2099-12-31';
+const BACKUP_NAME = 'App backup (do not edit)';
+
+export async function readBackupNote(c: IntervalsCredentials): Promise<{ id: number; payload: string; updated?: string } | null> {
+  const list = await call<Array<{ id: number; name?: string; description?: string; category?: string; updated?: string }>>(c, `/athlete/${c.athleteId}/events?oldest=${BACKUP_DATE}&newest=${BACKUP_DATE}`);
+  const note = list.find((e) => e.name === BACKUP_NAME);
+  return note && note.description ? { id: note.id, payload: note.description, updated: note.updated } : null;
+}
+
+export async function writeBackupNote(c: IntervalsCredentials, payload: string): Promise<void> {
+  const existing = await readBackupNote(c);
+  const body = { category: 'NOTE', start_date_local: `${BACKUP_DATE}T00:00:00`, name: BACKUP_NAME, description: payload };
+  if (existing) await call(c, `/athlete/${c.athleteId}/events/${existing.id}`, { method: 'PUT', body: JSON.stringify(body) });
+  else await call(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
+}
+
 export async function deleteEvent(c: IntervalsCredentials, eventId: number): Promise<void> {
   await call(c, `/athlete/${c.athleteId}/events/${eventId}`, { method: 'DELETE' });
 }

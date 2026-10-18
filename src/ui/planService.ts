@@ -9,6 +9,7 @@ import { generatePlan, type Availability, type Plan } from '../engine/planner';
 import type { Fitness, Profile } from '../engine/types';
 import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
+import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, weekStart } from './derived';
 import type { AppData } from './store';
@@ -82,6 +83,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   const active: ActivePlan = { id: planId, goal, availability, masters, start: plan.weeks[0]?.start ?? from, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
   await setSetting('activePlan', active);
   notify();
+  if (c) autoBackup(c, true);
   return { added, removed, kept };
 }
 

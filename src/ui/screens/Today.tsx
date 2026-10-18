@@ -8,6 +8,7 @@ import { today } from '../../engine/load';
 import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
+import { autoBackup } from '../../data/backup';
 import { sendWorkout } from '../../sync/intervals';
 import { notify } from '../store';
 import { dailyNote } from '../../coach/claude';
@@ -112,6 +113,7 @@ export function Today({ data }: { data: AppData }) {
     try {
       const r = await syncAll();
       notify();
+      credentials().then((c) => c && autoBackup(c));
       setMsg({ ok: true, text: `Synced ${r.rides} activities and ${r.wellness} days of wellness.${r.newIds.length ? ` ${r.newIds.length} new.` : ''}` });
       if (r.newIds.length) {
         setBusy('review');
@@ -208,6 +210,8 @@ export function Today({ data }: { data: AppData }) {
         </section>
       )}
 
+      <NextUp data={data} date={date} />
+
       {note && (
         <section class="section">
           <h2>Coach</h2>
@@ -223,12 +227,13 @@ export function Today({ data }: { data: AppData }) {
         <p class="muted small" style="margin-bottom:10px">{bandText}.</p>
         <div class="stats">
           {ready.drivers.map((d) => (
-            <div class="stat" key={d.name}>
+            <div class="stat" key={d.name} title={READINESS_HELP[d.name] ?? ''}>
               <div class="v" style={`font-size:16px;color:${d.effect === 'up' ? 'var(--good)' : d.effect === 'down' ? 'var(--bad)' : 'var(--ink)'}`}>{d.value}</div>
-              <div class="l">{d.name}</div>
+              <div class="l">{d.name}{d.name !== 'Form' ? ' today vs your 2-week average' : ' (fitness minus fatigue)'}</div>
             </div>
           ))}
         </div>
+        <p class="faint small" style="margin-top:8px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own recent normal. Green is better than normal, red worse.</p>
         {data.wellness.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting HR appear once Intervals.icu is connected and your watch has synced.</p>}
       </section>
 
@@ -246,6 +251,35 @@ export function Today({ data }: { data: AppData }) {
     </div>
   );
 }
+
+function NextUp({ data, date }: { data: AppData; date: string }) {
+  const upcoming = data.planned.filter((p) => p.date > date && p.status !== 'completed').sort((a, b) => a.date.localeCompare(b.date));
+  if (!upcoming.length) return null;
+  const nextDate = upcoming[0].date;
+  const items = upcoming.filter((p) => p.date === nextDate).map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
+  if (!items.length) return null;
+  const days = Math.round((Date.parse(nextDate) - Date.parse(date)) / 864e5);
+  return (
+    <section class="section">
+      <h2>Next up <span class="muted" style="font-weight:400">· {days === 1 ? 'tomorrow' : fmtDate(nextDate, { weekday: 'long' })}</span></h2>
+      <div class="stack" style="margin-top:8px">
+        {items.map(({ p, w }) => (
+          <a class="cal-item" key={p.id} href={`#/workout/${w!.id}?from=today&date=${nextDate}`}>
+            {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
+            <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS · ${p.status === 'sent' ? 'on Garmin' : 'not sent yet'}` : KIND_LABEL[w!.kind]}{p.note ? ` · ${p.note}` : ''}</span></div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const READINESS_HELP: Record<string, string> = {
+  HRV: 'Heart-rate variability this morning against your two-week average. Higher than normal means recovered; lower means stress or fatigue.',
+  Sleep: 'Last night against your two-week average.',
+  'Resting HR': 'Resting heart rate this morning against your two-week average. Higher than normal is a fatigue or illness signal.',
+  Form: 'Fitness minus fatigue. Negative while building, positive when fresh; +5 to +20 is the window for an event.',
+};
 
 export function statusLabel(s: string): string {
   return { planned: 'Not sent yet', sent: 'On your Garmin', completed: 'Completed', missed: 'Missed' }[s] ?? s;

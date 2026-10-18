@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
-import { downloadBackup, restoreBackup } from '../../data/backup';
+import { autoBackup, downloadBackup, fetchAutoBackup, restoreBackup } from '../../data/backup';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
 import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
@@ -17,6 +17,7 @@ export function Settings({ data }: { data: AppData }) {
   const [claudeKey, setClaudeKey] = useState('');
   const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [lastAuto, setLastAuto] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,6 +26,7 @@ export function Settings({ data }: { data: AppData }) {
     getSetting<string>('claudeKey', '').then(setClaudeKey);
     getSetting<boolean>('coachAuto', false).then(setCoachAuto);
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
+    getSetting<string | null>('lastAutoBackup', null).then(setLastAuto);
   }, []);
 
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
@@ -72,6 +74,32 @@ export function Settings({ data }: { data: AppData }) {
     await db.sync.clear();
     setCreds({ athleteId: '', apiKey: '' });
     notify();
+  }
+
+  async function backupNow() {
+    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+    if (!c?.apiKey) { setMsg({ ok: false, text: 'Connect Intervals.icu first; the automatic backup is kept in your account there.' }); return; }
+    setBusy(true);
+    const r = await autoBackup(c, true);
+    setBusy(false);
+    if (r.ok) { setLastAuto(r.when ?? null); setMsg({ ok: true, text: 'Backed up to your Intervals.icu account.' }); }
+    else setMsg({ ok: false, text: `Automatic backup failed: ${r.error}. The file backup below still works.` });
+  }
+
+  async function restoreFromIntervals() {
+    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+    if (!c?.apiKey) return;
+    setBusy(true);
+    try {
+      const b = await fetchAutoBackup(c);
+      if (!b) { setMsg({ ok: false, text: 'No automatic backup found in your Intervals.icu account.' }); return; }
+      if (!confirm(`Restore the backup from ${new Date(b.exportedAt).toLocaleString()}? This replaces the profile, settings, workouts and plan on this device.`)) return;
+      const r = await restoreBackup(b.text);
+      notify();
+      setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
+      setTimeout(() => location.reload(), 800);
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
   }
 
   async function restore(e: Event) {
@@ -160,10 +188,15 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Backup</h2>
-        <p class="muted small" style="margin-bottom:12px">One file with your profile, settings, keys, workouts and plan. Rides come back from Intervals.icu on their own. {lastBackup ? `Last backup ${new Date(lastBackup).toLocaleDateString()}.` : 'No backup yet.'}</p>
+        <p class="muted small" style="margin-bottom:12px">Your profile, settings, keys, workouts and plan are backed up automatically into your own Intervals.icu account (as a private note dated far in the future) after each sync, at most once a week, and whenever a plan is placed. Activities come back from Intervals.icu on their own. {lastAuto ? `Last automatic backup ${new Date(lastAuto).toLocaleString()}.` : 'No automatic backup yet.'}</p>
         <div class="row wrap">
-          <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
-          <label class="btn" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
+          <button class="btn" onClick={backupNow} disabled={busy}>Back up now</button>
+          <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Restore from Intervals.icu</button>
+        </div>
+        <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
+        <div class="row wrap">
+          <button class="btn quiet" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
+          <label class="btn quiet" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
         </div>
       </section>
 

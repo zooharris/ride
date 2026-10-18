@@ -7,6 +7,7 @@ import { LIBRARY } from '../../library/workouts';
 import { WorkoutProfile } from '../Profile';
 import { testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
+import { fetchAutoBackup, restoreBackup } from '../../data/backup';
 
 /**
  * First run. Step 1 connects Intervals.icu, which already knows the rider's FTP,
@@ -19,6 +20,7 @@ export function Onboarding() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [found, setFound] = useState<AthleteNumbers | null>(null);
+  const [backup, setBackup] = useState<{ text: string; exportedAt: string } | null>(null);
   const [p, setP] = useState<Profile>({ ...DEFAULT_PROFILE });
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
@@ -31,6 +33,7 @@ export function Onboarding() {
       const a = await testConnection(c);
       await setSetting('intervals', c);
       setFound(a);
+      try { setBackup(await fetchAutoBackup(c)); } catch { /* none, or unreadable */ }
       setP({ ...p, name: a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg });
       setStep('review');
     } catch (e) {
@@ -70,6 +73,13 @@ export function Onboarding() {
           <p class="muted" style="margin:8px 0 22px;font-size:16px;line-height:1.55">
             {found ? `Connected as ${found.name}. These came from Intervals.icu; check them and change anything that is out of date.` : 'A few numbers to start. You can change them any time in Settings.'}
           </p>
+          {backup && (
+            <div class="panel accent" style="margin-bottom:14px">
+              <b>A backup from another device was found</b>
+              <p class="muted small" style="margin-top:4px">Saved {new Date(backup.exportedAt).toLocaleString()} in your Intervals.icu account: profile, settings, workouts and plan.</p>
+              <button class="btn primary sm" style="margin-top:10px" onClick={async () => { await restoreBackup(backup.text); notify(); location.hash = '/today'; location.reload(); }}>Restore it and continue</button>
+            </div>
+          )}
           {missing.length > 0 && <div class="msg err" style="margin-bottom:14px">Intervals.icu has no {missing.join(' or ')} set for cycling. Enter a best guess below, or set it on intervals.icu and it will be picked up on the next connect.</div>}
           <div class="form">
             <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>

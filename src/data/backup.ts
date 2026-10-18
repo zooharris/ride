@@ -77,3 +77,53 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
   });
   return { workouts: data.workouts.length, planned: data.planned.length };
 }
+
+
+// ---- automatic backup through Intervals.icu ----
+import { getSetting, setSetting } from './db';
+import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
+
+async function gzipBase64(text: string): Promise<string> {
+  if (typeof CompressionStream === 'undefined') return 'raw:' + btoa(unescape(encodeURIComponent(text)));
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = await new Response(stream).arrayBuffer();
+  let bin = '';
+  for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
+  return 'gz:' + btoa(bin);
+}
+
+async function gunzipBase64(payload: string): Promise<string> {
+  if (payload.startsWith('raw:')) return decodeURIComponent(escape(atob(payload.slice(4))));
+  const bin = atob(payload.replace(/^gz:/, ''));
+  const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return await new Response(stream).text();
+}
+
+/**
+ * Write the backup into the rider's Intervals.icu account if the last one is
+ * older than the interval or `force` is set. Quiet on failure; the manual file
+ * backup is always there.
+ */
+export async function autoBackup(c: IntervalsCredentials, force = false): Promise<{ ok: boolean; when?: string; error?: string }> {
+  const last = await getSetting<string | null>('lastAutoBackup', null);
+  if (!force && last && Date.now() - Date.parse(last) < 7 * 864e5) return { ok: true, when: last };
+  try {
+    const data = await makeBackup();
+    const payload = await gzipBase64(JSON.stringify(data));
+    await writeBackupNote(c, payload);
+    const when = new Date().toISOString();
+    await setSetting('lastAutoBackup', when);
+    return { ok: true, when };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export async function fetchAutoBackup(c: IntervalsCredentials): Promise<{ text: string; exportedAt: string } | null> {
+  const note = await readBackupNote(c);
+  if (!note) return null;
+  const text = await gunzipBase64(note.payload);
+  const parsed = JSON.parse(text) as Backup;
+  return { text, exportedAt: parsed.exportedAt };
+}

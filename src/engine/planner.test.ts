@@ -1,102 +1,181 @@
 import { describe, expect, it } from 'vitest';
+import { assess, type Assessment } from './assessment';
 import { generatePlan, phaseSequence, planWeeks, type PlanRequest } from './planner';
-import { LIBRARY } from '../library/workouts';
+import { demand } from './goals';
+import { generateSession } from './generate';
+import { workoutStats } from './workout';
 import { addDays } from './load';
+import type { Profile, Ride, Wellness } from './types';
 
-const base: PlanRequest = {
-  start: '2026-10-19', goal: { kind: 'event', eventType: 'century', date: '2027-02-06', name: 'Spring century' },
-  days: [0, 2, 4, 6], longDay: 0, strengthDays: [1, 3], hoursPerWeek: 7, basis: 'power', masters: true, currentCtl: 35, indoorMidweek: true,
-};
+const profile: Profile = { name: 'T', ftp: 250, lthr: 160, maxHr: 180, restingHr: 50, weightKg: 90, basis: 'power', masters: true, units: 'imperial', rideDays: [0, 6], hoursPerWeek: 7 };
+const today = '2026-10-19';
+
+function ride(date: string, hours: number, IF: number, extra: Partial<Ride> = {}): Ride {
+  const seconds = hours * 3600;
+  return { id: date + hours, date, startTime: date, name: 'r', type: 'Ride', seconds, tss: Math.round(seconds * IF * IF / 36), normalizedPower: IF * 250, averageHr: 130 + IF * 40, intensityFactor: IF, ...extra };
+}
+
+/** Twelve weeks of a steady rider: two rides a weekend, one midweek, long rides with low drift. */
+function history(): { rides: Ride[]; wellness: Wellness[] } {
+  const rides: Ride[] = [];
+  const wellness: Wellness[] = [];
+  for (let i = 84; i >= 1; i--) {
+    const d = addDays(today, -i);
+    const dw = new Date(d + 'T00:00:00').getDay();
+    if (dw === 6) rides.push(ride(d, 1.75, 0.82, { efficiencyFactor: 1.5 + (84 - i) / 400 }));
+    if (dw === 0) rides.push(ride(d, 2.75, 0.68, { decoupling: 4, efficiencyFactor: 1.5 + (84 - i) / 400 }));
+    if (dw === 3) rides.push(ride(d, 1.25, 0.72, { efficiencyFactor: 1.5 + (84 - i) / 400 }));
+    wellness.push({ date: d, hrv: 50, restingHr: 50, sleepSeconds: 7 * 3600 });
+  }
+  return { rides, wellness };
+}
+
+const h = history();
+const baseAssessment = assess({ today, profile, rides: h.rides, wellness: h.wellness, planned: [], strengthDays: [2, 4] });
+
+const req = (over: Partial<PlanRequest> = {}): PlanRequest => ({
+  start: today,
+  goal: { kind: 'event', date: '2027-02-06', name: 'Spring century', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' },
+  availability: { hours: [4, 0, 1.5, 0, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], strengthDays: [1, 3] },
+  basis: 'power', masters: true, profile, assessment: baseAssessment, ...over,
+});
+
+describe('assessment', () => {
+  it('reads fitness, hours, longest ride and decoupling from history', () => {
+    const a = baseAssessment;
+    expect(a.fitness.ctl).toBeGreaterThan(30);
+    expect(a.weeklyHours.value).toBeCloseTo(5.75, 1);
+    expect(a.weeklyHours.confidence).toBe('good');
+    expect(a.longestRide.value).toBe(2.75 * 3600);
+    expect(a.decoupling.value).toBe(4);
+    expect(a.decoupling.confidence).toBe('good');
+    expect(a.efficiencyTrend.value).toBeGreaterThan(0);
+    expect(a.summary.length).toBeGreaterThan(5);
+  });
+  it('sees no cost after strength days when the mornings look normal', () => {
+    expect(baseAssessment.afterStrength.value).toBe(0);
+    expect(baseAssessment.afterStrength.confidence).toBe('good');
+  });
+  it('sees a cost after strength days when HRV drops', () => {
+    const w = h.wellness.map((x) => ({ ...x, hrv: [3, 5].includes(new Date(x.date + 'T00:00:00').getDay()) ? 38 : 50 }));
+    const a = assess({ today, profile, rides: h.rides, wellness: w, planned: [], strengthDays: [2, 4] });
+    expect(a.afterStrength.value).toBeGreaterThan(0.5);
+  });
+  it('is honest with no data', () => {
+    const a = assess({ today, profile, rides: [], wellness: [], planned: [], strengthDays: [] });
+    expect(a.weeklyHours.confidence).toBe('none');
+    expect(a.longestRide.confidence).toBe('none');
+    expect(a.limiters).toContain('base');
+  });
+  it('flags a VO2max limiter from the power curve', () => {
+    const a = assess({ today, profile, rides: h.rides, wellness: h.wellness, planned: [], strengthDays: [], powerCurve: [{ seconds: 5, watts: 800 }, { seconds: 60, watts: 380 }, { seconds: 300, watts: 265 }, { seconds: 1200, watts: 258 }] });
+    expect(a.limiters[0]).toBe('vo2max');
+  });
+});
+
+describe('goal demand', () => {
+  it('models a century from distance, climbing and the rider pace', () => {
+    const d = demand({ kind: 'event', date: '2027-02-06', name: 'x', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' }, profile, baseAssessment, 27);
+    expect(d.eventHours).toBeGreaterThan(5.5);
+    expect(d.eventHours).toBeLessThan(8);
+    expect(d.eventTss).toBeGreaterThan(250);
+    expect(d.requiredCtl).toBeGreaterThan(55);
+    expect(d.requiredLongest).toBeGreaterThan(4 * 3600);
+    expect(d.why).toMatch(/hard day/);
+  });
+  it('asks for more fitness for a bigger FTP jump', () => {
+    const small = demand({ kind: 'ftp', weeks: 12, targetWatts: 260 }, profile, baseAssessment);
+    const big = demand({ kind: 'ftp', weeks: 12, targetWatts: 290 }, profile, baseAssessment);
+    expect(big.requiredCtl).toBeGreaterThan(small.requiredCtl);
+  });
+});
+
+describe('session generation', () => {
+  it('fits the slot and progresses', () => {
+    const early = generateSession({ type: 'sweetspot', minutes: 75, progression: 0, outdoor: false, reason: '' });
+    const late = generateSession({ type: 'sweetspot', minutes: 105, progression: 1, outdoor: true, reason: '' });
+    expect(Math.abs(workoutStats(early.blocks).seconds - 75 * 60)).toBeLessThan(6 * 60);
+    expect(Math.abs(workoutStats(late.blocks).seconds - 105 * 60)).toBeLessThan(6 * 60);
+    expect(early.name).toMatch(/Sweet Spot \d × 10/);
+    expect(late.name).toMatch(/Sweet Spot \d × 20/);
+    expect(late.setting).toBe('outdoor');
+  });
+  it('builds a long ride of exactly the minutes asked', () => {
+    const w = generateSession({ type: 'long', minutes: 190, progression: 0.5, outdoor: true, reason: '' });
+    expect(workoutStats(w.blocks).seconds).toBe(190 * 60);
+    expect(w.name).toBe('Long Endurance 3:10');
+  });
+});
 
 describe('planner', () => {
-  it('counts weeks to an event and clamps fixed-length goals', () => {
-    expect(planWeeks(base.goal, base.start)).toBe(15);
-    expect(planWeeks({ kind: 'ftp', weeks: 2 }, base.start)).toBe(4);
-    expect(planWeeks({ kind: 'ftp', weeks: 40 }, base.start)).toBe(24);
+  it('schedules two long rides when two big slots exist and long days do not cost the rider', () => {
+    const plan = generatePlan(req());
+    const base1 = plan.weeks[0];
+    const longs = base1.sessions.filter((s) => s.type === 'long');
+    expect(longs).toHaveLength(2);
+    expect(longs.map((s) => new Date(s.date + 'T00:00:00').getDay()).sort()).toEqual([0, 6]);
+    expect(plan.decisions.some((d) => d.startsWith('Two long rides'))).toBe(true);
   });
-
-  it('builds a masters phase sequence with a 2:1 rhythm and a taper before an event', () => {
-    const seq = phaseSequence(base.goal, 15, true);
-    expect(seq).toHaveLength(15);
-    expect(seq[2]).toBe('recovery');
-    expect(seq[5]).toBe('recovery');
-    expect(seq.slice(-2)).toEqual(['taper', 'taper']);
-    expect(seq[12]).not.toBe('recovery');          // week before the taper is a loading week
-    expect(seq.filter((p) => p === 'base').length).toBeGreaterThanOrEqual(4);
+  it('drops to one long ride when the data say long days cost a lot', () => {
+    const a: Assessment = { ...baseAssessment, afterLongRide: { value: 0.7, confidence: 'good', note: 'x' } };
+    const plan = generatePlan(req({ assessment: a }));
+    expect(plan.weeks[0].sessions.filter((s) => s.type === 'long')).toHaveLength(1);
   });
-
-  it('uses a 3:1 rhythm when masters is off', () => {
-    const seq = phaseSequence({ kind: 'ftp', weeks: 12 }, 12, false);
-    expect(seq[3]).toBe('recovery');
-    expect(seq[2]).not.toBe('recovery');
-  });
-
-  it('generates a full plan with rides on the chosen days only', () => {
-    const plan = generatePlan(base, LIBRARY);
-    expect(plan.weeks).toHaveLength(15);
-    for (const w of plan.weeks) {
-      expect(w.days.length).toBeGreaterThan(0);
-      for (const d of w.days) {
-        expect(base.days).toContain(new Date(d.date + 'T00:00:00').getDay());
-        expect(d.workoutId).toBeTruthy();
-      }
-      // the long ride lands on the long day
-      const long = w.days.find((d) => d.role === 'long' || d.role === 'easy');
-      expect(long && new Date(long.date + 'T00:00:00').getDay()).toBe(0);
+  it('uses only available days and keeps within the slot hours', () => {
+    const plan = generatePlan(req());
+    for (const w of plan.weeks) for (const s of w.sessions) {
+      const dw = new Date(s.date + 'T00:00:00').getDay();
+      expect([0, 2, 4, 6]).toContain(dw);
+      expect(s.seconds).toBeLessThanOrEqual(req().availability.hours[dw] * 3600 + 60);
     }
   });
-
-  it('respects the hour budget and eases in recovery weeks', () => {
-    const plan = generatePlan(base, LIBRARY);
-    const loading = plan.weeks.filter((w) => w.phase === 'base' || w.phase === 'build');
-    for (const w of loading) expect(w.hours).toBeLessThanOrEqual(base.hoursPerWeek * 1.15);
+  it('puts hard rides after strength only when the data say it is free', () => {
+    const costly: Assessment = { ...baseAssessment, afterStrength: { value: 0.8, confidence: 'good', note: 'x' } };
+    const plan = generatePlan(req({ assessment: costly, availability: { hours: [4, 0, 1.5, 1.5, 1.5, 0, 4], outdoor: [true, false, false, false, false, false, true], strengthDays: [1, 3] } }));
+    const build = plan.weeks.find((w) => w.phase === 'build')!;
+    const hard = build.sessions.filter((s) => ['threshold', 'sweetspot', 'vo2max', 'test'].includes(s.type));
+    for (const s of hard) expect(new Date(s.date + 'T00:00:00').getDay()).not.toBe(2);   // Tuesday follows Monday strength
+    const free = generatePlan(req());
+    expect(free.decisions.some((d) => d.startsWith('Hard rides can follow strength'))).toBe(true);
+  });
+  it('builds phases from the goal and limiters, with tests at block starts and a taper', () => {
+    const plan = generatePlan(req());
+    expect(plan.weeks[0].sessions.some((s) => s.type === 'test')).toBe(true);
+    const firstBuild = plan.weeks.find((w) => w.phase === 'build');
+    expect(firstBuild?.sessions.some((s) => s.type === 'test')).toBe(true);
+    expect(plan.weeks[plan.weeks.length - 1].phase).toBe('taper');
+    expect(plan.weeks.some((w) => w.phase === 'recovery')).toBe(true);
     const rec = plan.weeks.find((w) => w.phase === 'recovery')!;
-    const before = plan.weeks[rec.index - 2];
-    expect(rec.tss).toBeLessThan(before.tss * 0.8);
+    expect(rec.tss).toBeLessThan(plan.weeks[rec.index - 2].tss);
   });
-
-  it('puts a test at the start of base and build, and never a hard ride after strength', () => {
-    const plan = generatePlan(base, LIBRARY);
-    expect(plan.weeks[0].days.some((d) => d.role === 'test')).toBe(true);
-    const firstBuild = plan.weeks.find((w) => w.phase === 'build')!;
-    expect(firstBuild.days.some((d) => d.role === 'test')).toBe(true);
-    for (const w of plan.weeks) for (const d of w.days) {
-      if (d.role === 'key' || d.role === 'secondary') {
-        const dow = new Date(d.date + 'T00:00:00').getDay();
-        expect(base.strengthDays).not.toContain((dow + 6) % 7);
-      }
-    }
+  it('grows the long ride toward what the event needs', () => {
+    const plan = generatePlan(req());
+    const longs = plan.weeks.filter((w) => w.phase !== 'recovery' && w.phase !== 'taper').map((w) => Math.max(...w.sessions.filter((s) => s.type === 'long').map((s) => s.seconds)));
+    expect(longs[longs.length - 1]).toBeGreaterThan(longs[0]);
+    expect(plan.longestPlanned).toBeGreaterThanOrEqual(3.5 * 3600);
   });
-
-  it('tapers into the event with form rising', () => {
-    const plan = generatePlan(base, LIBRARY);
-    const last = plan.projection[plan.projection.length - 1];
-    const twoWeeksOut = plan.projection[plan.projection.length - 15];
-    expect(last.tsb).toBeGreaterThan(twoWeeksOut.tsb);
-    expect(plan.goalDate).toBe('2027-02-06');
-  });
-
-  it.skip('judges feasibility honestly (the rule-based planner is being replaced; see planner.ts)', () => {
-    const rich = generatePlan({ ...base, hoursPerWeek: 10, currentCtl: 50 }, LIBRARY);
-    expect(['on-track', 'close']).toContain(rich.verdict);
-    const thin = generatePlan({ ...base, hoursPerWeek: 3, currentCtl: 15, goal: { kind: 'event', eventType: 'gran-fondo', date: addDays(base.start, 5 * 7) } }, LIBRARY);
+  it('gives an honest verdict and a plain-words plan', () => {
+    const plan = generatePlan(req());
+    expect(['on-track', 'close', 'short']).toContain(plan.verdict);
+    expect(plan.advice).toMatch(/fitness should reach/);
+    expect(plan.decisions.length).toBeGreaterThanOrEqual(3);
+    const thin = generatePlan(req({ availability: { hours: [1.5, 0, 1, 0, 1, 0, 1.5], outdoor: [], strengthDays: [] } }));
     expect(thin.verdict).toBe('short');
-    expect(thin.advice).toMatch(/more hour|more week/);
-    const general = generatePlan({ ...base, goal: { kind: 'general', weeks: 8 } }, LIBRARY);
-    expect(general.verdict).toBe('no-target');
+    expect(thin.advice).toMatch(/available hours are the ceiling/);
   });
-
-  it('varies the key session family by goal', () => {
-    const vo2 = generatePlan({ ...base, goal: { kind: 'vo2max', weeks: 10 } }, LIBRARY);
-    const families = vo2.weeks.flatMap((w) => w.days.filter((d) => d.role === 'key').map((d) => LIBRARY.find((x) => x.id === d.workoutId)!.family));
-    expect(families).toContain('vo2max');
-    const weight = generatePlan({ ...base, goal: { kind: 'weight', weeks: 8 } }, LIBRARY);
-    const wf = weight.weeks.flatMap((w) => w.days.map((d) => LIBRARY.find((x) => x.id === d.workoutId)!.family));
-    expect(wf.filter((f) => f === 'endurance').length).toBeGreaterThan(wf.length / 2);
+  it('handles other goal kinds', () => {
+    const ftp = generatePlan(req({ goal: { kind: 'ftp', weeks: 10, targetWatts: 270 } }));
+    expect(ftp.weeks).toHaveLength(10);
+    expect(ftp.weeks.some((w) => w.sessions.some((s) => s.type === 'threshold'))).toBe(true);
+    const weight = generatePlan(req({ goal: { kind: 'weight', weeks: 8 } }));
+    expect(weight.verdict).toBe('no-target');
+    expect(weight.weeks.every((w) => w.sessions.filter((s) => ['threshold', 'vo2max'].includes(s.type)).length === 0)).toBe(true);
+    const vo2 = generatePlan(req({ goal: { kind: 'vo2max', weeks: 8 } }));
+    expect(vo2.weeks.some((w) => w.sessions.some((s) => s.type === 'vo2max'))).toBe(true);
   });
-
-  it('works on heart rate with HR-capable workouts only', () => {
-    const hr = generatePlan({ ...base, basis: 'hr' }, LIBRARY);
-    for (const w of hr.weeks) for (const d of w.days) expect(LIBRARY.find((x) => x.id === d.workoutId)!.bases).toContain('hr');
+  it('counts weeks', () => {
+    expect(planWeeks({ kind: 'event', date: '2027-02-06', name: '', eventType: 'century', priority: 'A' }, today)).toBe(15);
+    const { seq } = phaseSequence(15, demand(req().goal, profile, baseAssessment), baseAssessment, req().goal, true);
+    expect(seq).toHaveLength(15);
   });
 });

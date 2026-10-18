@@ -55,7 +55,7 @@ export interface Workout {
   /** Where it is meant to be ridden. Outdoor rides carry a long warm-up and finish in zone 2; indoor ones are compact. */
   setting: 'outdoor' | 'indoor' | 'any';
   blocks: WorkoutBlock[];
-  source: 'library' | 'mine';
+  source: 'library' | 'mine' | 'generated';
 }
 
 export interface WorkoutStats {

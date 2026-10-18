@@ -54,6 +54,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <div class="row wrap" style="margin:18px 0;gap:8px">
         <button class="btn primary" onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
+        {w.source === 'mine' ? <a class="btn quiet" href={`#/build/${w.id}`}>Edit</a> : <a class="btn quiet" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         <label class="btn" style="position:relative;overflow:hidden">Pick a date
           <input type="date" min={today()} style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) schedule(v); }} />
         </label>

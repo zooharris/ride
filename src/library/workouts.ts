@@ -1,4 +1,6 @@
 import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
+import { OUTDOOR } from './outdoor';
+import { INDOOR } from './indoor';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -15,7 +17,7 @@ const lib = (w: Omit<Workout, 'source'>): Workout => ({ ...w, source: 'library' 
  * short, standard or long feel so the calendar has something for most days.
  * Intensities are fractions of FTP; the engine renders them as HR when asked.
  */
-export const LIBRARY: Workout[] = [
+const CORE: Workout[] = [
   // Recovery
   lib({ id: 'lib-spin-30', name: 'Easy Spin', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
     purpose: 'Thirty minutes of light pedalling to move blood through tired legs the day after strength work or intervals. Keep the cadence high and the ego at home.',
@@ -112,6 +114,9 @@ export const LIBRARY: Workout[] = [
     physiology: 'LTHR estimate (Friel protocol).',
     blocks: [warm(15), step(30, 1.0, { label: 'Test, lap at 10 min' }), cool(10)] }),
 ];
+
+/** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */
+export const LIBRARY: Workout[] = [...CORE, ...OUTDOOR, ...INDOOR];
 
 export function libraryById(id: string): Workout | undefined {
   return LIBRARY.find((w) => w.id === id);

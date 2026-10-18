@@ -8,6 +8,8 @@ import { WorkoutScreen } from './screens/Workout';
 import { Rides } from './screens/Rides';
 import { Settings } from './screens/Settings';
 import { Onboarding } from './screens/Onboarding';
+import { Builder } from './screens/Builder';
+import { Plan } from './screens/Plan';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg> },
@@ -29,11 +31,13 @@ export function App() {
     case 'calendar': screen = <Calendar data={data} />; break;
     case 'library': screen = <Library data={data} />; break;
     case 'workout': screen = <WorkoutScreen data={data} id={id} params={route.params} />; break;
+    case 'build': screen = <Builder key={id ?? route.params.get('copy') ?? 'new'} data={data} id={id} copyId={route.params.get('copy') ?? undefined} />; break;
+    case 'plan': screen = <Plan data={data} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : root === 'plan' ? 'calendar' : root || 'today';
 
   return (
     <div class="shell">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { POWER_ZONES, hrZone, powerToHrFraction, powerZone, zoneTable } from './zones';
-import { formatDuration, renderIntervalsText, workoutStats } from './workout';
+import { flattenSteps, formatDuration, renderIntervalsText, workoutStats } from './workout';
 import { fitnessSeries, hrTss, powerTss, rideTss } from './load';
 import { scoreRide } from './compliance';
 import { readiness } from './readiness';
@@ -151,5 +151,33 @@ describe('readiness', () => {
     const r = readiness(undefined, [], 0);
     expect(r.score).toBeGreaterThanOrEqual(0);
     expect(r.drivers).toHaveLength(1);
+  });
+});
+
+describe('library', () => {
+  it('has unique ids and sane numbers for every workout', async () => {
+    const { LIBRARY } = await import('../library/workouts');
+    const ids = new Set<string>();
+    for (const w of LIBRARY) {
+      expect(ids.has(w.id), `duplicate id ${w.id}`).toBe(false);
+      ids.add(w.id);
+      const s = workoutStats(w.blocks);
+      expect(s.seconds, w.name).toBeGreaterThan(20 * 60);
+      expect(s.seconds, w.name).toBeLessThanOrEqual(4 * 3600 + 60);
+      expect(s.tss, w.name).toBeGreaterThan(5);
+      expect(w.purpose.length, w.name).toBeGreaterThan(40);
+      for (const st of flattenSteps(w.blocks)) {
+        expect(st.intensity, w.name).toBeGreaterThan(0.3);
+        expect(st.intensityHigh ?? 2, w.name).toBeGreaterThanOrEqual(st.intensity);
+      }
+    }
+    expect(LIBRARY.length).toBeGreaterThanOrEqual(55);
+  });
+  it('trail rides land on their stated total duration', async () => {
+    const { OUTDOOR } = await import('../library/outdoor');
+    const w = OUTDOOR.find((x) => x.id === 'trail-ss-3x12')!;
+    expect(workoutStats(w.blocks).seconds).toBe(105 * 60);
+    const l = OUTDOOR.find((x) => x.id === 'trail-long-195')!;
+    expect(workoutStats(l.blocks).seconds).toBe(195 * 60);
   });
 });

@@ -11,7 +11,10 @@ import { credentials } from '../../sync/syncService';
 import { fetchStreams } from '../../sync/intervals';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { RideTrace } from '../RideTrace';
-import { KIND_LABEL } from './Plan';
+import { KIND_COLOR, KIND_LABEL } from './Plan';
+import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
+import { getSetting, setSetting } from '../../data/db';
+import { today } from '../../engine/load';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -29,18 +32,35 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
     );
   }
   const mph = (ms?: number) => ms ? (profile.units === 'imperial' ? `${(ms * 2.237).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : '';
+  return <RideList data={data} mph={mph} />;
+}
+
+function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }) {
+  const profile = data.profile!;
+  const [view, setView] = useState<'list' | 'month'>('list');
+  const [month, setMonth] = useState(monthOf(today()));
+  useEffect(() => { getSetting<'list' | 'month'>('ridesView', 'list').then(setView); }, []);
+  const pickView = (v: 'list' | 'month') => { setView(v); setSetting('ridesView', v); };
   return (
     <div>
-      <div class="page-head"><h1>Rides</h1><span class="muted small">{data.rides.length} synced</span></div>
-      <div class="stack">
+      <div class="page-head"><h1>Activities</h1>
+        <div class="row"><span class="muted small">{data.rides.length} synced</span>
+          <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div></div></div>
+      {view === 'month' && (
+        <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
+          render={(d) => data.rides.filter((r) => r.date === d).map((r) => (
+            <a class="month-item done" key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`}><span class="sw" style={`background:${KIND_COLOR[r.sport]}`} /><span>{r.name}</span></a>
+          ))} />
+      )}
+      {view === 'list' && <div class="stack">
         {data.rides.map((r) => {
           const p = data.planned.find((x) => x.activityId === r.id);
           const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
-          const c = w ? scoreRide(w, r) : undefined;
+          const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
           return (
             <a class="cal-item" key={r.id} href={`#/rides/${r.id}`}>
               <div class="t">
-                <b>{r.name}</b>
+                <b>{r.name}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
                 <span>{fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {clock(r.seconds)} · {distance(r.distanceM, profile)}{mph(r.averageSpeedMs) ? ` · ${mph(r.averageSpeedMs)}` : ''}</span>
               </div>
               <div style="text-align:right">
@@ -50,7 +70,7 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
             </a>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }

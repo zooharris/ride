@@ -204,3 +204,18 @@ p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .profile.hero rect { animation: none; } }
 
 .empty { padding: 28px 16px; text-align: center; color: var(--ink-2); border: 1px dashed var(--line); border-radius: var(--radius); }
+
+/* month grid */
+.month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.month-head { font-size: 11px; color: var(--ink-3); text-align: center; padding: 4px 0; }
+.month-cell { min-height: 68px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 4px 5px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+.month-cell.out { opacity: 0.4; }
+.month-cell.today { border-color: var(--accent); }
+.month-day { font-size: 11px; color: var(--ink-3); line-height: 1; }
+.month-cell.today .month-day { color: var(--accent); font-weight: 700; }
+.month-item { display: flex; align-items: center; gap: 4px; font-size: 10.5px; line-height: 1.2; text-decoration: none; color: var(--ink-2); min-width: 0; }
+.month-item .sw { width: 6px; height: 12px; border-radius: 2px; flex: 0 0 6px; }
+.month-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.month-item.done span { color: var(--ink); }
+.month-item.missed { opacity: 0.55; text-decoration: line-through; }
+@media (min-width: 900px) { .month-cell { min-height: 96px; } .month-item { font-size: 12px; } }

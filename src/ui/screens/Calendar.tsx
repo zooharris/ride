@@ -1,4 +1,8 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
+import { getSetting, setSetting } from '../../data/db';
+import { KIND_COLOR } from './Plan';
+import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
 import { allWorkouts, findWorkout, notify } from '../store';
 import { WorkoutProfile } from '../Profile';
@@ -15,6 +19,10 @@ import { KIND_LABEL, KindDot } from './Plan';
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;
   const [start, setStart] = useState(weekStart(today()));
+  const [view, setView] = useState<'list' | 'month'>('list');
+  const [month, setMonth] = useState(monthOf(today()));
+  useEffect(() => { getSetting<'list' | 'month'>('calendarView', 'list').then(setView); }, []);
+  const pickView = (v: 'list' | 'month') => { setView(v); setSetting('calendarView', v); };
   const [picking, setPicking] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -79,11 +87,36 @@ export function Calendar({ data }: { data: AppData }) {
         <h1>Calendar</h1>
         <div class="row">
           <a class="btn sm" href="#/plan">Plan</a>
-          <button class="btn sm quiet" onClick={() => setStart(addDays(start, -7))}>‹</button>
-          <button class="btn sm quiet" onClick={() => setStart(weekStart(today()))}>This week</button>
-          <button class="btn sm quiet" onClick={() => setStart(addDays(start, 7))}>›</button>
+          <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
+          {view === 'list' && <>
+            <button class="btn sm quiet" onClick={() => setStart(addDays(start, -7))}>‹</button>
+            <button class="btn sm quiet" onClick={() => setStart(weekStart(today()))}>This week</button>
+            <button class="btn sm quiet" onClick={() => setStart(addDays(start, 7))}>›</button>
+          </>}
         </div>
       </div>
+
+      {view === 'month' && (
+        <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
+          render={(d) => {
+            const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
+            const rides = data.rides.filter((r) => r.date === d && !plans.some((p) => p.activityId === r.id));
+            return (
+              <>
+                {plans.map((p) => {
+                  const w = findWorkout(data.mine, p.workoutId);
+                  if (!w) return null;
+                  const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
+                  return <a class={`month-item ${p.status}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={w.name}><span class="sw" style={`background:${colour}`} /><span>{w.name}</span></a>;
+                })}
+                {rides.map((r) => <a class="month-item done" key={r.id} href={`#/rides/${r.id}`} title={r.name}><span class="sw" style="background:var(--good)" /><span>{r.name}</span></a>)}
+                {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking(d)}>+</button>}
+              </>
+            );
+          }} />
+      )}
+
+      {view === 'list' && <>
 
       {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
       {[0, 7].map((offset) => {
@@ -136,6 +169,8 @@ export function Calendar({ data }: { data: AppData }) {
           </section>
         );
       })}
+
+      </>}
 
       {picking && (
         <div class="modal-bg" onClick={() => setPicking(null)}>

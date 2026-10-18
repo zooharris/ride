@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import { applyPlan, buildPlan, cancelPlan, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
 import type { Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
@@ -71,6 +71,13 @@ export function Plan({ data }: { data: AppData }) {
     try { setCheck(await replan(data)); await markChecked(); } finally { setBusy(false); }
   }
 
+  async function cancel() {
+    const pending = data.planned.filter((p) => p.date >= today() && p.status !== 'completed').length;
+    if (!confirm(`Cancel this plan? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done are kept.`)) return;
+    setBusy(true);
+    try { await cancelPlan(data); setActive(null); setCheck(null); setPlan(null); } finally { setBusy(false); }
+  }
+
   async function applyCheck() {
     if (!check || !active) return;
     setBusy(true);
@@ -97,7 +104,10 @@ export function Plan({ data }: { data: AppData }) {
               <b>{active.goal.kind === 'event' ? active.goal.name || 'Event' : GOAL_LABEL[active.goal.kind]}</b>
               <div class="muted small">{active.goal.kind === 'event' ? `${fmtDate(active.goal.date, { month: 'long', day: 'numeric' })} · ` : ''}on the calendar since {fmtDate(active.start, { month: 'short', day: 'numeric' })}{active.requiredCtl ? ` · goal wants fitness ${active.requiredCtl}` : ''}</div>
             </div>
-            <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>
+            <div class="row" style="gap:6px">
+              <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>
+              <button class="btn sm quiet" onClick={cancel} disabled={busy}>Cancel plan</button>
+            </div>
           </div>
           {check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
         </section>

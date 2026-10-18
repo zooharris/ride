@@ -96,6 +96,24 @@ export async function replan(data: AppData): Promise<Replan | null> {
   return { review, plan, changes, summary, fitnessNow, fitnessPlanned };
 }
 
+/**
+ * Cancel the plan in force: everything it put on the calendar from today on
+ * that has not been done comes off, including from Intervals.icu and the Garmin.
+ * Completed sessions stay as history.
+ */
+export async function cancelPlan(data: AppData): Promise<{ removed: number }> {
+  const from = today();
+  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed');
+  const c = await credentials();
+  for (const p of future) {
+    if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* a stale event is harmless */ } }
+    await db.planned.delete(p.id);
+  }
+  await setSetting('activePlan', null);
+  notify();
+  return { removed: future.length };
+}
+
 export async function markChecked(): Promise<void> {
   const a = await getActivePlan();
   if (a) await setSetting('activePlan', { ...a, lastCheck: today() });

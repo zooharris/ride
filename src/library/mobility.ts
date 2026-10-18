@@ -32,6 +32,14 @@ export const MOBILITY: MobilityDef[] = [
   M('doorway-pec', 'neck-shoulders', 'Doorway chest stretch', 45, 'Forearms on a door frame at shoulder height, step through until the chest opens.', 'Chest and front of shoulder, rounded forward by the bars.'),
   M('wall-angel', 'thoracic', 'Wall angel', 45, 'Back and arms against a wall, slide the arms up and down keeping wrists and elbows in contact.', 'Upper-back posture and shoulder mobility.'),
   M('ninety-ninety', 'hips', '90/90 hip switch', 60, 'Sit with one leg bent in front, the other to the side, both knees at right angles; rotate the knees side to side, sitting tall.', 'Hip rotation in both directions; the full range cycling never uses.'),
+  M('frog', 'hips', 'Frog stretch', 60, 'On hands and knees, knees wide, feet turned out, sit the hips back toward the heels and breathe.', 'Adductors and inner hip; opens the groin that a narrow stance tightens.'),
+  M('lying-it-band', 'glutes', 'Lying glute and outer-hip stretch', 45, 'On your back, cross one leg over the other and let both knees fall to the side; keep the shoulders down.', 'Outer hip and the tissue along the thigh that knee pain often starts from.', true),
+  M('knee-to-chest', 'low-back', 'Knee to chest', 40, 'On your back, hug one knee to the chest, the other leg long on the floor.', 'Low-back release and a gentle hip-flexor stretch on the long leg.', true),
+  M('seated-twist', 'low-back', 'Seated spinal twist', 40, 'Sit tall, one knee bent and crossed over, turn the chest toward that knee with the opposite elbow outside it.', 'Spinal rotation and the outer hip together.', true),
+  M('downward-dog', 'hamstrings', 'Downward dog with pedalling heels', 60, 'Hands and feet on the floor, hips high; bend one knee and press the other heel down, alternating slowly.', 'Hamstrings, calves and shoulders in one move.'),
+  M('lat-stretch', 'thoracic', 'Kneeling lat stretch', 45, 'Kneel with the forearms on a bench or chair, sit the hips back and let the chest sink toward the floor.', 'Lats and the upper back; makes reaching the drops easier.'),
+  M('ankle-rocks', 'calves', 'Ankle rocks', 45, 'Half-kneeling, the front foot flat, rock the knee forward over the toes without the heel lifting.', 'Ankle range for a smooth pedal stroke; the first joint that stiffens with age.', true),
+  M('shoulder-rolls', 'neck-shoulders', 'Shoulder rolls and chin tucks', 30, 'Roll the shoulders slowly back ten times, then draw the chin straight back ten times as if making a double chin.', 'Resets the neck and shoulders after hours looking up the road.'),
 ];
 
 export function mobilityFor(targets: Target[]): MobilityDef[] {

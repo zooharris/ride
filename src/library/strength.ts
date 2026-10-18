@@ -51,6 +51,20 @@ export const EXERCISES: ExerciseDef[] = [
   E('clamshell', 'hip', 'Clamshell', ['bodyweight', 'band'], 'On your side, knees bent, feet together, lift the top knee without the pelvis rolling back.', 'Glute medius, which keeps the knee tracking straight over the pedal.', false, true),
   E('side-lying-leg-raise', 'hip', 'Side-lying leg raise', ['bodyweight'], 'On your side, top leg straight, lift it to about 45 degrees with the toes pointing forward, lower slowly.', 'Hip abductors for a stable pelvis in the saddle.', false, true),
   E('calf-raise', 'hip', 'Single-leg calf raise', ['bodyweight', 'dumbbells'], 'On one foot, rise onto the toes, pause, lower past level if on a step.', 'Calves and ankle stiffness for an efficient pedal stroke.', true, true),
+  E('monster-walk', 'hip', 'Band monster walk', ['band'], 'Band around the ankles or above the knees, quarter squat, step sideways keeping tension; both directions.', 'Glute medius under load; the hip stays level when you stand on the pedals.', false),
+  // More squat, hinge, single leg
+  E('wall-sit', 'squat', 'Wall sit', ['bodyweight'], 'Back flat against a wall, thighs level, hold; breathe steadily.', 'Isometric quad endurance like a long seated climb.', false),
+  E('single-leg-bridge', 'hinge', 'Single-leg glute bridge', ['bodyweight'], 'On your back, one foot flat, the other leg held up; drive the hips up with the one leg, keep the pelvis level.', 'One-sided glute strength and pelvic control.', false, true),
+  E('lateral-lunge', 'single-leg', 'Lateral lunge', ['bodyweight', 'dumbbells'], 'Step wide to one side, sit into that hip with the other leg straight, push back to standing.', 'Adductors and glutes in the sideways plane the bike never trains; protects the hips.', true, true),
+  E('db-swing', 'hinge', 'Dumbbell swing', ['dumbbells'], 'One dumbbell held in both hands, hinge and swing it between the legs, snap the hips forward to chest height; the arms just hold on.', 'Explosive hip extension: power for sprints and standing climbs.'),
+  // More push and pull
+  E('floor-press', 'push', 'Dumbbell floor press', ['dumbbells'], 'On your back on the floor, dumbbells pressed from the upper arms resting on the floor to lockout.', 'A pressing option with no bench, kind to the shoulders.'),
+  E('band-row', 'pull', 'Band row', ['band'], 'Band anchored in front at chest height, row the hands to the ribs, squeeze the shoulder blades, slow return.', 'Upper-back strength with just a band.'),
+  E('db-pullover', 'pull', 'Dumbbell pullover', ['dumbbells', 'bench'], 'Lying across the bench, one dumbbell held over the chest, lower it in an arc behind the head and pull it back.', 'Lats and chest opening; the breathing muscles get a stretch under load.'),
+  // More trunk
+  E('farmer-carry', 'trunk', 'Farmer carry', ['dumbbells'], 'A heavy dumbbell in each hand, walk tall for the distance or time; no leaning.', 'Grip, trunk and posture under load; useful strength for the whole day, not just the bike.', true),
+  E('hollow-hold', 'trunk', 'Hollow hold', ['bodyweight'], 'On your back, lower back pressed down, arms and legs held long and low, hold.', 'Deep front-trunk strength for an aero position that does not sag.', false),
+  E('suitcase-carry', 'trunk', 'Suitcase carry', ['dumbbells'], 'One heavy dumbbell in one hand, walk tall without leaning to either side; switch hands.', 'Lateral trunk strength; the hips stay level while one leg pushes.', true, true),
 ];
 
 export function exercisesFor(pattern: Pattern, have: Equipment[]): ExerciseDef[] {

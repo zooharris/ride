@@ -182,7 +182,7 @@ export function Calendar({ data }: { data: AppData }) {
             <div class="seg" style="margin-bottom:12px">
               {(['ride', 'strength', 'mobility', 'walk'] as const).map((k) => <button key={k} class={pickKind === k ? 'on' : ''} onClick={() => setPickKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : KIND_LABEL[k]}</button>)}
             </div>
-            {pickKind !== 'ride' && <p class="faint small" style="margin:0 0 10px">Or <a href={`#/build?kind=${pickKind}`}>build your own</a>.</p>}
+            <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">build your own</a>.</p>
             <div class="stack">
               {allWorkouts(data.mine).filter((w) => w.kind === pickKind && w.source !== 'generated').map((w) => {
                 const s = workoutStats(w.blocks);

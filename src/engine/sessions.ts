@@ -42,7 +42,7 @@ export function generateStrength(intent: StrengthIntent): Workout {
     // rotate through the options week by week so the same pattern gets a different exercise
     const pick = options[(intent.weekInBlock + (intent.variant === 'B' ? 1 : 0)) % options.length];
     used.add(pick.id);
-    const isHold = p === 'trunk' && !pick.loadable && /plank|dead bug|bird dog|pallof/i.test(pick.name);
+    const isHold = /plank|dead bug|bird dog|pallof|wall sit|hollow|carry/i.test(pick.name);
     exercises.push({
       name: pick.name,
       sets: p === 'trunk' || p === 'hip' ? s.trunkSets : s.sets,

@@ -22,12 +22,11 @@ export function Library({ data }: { data: AppData }) {
   const list = tab === 'ride' ? all.filter((w) => family === 'all' || w.family === family) : all;
   const mine = list.filter((w) => w.source === 'mine');
   const ready = list.filter((w) => w.source === 'library');
-  const buildHref = tab === 'ride' ? '#/build' : `#/build?kind=${tab}`;
   return (
     <div>
       <div class="page-head">
         <h1>Library</h1>
-        <div class="row"><span class="muted small">{list.length} {tab === 'ride' ? 'workouts' : 'sessions'}</span><a class="btn sm primary" href={buildHref}>Build</a></div>
+        <div class="row"><span class="muted small">{list.length} {tab === 'ride' ? 'workouts' : 'sessions'}</span><a class="btn sm primary" href="#/build">Build</a></div>
       </div>
       <div class="seg" style="margin-bottom:16px">
         {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
@@ -88,7 +87,7 @@ function SessionCard({ w, mine = false, onAdd }: { w: Workout; mine?: boolean; o
     : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`;
   return (
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">
-      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} load` : ''}</span></div>
+      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} TSS` : ''}</span></div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
       <p class="muted small" style="margin:0">{detail}</p>
       {w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}

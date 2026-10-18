@@ -113,7 +113,7 @@ function SessionScreen({ w, backHref, planned, basis }: { w: NonNullable<ReturnT
   return (
     <div>
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
-      <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min</span></div>
+      <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
       {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>

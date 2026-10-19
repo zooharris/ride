@@ -233,6 +233,7 @@ export function Settings({ data }: { data: AppData }) {
       </section>
 
       <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · phase 1 · all data stays on this device</p>
+      <p class="faint small" style="margin-top:28px">{APP_NAME} build {__BUILD__}. The app updates itself when a new build is published; if a change you were told about is missing, close every tab of the app and open it again.</p>
     </div>
   );
 }

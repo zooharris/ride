@@ -5,6 +5,7 @@ import { APP_NAME, APP_SHORT_NAME } from './src/appName';
 
 // Served from https://<user>.github.io/ride/ — the base must match the repo name.
 export default defineConfig({
+  define: { __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   base: '/ride/',
   plugins: [
     preact(),

@@ -18,29 +18,61 @@ import { findWorkout, notify } from './store';
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
   id: string;
+  name: string;
   goal: Goal;
   availability: Availability;
   masters: boolean;
-  start: string;
-  goalDate: string;
+  start: string;             // first day the plan covers (its first session is on or after this)
+  goalDate: string;          // last day the plan covers
   requiredCtl: number;
   projection: Fitness[];
   appliedAt: string;
   lastCheck?: string;
 }
 
-export async function getActivePlan(): Promise<ActivePlan | null> {
-  const a = await getSetting<ActivePlan | null>('activePlan', null);
-  return a && a.goal && a.availability?.equipment ? a : null;
+/** Every plan on the calendar, oldest first. Plans never overlap in time. */
+export async function getPlans(): Promise<ActivePlan[]> {
+  let plans = await getSetting<ActivePlan[] | null>('plans', null);
+  if (!plans) {
+    // One-time move from the single-plan setting.
+    const old = await getSetting<ActivePlan | null>('activePlan', null);
+    plans = old && old.goal && old.availability?.equipment ? [{ ...old, name: old.name || defaultPlanName(old.goal) }] : [];
+    await setSetting('plans', plans);
+    await setSetting('activePlan', null);
+  }
+  return plans.filter((p) => p.goal && p.availability?.equipment).sort((a, b) => a.start.localeCompare(b.start));
 }
 
-export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean): Promise<Plan> {
+export async function savePlans(plans: ActivePlan[]): Promise<void> { await setSetting('plans', plans); }
+
+/** The plan that covers today, else the next one to start, else null. */
+export async function getActivePlan(): Promise<ActivePlan | null> {
+  const plans = await getPlans();
+  const t = today();
+  return plans.find((p) => p.start <= t && p.goalDate >= t) ?? plans.find((p) => p.start > t) ?? null;
+}
+
+export function defaultPlanName(goal: Goal): string {
+  if (goal.kind === 'event') return goal.name || 'Event plan';
+  return { ftp: 'FTP block', vo2max: 'VO2max block', endurance: 'Endurance block', weight: 'Weight block', general: 'General fitness' }[goal.kind] ?? 'Training plan';
+}
+
+/** The plan whose dates collide with [start, end], if any. */
+export function overlapping(plans: ActivePlan[], start: string, end: string, exceptId?: string): ActivePlan | undefined {
+  return plans.find((p) => p.id !== exceptId && p.start <= end && p.goalDate >= start);
+}
+
+export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string): Promise<Plan> {
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
   const longs = data.rides.filter((r) => r.sport === 'ride' && r.seconds >= 7200 && r.averageSpeedMs);
   const longRideKmh = longs.length ? (longs.reduce((s, r) => s + (r.averageSpeedMs ?? 0), 0) / longs.length) * 3.6 : undefined;
-  return generatePlan({ start: weekStart(today()), notBefore: today(), goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh });
+  const notBefore = startDate && startDate > today() ? startDate : today();
+  const start = weekStart(notBefore);
+  // Re-planning a block already under way: keep its end date, so only the remaining weeks are regenerated.
+  const g: Goal = goal.kind !== 'event' && endDate ? { ...goal, weeks: Math.max(1, Math.round((Date.parse(endDate) - Date.parse(start) + 864e5) / (7 * 864e5))) } : goal;
+  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh });
 }
 
 /**
@@ -48,13 +80,16 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
  * plan keeps (same date, kind and name) are left alone, so a ride already on
  * the Garmin is not deleted and re-sent for nothing.
  */
-export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>): Promise<{ added: number; removed: number; kept: number }> {
+export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>, opts: { name?: string; planId?: string } = {}): Promise<{ added: number; removed: number; kept: number }> {
   const from = today();
   const profile = data.profile as Profile;
-  const previous = await getActivePlan();
-  const planId = previous?.id ?? newId();
-  // Only sessions a plan put there are replaced; anything added by hand stays.
-  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && isPlanSession(p, data));
+  const plans = await getPlans();
+  const existingPlan = opts.planId ? plans.find((p) => p.id === opts.planId) : undefined;
+  const planId = existingPlan?.id ?? newId();
+  const name = opts.name?.trim() || existingPlan?.name || defaultPlanName(goal);
+  const planStart = plan.weeks[0]?.sessions[0]?.date ?? plan.weeks[0]?.start ?? from;
+  // Only this plan's own sessions are replaced; anything added by hand, or by another plan, stays.
+  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && (existingPlan ? p.planId === planId : (p.planId ? p.planId === planId : isPlanSession(p, data) && !plans.length)));
   const incoming = plan.weeks.flatMap((w) => w.sessions.filter((s) => s.date >= from).map((s) => ({ s, label: w.label })));
   const key = (date: string, kind: string) => `${date}|${kind}`;
   const sig = (date: string, kind: string, name: string) => `${date}|${kind}|${name}`;
@@ -93,8 +128,8 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId })));
   added = toAdd.length;
   await pruneOrphanWorkouts();
-  const active: ActivePlan = { id: planId, goal, availability, masters, start: plan.weeks[0]?.start ?? from, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
-  await setSetting('activePlan', active);
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
+  await savePlans([...plans.filter((p) => p.id !== planId), active]);
   notify();
   if (c) autoBackup(c, true);
   return { added, removed, kept };
@@ -135,11 +170,12 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const active = await getActivePlan();
   if (!active) return null;
   if (active.goal.kind === 'event' && active.goal.date <= today()) return null;
-  const plan = await buildPlan(data, active.goal, active.availability, active.masters);
+  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate);
   const workouts = new Map(data.mine.map((w) => [w.id, w]));
   for (const p of data.planned) { const w = findWorkout(data.mine, p.workoutId); if (w) workouts.set(w.id, w); }
-  const review = reviewLastWeek(data.planned, workouts, data.rides);
-  const changes = diffPlan(data.planned, workouts, plan);
+  const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
+  const review = reviewLastWeek(mine, workouts, data.rides);
+  const changes = diffPlan(mine, workouts, plan).filter((c) => c.date <= active.goalDate);
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
   const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;
@@ -152,15 +188,17 @@ export async function replan(data: AppData): Promise<Replan | null> {
  * that has not been done comes off, including from Intervals.icu and the Garmin.
  * Completed sessions stay as history.
  */
-export async function cancelPlan(data: AppData): Promise<{ removed: number }> {
+export async function cancelPlan(data: AppData, planId?: string): Promise<{ removed: number }> {
   const from = today();
-  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && isPlanSession(p, data));
+  const plans = await getPlans();
+  const target = planId ? plans.find((p) => p.id === planId) : await getActivePlan();
+  const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && (target ? p.planId === target.id : isPlanSession(p, data)));
   const c = await credentials();
   for (const p of future) {
     if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* a stale event is harmless */ } }
     await db.planned.delete(p.id);
   }
-  await setSetting('activePlan', null);
+  await savePlans(plans.filter((p) => p.id !== target?.id));
   await pruneOrphanWorkouts();
   notify();
   return { removed: future.length };
@@ -180,7 +218,9 @@ export async function pruneOrphanWorkouts(): Promise<number> {
 
 export async function markChecked(): Promise<void> {
   const a = await getActivePlan();
-  if (a) await setSetting('activePlan', { ...a, lastCheck: today() });
+  if (!a) return;
+  const plans = await getPlans();
+  await savePlans(plans.map((p) => (p.id === a.id ? { ...p, lastCheck: today() } : p)));
 }
 
 

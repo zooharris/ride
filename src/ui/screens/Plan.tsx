@@ -3,7 +3,7 @@ import type { AppData } from '../store';
 import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, cancelPlan, getActivePlan, isPlanSession, markChecked, replan, type ActivePlan } from '../planService';
+import { applyPlan, buildPlan, cancelPlan, defaultPlanName, getActivePlan, getPlans, markChecked, overlapping, replan, type ActivePlan } from '../planService';
 import { changeKey, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
@@ -40,18 +40,22 @@ export function Plan({ data }: { data: AppData }) {
   const [msg] = useState<string | null>(null);
   const [curve, setCurve] = useState<PowerCurve | undefined>(undefined);
   const [active, setActive] = useState<ActivePlan | null>(null);
+  const [plans, setPlans] = useState<ActivePlan[]>([]);
   const [check, setCheck] = useState<Replan | null>(null);
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState(today());
+  const refreshPlans = () => getPlans().then((ps) => { setPlans(ps); getActivePlan().then(setActive); });
 
   useEffect(() => {
     getSetting<Saved | null>('planRequest', null).then((s) => { if (s && s.availability.equipment) { setGoal(s.goal); setAv(s.availability); setMasters(s.masters); } });
     getSetting<{ curve: PowerCurve } | null>('powerCurve', null).then((c) => setCurve(c?.curve));
-    getActivePlan().then(setActive);
+    refreshPlans();
   }, []);
 
   const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }), [data.rides, data.wellness, data.planned, curve, profile]);
 
   async function build() {
-    const p = await buildPlan(data, goal, av, masters);
+    const p = await buildPlan(data, goal, av, masters, startDate);
     setPlan(p);
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
@@ -59,13 +63,13 @@ export function Plan({ data }: { data: AppData }) {
     setTimeout(() => document.getElementById('plan-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
+  const planStart = plan ? (plan.weeks[0]?.sessions[0]?.date ?? plan.weeks[0]?.start) : startDate;
+  const clash = plan ? overlapping(plans, planStart, plan.goalDate) : undefined;
   async function apply() {
-    if (!plan) return;
-    const future = data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && isPlanSession(p, data));
-    if (future.length && !confirm(`Sessions the current plan put on the calendar from today onward are replaced where the new plan differs. Anything you added by hand stays. Continue?`)) return;
+    if (!plan || clash) return;
     setBusy(true);
     try {
-      await applyPlan(data, plan, goal, av, masters);
+      await applyPlan(data, plan, goal, av, masters, undefined, { name: name.trim() || defaultPlanName(goal) });
       go('calendar');
     } finally { setBusy(false); }
   }
@@ -75,17 +79,17 @@ export function Plan({ data }: { data: AppData }) {
     try { setCheck(await replan(data)); await markChecked(); } finally { setBusy(false); }
   }
 
-  async function cancel() {
-    const pending = data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && isPlanSession(p, data)).length;
-    if (!confirm(`Cancel this plan? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done, and anything you added by hand, are kept.`)) return;
+  async function cancel(p: ActivePlan) {
+    const pending = data.planned.filter((x) => x.date >= today() && x.status !== 'completed' && x.planId === p.id).length;
+    if (!confirm(`Cancel “${p.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
-    try { await cancelPlan(data); setActive(null); setCheck(null); setPlan(null); } finally { setBusy(false); }
+    try { await cancelPlan(data, p.id); setCheck(null); await refreshPlans(); } finally { setBusy(false); }
   }
 
   async function applyCheck(accepted: Set<string>) {
     if (!check || !active) return;
     setBusy(true);
-    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters, accepted); setCheck(null); go('calendar'); } finally { setBusy(false); }
+    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters, accepted, { planId: active.id }); setCheck(null); go('calendar'); } finally { setBusy(false); }
   }
 
   const DEFAULT_AV: Availability = { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
@@ -106,19 +110,32 @@ export function Plan({ data }: { data: AppData }) {
     <div>
       <div class="page-head"><h1>Plan my training</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
 
-      {active && (
-        <section class="panel accent" style="margin-bottom:22px">
-          <div class="row between">
-            <div>
-              <b>{active.goal.kind === 'event' ? active.goal.name || 'Event' : GOAL_LABEL[active.goal.kind]}</b>
-              <div class="muted small">{active.goal.kind === 'event' ? `${fmtDate(active.goal.date, { month: 'long', day: 'numeric' })} · ` : ''}on the calendar since {fmtDate(active.start, { month: 'short', day: 'numeric' })}{active.requiredCtl ? ` · goal wants fitness ${active.requiredCtl}` : ''}</div>
-            </div>
-            <div class="row" style="gap:6px">
-              <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>
-              <button class="btn sm quiet" onClick={cancel} disabled={busy}>Cancel plan</button>
-            </div>
+      {plans.length > 0 && (
+        <section style="margin-bottom:22px">
+          <h2 style="margin-bottom:8px">Your plans</h2>
+          <div class="stack">
+            {plans.map((p) => {
+              const t = today();
+              const status = p.goalDate < t ? 'finished' : p.start > t ? 'upcoming' : 'current';
+              const isActive = active?.id === p.id;
+              return (
+                <div class={`panel${isActive ? ' accent' : ''}`} key={p.id}>
+                  <div class="row between wrap" style="gap:8px">
+                    <div>
+                      <b>{p.name}</b> <span class="faint small">· {status}</span>
+                      <div class="muted small">{p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })} · ` : `${GOAL_LABEL[p.goal.kind]} · `}{fmtDate(p.start, { month: 'short', day: 'numeric' })} to {fmtDate(p.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}{p.requiredCtl ? ` · goal wants fitness ${p.requiredCtl}` : ''}</div>
+                    </div>
+                    <div class="row" style="gap:6px">
+                      {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
+                      {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
+                    </div>
+                  </div>
+                  {isActive && check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
+                </div>
+              );
+            })}
           </div>
-          {check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
+          <p class="faint small" style="margin-top:8px">Plans follow one another and never overlap. The daily re-check works on the plan that covers today; an upcoming plan is re-checked once it starts.</p>
         </section>
       )}
 
@@ -137,8 +154,10 @@ export function Plan({ data }: { data: AppData }) {
       </section>
 
       <section class="section">
-        <h2>Goal</h2>
+        <h2>{plans.length ? 'New plan' : 'Goal'}</h2>
         <div class="form" style="margin-top:10px">
+          <div class="field"><label>Plan name</label><input value={name} placeholder={defaultPlanName(goal)} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
+          <div class="field"><label>Starts on</label><input type="date" value={startDate} min={today()} onInput={(e) => setStartDate((e.target as HTMLInputElement).value || today())} /></div>
           <div class="field"><label>What you are training for</label>
             <select value={goal.kind} onChange={(e) => {
               const k = (e.target as HTMLSelectElement).value as Goal['kind'];
@@ -283,12 +302,13 @@ export function Plan({ data }: { data: AppData }) {
             </div>
           </section>
 
+          {clash && <p class="msg err" style="margin-top:16px">This plan would run {fmtDate(planStart, { month: 'short', day: 'numeric' })} to {fmtDate(plan.goalDate, { month: 'short', day: 'numeric' })}, which overlaps “{clash.name}” ({fmtDate(clash.start, { month: 'short', day: 'numeric' })} to {fmtDate(clash.goalDate, { month: 'short', day: 'numeric' })}). Plans cannot overlap: start this one after {fmtDate(clash.goalDate, { month: 'short', day: 'numeric' })}, shorten it, or cancel “{clash.name}” above.</p>}
           <div class="row" style="margin-top:20px;gap:8px">
-            <button class="btn primary" style="flex:1" onClick={apply} disabled={busy}>{busy ? 'Placing…' : 'Put this plan on the calendar'}</button>
+            <button class="btn primary" style="flex:1" onClick={apply} disabled={busy || !!clash}>{busy ? 'Placing…' : `Put “${name.trim() || defaultPlanName(goal)}” on the calendar`}</button>
             <button class="btn quiet" onClick={() => { setPlan(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Discard</button>
           </div>
           {msg && <p class="msg ok" style="margin-top:10px">{msg}</p>}
-          <p class="faint small" style="margin-top:10px">Rides already on the calendar from this week on are replaced. Completed rides are kept. The plan is re-checked as rides and wellness arrive.</p>
+          <p class="faint small" style="margin-top:10px">Sessions this plan places go on the calendar from {fmtDate(planStart, { month: 'short', day: 'numeric' })}; anything you added by hand stays. The plan is re-checked as rides and wellness arrive.</p>
         </div>
       )}
     </div>

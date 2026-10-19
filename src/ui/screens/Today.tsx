@@ -172,8 +172,8 @@ export function Today({ data }: { data: AppData }) {
       {active && (
         <section class="panel" style="margin-bottom:14px;padding:12px 16px">
           <div class="row between">
-            <div class="small"><b>{active.goal.kind === 'event' ? active.goal.name || 'Event plan' : 'Training plan'}</b>{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null}</div>
-            {!check && <button class="btn sm quiet" onClick={recheckNow} disabled={checking}>{checking ? 'Checking…' : 'Re-check'}</button>}
+            <div class="small"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null}</div>
+            {!check && active.start <= date && <button class="btn sm quiet" onClick={recheckNow} disabled={checking}>{checking ? 'Checking…' : 'Re-check'}</button>}
           </div>
           {check && (check.changes.length > 0 || check.review.missed > 0 || check.review.lines.length > 0) && <ReplanView check={check} onApply={applyCheck} busy={checking} />}
         </section>

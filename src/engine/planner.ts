@@ -60,7 +60,7 @@ const dow = (date: string) => new Date(date + 'T00:00:00').getDay();
 
 export function planWeeks(goal: Goal, start: string): number {
   if (goal.kind === 'event') return Math.max(4, Math.floor((Date.parse(goal.date) - Date.parse(start)) / (7 * 864e5)));
-  return Math.max(4, Math.min(24, goal.weeks));
+  return Math.max(1, Math.min(24, goal.weeks));
 }
 
 /** Phase per week, derived from the goal's emphasis and the rider's limiters, with recovery weeks on a prior rhythm. */

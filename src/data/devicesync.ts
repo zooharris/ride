@@ -2,6 +2,7 @@ import { APP_NAME } from '../appName';
 import { db, getSetting, setSetting, untracked, type Settings, type Tombstone } from './db';
 import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
 import type { DayNote, PlannedWorkout, Profile, Workout } from '../engine/types';
+import { decodeSealed, encodeSealed, isSealed, makeLock, newDataKey, open, seal, unlockWithAnswer, unlockWithPassphrase, type LockEnvelope } from './notecrypto';
 
 /**
  * Sync across the rider's devices, with no server: the private note in the
@@ -30,7 +31,7 @@ export interface SyncDoc {
 }
 
 /** Settings that belong to one device, or come from Intervals.icu anyway. */
-const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId']);
+const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId', 'noteKey', 'noteLock']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at
@@ -40,7 +41,16 @@ export const SECRET_SETTINGS = new Set(['intervals', 'claudeKey']);
 const inNote = (s: Settings) => !LOCAL_ONLY.has(s.key) && !SECRET_SETTINGS.has(s.key);
 const TOMBSTONE_DAYS = 120;
 
-export interface DeviceSyncState { last?: string; pushed?: string; error?: string; device?: string }
+export interface DeviceSyncState {
+  last?: string; pushed?: string; error?: string; device?: string;
+  /** The note in Intervals.icu is encrypted and this device cannot open it; the question is shown so the rider can unlock. */
+  locked?: { question: string; at: string };
+}
+
+/** Thrown by readRemote when the note is encrypted and this device holds no key that opens it. */
+export class NoteLockedError extends Error {
+  constructor(public question: string, public lock: LockEnvelope) { super('The note in Intervals.icu is encrypted; unlock it in Settings with your passphrase or by answering your question.'); }
+}
 
 export async function deviceId(): Promise<string> {
   let id = await getSetting<string | null>('deviceId', null);
@@ -145,7 +155,17 @@ async function gunzipBase64(payload: string): Promise<string> {
 export async function readRemote(c: IntervalsCredentials): Promise<SyncDoc | null> {
   const note = await readBackupNote(c);
   if (!note) return null;
-  const text = await gunzipBase64(note.payload);
+  let payload = note.payload;
+  if (isSealed(payload)) {
+    const sealed = decodeSealed(payload);
+    const key = await getSetting<string | null>('noteKey', null);
+    const opened = key ? await open(sealed, key) : null;
+    if (opened == null) throw new NoteLockedError(sealed.lock.question, sealed.lock);
+    // The lock that travels with the note is the current one (another device may have changed the passphrase); keep it.
+    await setSetting('noteLock', sealed.lock);
+    payload = opened;
+  }
+  const text = await gunzipBase64(payload);
   const doc = JSON.parse(text) as SyncDoc;
   if (!doc.tombstones) doc.tombstones = [];
   return doc;
@@ -153,8 +173,52 @@ export async function readRemote(c: IntervalsCredentials): Promise<SyncDoc | nul
 
 export async function writeRemote(c: IntervalsCredentials): Promise<SyncDoc> {
   const doc = await localDoc();
-  await writeBackupNote(c, await gzipBase64(JSON.stringify(doc)));
+  let payload = await gzipBase64(JSON.stringify(doc));
+  const key = await getSetting<string | null>('noteKey', null);
+  const lock = await getSetting<LockEnvelope | null>('noteLock', null);
+  if (key && lock) payload = encodeSealed(await seal(payload, key, lock));
+  await writeBackupNote(c, payload);
   return doc;
+}
+
+// ---- the lock on the note ----
+
+/** Whether this device holds a key for an encrypted note, and the question that goes with it. */
+export async function lockStatus(): Promise<{ on: boolean; question?: string }> {
+  const key = await getSetting<string | null>('noteKey', null);
+  const lock = await getSetting<LockEnvelope | null>('noteLock', null);
+  return { on: !!(key && lock), question: lock?.question };
+}
+
+/** Turn encryption on from this device (a fresh data key), or change the passphrase or question with the key this device holds. */
+export async function setLock(passphrase: string, question: string, answer: string): Promise<void> {
+  const key = (await getSetting<string | null>('noteKey', null)) ?? newDataKey();
+  const lock = await makeLock(key, passphrase, question, answer);
+  await setSetting('noteKey', key);
+  await setSetting('noteLock', lock);
+}
+
+/** Turn encryption off from this device; the next push writes the note in the clear. */
+export async function clearLock(): Promise<void> {
+  await setSetting('noteKey', null);
+  await setSetting('noteLock', null);
+}
+
+/**
+ * Open a locked note on this device with the passphrase, or with the answer to
+ * the question. On success the data key is kept here and the note is merged.
+ */
+export async function unlockNote(c: IntervalsCredentials, secret: string, by: 'passphrase' | 'answer'): Promise<boolean> {
+  const note = await readBackupNote(c);
+  if (!note || !isSealed(note.payload)) return true;
+  const sealed = decodeSealed(note.payload);
+  const key = by === 'passphrase' ? await unlockWithPassphrase(sealed.lock, secret) : await unlockWithAnswer(sealed.lock, secret);
+  if (!key) return false;
+  await setSetting('noteKey', key);
+  await setSetting('noteLock', sealed.lock);
+  const prev = (await getSetting<DeviceSyncState | null>('deviceSync', null)) ?? {};
+  await setSetting('deviceSync', { ...prev, locked: undefined });
+  return true;
 }
 
 let running: Promise<DeviceSyncState> | null = null;
@@ -185,6 +249,12 @@ export function syncDevices(c: IntervalsCredentials): Promise<DeviceSyncState> {
       if (applied) listeners.forEach((l) => l());
       return state;
     } catch (e) {
+      if (e instanceof NoteLockedError) {
+        // Nothing is pushed: writing this device's data in the clear over an encrypted note would undo the lock.
+        const state: DeviceSyncState = { ...prev, error: undefined, locked: { question: e.question, at: new Date().toISOString() } };
+        await setSetting('deviceSync', state).catch(() => {});
+        return state;
+      }
       const state: DeviceSyncState = { ...prev, error: `${new Date().toISOString()} ${(e as Error).message}` };
       await setSetting('deviceSync', state).catch(() => {});
       return state;

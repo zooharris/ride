@@ -4,7 +4,7 @@ import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { autoBackup, downloadBackup, fetchAutoBackup, restoreBackup } from '../../data/backup';
-import { type DeviceSyncState } from '../../data/devicesync';
+import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
 import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
@@ -226,11 +226,12 @@ export function Settings({ data }: { data: AppData }) {
       <section class="section">
         <h2>Across your devices, and backup</h2>
         <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. The same note is the backup a new device restores from. Activities come back from Intervals.icu on their own.</p>
-        <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}</p>
+        <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
         <div class="row wrap">
           <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
           <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Replace this device with the note</button>
         </div>
+        <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
         <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping; unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
           <button class="btn quiet" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
@@ -240,6 +241,110 @@ export function Settings({ data }: { data: AppData }) {
 
       <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · phase 1 · all data stays on this device</p>
       <p class="faint small" style="margin-top:28px">{APP_NAME} build {__BUILD__}. The app updates itself when a new build is published; if a change you were told about is missing, close every tab of the app and open it again.</p>
+    </div>
+  );
+}
+
+
+/**
+ * The lock on the note in Intervals.icu. Three states: not locked (set it up),
+ * locked on this device (unlock with the passphrase or the answer), locked and
+ * open here (change or turn off). The passphrase and answer never leave the
+ * browser; only wrapped copies of the data key travel with the note.
+ */
+function NoteLock({ devices, onChange, busy, setBusy, setMsg }: { devices: DeviceSyncState | null; onChange: () => void; busy: boolean; setBusy: (b: boolean) => void; setMsg: (m: { ok: boolean; text: string } | null) => void }) {
+  const [status, setStatus] = useState<{ on: boolean; question?: string } | null>(null);
+  const [mode, setMode] = useState<'view' | 'setup' | 'change'>('view');
+  const [pass, setPass] = useState(''); const [pass2, setPass2] = useState('');
+  const [question, setQuestion] = useState(''); const [answer, setAnswer] = useState('');
+  const [unlockPass, setUnlockPass] = useState(''); const [unlockAnswer, setUnlockAnswer] = useState('');
+  const refresh = () => lockStatus().then(setStatus);
+  useEffect(() => { refresh(); }, [devices?.locked?.at]);
+  const locked = !!devices?.locked && !status?.on;
+
+  async function save() {
+    if (pass.length < 8) { setMsg({ ok: false, text: 'Use a passphrase of at least 8 characters.' }); return; }
+    if (pass !== pass2) { setMsg({ ok: false, text: 'The two passphrases do not match.' }); return; }
+    if (!question.trim() || !answer.trim()) { setMsg({ ok: false, text: 'Add a question and its answer, so you can get back in if you forget the passphrase.' }); return; }
+    setBusy(true);
+    try {
+      await setLock(pass, question, answer);
+      const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+      if (c?.apiKey) await syncDevices(c);
+      setPass(''); setPass2(''); setQuestion(''); setAnswer(''); setMode('view'); refresh(); onChange();
+      setMsg({ ok: true, text: mode === 'change' ? 'Passphrase and question changed. Your other devices keep working; a new device will need the new passphrase or answer.' : 'The note is now encrypted. Your other devices will ask for the passphrase, or the answer to your question, the next time they open the app.' });
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  async function unlock(by: 'passphrase' | 'answer') {
+    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+    if (!c?.apiKey) return;
+    setBusy(true);
+    try {
+      const ok = await unlockNote(c, by === 'passphrase' ? unlockPass : unlockAnswer, by);
+      if (!ok) { setMsg({ ok: false, text: by === 'passphrase' ? 'That passphrase does not open the note.' : 'That answer does not open the note. Spelling counts, but not capitals, spaces or punctuation.' }); return; }
+      await syncDevices(c);
+      notify();
+      setUnlockPass(''); setUnlockAnswer(''); refresh(); onChange();
+      setMsg({ ok: true, text: 'Unlocked. This device now opens the note on its own.' });
+    } finally { setBusy(false); }
+  }
+
+  async function turnOff() {
+    if (!confirm('Turn encryption off? The note in Intervals.icu will be written in the clear on the next sync, and your other devices will stop asking for the passphrase. Are you sure?')) return;
+    setBusy(true);
+    try {
+      await clearLock();
+      const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+      if (c?.apiKey) await syncDevices(c);
+      refresh(); onChange();
+      setMsg({ ok: true, text: 'Encryption is off.' });
+    } finally { setBusy(false); }
+  }
+
+  if (!status) return null;
+  const form = (
+    <div class="stack" style="gap:10px;margin-top:10px;max-width:520px">
+      <div class="field"><label>Passphrase</label><input type="password" autocomplete="new-password" value={pass} onInput={(e) => setPass((e.target as HTMLInputElement).value)} /></div>
+      <div class="field"><label>Passphrase again</label><input type="password" autocomplete="new-password" value={pass2} onInput={(e) => setPass2((e.target as HTMLInputElement).value)} /></div>
+      <div class="field"><label>A question only you can answer, for when you forget the passphrase</label><input placeholder="e.g. Name of my first bike?" value={question} onInput={(e) => setQuestion((e.target as HTMLInputElement).value)} /></div>
+      <div class="field"><label>Its answer</label><input autocomplete="off" value={answer} onInput={(e) => setAnswer((e.target as HTMLInputElement).value)} /></div>
+      <p class="faint small">Pick a question whose answer someone who knows you could not guess; anyone who can read the note could try it. Capitals, spaces and punctuation in the answer do not matter.</p>
+      <div class="row" style="gap:8px">
+        <button class="btn primary" onClick={save} disabled={busy}>{mode === 'change' ? 'Change' : 'Encrypt the note'}</button>
+        <button class="btn quiet" onClick={() => { setMode('view'); setPass(''); setPass2(''); setQuestion(''); setAnswer(''); }} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <h3>Encryption of the note</h3>
+      {locked ? (
+        <div style="margin-top:8px">
+          <p class="small" style="color:var(--warn)">The note in Intervals.icu is encrypted and this device cannot open it yet. Nothing is synced until you unlock it; nothing here is lost.</p>
+          <div class="stack" style="gap:10px;margin-top:10px;max-width:520px">
+            <div class="field"><label>Passphrase</label><div class="row" style="gap:8px"><input type="password" autocomplete="current-password" value={unlockPass} onInput={(e) => setUnlockPass((e.target as HTMLInputElement).value)} style="flex:1" /><button class="btn" onClick={() => unlock('passphrase')} disabled={busy || !unlockPass}>Unlock</button></div></div>
+            <div class="field"><label>Or answer your question: <b>{devices!.locked!.question}</b></label><div class="row" style="gap:8px"><input autocomplete="off" value={unlockAnswer} onInput={(e) => setUnlockAnswer((e.target as HTMLInputElement).value)} style="flex:1" /><button class="btn" onClick={() => unlock('answer')} disabled={busy || !unlockAnswer}>Unlock</button></div></div>
+          </div>
+        </div>
+      ) : status.on ? (
+        <div style="margin-top:8px">
+          <p class="muted small">The note is encrypted before it leaves this browser; Intervals.icu holds only the scrambled copy. Your question: <b>{status.question}</b>. A new device opens the note with the passphrase or the answer.</p>
+          {mode === 'change' ? form : (
+            <div class="row wrap" style="margin-top:10px;gap:8px">
+              <button class="btn" onClick={() => setMode('change')} disabled={busy}>Change passphrase or question</button>
+              <button class="btn quiet" onClick={turnOff} disabled={busy}>Turn off</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style="margin-top:8px">
+          <p class="muted small">The note is stored compressed but readable by anyone who can see your Intervals.icu calendar. Encrypt it with a passphrase you choose; the passphrase stays in this browser and you type it once on each other device. If you forget it, a question you set here gets you back in.</p>
+          {mode === 'setup' ? form : <button class="btn" style="margin-top:10px" onClick={() => setMode('setup')} disabled={busy}>Encrypt the note</button>}
+        </div>
+      )}
     </div>
   );
 }

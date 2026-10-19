@@ -49,6 +49,8 @@ export function Today({ data }: { data: AppData }) {
   useEffect(() => { getSetting<boolean>('tourDone', false).then(setTourDone); }, []);
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
+  const [locked, setLocked] = useState<{ question: string } | null>(null);
+  useEffect(() => { getSetting<{ locked?: { question: string } } | null>('deviceSync', null).then((s) => setLocked(s?.locked ?? null)); }, [data.planned.length, data.rides.length, data.dayNotes.length]);
 
   // Once a day, after the data have had a chance to arrive, the plan checks itself.
   useEffect(() => {
@@ -164,6 +166,14 @@ export function Today({ data }: { data: AppData }) {
           <b>Connect Intervals.icu</b>
           <p class="muted small" style="margin-top:4px">That is how workouts reach your bike computer and finished activities come back. Add your athlete ID and API key in Settings.</p>
           <a class="btn sm" href="#/settings" style="margin-top:10px">Open Settings</a>
+        </div>
+      )}
+
+      {locked && (
+        <div class="panel accent" style="margin-bottom:14px">
+          <b>Your sync note is locked on this device</b>
+          <p class="muted small" style="margin-top:4px">The note in Intervals.icu is encrypted. Until this device has the passphrase, or the answer to your question, nothing from your other devices arrives here and nothing from here is sent. Nothing is lost either way.</p>
+          <a class="btn sm" href="#/settings" style="margin-top:10px">Unlock in Settings</a>
         </div>
       )}
 

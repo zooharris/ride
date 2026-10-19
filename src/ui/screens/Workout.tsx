@@ -128,7 +128,7 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNul
       const id = await sendWorkout(c, w, planned.date, basis, { maxHr, lthr });
       await db.planned.update(planned.id, { status: 'sent', icuEventId: id });
       notify();
-      setSendMsg({ ok: true, text: 'Sent. It reaches your Garmin on its next phone sync.' });
+      setSendMsg({ ok: true, text: w.kind === 'strength' || w.kind === 'mobility' ? 'Sent. On the watch it is under Today\'s Workouts in an indoor-bike profile (Garmin only shows step names for rides); the recording is filed here as what it really was.' : 'Sent. It reaches your Garmin on its next phone sync.' });
     } catch (e) { setSendMsg({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
     finally { setSending(false); }
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sessionSteps, sportOf } from './intervals';
 import { readyMadeSessions } from '../library/sessions';
+import type { Ride } from '../engine/types';
 
 describe('activity types from Intervals.icu', () => {
   it('maps rides, walks, strength and mobility', () => {
@@ -52,5 +53,34 @@ describe('garminText', () => {
     expect(garminText('35 lb, or 2 reps in reserve')).toBe('thirty five lb or two reps in reserve');
     expect(garminText('Half-kneeling hip flexor stretch')).toBe('Half kneeling hip flexor stretch');
     expect(garminText('3 x 10')).toBe('three ten');
+  });
+});
+
+describe('pairing recordings to planned sessions', () => {
+  it('pairs a strength session recorded as a ride by name, leaving the real ride for the planned ride', async () => {
+    const { pairRecordings } = await import('./syncService');
+    const { SESSION_EVENT_TYPE } = await import('./intervals');
+    expect(SESSION_EVENT_TYPE).toBe('Ride');          // the interim: step text only travels for rides
+    const w = {
+      ride: { name: 'Oatlands', subtitle: 'Endurance 2h', kind: 'ride' as const },
+      lift: { name: 'Full body express', kind: 'strength' as const },
+    };
+    const planned = [
+      { id: 'pr', date: '2026-10-20', workoutId: 'ride', basis: 'power' as const, status: 'sent' as const },
+      { id: 'ps', date: '2026-10-20', workoutId: 'lift', basis: 'power' as const, status: 'sent' as const },
+    ];
+    const ride = (id: string, name: string, type: string) => ({ id, name, type, date: '2026-10-20', startTime: '', sport: 'ride' as const, seconds: 1800 } as unknown as Ride);
+    // the strength session comes back first in the list, filed as a ride, named after the workout
+    const rides = [ride('a', 'Full body express', 'Ride'), ride('b', 'Oatlands · Endurance 2h', 'Ride')];
+    const m = pairRecordings(planned, rides, (id) => w[id as keyof typeof w]);
+    expect(m.get('ps')?.id).toBe('a');
+    expect(m.get('pr')?.id).toBe('b');
+  });
+  it('falls back to day and kind when the watch gave the recording another name', async () => {
+    const { pairRecordings } = await import('./syncService');
+    const planned = [{ id: 'ps', date: '2026-10-21', workoutId: 'lift', basis: 'power' as const, status: 'sent' as const }];
+    const rides = [{ id: 'x', name: 'Herndon Strength', type: 'WeightTraining', date: '2026-10-21', sport: 'strength', seconds: 1500 } as unknown as Ride];
+    const m = pairRecordings(planned, rides, () => ({ name: 'Full body express', kind: 'strength' }));
+    expect(m.get('ps')?.id).toBe('x');
   });
 });

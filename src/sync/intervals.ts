@@ -329,14 +329,28 @@ function sessionEvent(workout: Workout, date: string) {
   return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
-    // Garmin's native strength and yoga workouts build their steps from Garmin's own exercise library, so a
-    // step from outside gets no name on the watch, just "Go". A generic cardio workout keeps its step text.
-    type: 'Workout',
+    // INTERIM (19 Oct 2026): Intervals.icu passes step text to Garmin for Ride workouts and drops it for every
+    // other type (tested on an Epix Pro Gen 2: identical steps show their names in a bike activity and only
+    // "Go" in a strength one). So strength and mobility go as rides, followed on the watch in an indoor-bike
+    // profile, and the recording that comes back is relabelled in Intervals.icu once it is paired
+    // (syncService). A feature request is with Intervals.icu; when step text travels for other types, change
+    // SESSION_EVENT_TYPE to WeightTraining / Yoga and the relabelling becomes a no-op.
+    type: SESSION_EVENT_TYPE,
     name: workout.name,
     description: [`${workout.purpose} ${intro}`, '', ...steps].join('\n'),
     moving_time: (workout.minutes ?? 30) * 60,
     icu_training_load: workout.estimatedTss ?? 0,
   };
+}
+
+/** How strength and mobility sessions are typed when sent; see sessionEvent. */
+export const SESSION_EVENT_TYPE = 'Ride';
+/** The type each kind of recording ought to carry in Intervals.icu. */
+export const ICU_TYPE_FOR_KIND: Record<string, string> = { strength: 'WeightTraining', mobility: 'Yoga', walk: 'Walk' };
+
+/** Set an activity's type in Intervals.icu (a recording the watch filed as a ride but that was a planned strength session, say). */
+export async function updateActivityType(c: IntervalsCredentials, activityId: string, type: string): Promise<void> {
+  await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ type }) });
 }
 
 function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {

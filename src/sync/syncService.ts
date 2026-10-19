@@ -1,9 +1,9 @@
 import { db, getSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
-import type { Ride } from '../engine/types';
+import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import type { IntervalsCredentials } from './intervals';
-import { fetchPowerCurve, fetchRides, fetchWellness, testConnection } from './intervals';
+import { fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, testConnection, updateActivityType } from './intervals';
 import { syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
@@ -47,27 +47,28 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   };
   rides.forEach(score);
 
-  // Pair activities to planned sessions. In order: Intervals.icu's own pairing
-  // (the event the Garmin was following), then the same day and kind, then the
-  // same day and name (the watch names its recording after the workout, even
-  // when it files a treadmill walk as a run). A recording paired to a planned
-  // walk or strength session is treated as that kind, whatever type the device
-  // gave it, and scored accordingly.
+  // Pair activities to planned sessions. Two passes. First the certain matches:
+  // Intervals.icu's own pairing (the event the Garmin was following), then the
+  // same day and name (the watch names its recording after the workout, whatever
+  // type it files it under: a treadmill walk as a run, a strength session sent
+  // as a ride). Then the same day and kind for whatever is left. A recording
+  // paired to a planned walk, strength or mobility session is treated as that
+  // kind whatever the device said, scored for it, and relabelled in Intervals.icu
+  // so its record there is right too (again on any later sync if it drifts).
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
   const workouts = await db.workouts.toArray();
   const workoutOf = (id: string) => workouts.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
-  const taken = new Set<string>();
-  const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const matches = pairRecordings(planned, rides, workoutOf);
   for (const p of planned) {
-    const w = workoutOf(p.workoutId);
-    const kind = w?.kind ?? 'ride';
-    const free = (r: Ride) => !taken.has(r.id);
-    const match = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId)
-      ?? rides.find((r) => r.date === p.date && r.sport === kind && free(r))
-      ?? (w ? rides.find((r) => r.date === p.date && free(r) && r.sport !== 'ride' && kind !== 'ride' && (sameName(r.name, w.name) || (w.subtitle ? sameName(r.name, `${w.name} · ${w.subtitle}`) : false))) : undefined);
-    if (match) {
-      taken.add(match.id);
-      if (kind !== 'ride' && match.sport !== kind) { match.sport = kind; score(match); }
+    const match = matches.get(p.id);
+    const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
+    if (match && kind !== 'ride' && match.sport !== kind) {
+      match.sport = kind;
+      match.icuLoad = undefined;             // Intervals.icu scored it as the type the device gave; the app scores it as what it was
+      score(match);
+    }
+    if (match && kind !== 'ride' && ICU_TYPE_FOR_KIND[kind] && match.type !== ICU_TYPE_FOR_KIND[kind]) {
+      try { await updateActivityType(c, match.id, ICU_TYPE_FOR_KIND[kind]); match.type = ICU_TYPE_FOR_KIND[kind]; } catch { /* next sync tries again */ }
     }
     if (match && (p.status !== 'completed' || p.activityId !== match.id)) {
       await db.planned.update(p.id, { status: 'completed', activityId: match.id });
@@ -90,4 +91,31 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
   return { rides: rides.length, wellness: wellness.length, newIds };
+}
+
+/**
+ * Which recording belongs to which planned session. Certain matches first:
+ * Intervals.icu's own pairing, then the same day and name (the watch names its
+ * recording after the workout, whatever type it files it under). Then the same
+ * day and kind for whatever is left. Each recording pairs once.
+ */
+export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workoutOf: (id: string) => Pick<Workout, 'name' | 'subtitle' | 'kind'> | undefined): Map<string, Ride> {
+  const taken = new Set<string>();
+  const free = (r: Ride) => !taken.has(r.id);
+  const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const named = (r: Ride, w: { name: string; subtitle?: string }) => sameName(r.name, w.name) || (!!w.subtitle && sameName(r.name, `${w.name} · ${w.subtitle}`));
+  const matches = new Map<string, Ride>();
+  for (const p of planned) {
+    const w = workoutOf(p.workoutId);
+    const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && free(r))
+      ?? (w ? rides.find((r) => r.date === p.date && free(r) && named(r, w)) : undefined);
+    if (m) { taken.add(m.id); matches.set(p.id, m); }
+  }
+  for (const p of planned) {
+    if (matches.has(p.id)) continue;
+    const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
+    const m = rides.find((r) => r.date === p.date && r.sport === kind && free(r));
+    if (m) { taken.add(m.id); matches.set(p.id, m); }
+  }
+  return matches;
 }

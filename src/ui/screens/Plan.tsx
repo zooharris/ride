@@ -18,6 +18,7 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import type { Equipment, Fitness, SessionKind } from '../../engine/types';
 import { KIND_ICON } from '../icons';
 import { FORM_BANDS, LineChart } from '../LineChart';
+import { PageHead } from '../PageHead';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -37,7 +38,6 @@ export function Plan({ data }: { data: AppData }) {
   const [plan, setPlan] = useState<GeneratedPlan | null>(null);
   const [openWeek, setOpenWeek] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg] = useState<string | null>(null);
   const [curve, setCurve] = useState<PowerCurve | undefined>(undefined);
   const [active, setActive] = useState<ActivePlan | null>(null);
   const [plans, setPlans] = useState<ActivePlan[]>([]);
@@ -108,7 +108,7 @@ export function Plan({ data }: { data: AppData }) {
 
   return (
     <div>
-      <div class="page-head"><h1>Plan my training</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
+      <PageHead eyebrow={`Fitness today ${assessment.fitness.ctl.toFixed(0)}`} title="Plan my training" />
 
       {plans.length > 0 && (
         <section style="margin-bottom:22px">
@@ -309,7 +309,6 @@ export function Plan({ data }: { data: AppData }) {
             <button class="btn primary" style="flex:1" onClick={apply} disabled={busy || !!clash}>{busy ? 'Placing…' : `Put “${name.trim() || defaultPlanName(goal)}” on the calendar`}</button>
             <button class="btn quiet" onClick={() => { setPlan(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Discard</button>
           </div>
-          {msg && <p class="msg ok" style="margin-top:10px">{msg}</p>}
           <p class="faint small" style="margin-top:10px">Sessions this plan places go on the calendar from {fmtDate(planStart, { month: 'short', day: 'numeric' })}; anything you added by hand stays. The plan is re-checked as rides and wellness arrive.</p>
         </div>
       )}
@@ -352,7 +351,7 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
 }
 
 export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk', other: 'Other' };
-export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--z2)', strength: 'var(--strength)', mobility: 'var(--z3)', walk: 'var(--z4)', other: 'var(--z1)' };
+export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', other: 'var(--z1)' };
 
 export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolean }) {
   const I = KIND_ICON[kind];

@@ -11,6 +11,9 @@ import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '.
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
 import { ZONE_VAR } from '../Profile';
+import { toast } from '../Toast';
+import { PageHead } from '../PageHead';
+import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
 
 
 export function Settings({ data }: { data: AppData }) {
@@ -20,7 +23,7 @@ export function Settings({ data }: { data: AppData }) {
   const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceSyncState | null>(null);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const setMsg = toast;
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -121,10 +124,13 @@ export function Settings({ data }: { data: AppData }) {
 
   return (
     <div>
-      <div class="page-head"><h1>Settings</h1><div class="row">{dirty && <button class="btn sm quiet" onClick={discard}>Discard changes</button>}<button class="btn primary sm" onClick={save} disabled={!dirty}>Save</button></div></div>
-      {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
+      <PageHead title="Settings">
+        {dirty && <button class="btn sm quiet" onClick={discard}>Discard changes</button>}<button class="btn primary sm" onClick={save} disabled={!dirty}>Save</button>
+      </PageHead>
 
-      <section class="section" style="margin-top:0">
+      <Appearance />
+
+      <section class="section">
         <h2>Intervals.icu</h2>
         <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold HR and max HR are kept in step both ways: change them here and they are sent to Intervals.icu; change them there (or let Garmin detect a new FTP) and the next sync brings them here.</p>
         <div class="form">
@@ -142,7 +148,7 @@ export function Settings({ data }: { data: AppData }) {
             <div class="stack" style="gap:6px;margin-top:8px">
               {checks.map((c) => (
                 <div key={c.name} class="row" style="align-items:flex-start;gap:10px">
-                  <span class="tick" style={`width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;background:${c.ok ? 'var(--good)' : 'var(--bad)'};color:#0b1410`}>{c.ok ? '✓' : '!'}</span>
+                  <span class="tick" style={`width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;background:${c.ok ? 'var(--good)' : 'var(--bad)'};color:var(--on-color)`}>{c.ok ? '✓' : '!'}</span>
                   <div class="small"><b>{c.name}</b><div class="muted" style="line-height:1.45">{c.detail}</div></div>
                 </div>
               ))}
@@ -329,5 +335,24 @@ function NoteLock({ devices, onChange, busy, setBusy, setMsg }: { devices: Devic
         </div>
       )}
     </div>
+  );
+}
+
+/** Light, dark, or whatever the device is set to. Applies at once; no Save needed. */
+function Appearance() {
+  const [t, setT] = useState<ThemeChoice>(getThemeChoice());
+  const pick = (c: ThemeChoice) => { setT(c); setThemeChoice(c); };
+  return (
+    <section class="section" style="margin-top:0">
+      <h2>Appearance</h2>
+      <div class="panel row between wrap" style="gap:12px">
+        <p class="muted small" style="max-width:46ch">Dark, light, or follow the setting on this device. Takes effect at once.</p>
+        <div class="seg theme" role="radiogroup" aria-label="Theme">
+          {([['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as Array<[ThemeChoice, string]>).map(([c, l]) => (
+            <button key={c} role="radio" aria-checked={t === c} class={t === c ? 'on' : ''} onClick={() => pick(c)}>{l}</button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

@@ -1,4 +1,5 @@
 import { APP_NAME } from '../../appName';
+import { PageHead } from '../PageHead';
 
 /**
  * The manual: one section per screen, then the numbers the app shows and
@@ -144,7 +145,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
 export function Help() {
   return (
     <div>
-      <div class="page-head"><h1>Help</h1></div>
+      <PageHead title="Help" />
       <div class="help">
         <nav class="help-toc panel">
           {SECTIONS.map((s) => <a key={s.id} href={`#/help?s=${s.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(`help-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{s.title}</a>)}

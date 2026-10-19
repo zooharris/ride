@@ -8,6 +8,8 @@ import type { Family, Workout, WorkoutBlock, WorkoutStep } from '../../engine/ty
 import { db } from '../../data/db';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
+import { PageHead } from '../PageHead';
+import { toast } from '../Toast';
 
 /** A row in the editor: either a single step or a repeated set of steps. */
 type Row = { id: string; kind: 'step'; minutes: number; pct: number; pctHigh?: number; label: string; cadence?: number }
@@ -97,6 +99,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     }
     notify();
     setSaved(w.id);
+    toast({ ok: true, text: `Saved “${w.name}” to My Workouts.` });
     if (then === 'today') go('today');
     if (then === 'library') go('library');
   }
@@ -114,15 +117,11 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
 
   return (
     <div>
-      <button class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px" onClick={cancel}>‹ Library</button>
-      <div class="page-head">
-        <h1>{existing ? 'Edit workout' : 'New ride workout'}</h1>
-        <span class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)}</span>
-      </div>
+      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit workout' : 'New ride workout'} eyebrow={`${clock(stats.seconds)} · ${stats.tss} TSS · IF ${stats.intensityFactor.toFixed(2)}`} />
 
       <div class="panel" style="padding:14px 16px 12px">
         <div class="row between" style="margin-bottom:8px">
-          <span class="tag" style={`background:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[fam]}</span>
+          <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[fam]}</span>
           <span class="faint small">intensity as % of FTP {profile.ftp} W</span>
         </div>
         <WorkoutProfile blocks={blocks} height={88} />
@@ -199,7 +198,6 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
         <button class="btn quiet" onClick={cancel}>Cancel</button>
         {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}? It also comes off any calendar day it is on.`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
       </div>
-      {saved && <p class="msg ok" style="margin-top:10px">Saved.</p>}
     </div>
   );
 }

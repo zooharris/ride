@@ -17,6 +17,9 @@ import { credentials } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { movePlanned, removePlanned, replacePlanned } from '../planService';
+import { toast } from '../Toast';
+import { PageHead } from '../PageHead';
+import { Icon } from '../icons';
 
 const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
 
@@ -30,7 +33,7 @@ export function Calendar({ data }: { data: AppData }) {
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
   const [moveDate, setMoveDate] = useState('');
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const setMsg = toast;
   const [busy, setBusy] = useState<string | null>(null);
   const days = Array.from({ length: 14 }, (_, i) => addDays(start, i));
 
@@ -85,18 +88,17 @@ export function Calendar({ data }: { data: AppData }) {
 
   return (
     <div>
-      <div class="page-head">
-        <h1>Calendar</h1>
-        <div class="row">
+      <PageHead title="Calendar">
+        <>
           <a class="btn sm" href="#/plan">Plan my training</a>
           <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
-          {view === 'list' && <>
-            <button class="btn sm quiet" onClick={() => setStart(addDays(start, -7))}>‹</button>
+          {view === 'list' && <div class="row" style="gap:0">
+            <button class="icon-btn" aria-label="Previous week" onClick={() => setStart(addDays(start, -7))}><span style="transform:scaleX(-1);display:inline-flex"><Icon.chevron /></span></button>
             <button class="btn sm quiet" onClick={() => setStart(weekStart(today()))}>This week</button>
-            <button class="btn sm quiet" onClick={() => setStart(addDays(start, 7))}>›</button>
-          </>}
-        </div>
-      </div>
+            <button class="icon-btn" aria-label="Next week" onClick={() => setStart(addDays(start, 7))}><Icon.chevron /></button>
+          </div>}
+        </>
+      </PageHead>
 
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
@@ -120,7 +122,6 @@ export function Calendar({ data }: { data: AppData }) {
 
       {view === 'list' && <>
 
-      {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
         const t = weekTss(ws);

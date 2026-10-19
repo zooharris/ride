@@ -9,6 +9,7 @@ import { KIND_LABEL, KindDot } from './Plan';
 import { KIND_ICON } from '../icons';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
+import { PageHead } from '../PageHead';
 
 const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk';
@@ -37,10 +38,9 @@ export function Library({ data }: { data: AppData }) {
   const ready = list.filter((w) => w.source === 'library');
   return (
     <div>
-      <div class="page-head">
-        <h1>Library</h1>
-        <div class="row wrap"><span class="muted small">{list.length} {tab === 'ride' ? 'rides' : 'sessions'}</span><a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a></div>
-      </div>
+      <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library">
+        <a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a>
+      </PageHead>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
         <div class="seg kinds">
           {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
@@ -91,7 +91,7 @@ function Card({ w, mine = false }: { w: Workout; mine?: boolean }) {
   return (
     <a class="wcard" href={`#/workout/${w.id}?from=library`}>
       <div class="row between">
-        <span class="tag" style={`background:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
+        <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
         <span class="faint small">{mine ? 'mine' : w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
       </div>
       <WorkoutProfile blocks={w.blocks} height={56} />

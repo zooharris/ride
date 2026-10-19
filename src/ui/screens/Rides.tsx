@@ -16,19 +16,20 @@ import { KIND_COLOR, KIND_LABEL } from './Plan';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { getSetting, setSetting } from '../../data/db';
 import { today } from '../../engine/load';
+import { Empty, PageHead, Skeleton } from '../PageHead';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
   if (id) {
     const r = data.rides.find((x) => x.id === id);
-    if (!r) return <div class="empty">That ride is not synced.</div>;
+    if (!r) return <Empty title="That activity is not synced." action={<a class="btn sm" href="#/rides">All activities</a>}>It may have been deleted on Intervals.icu, or this device has not synced since it was recorded.</Empty>;
     return <RideDetail ride={r} data={data} />;
   }
   if (data.rides.length === 0) {
     return (
       <div>
-        <div class="page-head"><h1>Rides</h1></div>
-        <div class="empty"><b>No rides yet.</b><p class="small" style="margin-top:6px">Connect Intervals.icu in Settings, then press Sync on Today. Your last 120 days of rides arrive on the first sync.</p></div>
+        <PageHead title="Activities" />
+        <Empty title="No activities yet."><span>Connect Intervals.icu in Settings, then press Sync on Today. Your last 120 days of activities arrive on the first sync.</span></Empty>
       </div>
     );
   }
@@ -44,9 +45,9 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   const pickView = (v: 'list' | 'month') => { setView(v); setSetting('ridesView', v); };
   return (
     <div>
-      <div class="page-head"><h1>Activities</h1>
-        <div class="row"><span class="muted small">{data.rides.length} synced</span>
-          <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div></div></div>
+      <PageHead eyebrow={`${data.rides.length} synced`} title="Activities">
+        <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
+      </PageHead>
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
           render={(d) => data.rides.filter((r) => r.date === d).map((r) => (
@@ -140,7 +141,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         </div>
       )}
 
-      {streams === undefined && <section class="section"><div class="empty small">Loading the recording from Intervals.icu…</div></section>}
+      {streams === undefined && <section class="section" aria-busy="true"><div class="stack" style="gap:10px"><Skeleton h={12} w={160} /><Skeleton h={320} r={12} /><Skeleton h={140} r={12} /></div></section>}
       {streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
       {streams && samples.length > 1 && (
         <>

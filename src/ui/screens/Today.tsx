@@ -19,6 +19,9 @@ import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, recentNote
 import type { CoachReview } from '../../coach/claude';
 import type { Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
+import { toast } from '../Toast';
+import { Empty, PageHead } from '../PageHead';
+import { Icon } from '../icons';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -39,7 +42,7 @@ export function Today({ data }: { data: AppData }) {
   const daySig = withW.map((x) => `${x.w!.id}:${x.p.status}`).join(',') + `|${todayNote?.text ?? ''}|${todayNote?.badWellness ? 'bad' : ''}`;
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const setMsg = toast;
   const [note, setNote] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [active, setActive] = useState<ActivePlan | null>(null);
@@ -146,17 +149,10 @@ export function Today({ data }: { data: AppData }) {
 
   return (
     <div>
-      <div class="page-head">
-        <div>
-          <p class="muted small">{fmtDate(date)}</p>
-          <h1>{profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}</h1>
-        </div>
-        <div class="row">
-          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}>{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
-        </div>
-      </div>
+      <PageHead eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
+        <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}><Icon.sync size={15} />{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
+      </PageHead>
 
-      {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
       <div class="today-grid">
       <div class="today-main">
       {tourDone === false && connected !== null && (
@@ -201,7 +197,7 @@ export function Today({ data }: { data: AppData }) {
       {workout && plan && stats ? (
         <section class="panel accent" style="padding:18px 18px 16px">
           <div class="row between">
-            <span class="tag" style={`background:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
+            <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
             <span class="row" style="gap:8px"><StatusMark status={statusOf(plan.status)} /><StatusPill status={statusOf(plan.status)} /></span>
           </div>
           <h2 style="font-size:24px;margin:10px 0 2px">{workout.name}</h2>
@@ -217,11 +213,7 @@ export function Today({ data }: { data: AppData }) {
           </div>
         </section>
       ) : others.length === 0 ? (
-        <section class="empty">
-          <b>Nothing planned today.</b>
-          <p class="small" style="margin-top:6px">Pick something from the library, build a plan, or take the day.</p>
-          <a class="btn primary sm" href="#/library" style="margin-top:12px">Choose a workout</a>
-        </section>
+        <Empty title="Nothing planned today." action={<a class="btn primary sm" href="#/library">Choose a workout</a>}>Pick something from the library, build a plan, or take the day.</Empty>
       ) : null}
 
       {others.length > 0 && (

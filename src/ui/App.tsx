@@ -20,11 +20,13 @@ import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
 import { Icon } from './icons';
 import { Logo, Mark } from './Brand';
+import { Toaster } from './Toast';
+import { Skeleton } from './PageHead';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
   { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
-  { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
+  { path: 'calendar', label: 'Calendar', icon: <Icon.calendar />, groupEnd: true },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
   { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
   { path: 'settings', label: 'Settings', icon: <Icon.settings />, railOnly: true, railFirst: true },
@@ -43,7 +45,7 @@ export function App() {
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
-  if (!data.loaded) return <div class="main" />;
+  if (!data.loaded) return <Loading />;
   if (!data.profile) return <Onboarding />;
 
   const [root, id] = route.parts;
@@ -75,9 +77,10 @@ export function App() {
     <div class="shell">
       <nav class="nav">
         <div class="brand"><Logo height={26} /></div>
-        {TABS.map((t) => (
-          <a key={t.path} href={`#/${t.path}`} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>
-        ))}
+        {TABS.map((t) => [
+          <a key={t.path} href={`#/${t.path}`} aria-current={active === t.path ? 'page' : undefined} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>,
+          'groupEnd' in t && t.groupEnd ? <div key={`${t.path}-sep`} class="nav-sep" /> : null,
+        ])}
       </nav>
       <header class="topbar">
         <Mark size={24} />
@@ -86,6 +89,23 @@ export function App() {
         <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>
       </header>
       <main class="main">{screen}</main>
+      <Toaster />
+    </div>
+  );
+}
+
+/** What shows for the moment before the database answers: the shell's shape, shimmering. */
+function Loading() {
+  return (
+    <div class="shell">
+      <main class="main" aria-busy="true">
+        <div class="stack" style="gap:14px">
+          <Skeleton h={12} w={140} />
+          <Skeleton h={30} w={220} />
+          <Skeleton h={220} r={12} />
+          <Skeleton h={120} r={12} />
+        </div>
+      </main>
     </div>
   );
 }

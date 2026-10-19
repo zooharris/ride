@@ -25,7 +25,7 @@ export function StatusMark({ status, size = 18, title }: { status: SessionStatus
       <svg {...common}>
         <title>{label}</title>
         <circle cx="10" cy="10" r="9" fill="var(--good)" />
-        <path d="M6 10.4l2.6 2.6L14.4 7.4" fill="none" stroke="#0b1410" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M6 10.4l2.6 2.6L14.4 7.4" fill="none" stroke="var(--on-color)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     );
   }

@@ -17,13 +17,15 @@ import { sessionSteps } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
+import { toast } from '../Toast';
+import { Empty } from '../PageHead';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
   const w = findWorkout(data.mine, id);
   const [basis, setBasis] = useState<Basis>(w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
   const [showText, setShowText] = useState(false);
-  if (!w) return <div class="empty">That workout is not in the library.</div>;
+  if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
   // The calendar entry this page is about: the one on the date in the link, else the nearest upcoming entry for
@@ -51,7 +53,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     <div>
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
       <div class="row between" style="margin-bottom:6px">
-        <span class="tag" style={`background:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
+        <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
         {w.bases.length > 1 ? (
           <div class="seg">
             <button class={basis === 'power' ? 'on' : ''} onClick={() => setBasis('power')}>Power</button>
@@ -121,7 +123,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const setSendMsg = toast;
   async function sendWalk() {
     if (!planned) return;
     const c = await credentials();
@@ -184,7 +186,6 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: {
           <h2>On the Garmin</h2>
           <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : planned.status === 'completed' ? 'Done.' : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
-          {sendMsg && <p class={`msg ${sendMsg.ok ? 'ok' : 'err'}`} style="margin-top:8px">{sendMsg.text}</p>}
           {w.kind !== 'walk' && planned.status !== 'completed' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{sessionSteps(w).map((l) => /^\d+x$/.test(l) ? `${l.slice(0, -1)} sets of:` : l.replace(/^- /, '  ')).join('\n')}</pre>

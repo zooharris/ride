@@ -78,8 +78,8 @@ function fmtTick(v: number): string { return Math.abs(v) >= 100 ? v.toFixed(0) :
 
 /** The form bands coaches use: where fitness-minus-fatigue sits tells you what the body is doing. */
 export const FORM_BANDS: ChartBand[] = [
-  { from: 5, to: 25, label: 'fresh', color: '#2fbf71', explain: 'Form +5 to +25: fresh. Where you want to be on an event day; staying here for long means fitness is slipping.' },
-  { from: -10, to: 5, label: 'neutral', color: '#9aa6b2', explain: 'Form −10 to +5: neutral. Recovery weeks and easy stretches land here.' },
-  { from: -30, to: -10, label: 'building', color: '#3c8dd6', explain: 'Form −30 to −10: building. Fatigue above fitness is how fitness rises; this is the productive zone.' },
-  { from: -60, to: -30, label: 'overreaching', color: '#e0485b', explain: 'Form below −30: overreaching. Fine for a few days at the end of a big block; a rest week is due.' },
+  { from: 5, to: 25, label: 'fresh', color: 'var(--good)', explain: 'Form +5 to +25: fresh. Where you want to be on an event day; staying here for long means fitness is slipping.' },
+  { from: -10, to: 5, label: 'neutral', color: 'var(--ink-3)', explain: 'Form −10 to +5: neutral. Recovery weeks and easy stretches land here.' },
+  { from: -30, to: -10, label: 'building', color: 'var(--info)', explain: 'Form −30 to −10: building. Fatigue above fitness is how fitness rises; this is the productive zone.' },
+  { from: -60, to: -30, label: 'overreaching', color: 'var(--bad)', explain: 'Form below −30: overreaching. Fine for a few days at the end of a big block; a rest week is due.' },
 ];

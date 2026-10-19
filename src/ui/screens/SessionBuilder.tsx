@@ -11,6 +11,8 @@ import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { go } from '../router';
 import { KIND_LABEL } from './Plan';
+import { PageHead } from '../PageHead';
+import { toast } from '../Toast';
 
 /** Build a strength, mobility or walk session by hand. */
 export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind: Exclude<SessionKind, 'ride' | 'other'>; id?: string; copyId?: string }) {
@@ -22,7 +24,6 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const [minutes, setMinutes] = useState(source?.minutes ?? (kind === 'walk' ? 45 : kind === 'strength' ? 40 : 12));
   const [packLb, setPackLb] = useState(source?.walk?.packKg ? Math.round(source.walk.packKg * 2.2) : 0);
   const [equipment, setEquipment] = useState<Equipment[]>(getCurrentEquipment());
-  const [saved, setSaved] = useState(false);
   const [date, setDate] = useState(today());
   const [effort, setEffort] = useState<number>(source?.effort ?? 6);
   const [hrLow, setHrLow] = useState(Math.round((source?.walk?.hrLow ?? 0.6) * 100));
@@ -55,7 +56,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     };
     await db.workouts.put(w);
     if (then === 'date') await db.planned.put({ id: newId(), date, workoutId: w.id, basis: data.profile!.basis, status: 'planned' });
-    notify(); setSaved(true);
+    notify(); toast({ ok: true, text: 'Saved to My Workouts.' });
     go(then === 'date' ? 'calendar' : 'library');
   }
 
@@ -64,11 +65,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
 
   return (
     <div>
-      <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
-      <div class="page-head">
-        <h1>{existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`}</h1>
-        <span class="muted small" title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>
-      </div>
+      <PageHead back={{ label: 'Library', href: '#/library' }} title={existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`} eyebrow={<span title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>} />
       <div class="form">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder={kind === 'strength' ? 'Tuesday legs' : kind === 'walk' ? 'Lunchtime walk' : 'Evening stretch'} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>
@@ -146,7 +143,6 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
         <a class="btn quiet" href="#/library">Cancel</a>
         {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}?`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
       </div>
-      {saved && <p class="msg ok" style="margin-top:10px">Saved.</p>}
     </div>
   );
 }

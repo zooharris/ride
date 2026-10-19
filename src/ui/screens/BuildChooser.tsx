@@ -1,5 +1,6 @@
 import { KIND_ICON } from '../icons';
 import type { SessionKind } from '../../engine/types';
+import { PageHead } from '../PageHead';
 
 const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: string }> = [
   { kind: 'ride', title: 'Ride', text: 'Steps and intervals by power or heart rate, sent to your Garmin.' },
@@ -12,8 +13,7 @@ const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: s
 export function BuildChooser() {
   return (
     <div>
-      <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
-      <div class="page-head"><h1>New workout</h1></div>
+      <PageHead back={{ label: 'Library', href: '#/library' }} title="New workout" />
       <p class="muted" style="margin:0 0 16px">What kind of session?</p>
       <div class="grid">
         {KINDS.map((k) => (

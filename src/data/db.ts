@@ -4,6 +4,13 @@ import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine
 export interface Settings {
   key: string;
   value: unknown;
+  updatedAt?: string;
+}
+
+/** A record deleted on this device, so the deletion carries to the rider's other devices. */
+export interface Tombstone {
+  id: string;               // `${table}:${primary key}`
+  at: string;               // ISO
 }
 
 export interface StreamSet {
@@ -45,6 +52,7 @@ class RideDb extends Dexie {
   wellness!: Table<Wellness, string>;
   sync!: Table<SyncState, string>;
   streams!: Table<StreamSet, string>;
+  tombstones!: Table<Tombstone, string>;
 
   constructor() {
     super('ride');
@@ -58,10 +66,35 @@ class RideDb extends Dexie {
       sync: 'key',
     });
     this.version(2).stores({ streams: 'id' });
+    this.version(3).stores({ tombstones: 'id' });
   }
 }
 
 export const db = new RideDb();
+
+/**
+ * Change tracking for the sync across devices: every write to the app's own
+ * tables stamps `updatedAt`, every delete leaves a tombstone. Records arriving
+ * from another device are applied inside `untracked()` so their own stamps
+ * survive and no tombstones are made for the clean-up they do.
+ */
+let tracking = true;
+export async function untracked<T>(fn: () => Promise<T>): Promise<T> {
+  const was = tracking;
+  tracking = false;
+  try { return await fn(); } finally { tracking = was; }
+}
+const TRACKED = ['profile', 'settings', 'workouts', 'planned'] as const;
+for (const name of TRACKED) {
+  const table = db.table(name);
+  table.hook('creating', function (_pk, obj: { updatedAt?: string }) { if (tracking) obj.updatedAt = new Date().toISOString(); });
+  table.hook('updating', function (mods: { updatedAt?: string }) { return tracking && !('updatedAt' in mods) ? { updatedAt: new Date().toISOString() } : undefined; });
+  table.hook('deleting', function (pk) {
+    if (!tracking) return;
+    const at = new Date().toISOString();
+    Dexie.ignoreTransaction(() => db.tombstones.put({ id: `${name}:${String(pk)}`, at }).catch(() => {}));
+  });
+}
 
 // Workouts saved before `setting` existed get the neutral value on read.
 db.workouts.hook('reading', (w) => (w ? { ...w, setting: w.setting ?? 'any', kind: w.kind ?? 'ride' } : w));

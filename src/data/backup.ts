@@ -2,34 +2,21 @@ import { APP_NAME, BACKUP_FILE_PREFIX } from '../appName';
 import { db } from './db';
 import { today } from '../engine/load';
 
-export interface Backup {
-  app: string;
-  schema: 1;
-  exportedAt: string;
-  profile: unknown;
-  settings: unknown[];
-  workouts: unknown[];
-  planned: unknown[];
-  sync: unknown[];
-}
+import { localDoc, readRemote, syncDevices, type SyncDoc } from './devicesync';
+import { untracked } from './db';
+import type { IntervalsCredentials } from '../sync/intervals';
+
+export type Backup = SyncDoc;
 
 /**
- * Everything the app alone owns, in one JSON file. Rides and wellness are left
- * out on purpose: they come back from Intervals.icu on the next sync.
- * The Intervals.icu API key is included so a restore is a one-step job; keep
- * the file where you keep passwords.
+ * Everything the app alone owns, in one JSON file: the same document the sync
+ * across devices keeps in Intervals.icu. Rides and wellness are left out on
+ * purpose: they come back from Intervals.icu on the next sync. The Intervals.icu
+ * API key is included so a restore is a one-step job; keep the file where you
+ * keep passwords.
  */
 export async function makeBackup(): Promise<Backup> {
-  return {
-    app: APP_NAME,
-    schema: 1,
-    exportedAt: new Date().toISOString(),
-    profile: await db.profile.get('me'),
-    settings: await db.settings.toArray(),
-    workouts: await db.workouts.toArray(),
-    planned: await db.planned.toArray(),
-    sync: await db.sync.toArray(),
-  };
+  return localDoc();
 }
 
 export function backupFileName(): string {
@@ -60,70 +47,39 @@ export async function downloadBackup(): Promise<void> {
   await db.settings.put({ key: 'lastBackup', value: new Date().toISOString() });
 }
 
+/**
+ * Replace this device's own data with a backup (file, or the note in
+ * Intervals.icu). The restored records are stamped now, so they win on the
+ * next sync across devices; the clean-up leaves no tombstones.
+ */
 export async function restoreBackup(text: string): Promise<{ workouts: number; planned: number }> {
-  const data = JSON.parse(text) as Backup;
-  if (data.schema !== 1 || !data.profile) throw new Error('This is not a backup file this app can read.');
-  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.sync], async () => {
-    await db.profile.clear();
-    await db.settings.clear();
-    await db.workouts.clear();
-    await db.planned.clear();
-    await db.sync.clear();
-    await db.profile.put(data.profile as never);
-    await db.settings.bulkPut(data.settings as never[]);
-    await db.workouts.bulkPut(data.workouts as never[]);
-    await db.planned.bulkPut(data.planned as never[]);
-    await db.sync.bulkPut(data.sync as never[]);
+  const data = JSON.parse(text) as Omit<Backup, 'schema'> & { schema: number };
+  if ((data.schema !== 1 && data.schema !== 2) || !data.profile) throw new Error('This is not a backup file this app can read.');
+  const strip = <R extends { updatedAt?: string }>(r: R): R => { const { updatedAt: _u, ...rest } = r; return rest as R; };
+  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.sync, db.tombstones], async () => {
+    await untracked(async () => {
+      await db.profile.clear();
+      await db.settings.clear();
+      await db.workouts.clear();
+      await db.planned.clear();
+      await db.sync.clear();
+    });
+    await db.profile.put(strip(data.profile as never));
+    await db.settings.bulkPut((data.settings as never[]).map(strip));
+    await db.workouts.bulkPut((data.workouts as never[]).map(strip));
+    await db.planned.bulkPut((data.planned as never[]).map(strip));
+    if (data.sync) await db.sync.bulkPut(data.sync as never[]);
   });
   return { workouts: data.workouts.length, planned: data.planned.length };
 }
 
-
-// ---- automatic backup through Intervals.icu ----
-import { getSetting, setSetting } from './db';
-import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
-
-async function gzipBase64(text: string): Promise<string> {
-  if (typeof CompressionStream === 'undefined') return 'raw:' + btoa(unescape(encodeURIComponent(text)));
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-  const buf = await new Response(stream).arrayBuffer();
-  let bin = '';
-  for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
-  return 'gz:' + btoa(bin);
-}
-
-async function gunzipBase64(payload: string): Promise<string> {
-  if (payload.startsWith('raw:')) return decodeURIComponent(escape(atob(payload.slice(4))));
-  const bin = atob(payload.replace(/^gz:/, ''));
-  const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return await new Response(stream).text();
-}
-
-/**
- * Write the backup into the rider's Intervals.icu account if the last one is
- * older than the interval or `force` is set. Quiet on failure; the manual file
- * backup is always there.
- */
-export async function autoBackup(c: IntervalsCredentials, force = false): Promise<{ ok: boolean; when?: string; error?: string }> {
-  const last = await getSetting<string | null>('lastAutoBackup', null);
-  if (!force && last && Date.now() - Date.parse(last) < 7 * 864e5) return { ok: true, when: last };
-  try {
-    const data = await makeBackup();
-    const payload = await gzipBase64(JSON.stringify(data));
-    await writeBackupNote(c, payload);
-    const when = new Date().toISOString();
-    await setSetting('lastAutoBackup', when);
-    return { ok: true, when };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
+/** The note in Intervals.icu is kept in step by the sync across devices; this runs one round of it. */
+export async function autoBackup(c: IntervalsCredentials, _force = false): Promise<{ ok: boolean; when?: string; error?: string }> {
+  const s = await syncDevices(c);
+  return s.error && (!s.last || s.error > s.last) ? { ok: false, error: s.error.replace(/^\S+ /, ''), when: s.last } : { ok: true, when: s.last };
 }
 
 export async function fetchAutoBackup(c: IntervalsCredentials): Promise<{ text: string; exportedAt: string } | null> {
-  const note = await readBackupNote(c);
-  if (!note) return null;
-  const text = await gunzipBase64(note.payload);
-  const parsed = JSON.parse(text) as Backup;
-  return { text, exportedAt: parsed.exportedAt };
+  const doc = await readRemote(c);
+  return doc ? { text: JSON.stringify(doc), exportedAt: doc.exportedAt } : null;
 }

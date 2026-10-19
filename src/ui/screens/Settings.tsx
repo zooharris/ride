@@ -4,6 +4,7 @@ import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { autoBackup, downloadBackup, fetchAutoBackup, restoreBackup } from '../../data/backup';
+import { type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
 import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
@@ -18,7 +19,7 @@ export function Settings({ data }: { data: AppData }) {
   const [claudeKey, setClaudeKey] = useState('');
   const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
-  const [lastAuto, setLastAuto] = useState<string | null>(null);
+  const [devices, setDevices] = useState<DeviceSyncState | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +28,7 @@ export function Settings({ data }: { data: AppData }) {
     getSetting<string>('claudeKey', '').then((k) => { setClaudeKey(k); setSavedKey(k); });
     getSetting<boolean>('coachAuto', false).then((v) => { setCoachAuto(v); setSavedAuto(v); });
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
-    getSetting<string | null>('lastAutoBackup', null).then(setLastAuto);
+    getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices);
   }, []);
 
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
@@ -99,9 +100,10 @@ export function Settings({ data }: { data: AppData }) {
     if (!c?.apiKey) { setMsg({ ok: false, text: 'Connect Intervals.icu first; the automatic backup is kept in your account there.' }); return; }
     setBusy(true);
     const r = await autoBackup(c, true);
+    getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices);
     setBusy(false);
-    if (r.ok) { setLastAuto(r.when ?? null); setMsg({ ok: true, text: 'Backed up to your Intervals.icu account.' }); }
-    else setMsg({ ok: false, text: `Automatic backup failed: ${r.error}. The file backup below still works.` });
+    if (r.ok) { notify(); setMsg({ ok: true, text: 'Synced with your Intervals.icu account: this device and the note there now match.' }); }
+    else setMsg({ ok: false, text: `Sync across devices failed: ${r.error}. The file backup below still works.` });
   }
 
   async function restoreFromIntervals() {
@@ -111,7 +113,7 @@ export function Settings({ data }: { data: AppData }) {
     try {
       const b = await fetchAutoBackup(c);
       if (!b) { setMsg({ ok: false, text: 'No automatic backup found in your Intervals.icu account.' }); return; }
-      if (!confirm(`Restore the backup from ${new Date(b.exportedAt).toLocaleString()}? This replaces the profile, settings, workouts and plan on this device.`)) return;
+      if (!confirm(`Replace everything on this device with the note from ${new Date(b.exportedAt).toLocaleString()}? Anything here that is not in the note is lost; use this only if the merge has gone wrong.`)) return;
       const r = await restoreBackup(b.text);
       notify();
       setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
@@ -222,11 +224,12 @@ export function Settings({ data }: { data: AppData }) {
       </section>
 
       <section class="section">
-        <h2>Backup</h2>
-        <p class="muted small" style="margin-bottom:12px">Your profile, settings, keys, workouts and plan are backed up automatically into your own Intervals.icu account (as a private note dated far in the future) after each sync, at most once a week, and whenever a plan is placed. Activities come back from Intervals.icu on their own. {lastAuto ? `Last automatic backup ${new Date(lastAuto).toLocaleString()}.` : 'No automatic backup yet.'}</p>
+        <h2>Across your devices, and backup</h2>
+        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, settings and keys are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. The same note is the backup a new device restores from. Activities come back from Intervals.icu on their own.</p>
+        <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}</p>
         <div class="row wrap">
-          <button class="btn" onClick={backupNow} disabled={busy}>Back up now</button>
-          <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Restore from Intervals.icu</button>
+          <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
+          <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Replace this device with the note</button>
         </div>
         <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">

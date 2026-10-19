@@ -9,7 +9,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
   {
     id: 'start', title: 'Getting started', body: (
       <>
-        <p>{APP_NAME} plans your training, sends each ride to your bike computer, and reads back what you did. It runs entirely in your browser; your data stays on this device, with a backup in your own Intervals.icu account.</p>
+        <p>{APP_NAME} plans your training, sends each ride to your bike computer, and reads back what you did. It runs entirely in your browser; your data lives on your devices and is kept in step between them through your own Intervals.icu account.</p>
         <ol>
           <li><b>Connect Intervals.icu</b> (Settings). Intervals.icu is the pipe between the app and Garmin: workouts you send go to Intervals.icu, which Garmin Connect picks up and puts on your Edge; rides you record flow back the same way. Your athlete ID and API key are on the Intervals.icu website under Settings → Developer. The app never sends them anywhere but Intervals.icu.</li>
           <li><b>Check your numbers</b> (Settings). FTP, threshold heart rate, max heart rate and weight are pulled from Intervals.icu when you connect. Every zone and every TSS depends on them, so correct them if they are stale; the app pushes changes back so the two stay in step.</li>
@@ -115,7 +115,8 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
         <ul>
           <li><b>Intervals.icu</b>: athlete ID and API key, and a connection test that tries each call the app makes and reports what passed.</li>
           <li><b>Your numbers</b>: FTP, LTHR, max and resting heart rate, weight, units, power or heart rate as the default basis for sending workouts, and which day your week starts on (Monday or Sunday) for the calendar, the lists, the plan and the printout. Garmin accepts one target type per workout, so each one is sent on one basis.</li>
-          <li><b>Backup</b>: "Back up now" writes a compressed copy of everything into a private note in your Intervals.icu calendar (on 31 Dec 2099, named "App backup"); it also happens automatically once a week. On any other browser or phone, connect Intervals.icu and the app offers to restore from it. You can also download a backup file and restore from a file.</li>
+          <li><b>Across your devices</b>: your plans, calendar, workouts, settings and keys are kept in step between every phone and browser signed in to the same Intervals.icu account, through a private note in that account (31 Dec 2099, named "App backup"). Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each item wins and deletions carry across, so a plan made on the laptop is on the phone the next time you open it. A new device: connect Intervals.icu and everything arrives. "Sync now" in Settings runs a merge on demand; "Replace this device with the note" is the heavy option if a merge has gone wrong. You can also download a backup file and restore from a file.</li>
+          <li><b>Someone else's data</b> never mixes with yours: each device merges only with the Intervals.icu account it is connected to.</li>
           <li><b>Giving the app to someone else</b>: they open the same address and connect their own Intervals.icu account. Each install holds only its own person's data; nothing is shared.</li>
           <li><b>Coach</b>: optionally, an Anthropic API key lets the app ask Claude for a short daily note and, if you turn it on, a review each time new activities arrive. The review can recommend plan changes but never makes them; you apply or dismiss.</li>
           <li><b>On a phone</b>: open the address in Safari (iPhone) or Chrome (Android), use Share → Add to Home Screen, and it runs as an app, offline included.</li>
@@ -132,7 +133,8 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <li><b>A session shows twice after you did it</b>: the planned entry and its recording should merge into one row marked done, with the recorded time, load and heart rate and a Recording link. Sync pairs them by the Garmin's own pairing, then by the day and kind, then by the day and name (the watch names the recording after the workout). A treadmill walk the watch files as a run is treated as a walk when its pace is walking pace. If a session still shows twice, the names or dates differ; open the recording and check the date Intervals.icu gave it.</li>
           <li><b>TSS does not match Intervals.icu</b>: check the FTP the ride used (shown under Numbers on the activity). The app and Intervals.icu share the same FTP when the app pushes yours; if they differ, fix it in Settings.</li>
           <li><b>The planner's verdict says "short"</b>: it is honest about what the hours allow. Give it more hours on the long-ride day, move the goal, or accept a hard day; the advice under the verdict says which would help most.</li>
-          <li><b>Data gone after clearing the browser</b>: restore from Intervals.icu in Settings, or from a backup file.</li>
+          <li><b>Data gone after clearing the browser</b>: connect Intervals.icu again and the note brings everything back; or restore from a backup file.</li>
+          <li><b>Phone and laptop disagree</b>: open Settings on each and tap Sync now; the newest change to each item wins. If something is still wrong, "Replace this device with the note" on the device that is behind.</li>
         </ul>
       </>
     ),

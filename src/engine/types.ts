@@ -3,6 +3,7 @@
 export type Basis = 'power' | 'hr';
 
 export interface Profile {
+  updatedAt?: string;       // set by the database on every write; drives the sync across devices
   name: string;
   ftp: number;          // watts
   lthr: number;         // bpm, lactate threshold heart rate
@@ -76,6 +77,7 @@ export interface WalkSpec {
 }
 
 export interface Workout {
+  updatedAt?: string;
   /** The descriptive form of a named library ride ("Sweet Spot 3 × 12"); the name itself is a place. */
   subtitle?: string;
   id: string;
@@ -112,6 +114,7 @@ export interface WorkoutStats {
 
 /** A workout placed on a date. */
 export interface PlannedWorkout {
+  updatedAt?: string;
   id: string;
   date: string;             // YYYY-MM-DD local
   workoutId: string;

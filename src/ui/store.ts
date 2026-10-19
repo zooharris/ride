@@ -5,10 +5,14 @@ import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
 import { setFirstDay } from './derived';
+import { onDeviceSync, schedulePush } from '../data/devicesync';
+import { credentials } from '../sync/syncService';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
-export function notify(): void { listeners.forEach((l) => l()); }
+export function notify(): void { listeners.forEach((l) => l()); schedulePush(credentials); }
+// Changes merged in from another device re-read the screens without scheduling a push of their own.
+onDeviceSync(() => listeners.forEach((l) => l()));
 
 export interface AppData {
   profile: Profile | null;

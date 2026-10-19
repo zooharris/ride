@@ -1,6 +1,9 @@
 import { APP_NAME } from '../appName';
 import { useRoute } from './router';
 import { useAppData } from './store';
+import { useEffect } from 'preact/hooks';
+import { syncDevices } from '../data/devicesync';
+import { credentials } from '../sync/syncService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -30,6 +33,15 @@ const TABS = [
 export function App() {
   const route = useRoute();
   const data = useAppData();
+  // Merge with the rider's other devices on launch and whenever the app comes back to the front (at most once a minute).
+  useEffect(() => {
+    let last = 0;
+    const run = async () => { if (Date.now() - last < 60_000) return; last = Date.now(); const c = await credentials(); if (c) syncDevices(c); };
+    run();
+    const onVis = () => { if (document.visibilityState === 'visible') run(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
   if (!data.loaded) return <div class="main" />;
   if (!data.profile) return <Onboarding />;
 

@@ -9,7 +9,6 @@ import { today } from '../../engine/load';
 import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
-import { autoBackup } from '../../data/backup';
 import { sendWorkout } from '../../sync/intervals';
 import { notify } from '../store';
 import { dailyNote } from '../../coach/claude';
@@ -116,7 +115,6 @@ export function Today({ data }: { data: AppData }) {
     try {
       const r = await syncAll();
       notify();
-      credentials().then((c) => c && autoBackup(c));
       setMsg({ ok: true, text: `Synced ${r.rides} activities and ${r.wellness} days of wellness.${r.newIds.length ? ` ${r.newIds.length} new.` : ''}` });
       if (r.newIds.length) {
         setBusy('review');

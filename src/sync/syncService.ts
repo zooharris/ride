@@ -4,6 +4,7 @@ import type { Ride } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import type { IntervalsCredentials } from './intervals';
 import { fetchPowerCurve, fetchRides, fetchWellness, testConnection } from './intervals';
+import { syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -86,5 +87,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   await db.wellness.bulkPut(wellness);
 
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined });
+  // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
+  await syncDevices(c);
   return { rides: rides.length, wellness: wellness.length, newIds };
 }

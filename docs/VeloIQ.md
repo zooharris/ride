@@ -16,7 +16,7 @@ Garmin's developer programme is closed to individuals and Apple Health has no we
 - Any activity recorded to Intervals.icu — from the Edge, a watch, a manual entry — comes back to the app on Sync, whatever device recorded it. The app never assumes a particular device.
 - Wellness (HRV, sleep, resting HR) comes from Intervals.icu too, from whatever writes it there (Garmin, Oura, by hand).
 - FTP, threshold HR and max HR are kept in step both ways.
-- The weekly automatic backup is a private note in the rider's own Intervals.icu calendar (31 Dec 2099), so a new device restores from it right after connecting.
+- **Sync across devices** (`src/data/devicesync.ts`): the app's own data (profile, settings, plans, calendar entries, workouts) lives in a private note in the rider's own Intervals.icu calendar (31 Dec 2099, gzip+base64). Every write stamps `updatedAt` and every delete leaves a tombstone (Dexie hooks in db.ts, `untracked()` for applying remote records); each device merges with the note on launch, on return to the foreground (≤ once a minute), after every Intervals sync, and ~4 s after any local change (`notify()` → `schedulePush`). Newest record wins, deletions carry, unstamped legacy records union. The same note is the backup a new device restores from; a file backup remains. No server; each account's note is its own, so nothing mixes.
 
 Map tiles come from OpenStreetMap (free, no key). Claude (Anthropic API) is optional and off unless a key is entered.
 
@@ -50,7 +50,8 @@ src/
 ## Data model (IndexedDB, one database per browser profile)
 
 - **profile**: name, FTP, LTHR, max/resting HR, weight, units, default basis (power/HR), masters flag.
-- **settings**: key/value — Intervals credentials, Claude key, `plans` (the list of named plans), plan request, view preferences, tour state.
+- **settings**: key/value — Intervals credentials, Claude key, `plans` (the list of named plans), plan request, view preferences, tour state, `deviceSync` state and `deviceId` (local only).
+- **tombstones**: `${table}:${id}` + time, for deletions to carry across devices.
 - **workouts**: hand-built (`source: 'mine'`) and generated copies (`source: 'generated'`); the library itself is code.
 - **planned**: calendar entries — date, workoutId, basis, status (planned → sent → completed, or missed), Intervals event id, matched activity id, planId if a plan created it.
 - **rides**: every activity from Intervals.icu with the app's own TSS; `sport` is ride | strength | mobility | walk | other.
@@ -94,7 +95,7 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - **Library**: Rides with a filter toolbar (search, Type menu, Length menu, Sort menu; dropdowns on a laptop, bottom sheets on a phone); Strength / Mobility / Walks ready-made for the rider's equipment; My … sections; "New workout" → chooser → ride, strength, mobility or walk builder, each showing estimated TSS live. Walks carry a heart-rate target (% of max, shown in bpm; a low of 0 = no minimum, the Recovery preset). Recovery-family rides and any step built with a low of 0 enforce no floor (`noFloor` on the step; sent to the device as 10% FTP / 20% LTHR because Garmin needs two ends) and can be sent to the Garmin as walking workouts (Intervals.icu type Walk, target as % LTHR).
 - **Ride names**: every library ride is named for a place (src/library/names.ts): where you would turn around on an out-and-back from Old Town Herndon at the ride's intensity. Outdoor-shaped rides go west on the W&OD (long rides = trail towns, interval rides = roads off the trail), core rides go east toward Washington, indoor rides take the loops near home; tests keep plain names. The descriptive name is the subtitle and goes to the Garmin with the place name. The file lists unused names for future rides.
 - **Activities**: list or month; detail with verdict, route map, stacked interactive charts (shared cursor with the map; mouse or touch), time in zone, numbers with descriptions.
-- **Settings**: Intervals credentials + connection checks; your numbers; zones; week starts on Monday or Sunday (calendar, lists, plan rows and printout follow); coach key and auto-review toggle; backup now / restore from Intervals / file backup.
+- **Settings**: Intervals credentials + connection checks; your numbers; zones; week starts on Monday or Sunday (calendar, lists, plan rows and printout follow); coach key and auto-review toggle; across your devices (last merge, Sync now, Replace this device with the note) / file backup.
 - **Help**: one section per screen, the numbers explained, backup and other devices, troubleshooting.
 
 ## Standing requirements (from the rider)

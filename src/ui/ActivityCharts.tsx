@@ -69,7 +69,7 @@ export function ActivityCharts({ samples, analysis, profile, hover, onHover }: {
           <button class={axis === 'time' ? 'on' : ''} onClick={() => setAxis('time')}>By time</button>
           <button class={axis === 'distance' ? 'on' : ''} onClick={() => setAxis('distance')} disabled={!hasDist} title={hasDist ? '' : 'No distance in this recording'}>By distance</button>
         </div>
-        <span class="faint small">Move the mouse over any chart to read every value at that point; the map follows.</span>
+        <span class="faint small">Move the mouse (or a finger) across any chart to read every value at that point; the map follows.</span>
       </div>
       {h && (
         <div class="panel small row wrap" style="gap:14px;padding:8px 12px;margin-bottom:8px">
@@ -109,12 +109,23 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
     let best = 0; for (let i = 0; i < samples.length; i++) if (Math.abs(samples[i].t - sec) < Math.abs(samples[best].t - sec)) best = i; return x(xOf(samples[best]));
   } : null;
   const hv = hover != null ? vals[hover] : undefined;
+  // Mouse or finger position → nearest sample along the x axis. Touch keeps the cursor where it was left.
+  const pick = (svg: SVGSVGElement, clientX: number) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((clientX - r.left) / r.width) * W;
+    const xv = ((px - padL) / (W - padL - padR)) * xMax;
+    let best = 0;
+    for (let i = 0; i < samples.length; i++) if (Math.abs(xOf(samples[i]) - xv) < Math.abs(xOf(samples[best]) - xv)) best = i;
+    onHover(best);
+  };
   return (
     <div style="position:relative">
       <div class="row between" style="margin-bottom:2px"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit})</span></span>{hv != null && <span class="num small" style={`color:${panel.color}`}>{Math.round(hv)} {panel.unit}</span>}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={`${panel.title} chart`}
-        onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const xv = ((px - padL) / (W - padL - padR)) * xMax; let best = 0; for (let i = 0; i < samples.length; i++) if (Math.abs(xOf(samples[i]) - xv) < Math.abs(xOf(samples[best]) - xv)) best = i; onHover(best); }}
-        onMouseLeave={() => onHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
+        onMouseMove={(e) => pick(e.currentTarget as SVGSVGElement, e.clientX)}
+        onMouseLeave={() => onHover(null)}
+        onTouchStart={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}
+        onTouchMove={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}>
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="9" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 6} fill="var(--ink-3)" font-size="9" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {

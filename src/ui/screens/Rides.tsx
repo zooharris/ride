@@ -147,7 +147,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           {hasRoute && (
             <section class="section">
               <h2>Route</h2>
-              <p class="faint small" style="margin:4px 0 8px">Green dot: start. Red: finish. The amber marker follows the charts below, and moving the mouse along the route moves the charts.</p>
+              <p class="faint small" style="margin:4px 0 8px">Green dot: start. Red: finish. The amber marker follows the charts below; moving the mouse along the route, or tapping it, moves the charts.</p>
               <RouteMap samples={samples} hover={hover} onHover={setHover} />
             </section>
           )}

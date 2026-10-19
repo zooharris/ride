@@ -29,13 +29,19 @@ export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: S
     marker.current = L.circleMarker(latlngs[0], { radius: 7, color: '#fff', weight: 2, fillColor: '#f0a33a', fillOpacity: 1, interactive: false }).addTo(m);
     marker.current.setStyle({ opacity: 0, fillOpacity: 0 });
     // Mouse over the map: pick the nearest point of the route, within a few screen pixels of it.
-    m.on('mousemove', (e: L.LeafletMouseEvent) => {
-      const mp = m.latLngToLayerPoint(e.latlng);
-      let best = -1, bestD = 14 * 14;
+    const nearest = (latlng: L.LatLng, within: number) => {
+      const mp = m.latLngToLayerPoint(latlng);
+      let best = -1, bestD = within * within;
       for (const p of pts) { const q = m.latLngToLayerPoint([p.lat, p.lng]); const dx = q.x - mp.x, dy = q.y - mp.y; const d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = p.i; } }
-      onHover(best >= 0 ? best : null);
-    });
-    m.on('mouseout', () => onHover(null));
+      return best;
+    };
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    if (!touch) {
+      m.on('mousemove', (e: L.LeafletMouseEvent) => { const i = nearest(e.latlng, 14); onHover(i >= 0 ? i : null); });
+      m.on('mouseout', () => onHover(null));
+    }
+    // A tap (or click) on or near the route jumps the charts there and leaves the marker in place.
+    m.on('click', (e: L.LeafletMouseEvent) => { const i = nearest(e.latlng, 28); if (i >= 0) onHover(i); });
     map.current = m;
     return () => { m.remove(); map.current = null; marker.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

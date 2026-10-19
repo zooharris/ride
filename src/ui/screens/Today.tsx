@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
+import { GettingStarted } from './Help';
 import { findWorkout } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
@@ -40,6 +41,8 @@ export function Today({ data }: { data: AppData }) {
   const [check, setCheck] = useState<Replan | null>(null);
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<CoachReview | null>(null);
+  const [tourDone, setTourDone] = useState<boolean | null>(null);
+  useEffect(() => { getSetting<boolean>('tourDone', false).then(setTourDone); }, []);
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
 
@@ -145,7 +148,10 @@ export function Today({ data }: { data: AppData }) {
       {msg && <div class={`msg ${msg.ok ? 'ok' : 'err'}`} style="margin-bottom:14px">{msg.text}</div>}
       <div class="today-grid">
       <div class="today-main">
-      {connected === false && (
+      {tourDone === false && connected !== null && (
+        <GettingStarted connected={connected === true} synced={data.rides.length > 0} planned={!!active} sent={data.planned.some((p) => p.status === 'sent' || p.status === 'completed')} reviewed={data.planned.some((p) => p.status === 'completed' && !!p.activityId)} onDismiss={() => { setTourDone(true); setSetting('tourDone', true); }} />
+      )}
+      {connected === false && tourDone !== false && (
         <div class="panel accent" style="margin-bottom:14px">
           <b>Connect Intervals.icu</b>
           <p class="muted small" style="margin-top:4px">That is how workouts reach your bike computer and finished activities come back. Add your athlete ID and API key in Settings.</p>

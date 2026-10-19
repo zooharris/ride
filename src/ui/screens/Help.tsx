@@ -1,0 +1,179 @@
+import { APP_NAME } from '../../appName';
+
+/**
+ * The manual: one section per screen, then the numbers the app shows and
+ * what they mean, then backup, the coach and troubleshooting. Written for
+ * someone opening the app for the first time, in plain words.
+ */
+const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> = [
+  {
+    id: 'start', title: 'Getting started', body: (
+      <>
+        <p>{APP_NAME} plans your training, sends each ride to your bike computer, and reads back what you did. It runs entirely in your browser; your data stays on this device, with a backup in your own Intervals.icu account.</p>
+        <ol>
+          <li><b>Connect Intervals.icu</b> (Settings). Intervals.icu is the pipe between the app and Garmin: workouts you send go to Intervals.icu, which Garmin Connect picks up and puts on your Edge; rides you record flow back the same way. Your athlete ID and API key are on the Intervals.icu website under Settings → Developer. The app never sends them anywhere but Intervals.icu.</li>
+          <li><b>Check your numbers</b> (Settings). FTP, threshold heart rate, max heart rate and weight are pulled from Intervals.icu when you connect. Every zone and every TSS depends on them, so correct them if they are stale; the app pushes changes back so the two stay in step.</li>
+          <li><b>Sync</b> (Today). Pulls your activities and wellness (sleep, HRV, resting heart rate, from whatever you record them with). Do this before building a plan so the planner has something to assess.</li>
+          <li><b>Build a plan</b> (Calendar → Plan). Give it a goal, your hours for each day of the week, your equipment and any standing commitments. It assesses your own data and decides what each day should be. Put it on the calendar when you like what you see.</li>
+          <li><b>Send the week</b> (Calendar). One tap sends every ride for the week to your Garmin. Ride it from the Edge's Training menu, sync as usual, then tap Sync here to see how it went.</li>
+        </ol>
+      </>
+    ),
+  },
+  {
+    id: 'today', title: 'Today', body: (
+      <>
+        <p>The day's plan and how ready you are for it.</p>
+        <ul>
+          <li><b>The main card</b> is today's ride with its profile, duration and training load, and the Send to Garmin button. Strength, mobility and walks for the day sit under "Also today"; tap one for the exercises and to log it.</li>
+          <li><b>Next up</b> shows the next scheduled session when today is a rest day.</li>
+          <li><b>Readiness</b> blends HRV, sleep, resting heart rate and form against your own recent normal into one score with a sentence of advice. Hover any part for what it means. It needs wellness data in Intervals.icu; without it the score falls back to form alone.</li>
+          <li><b>Fitness</b> is the last three months of fitness, fatigue and form (explained under Numbers below). Hover for any day.</li>
+          <li><b>The plan card</b> re-checks the plan every day after a sync: what you did last week against what was planned, and any changes the planner would now make. Nothing changes until you tap Apply.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'calendar', title: 'Calendar', body: (
+      <>
+        <ul>
+          <li><b>List or Calendar</b> view, remembered between visits. The list shows two weeks with each day's sessions and the week's planned and completed load; the calendar shows a month.</li>
+          <li><b>+ Add</b> on any future day puts a ride, strength session, mobility routine or walk on it from the library, or lets you build one.</li>
+          <li><b>Send N to Garmin</b> sends every unsent ride in the week. Rides show "not sent", "on Garmin" or "done".</li>
+          <li><b>×</b> removes a session after asking you to confirm. If it was on your Garmin it comes off there too.</li>
+          <li><b>Plan</b> opens the plan builder (below).</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'plan', title: 'Plan', body: (
+      <>
+        <p>The planner does not apply a template. It assesses your own rides and wellness (fitness, ramp rate, longest ride, how you recover after long rides, hard rides and strength, whether your FTP looks current), works out what the goal demands, and then fits sessions into the hours you give it.</p>
+        <ul>
+          <li><b>Goal</b>: an event with a date (century, gran fondo, climb, race, group ride), or raise FTP, build endurance, lose weight, or general fitness. For an event the planner estimates what it will cost and the fitness you need on the day.</li>
+          <li><b>Your week</b>: hours available each day, whether that day can be outdoors, whether the bike is available at all, your equipment (bench, dumbbells, bands, treadmill, somewhere to walk), and standing commitments such as "Tuesday is always strength". You do not say what kind of session goes on which day; the planner decides ride, strength, mobility, walk or rest.</li>
+          <li><b>Masters rider</b> starts the recovery rhythm at every third week and caps the fitness ramp. Your own data moves both: good recovery evidence loosens them, poor evidence tightens them.</li>
+          <li><b>The result</b> shows a verdict (on track, close, short), the fitness projection, a list of decisions in plain sentences, and every week with every session and the reason for it. Nothing is placed on the calendar until you tap "Put on calendar".</li>
+          <li><b>Re-check</b> compares last week's plan to what happened and regenerates from today; Apply keeps the sessions that did not change. <b>Cancel plan</b> removes only future, undone sessions the plan created; anything you added by hand stays.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'library', title: 'Library and Build', body: (
+      <>
+        <ul>
+          <li><b>Rides</b>: sixty-odd workouts by family (recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic, tests), each with its purpose, the physiology behind it, and the steps. "Power or HR" means it can be sent on either basis; VO2max and above are power only, because heart rate lags too much for short efforts.</li>
+          <li><b>Strength, Mobility, Walks</b>: ready-made sessions built for your equipment, the same ones the planner uses, plus themed sessions. Each names the exercises or stretches, sets, reps, holds and why. "Add to a date" puts one on the calendar.</li>
+          <li><b>Build</b> asks what kind of session, then opens the builder for it: steps and intervals for a ride; exercises for your equipment with sets, reps and load for strength; stretches and hold times for mobility; minutes, pack weight and heart-rate target for a walk. Every builder shows the estimated TSS as you edit. Saved sessions appear under "My …" at the top of each tab and can be edited or deleted.</li>
+          <li><b>Copy and edit</b> on any library workout makes your own version.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'activities', title: 'Activities', body: (
+      <>
+        <p>Everything Intervals.icu has recorded, however it got there: rides from the Edge, walks from a watch, strength sessions logged here. List or month view.</p>
+        <ul>
+          <li><b>Against plan</b>: a ride done from a planned workout gets a verdict (nailed it, done, partial, over-cooked, missed) with the reason, and an interval-by-interval table of target against ridden.</li>
+          <li><b>Route</b>: the GPS track on a map; start in green, finish in red.</li>
+          <li><b>The recording</b>: power, heart rate, cadence, speed, elevation and temperature through the activity, by time or by distance. Move the mouse over any chart to read every value at that point; the marker on the map follows, and moving along the route moves the charts.</li>
+          <li><b>Time in zone</b> and <b>Numbers</b>, each with a line saying what it means.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'numbers', title: 'The numbers, explained', body: (
+      <>
+        <dl class="defs">
+          <dt>TSS, training load</dt><dd>How much a session cost. An hour flat out at FTP is 100. Rides compute it from power (or heart rate); strength, mobility and walks are estimated from duration and effort, and when you log one with an effort rating the logged figure replaces the estimate.</dd>
+          <dt>FTP</dt><dd>Functional threshold power: the highest power you can hold for about an hour. Every power zone is a share of it.</dd>
+          <dt>LTHR</dt><dd>Lactate threshold heart rate: the heart rate that goes with FTP. Heart-rate zones are shares of it; walks use shares of max heart rate instead.</dd>
+          <dt>Normalized power</dt><dd>What a ride felt like in steady watts; surges count more than coasting.</dd>
+          <dt>Intensity factor</dt><dd>Normalized power over FTP. 0.70 is endurance, 1.00 is threshold.</dd>
+          <dt>Fitness</dt><dd>A 42-day weighted average of daily TSS. It rises slowly with consistent training and is what the goal needs on the day.</dd>
+          <dt>Fatigue</dt><dd>A 7-day weighted average of daily TSS. It rises fast after hard days and falls fast with rest.</dd>
+          <dt>Form</dt><dd>Fitness minus fatigue. Below zero while building (normal); above zero when fresh; you want roughly +5 to +20 on an event day.</dd>
+          <dt>Ramp rate</dt><dd>How many fitness points a week you are adding. The planner caps it (4 a week for a masters rider, more with evidence you recover well).</dd>
+          <dt>Efficiency factor</dt><dd>Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving.</dd>
+          <dt>Heart-rate drift (decoupling)</dt><dd>How much heart rate rose for the same power in the second half of a ride. Under 5% on a long ride is a sign of a good aerobic base.</dd>
+          <dt>Readiness</dt><dd>HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each compared with your own two-week baseline. Green is better than your normal, red worse.</dd>
+          <dt>Effort (RPE)</dt><dd>How hard a session felt, 1–10. Used when you log strength and to estimate its TSS.</dd>
+        </dl>
+      </>
+    ),
+  },
+  {
+    id: 'settings', title: 'Settings, backup and other devices', body: (
+      <>
+        <ul>
+          <li><b>Intervals.icu</b>: athlete ID and API key, and a connection test that tries each call the app makes and reports what passed.</li>
+          <li><b>Your numbers</b>: FTP, LTHR, max and resting heart rate, weight, units, power or heart rate as the default basis for sending workouts. Garmin accepts one target type per workout, so each one is sent on one basis.</li>
+          <li><b>Backup</b>: "Back up now" writes a compressed copy of everything into a private note in your Intervals.icu calendar (on 31 Dec 2099, named "App backup"); it also happens automatically once a week. On any other browser or phone, connect Intervals.icu and the app offers to restore from it. You can also download a backup file and restore from a file.</li>
+          <li><b>Giving the app to someone else</b>: they open the same address and connect their own Intervals.icu account. Each install holds only its own person's data; nothing is shared.</li>
+          <li><b>Coach</b>: optionally, an Anthropic API key lets the app ask Claude for a short daily note and, if you turn it on, a review each time new activities arrive. The review can recommend plan changes but never makes them; you apply or dismiss.</li>
+          <li><b>On a phone</b>: open the address in Safari (iPhone) or Chrome (Android), use Share → Add to Home Screen, and it runs as an app, offline included.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'trouble', title: 'If something looks wrong', body: (
+      <>
+        <ul>
+          <li><b>A workout did not reach the Edge</b>: it must show "on Garmin" here; then Garmin Connect has to sync it to the device (open the Connect app, or sync the Edge over Wi-Fi). Intervals.icu must be connected to Garmin under its own Settings.</li>
+          <li><b>A ride is missing</b>: tap Sync. Rides arrive in Intervals.icu a few minutes after Garmin Connect has them.</li>
+          <li><b>TSS does not match Intervals.icu</b>: check the FTP the ride used (shown under Numbers on the activity). The app and Intervals.icu share the same FTP when the app pushes yours; if they differ, fix it in Settings.</li>
+          <li><b>The planner's verdict says "short"</b>: it is honest about what the hours allow. Give it more hours on the long-ride day, move the goal, or accept a hard day; the advice under the verdict says which would help most.</li>
+          <li><b>Data gone after clearing the browser</b>: restore from Intervals.icu in Settings, or from a backup file.</li>
+        </ul>
+      </>
+    ),
+  },
+];
+
+export function Help() {
+  return (
+    <div>
+      <div class="page-head"><h1>Help</h1></div>
+      <div class="help">
+        <nav class="help-toc panel">
+          {SECTIONS.map((s) => <a key={s.id} href={`#/help?s=${s.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(`help-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{s.title}</a>)}
+        </nav>
+        <div class="help-body">
+          {SECTIONS.map((s) => (
+            <section class="section" id={`help-${s.id}`} key={s.id}>
+              <h2>{s.title}</h2>
+              <div class="prose">{s.body}</div>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The first-run checklist on Today: ticks itself as each step gets done. */
+export function GettingStarted({ connected, synced, planned, sent, reviewed, onDismiss }: { connected: boolean; synced: boolean; planned: boolean; sent: boolean; reviewed: boolean; onDismiss: () => void }) {
+  const steps: Array<[boolean, string, string, string]> = [
+    [connected, 'Connect Intervals.icu', 'Settings', '#/settings'],
+    [synced, 'Sync your activities and wellness', 'Today', '#/today'],
+    [planned, 'Build a plan and put it on the calendar', 'Plan', '#/plan'],
+    [sent, 'Send the week to your Garmin', 'Calendar', '#/calendar'],
+    [reviewed, 'Ride, sync, and open the activity', 'Activities', '#/rides'],
+  ];
+  const done = steps.filter(([ok]) => ok).length;
+  return (
+    <section class="panel accent" style="margin-bottom:14px">
+      <div class="row between"><b>Getting started · {done} of {steps.length}</b><button class="btn sm quiet" onClick={onDismiss}>Dismiss</button></div>
+      <ol class="checklist" style="margin:10px 0 0">
+        {steps.map(([ok, text, where, href]) => <li key={text} class={ok ? 'done' : ''}><span class="tick">{ok ? '✓' : ''}</span><span>{text}</span>{!ok && <a href={href} class="faint small">{where} ›</a>}</li>)}
+      </ol>
+      <p class="faint small" style="margin:10px 0 0">The <a href="#/help">Help</a> page explains every screen and every number.</p>
+    </section>
+  );
+}

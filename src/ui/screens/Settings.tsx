@@ -225,13 +225,13 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Across your devices, and backup</h2>
-        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, settings and keys are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. The same note is the backup a new device restores from. Activities come back from Intervals.icu on their own.</p>
+        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. The same note is the backup a new device restores from. Activities come back from Intervals.icu on their own.</p>
         <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}</p>
         <div class="row wrap">
           <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
           <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Replace this device with the note</button>
         </div>
-        <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
+        <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping; unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
           <button class="btn quiet" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
           <label class="btn quiet" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>

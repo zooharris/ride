@@ -2,7 +2,7 @@ import { APP_NAME, BACKUP_FILE_PREFIX } from '../appName';
 import { db } from './db';
 import { today } from '../engine/load';
 
-import { localDoc, readRemote, syncDevices, type SyncDoc } from './devicesync';
+import { localDoc, readRemote, SECRET_SETTINGS, syncDevices, type SyncDoc } from './devicesync';
 import { untracked } from './db';
 import type { IntervalsCredentials } from '../sync/intervals';
 
@@ -13,10 +13,10 @@ export type Backup = SyncDoc;
  * across devices keeps in Intervals.icu. Rides and wellness are left out on
  * purpose: they come back from Intervals.icu on the next sync. The Intervals.icu
  * API key is included so a restore is a one-step job; keep the file where you
- * keep passwords.
+ * keep passwords. The sync note in Intervals.icu never carries the keys.
  */
 export async function makeBackup(): Promise<Backup> {
-  return localDoc();
+  return localDoc({ withSecrets: true });
 }
 
 export function backupFileName(): string {
@@ -50,24 +50,31 @@ export async function downloadBackup(): Promise<void> {
 /**
  * Replace this device's own data with a backup (file, or the note in
  * Intervals.icu). The restored records are stamped now, so they win on the
- * next sync across devices; the clean-up leaves no tombstones.
+ * next sync across devices; the clean-up leaves no tombstones. Keys this
+ * device already holds are kept when the backup brings none (the note never
+ * carries them), so a restore from the note does not disconnect the device.
  */
 export async function restoreBackup(text: string): Promise<{ workouts: number; planned: number }> {
   const data = JSON.parse(text) as Omit<Backup, 'schema'> & { schema: number };
   if ((data.schema !== 1 && data.schema !== 2) || !data.profile) throw new Error('This is not a backup file this app can read.');
   const strip = <R extends { updatedAt?: string }>(r: R): R => { const { updatedAt: _u, ...rest } = r; return rest as R; };
-  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.sync, db.tombstones], async () => {
+  const incomingKeys = new Set((data.settings as Array<{ key: string }>).map((s) => s.key));
+  const keptSecrets = (await db.settings.toArray()).filter((s) => SECRET_SETTINGS.has(s.key) && !incomingKeys.has(s.key));
+  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.sync, db.tombstones], async () => {
     await untracked(async () => {
       await db.profile.clear();
       await db.settings.clear();
       await db.workouts.clear();
       await db.planned.clear();
+      await db.dayNotes.clear();
       await db.sync.clear();
     });
     await db.profile.put(strip(data.profile as never));
     await db.settings.bulkPut((data.settings as never[]).map(strip));
+    if (keptSecrets.length) await untracked(() => db.settings.bulkPut(keptSecrets));
     await db.workouts.bulkPut((data.workouts as never[]).map(strip));
     await db.planned.bulkPut((data.planned as never[]).map(strip));
+    if (data.dayNotes) await db.dayNotes.bulkPut((data.dayNotes as never[]).map(strip));
     if (data.sync) await db.sync.bulkPut(data.sync as never[]);
   });
   return { workouts: data.workouts.length, planned: data.planned.length };

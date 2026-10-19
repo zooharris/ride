@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { db, getSetting, loadProfile } from '../data/db';
-import type { Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
+import type { DayNote, Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
@@ -18,25 +18,36 @@ export interface AppData {
   profile: Profile | null;
   planned: PlannedWorkout[];
   rides: Ride[];
+  /** Wellness the rider has not disowned: days flagged in a day note as wrong are already left out. */
   wellness: Wellness[];
+  /** Every wellness day as synced, flagged ones included (Settings and the readiness panel show what was set aside). */
+  wellnessAll: Wellness[];
+  dayNotes: DayNote[];
   mine: Workout[];
   loaded: boolean;
 }
 
+/** Wellness with the days the rider marked as wrong taken out. The flag lives on the morning's date. */
+export function trustedWellness(wellness: Wellness[], notes: DayNote[]): Wellness[] {
+  const bad = new Set(notes.filter((n) => n.badWellness).map((n) => n.date));
+  return bad.size ? wellness.filter((w) => !bad.has(w.date)) : wellness;
+}
+
 export function useAppData(): AppData {
-  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], mine: [], loaded: false });
+  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], loaded: false });
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [profile, planned, rides, wellness, mine] = await Promise.all([
+      const [profile, planned, rides, wellnessAll, mine, dayNotes] = await Promise.all([
         loadProfile(),
         db.planned.toArray(),
         db.rides.orderBy('date').reverse().toArray(),
         db.wellness.orderBy('date').toArray(),
         db.workouts.toArray(),
+        db.dayNotes.toArray(),
       ]);
       setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
-      if (alive) setData({ profile, planned, rides, wellness, mine, loaded: true });
+      if (alive) setData({ profile, planned, rides, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, loaded: true });
     };
     load();
     listeners.add(load);
@@ -78,5 +89,13 @@ export async function scheduleWorkout(w: Workout, date: string, basis: 'power' |
     await db.workouts.put({ ...w, id, source: 'generated' });
   }
   await db.planned.put({ id: newId(), date, workoutId: id, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned' });
+  notify();
+}
+
+/** Save the rider's note for a date; an empty note with nothing flagged is removed. */
+export async function saveDayNote(date: string, note: { text?: string; badWellness?: boolean }): Promise<void> {
+  const text = note.text?.trim() || undefined;
+  if (!text && !note.badWellness) await db.dayNotes.delete(date);
+  else await db.dayNotes.put({ date, text, badWellness: note.badWellness || undefined });
   notify();
 }

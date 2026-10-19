@@ -68,3 +68,48 @@ describe('sync across devices', () => {
     expect(r.localNewer).toBe(true);
   });
 });
+
+describe('day notes', () => {
+  it('travel in the note like calendar entries and are left out of trusted wellness', async () => {
+    const { trustedWellness, saveDayNote } = await import('../ui/store');
+    await saveDayNote('2026-10-19', { text: 'watch out of sleep mode overnight', badWellness: true });
+    await saveDayNote('2026-10-18', { text: 'long day of yard work' });
+    const mine = await localDoc();
+    expect(mine.dayNotes?.map((n) => n.date).sort()).toEqual(['2026-10-18', '2026-10-19']);
+    expect(mine.dayNotes?.find((n) => n.date === '2026-10-19')?.updatedAt).toBeTruthy();
+    // a note from another device arrives; an older note written before day notes existed has none
+    const r = await mergeRemote(doc({ dayNotes: [{ date: '2026-10-17', text: 'flight home', updatedAt: '2026-10-17T20:00:00Z' }] }));
+    expect(r.applied).toBe(1);
+    expect(r.localNewer).toBe(true);
+    const notes = await db.dayNotes.toArray();
+    const wellness = [{ date: '2026-10-17', hrv: 60 }, { date: '2026-10-18', hrv: 58 }, { date: '2026-10-19', hrv: 31 }];
+    expect(trustedWellness(wellness, notes).map((w) => w.date)).toEqual(['2026-10-17', '2026-10-18']);
+    // clearing the note removes it, and the removal carries
+    await saveDayNote('2026-10-19', { text: '', badWellness: false });
+    await new Promise((res) => setTimeout(res, 20));
+    expect(await db.dayNotes.get('2026-10-19')).toBeUndefined();
+    expect((await db.tombstones.toArray()).map((t) => t.id)).toContain('dayNotes:2026-10-19');
+    expect(trustedWellness(wellness, await db.dayNotes.toArray())).toHaveLength(3);
+  });
+});
+
+describe('secrets stay on the device', () => {
+  it('leaves the API keys out of the sync note, keeps them in a file backup, and keeps this device\'s keys on a restore from the note', async () => {
+    const { makeBackup, restoreBackup } = await import('./backup');
+    await db.profile.put({ id: 'me', name: 'T', ftp: 250, lthr: 160, maxHr: 180, restingHr: 50, weightKg: 75, basis: 'power', units: 'imperial', hoursPerWeek: 8 } as never);
+    await db.settings.put({ key: 'intervals', value: { athleteId: 'i1', apiKey: 'secret' } });
+    await db.settings.put({ key: 'claudeKey', value: 'sk-secret' });
+    await db.settings.put({ key: 'plans', value: [] });
+    const note = await localDoc();
+    expect(note.settings.map((s) => s.key)).toEqual(['plans']);
+    const file = await makeBackup();
+    expect(file.settings.map((s) => s.key).sort()).toEqual(['claudeKey', 'intervals', 'plans']);
+    // a note from the other device has no keys; merging it must not leave this device forever "newer"
+    const r = await mergeRemote(doc({ profile: await db.profile.get('me'), settings: [{ key: 'plans', value: [], updatedAt: '2099-01-01T00:00:00Z' }] }));
+    expect(r.localNewer).toBe(false);
+    // replacing this device with the note keeps the keys it already has
+    await restoreBackup(JSON.stringify(note));
+    expect(((await db.settings.get('intervals'))?.value as { apiKey: string }).apiKey).toBe('secret');
+    expect((await db.settings.get('claudeKey'))?.value).toBe('sk-secret');
+  });
+});

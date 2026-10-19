@@ -1,7 +1,7 @@
 import { APP_NAME } from '../appName';
 import { db, getSetting, setSetting, untracked, type Settings, type Tombstone } from './db';
 import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
-import type { PlannedWorkout, Profile, Workout } from '../engine/types';
+import type { DayNote, PlannedWorkout, Profile, Workout } from '../engine/types';
 
 /**
  * Sync across the rider's devices, with no server: the private note in the
@@ -22,6 +22,8 @@ export interface SyncDoc {
   settings: Settings[];
   workouts: Workout[];
   planned: PlannedWorkout[];
+  /** Absent in notes written before day notes existed. */
+  dayNotes?: DayNote[];
   tombstones: Tombstone[];
   /** Present on schema-1 (backup-only) notes written by older builds. */
   sync?: unknown[];
@@ -29,6 +31,13 @@ export interface SyncDoc {
 
 /** Settings that belong to one device, or come from Intervals.icu anyway. */
 const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId']);
+/**
+ * Secrets never leave the device in the sync note: the Intervals.icu key and the
+ * Claude key are pasted once on each device. A file backup may carry them, at
+ * the rider's choice, so a restore from file is one step.
+ */
+export const SECRET_SETTINGS = new Set(['intervals', 'claudeKey']);
+const inNote = (s: Settings) => !LOCAL_ONLY.has(s.key) && !SECRET_SETTINGS.has(s.key);
 const TOMBSTONE_DAYS = 120;
 
 export interface DeviceSyncState { last?: string; pushed?: string; error?: string; device?: string }
@@ -44,17 +53,19 @@ export async function deviceId(): Promise<string> {
   return id;
 }
 
-export async function localDoc(): Promise<SyncDoc> {
+export async function localDoc(opts: { withSecrets?: boolean } = {}): Promise<SyncDoc> {
   const cutoff = new Date(Date.now() - TOMBSTONE_DAYS * 864e5).toISOString();
+  const keep = opts.withSecrets ? (s: Settings) => !LOCAL_ONLY.has(s.key) : inNote;
   return {
     app: APP_NAME,
     schema: 2,
     exportedAt: new Date().toISOString(),
     device: await deviceId(),
     profile: await db.profile.get('me'),
-    settings: (await db.settings.toArray()).filter((s) => !LOCAL_ONLY.has(s.key)),
+    settings: (await db.settings.toArray()).filter(keep),
     workouts: await db.workouts.toArray(),
     planned: await db.planned.toArray(),
+    dayNotes: await db.dayNotes.toArray(),
     tombstones: (await db.tombstones.toArray()).filter((t) => t.at >= cutoff),
   };
 }
@@ -71,7 +82,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
   const remoteTomb = new Map((remote.tombstones ?? []).map((x) => [x.id, x.at]));
   const localTomb = new Map((await db.tombstones.toArray()).map((x) => [x.id, x.at]));
 
-  await untracked(() => db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.tombstones], async () => {
+  await untracked(() => db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.tombstones], async () => {
     // Tombstones: union; a remote tombstone newer than a local record deletes it.
     for (const [id, at] of remoteTomb) {
       const have = localTomb.get(id);
@@ -79,7 +90,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
     }
     for (const [id, at] of localTomb) if (!remoteTomb.has(id) || remoteTomb.get(id)! < at) localNewer = true;
 
-    const mergeTable = async <R extends { updatedAt?: string }>(name: string, table: { get: (k: string) => Promise<R | undefined>; put: (r: R) => Promise<unknown>; delete: (k: string) => Promise<void>; toArray: () => Promise<R[]> }, remoteRows: R[], keyOf: (r: R) => string) => {
+    const mergeTable = async <R extends { updatedAt?: string }>(name: string, table: { get: (k: string) => Promise<R | undefined>; put: (r: R) => Promise<unknown>; delete: (k: string) => Promise<void>; toArray: () => Promise<R[]> }, remoteRows: R[], keyOf: (r: R) => string, local: (r: R) => boolean = () => true) => {
       const remoteKeys = new Set<string>();
       for (const r of remoteRows) {
         const key = keyOf(r);
@@ -92,7 +103,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
         else if (t(mine.updatedAt) > t(r.updatedAt)) localNewer = true;
         else if (JSON.stringify(mine) !== JSON.stringify(r)) localNewer = true;   // both unstamped (older builds) and different: this device's copy goes up
       }
-      for (const mine of await table.toArray()) {
+      for (const mine of (await table.toArray()).filter(local)) {
         const key = keyOf(mine);
         if (remoteKeys.has(key)) continue;
         const tomb = remoteTomb.get(`${name}:${key}`);
@@ -106,9 +117,10 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
       if (!mine || t(remote.profile.updatedAt) > t(mine.updatedAt)) { await db.profile.put(remote.profile); applied++; }
       else if (t(mine.updatedAt) > t(remote.profile.updatedAt) || (!mine.updatedAt && JSON.stringify(mine) !== JSON.stringify(remote.profile))) localNewer = true;
     } else if (await db.profile.get('me')) localNewer = true;
-    await mergeTable<Settings>('settings', db.settings, (remote.settings ?? []).filter((s) => !LOCAL_ONLY.has(s.key)), (s) => s.key);
+    await mergeTable<Settings>('settings', db.settings, (remote.settings ?? []).filter(inNote), (s) => s.key, inNote);
     await mergeTable<Workout>('workouts', db.workouts, remote.workouts ?? [], (w) => w.id);
     await mergeTable<PlannedWorkout>('planned', db.planned, remote.planned ?? [], (p) => p.id);
+    await mergeTable<DayNote>('dayNotes', db.dayNotes, remote.dayNotes ?? [], (n) => n.date);
   }));
   return { applied, localNewer };
 }

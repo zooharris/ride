@@ -384,12 +384,12 @@ export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (
             return (
               <label class="small row" key={i} style="gap:8px;align-items:flex-start;cursor:pointer">
                 <input type="checkbox" checked={accepted.has(k)} onChange={() => toggle(k)} style="margin-top:3px" />
-                <span><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}{c.userEdited && <span class="faint"> · you changed this; a suggestion only</span>}</span>
+                <span><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}; a suggestion only</span>}</span>
               </label>
             );
           })}
           {check.changes.length > 14 && <div class="faint small">and {check.changes.length - 14} more</div>}
-          {edited > 0 && <div class="faint small" style="margin-top:4px">Untick anything you want left as it is. Suggestions for sessions you changed yourself start unticked.</div>}
+          {edited > 0 && <div class="faint small" style="margin-top:4px">Untick anything you want left as it is. Suggestions for sessions you changed or added yourself start unticked.</div>}
         </div>
       )}
       <div class="row" style="margin-top:12px">

@@ -24,8 +24,10 @@ export interface Change {
   before?: string;        // session name before
   after?: string;         // session name after
   note: string;
-  /** The rider edited what is on this date and kind (or moved something away from it); offered, not pre-selected. */
+  /** The rider edited what is on this date and kind (or moved something away from it), or put it there by hand; offered, not pre-selected. */
   userEdited?: boolean;
+  /** The session on this date and kind was added by hand, not by the plan. */
+  userAdded?: boolean;
 }
 export const changeKey = (c: { date: string; kind: string }) => `${c.date}|${c.kind}`;
 
@@ -80,11 +82,16 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const k = key(s.date, s.kind);
     after.set(k, [...(after.get(k) ?? []), s]);
   }
+  // The calendar is the plan: a session the rider placed by hand counts as their
+  // decision for that date and kind, the same as one they edited.
   const edited = new Set<string>();
+  const added = new Set<string>();
   for (const p of future) {
     const w = workouts.get(p.workoutId);
-    if (p.userEdited && w) edited.add(key(p.date, w.kind));
-    if (p.movedFrom && w) edited.add(key(p.movedFrom, w.kind));
+    if (!w) continue;
+    if (p.userEdited) edited.add(key(p.date, w.kind));
+    if (p.movedFrom) edited.add(key(p.movedFrom, w.kind));
+    if (!p.planId) { edited.add(key(p.date, w.kind)); added.add(key(p.date, w.kind)); }
   }
   const changes: Change[] = [];
   const keys = new Set([...before.keys(), ...after.keys()]);
@@ -96,9 +103,10 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const aNames = a.map((s) => s.workout.name);
     if (bNames.join(',') === aNames.join(',')) continue;
     const userEdited = edited.has(k) || undefined;
-    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited });
-    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed', userEdited });
-    else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed', userEdited });
+    const userAdded = added.has(k) || undefined;
+    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited, userAdded });
+    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed', userEdited, userAdded });
+    else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed', userEdited, userAdded });
   }
   return changes;
 }

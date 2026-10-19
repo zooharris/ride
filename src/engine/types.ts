@@ -173,6 +173,19 @@ export interface Wellness {
   weightKg?: number;
 }
 
+/**
+ * The rider's own word on a day: a note for the coach, and whether the
+ * wellness numbers recorded for that day can be trusted (a watch left out of
+ * sleep mode, a night in a hotel). A distrusted day is left out of readiness and
+ * of every average the assessment builds.
+ */
+export interface DayNote {
+  date: string;             // YYYY-MM-DD local; sleep and HRV for the night are on the morning's date
+  text?: string;
+  badWellness?: boolean;
+  updatedAt?: string;
+}
+
 export interface DayLoad {
   date: string;
   tss: number;

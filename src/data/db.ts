@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
+import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 
 export interface Settings {
   key: string;
@@ -53,6 +53,7 @@ class RideDb extends Dexie {
   sync!: Table<SyncState, string>;
   streams!: Table<StreamSet, string>;
   tombstones!: Table<Tombstone, string>;
+  dayNotes!: Table<DayNote, string>;
 
   constructor() {
     super('ride');
@@ -67,6 +68,7 @@ class RideDb extends Dexie {
     });
     this.version(2).stores({ streams: 'id' });
     this.version(3).stores({ tombstones: 'id' });
+    this.version(4).stores({ dayNotes: 'date' });
   }
 }
 
@@ -84,7 +86,7 @@ export async function untracked<T>(fn: () => Promise<T>): Promise<T> {
   tracking = false;
   try { return await fn(); } finally { tracking = was; }
 }
-const TRACKED = ['profile', 'settings', 'workouts', 'planned'] as const;
+const TRACKED = ['profile', 'settings', 'workouts', 'planned', 'dayNotes'] as const;
 for (const name of TRACKED) {
   const table = db.table(name);
   table.hook('creating', function (_pk, obj: { updatedAt?: string }) { if (tracking) obj.updatedAt = new Date().toISOString(); });

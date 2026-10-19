@@ -10,13 +10,14 @@ import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readin
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
-import { notify } from '../store';
+import { notify, saveDayNote, trustedWellness } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart } from '../FitnessChart';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
-import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, replan, type ActivePlan } from '../planService';
+import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, recentNoteLines, replan, type ActivePlan } from '../planService';
 import type { CoachReview } from '../../coach/claude';
 import type { Replan } from '../../engine/adapt';
+import type { DayNote } from '../../engine/types';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -24,6 +25,8 @@ export function Today({ data }: { data: AppData }) {
   const series = fitnessFromRides(data.rides);
   const fit = fitnessOn(series, date);
   const ready = readinessToday(data.wellness, fit);
+  const todayNote = data.dayNotes.find((n) => n.date === date);
+  const wellnessSetAside = !!todayNote?.badWellness && data.wellnessAll.some((w) => w.date === date);
   const plans = plannedOn(data.planned, date, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
   const withW = plans.map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
   const ridePlan = withW.find((x) => x.w!.kind === 'ride');
@@ -31,6 +34,8 @@ export function Today({ data }: { data: AppData }) {
   const plan = ridePlan?.p;
   const workout = ridePlan?.w;
   const stats = workout ? workoutStats(workout.blocks) : undefined;
+  // What is on today's calendar, in one string: the coach note is remade when this changes.
+  const daySig = withW.map((x) => `${x.w!.id}:${x.p.status}`).join(',') + `|${todayNote?.text ?? ''}|${todayNote?.badWellness ? 'bad' : ''}`;
 
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -78,14 +83,18 @@ export function Today({ data }: { data: AppData }) {
     (async () => {
       const key = await getSetting<string>('claudeKey', '');
       if (!key) return;
-      const cached = await getSetting<{ date: string; text: string } | null>('coachNote', null);
-      if (cached?.date === date && cached.text) { if (alive) setNote(cached.text); return; }
+      // One note a day, unless the day's calendar changes under it (a session added, replaced or done).
+      const cached = await getSetting<{ date: string; text: string; sig?: string } | null>('coachNote', null);
+      if (cached?.date === date && cached.text && (cached.sig ?? '') === daySig) { if (alive) setNote(cached.text); return; }
       try {
         const text = await dailyNote(key, {
-          profile, date, fitness: fit, readiness: ready, todayWorkout: workout,
+          profile, date, fitness: fit, readiness: ready,
+          todaySessions: withW.map((x) => ({ planned: x.p, workout: x.w! })),
           recentRides: data.rides, missedThisWeek: missedThisWeek(data.planned),
+          riderNote: todayNote?.text, wellnessSetAside,
+          recentNotes: recentNoteLines(data.dayNotes.filter((n) => n.date !== date), date, 90),
         });
-        await setSetting('coachNote', { date, text });
+        await setSetting('coachNote', { date, text, sig: daySig });
         if (alive) setNote(text);
       } catch (e) {
         if (alive) setNote(`Coach note unavailable: ${(e as Error).message}`);
@@ -93,7 +102,7 @@ export function Today({ data }: { data: AppData }) {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, plan?.id, data.rides.length]);
+  }, [date, daySig, data.rides.length]);
 
   async function send() {
     if (!plan || !workout) return;
@@ -119,7 +128,8 @@ export function Today({ data }: { data: AppData }) {
       if (r.newIds.length) {
         setBusy('review');
         try {
-          const fresh = { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: await db.wellness.orderBy('date').toArray() };
+          const notes = await db.dayNotes.toArray();
+          const fresh = { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
           const out = await coachReviewAfterSync(fresh, r.newIds);
           if (out) { setReview(out.review); if (out.check) setCheck(out.check); }
         } catch (e) { setMsg({ ok: false, text: `Synced, but the coach review failed: ${(e as Error).message}` }); }
@@ -129,7 +139,7 @@ export function Today({ data }: { data: AppData }) {
     } finally { setBusy(null); }
   }
 
-  const bandText = { go: 'Ready for the full session', ease: 'Ease the intensity 10–15% if it feels heavy', easy: 'Keep it in zone 1–2 today', rest: 'A rest day would serve you better' }[ready.band];
+  const bandText = readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
 
   return (
     <div>
@@ -241,8 +251,13 @@ export function Today({ data }: { data: AppData }) {
             </div>
           ))}
         </div>
-        <p class="faint small" style="margin-top:8px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own recent normal. Green is better than normal, red worse.</p>
-        {data.wellness.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
+        {wellnessSetAside ? (
+          <p class="small" style="margin-top:8px;color:var(--warn)">Today's HRV, sleep and resting heart rate are set aside as wrong, so the score is from form alone and the day is left out of your averages.</p>
+        ) : (
+          <p class="faint small" style="margin-top:8px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own recent normal. Green is better than normal, red worse.</p>
+        )}
+        {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
+        <DayNoteEditor date={date} note={todayNote} hasWellness={data.wellnessAll.some((w) => w.date === date)} />
       </section>
 
       <section class="section">
@@ -283,6 +298,71 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
       </div>
     </section>
   );
+}
+
+/**
+ * The rider's own word on the day: a note the coach reads first, and a switch to
+ * set the day's wellness numbers aside when the watch got them wrong. Saved on
+ * blur or Save, synced across devices with everything else.
+ */
+function DayNoteEditor({ date, note, hasWellness }: { date: string; note?: DayNote; hasWellness: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(note?.text ?? '');
+  const [bad, setBad] = useState(!!note?.badWellness);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setText(note?.text ?? ''); setBad(!!note?.badWellness); }, [note?.text, note?.badWellness]);
+  const dirty = text.trim() !== (note?.text ?? '') || bad !== !!note?.badWellness;
+  async function save() {
+    setSaving(true);
+    try { await saveDayNote(date, { text, badWellness: bad }); setOpen(false); } finally { setSaving(false); }
+  }
+  if (!open) {
+    if (!note?.text && !note?.badWellness) return <button class="btn sm quiet" style="margin-top:10px" onClick={() => setOpen(true)}>Add a note about today</button>;
+    return (
+      <div class="row between" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);gap:10px;align-items:flex-start">
+        <div class="small"><span class="muted">Your note:</span> {note.text || <span class="faint">no text</span>}{note.badWellness ? <span class="faint"> · wellness set aside</span> : null}</div>
+        <button class="btn sm quiet" onClick={() => setOpen(true)}>Edit</button>
+      </div>
+    );
+  }
+  return (
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <div class="field">
+        <label>Your note about today <span class="faint">· the coach reads this before the numbers</span></label>
+        <textarea rows={3} value={text} placeholder="e.g. the watch was out of sleep mode overnight, so the sleep and HRV are wrong; or: travelling, legs heavy from yard work, a cold coming on" onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} style="resize:vertical;min-height:64px" />
+      </div>
+      <label class="row small" style="gap:8px;margin-top:8px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" checked={bad} onChange={() => setBad(!bad)} style="margin-top:3px" />
+        <span>Today's wellness numbers are not real measurements: leave today's HRV, sleep and resting heart rate out of readiness and out of my averages{!hasWellness ? <span class="faint"> (none synced for today yet; the flag will apply when they arrive)</span> : null}</span>
+      </label>
+      <p class="faint small" style="margin-top:6px">Tick only when the watch was not measuring you (out of sleep mode, on the nightstand). Real numbers with a reason behind them, a late glass of wine, a flight, a cold coming on, stay in: just write the note. The coach reads your notes before the numbers and keeps three months of them in mind.</p>
+      <div class="row" style="gap:8px;margin-top:10px">
+        <button class="btn sm primary" onClick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button class="btn sm quiet" onClick={() => { setText(note?.text ?? ''); setBad(!!note?.badWellness); if (!dirty) setOpen(false); }} disabled={saving}>{dirty ? 'Reset' : 'Close'}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The one-line advice under the readiness score, written for what is actually
+ * on the calendar today (anything not yet done), not for an assumed ride.
+ */
+export function readinessAdvice(band: 'go' | 'ease' | 'easy' | 'rest', kinds: string[]): string {
+  const ride = kinds.includes('ride'), lift = kinds.includes('strength'), walk = kinds.includes('walk'), mob = kinds.includes('mobility');
+  const gentleOnly = kinds.length > 0 && !ride && !lift;
+  if (kinds.length === 0) {
+    return { go: 'Recovered and ready; nothing is on the calendar, so the day is yours', ease: 'A little below normal; a free day suits', easy: 'Below normal; keep anything you add gentle', rest: 'Well below normal; rest is the right call today' }[band];
+  }
+  if (gentleOnly) {
+    const what = walk && mob ? 'the walk and the mobility work' : walk ? 'the walk' : 'the mobility work';
+    return { go: `Recovered and ready; ${what} will do its job`, ease: `A little below normal; ${what} is the right kind of day`, easy: `Below normal; ${what} is just right, keep it easy`, rest: `Well below normal; ${what} is fine if it stays gentle, or take the day` }[band];
+  }
+  if (lift && !ride) {
+    return { go: 'Ready for the full session, loads as planned', ease: 'Ease off a little: drop the load 10–15% or a set if it feels heavy', easy: 'Below normal; keep the lifting light today, technique over load', rest: 'Well below normal; a rest day would serve you better than lifting' }[band];
+  }
+  const extra = lift ? ' Fit the strength work around it, lighter if the ride is the priority' : '';
+  return { go: 'Ready for the full session' + extra, ease: 'Ease the intensity 10–15% if it feels heavy' + extra, easy: 'Keep the ride in zone 1–2 today' + (lift ? ' and keep the lifting light' : ''), rest: 'A rest day would serve you better' + (lift ? '; if you do anything, make it the mobility and skip the lifting' : '') }[band];
 }
 
 const READINESS_HELP: Record<string, string> = {

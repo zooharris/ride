@@ -4,7 +4,7 @@ import { reviewAfterSync, type CoachReview } from '../coach/claude';
 import { clock } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
-import { today } from '../engine/load';
+import { addDays, today } from '../engine/load';
 import { generatePlan, type Availability, type Plan } from '../engine/planner';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
@@ -247,7 +247,17 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[]): Pro
     lastWeek: check?.review.lines ?? [],
     proposedChanges: check ? [...check.summary, ...check.changes.map((c) => `${c.date}: ${c.note} ${c.before ?? ''}${c.before && c.after ? ' → ' : ''}${c.after ?? ''}`)] : [],
     newActivities: fresh,
+    riderNotes: recentNoteLines(data.dayNotes, today(), 14),
   });
   await setSetting('coachReview', review);
   return { review, check };
+}
+
+/** The rider's day notes from the last `days` days, newest first, one line each, for the coach. */
+export function recentNoteLines(notes: { date: string; text?: string; badWellness?: boolean }[], date: string, days: number): string[] {
+  const from = addDays(date, -days);
+  return notes
+    .filter((n) => n.date >= from && n.date <= date && (n.text || n.badWellness))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((n) => `${n.date}: ${[n.text, n.badWellness ? 'wellness for this day set aside as wrong' : ''].filter(Boolean).join(' — ')}`);
 }

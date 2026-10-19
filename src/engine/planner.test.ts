@@ -291,3 +291,21 @@ describe('adaptation', () => {
     expect(diff.filter((c) => !c.userEdited).length).toBe(0);
   });
 });
+
+describe('hand-added sessions in the re-check', () => {
+  it('offers, never pre-selects, a change to a session the rider put on the calendar themselves', async () => {
+    const { diffPlan } = await import('./adapt');
+    const plan = generatePlan(req());
+    const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const, planId: 'p' })));
+    // the rider adds a strength session by hand on a day the plan left without one
+    const strength = [...workouts.values()].find((w) => w.kind === 'strength')!;
+    const free = plan.weeks.flatMap((w) => w.sessions).map((s) => s.date).filter((d) => d > today).find((d) => !planned.some((p) => p.date === d && workouts.get(p.workoutId)?.kind === 'strength'))!;
+    const diff = diffPlan([...planned, { id: 'hand', date: free, workoutId: strength.id, basis: 'power' as const, status: 'planned' as const }], workouts, plan, today);
+    const mine = diff.filter((c) => c.date === free && c.kind === 'strength');
+    expect(mine).toHaveLength(1);
+    expect(mine[0].userEdited).toBe(true);
+    expect(mine[0].userAdded).toBe(true);
+    expect(diff.filter((c) => !c.userEdited)).toHaveLength(0);
+  });
+});

@@ -272,25 +272,23 @@ export function sessionSteps(workout: Workout): string[] {
   const effort = workout.effort ?? 6;
   const restSec = workout.kind === 'mobility' ? 0 : effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
   const dur = (s: number) => (s >= 60 && s % 60 === 0 ? `${s / 60}m` : s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`);
-  const tidy = (t: string) => t.replace(/\s+/g, ' ').trim();
-  // Ranges like "10–12" are written out so Intervals.icu cannot read them as a target.
-  const reps = (r: string) => tidy(r).replace(/(\d+)\s*[-–]\s*(\d+)/g, '$1 to $2');
   const blocks: Array<{ times: number; steps: string[] }> = [];
   for (const e of ex) {
     const sets = Math.max(1, e.sets ?? 1);
-    const load = e.load && !/bodyweight|slow and controlled|keep moving|reps in reserve/i.test(e.load) ? ` · ${tidy(e.load)}` : '';
-    const name = tidy(e.name.length > 40 ? e.name.slice(0, 39) + '…' : e.name);
+    const load = e.load && !/bodyweight|slow and controlled|keep moving|reps in reserve/i.test(e.load) ? ` ${garminText(e.load)}` : '';
+    const name = garminText(e.name.length > 40 ? e.name.slice(0, 39) : e.name);
     if (e.holdSeconds) {
       // Holds and stretches are timed and the watch counts them down; stretches get a step a side.
       const perSide = workout.kind === 'mobility' && /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
-      const steps = perSide ? [`- ${name}, left ${dur(e.holdSeconds)}`, `- ${name}, right ${dur(e.holdSeconds)}`] : [`- ${name} ${dur(e.holdSeconds)}`];
+      const steps = perSide ? [`- ${name} left side ${dur(e.holdSeconds)}`, `- ${name} right side ${dur(e.holdSeconds)}`] : [`- ${name} ${dur(e.holdSeconds)}`];
       if (restSec) steps.push(`- Rest ${dur(restSec / 2)}`);
       blocks.push({ times: sets, steps });
       continue;
     }
     // A set ends on the lap press; the time after it is only the plan's estimate of a set.
     const estimate = Math.max(30, Math.round((parseInt(e.reps ?? '10', 10) || 10) * 4 / 5) * 5 + 10);
-    const steps = [`- Press lap ${name}${e.reps ? ` × ${reps(e.reps)}` : ''}${load} ${dur(estimate)}`];
+    const reps = e.reps ? ` ${garminText(e.reps)}${/rep/i.test(e.reps) ? '' : ' reps'}` : '';
+    const steps = [`- Press lap ${name}${reps}${load} ${dur(estimate)}`];
     if (restSec) steps.push(`- Rest ${dur(restSec)}`);
     blocks.push({ times: sets, steps });
   }
@@ -303,6 +301,24 @@ export function sessionSteps(workout: Workout): string[] {
     else lines.push(...b.steps);
   }
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().split('\n');
+}
+
+/**
+ * Step text the way Intervals.icu passes it to Garmin as the step name: words
+ * only. Digits read as targets and symbols cut the name short, so numbers are
+ * spelled out ("ten to twelve reps", "thirty five lb") and punctuation goes.
+ */
+export function garminText(text: string): string {
+  const ones = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  const words = (n: number): string => n < 20 ? ones[n] : n < 100 ? `${tens[Math.floor(n / 10)]}${n % 10 ? ' ' + ones[n % 10] : ''}` : n < 1000 ? `${ones[Math.floor(n / 100)]} hundred${n % 100 ? ' ' + words(n % 100) : ''}` : String(n);
+  return text
+    .replace(/(\d+)\s*[-–—]\s*(\d+)/g, (_m, a, b) => `${words(+a)} to ${words(+b)}`)
+    .replace(/\d+(\.\d+)?/g, (m) => words(Math.round(+m)))
+    .replace(/×|(?<=\s|^)x(?=\s)/g, ' ')
+    .replace(/[^A-Za-z ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function sessionEvent(workout: Workout, date: string) {

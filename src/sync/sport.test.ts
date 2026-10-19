@@ -24,7 +24,9 @@ describe('strength and mobility as Garmin steps', () => {
   it('sets end on a lap press, rests and holds are timed, ranges are spelled out', () => {
     const w = all.find((x) => x.kind === 'strength' && /Foundation A/.test(x.name))!;
     const lines = sessionSteps(w);
-    expect(lines.some((l) => /^- Press lap Goblet squat × 10 to 12 50s$/.test(l))).toBe(true);
+    expect(lines.some((l) => /^- Press lap Goblet squat ten to twelve reps 50s$/.test(l))).toBe(true);
+    // Step names carry no digits or symbols, which Intervals.icu would read as targets.
+    for (const l of lines.filter((x) => /^- /.test(x))) expect(l.replace(/ \S+$/, '')).toMatch(/^- [A-Za-z ]+$/);
     expect(lines).toContain('- Rest 1m30s');
     expect(lines).toContain('3x');
     expect(lines.some((l) => /\d+[-–]\d+/.test(l))).toBe(false);
@@ -37,6 +39,18 @@ describe('strength and mobility as Garmin steps', () => {
     const w = all.find((x) => x.kind === 'mobility' && /after the long ride/.test(x.name))!;
     const lines = sessionSteps(w);
     expect(lines.every((l) => !/Press lap|Rest/.test(l))).toBe(true);
-    expect(lines.some((l) => /, left \d+s$|, left \dm$/.test(l))).toBe(true);
+    expect(lines.some((l) => / left side \d+s$| left side \dm$/.test(l))).toBe(true);
+  });
+});
+
+describe('garminText', () => {
+  it('spells numbers out and strips symbols', async () => {
+    const { garminText } = await import('./intervals');
+    expect(garminText('Goblet squat')).toBe('Goblet squat');
+    expect(garminText('10–12')).toBe('ten to twelve');
+    expect(garminText('8 per side')).toBe('eight per side');
+    expect(garminText('35 lb, or 2 reps in reserve')).toBe('thirty five lb or two reps in reserve');
+    expect(garminText('Half-kneeling hip flexor stretch')).toBe('Half kneeling hip flexor stretch');
+    expect(garminText('3 x 10')).toBe('three ten');
   });
 });

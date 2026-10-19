@@ -9,4 +9,6 @@ registerSW({
   immediate: true,
   onRegisteredSW(_url, r) { if (r) setInterval(() => { r.update().catch(() => {}); }, 15 * 60 * 1000); },
 });
+// Every launch opens on Today, whatever screen was showing when the app was last closed.
+if (location.hash && location.hash !== '#/today') history.replaceState(null, '', `${location.pathname}#/today`);
 render(<App />, document.getElementById('app')!);

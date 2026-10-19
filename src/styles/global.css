@@ -301,3 +301,15 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 .checklist .tick { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex: 0 0 20px; }
 .checklist li.done .tick { background: var(--good); border-color: var(--good); color: #0b1410; }
 .checklist li a { margin-left: auto; text-decoration: none; }
+
+/* plan: your week */
+.week-table { display: flex; flex-direction: column; gap: 6px; }
+.week-head, .week-row { display: grid; grid-template-columns: 44px 72px 1fr 1fr; gap: 8px; align-items: center; }
+.week-head { font-size: 11px; color: var(--ink-3); padding: 0 2px; }
+.week-row .seg button { padding: 7px 8px; font-size: 12px; flex: 1; justify-content: center; }
+.week-row .seg { display: flex; }
+@media (max-width: 599px) {
+  .week-head { display: none; }
+  .week-row { grid-template-columns: 36px 60px 1fr; grid-template-areas: "day hours where" "day hours pin"; row-gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .week-row > :nth-child(1) { grid-area: day; } .week-row > :nth-child(2) { grid-area: hours; } .week-row > :nth-child(3) { grid-area: where; } .week-row > :nth-child(4) { grid-area: pin; }
+}

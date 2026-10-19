@@ -97,10 +97,8 @@ export function Plan({ data }: { data: AppData }) {
     setPlan(null);
   }
   const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
-  const toggleOutdoor = (i: number) => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.outdoor[k] : !!av.outdoor[k])) });
-  const toggleNoBike = (i: number) => setAv({ ...av, noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? !av.noBike?.[k] : !!av.noBike?.[k])) });
   const toggleEquipment = (q: Equipment) => setAv({ ...av, equipment: av.equipment.includes(q) ? av.equipment.filter((e) => e !== q) : [...av.equipment, q] });
-  const setPin = (dow: number, kind: SessionKind | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])] });
+  const setPin = (dow: number, kind: SessionKind | 'rest' | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])] });
   const totalHours = av.hours.reduce((s, h) => s + (h || 0), 0);
   const imperial = profile.units === 'imperial';
 
@@ -185,16 +183,28 @@ export function Plan({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Your week</h2>
-        <p class="faint small" style="margin:4px 0 10px">How much time you have each day, and whether the bike is out that day. The app decides what each slot is for: a ride, strength, a walk, mobility or rest. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
-          {DAYS.map((d, i) => (
-            <div key={d} class="stack" style="gap:4px;align-items:center">
-              <span class="faint small">{d}</span>
-              <input type="number" min="0" max="12" step="0.25" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="width:100%;padding:8px 4px;text-align:center" />
-              <button class={`chip${av.outdoor[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleOutdoor(i)} title="Ride outdoors on this day">{av.outdoor[i] ? 'out' : 'in'}</button>
-              <button class={`chip${av.noBike?.[i] ? ' on' : ''}`} style="padding:3px 7px;font-size:11px" onClick={() => toggleNoBike(i)} title="No bike available this day">{av.noBike?.[i] ? 'no bike' : 'bike'}</button>
-            </div>
-          ))}
+        <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, mobility or rest for every other day. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
+        <div class="week-table">
+          <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>
+          {DAYS.map((d, i) => {
+            const where: 'out' | 'in' | 'none' = av.noBike?.[i] ? 'none' : av.outdoor[i] ? 'out' : 'in';
+            const setWhere = (w: 'out' | 'in' | 'none') => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'out' : !!av.outdoor[k])), noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'none' : !!av.noBike?.[k])) });
+            const pin = (av.pins ?? []).find((p) => p.dow === i)?.kind ?? '';
+            return (
+              <div class="week-row" key={d}>
+                <span class="small"><b>{d}</b></span>
+                <input type="number" min="0" max="12" step="0.25" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="padding:8px 6px;text-align:center" aria-label={`Hours on ${d}`} />
+                <div class="seg">
+                  <button class={where === 'out' ? 'on' : ''} onClick={() => setWhere('out')} title="Rides on this day are shaped for outdoors">Outdoors</button>
+                  <button class={where === 'in' ? 'on' : ''} onClick={() => setWhere('in')} title="Rides on this day are shaped for the trainer">Indoors</button>
+                  <button class={where === 'none' ? 'on' : ''} onClick={() => setWhere('none')} title="No ride this day; strength, a walk or mobility can still be placed">No bike</button>
+                </div>
+                <select value={pin} onChange={(e) => setPin(i, (e.target as HTMLSelectElement).value as SessionKind | 'rest' | '')} style="min-height:36px;padding:4px 8px" aria-label={`Commitment on ${d}`}>
+                  <option value="">App decides</option><option value="ride">Always a ride</option><option value="strength">Always strength</option><option value="walk">Always a walk</option><option value="mobility">Always mobility</option><option value="rest">Always rest</option>
+                </select>
+              </div>
+            );
+          })}
         </div>
         <div class="field" style="margin-top:14px"><label>What you have</label>
           <div class="chips">
@@ -203,18 +213,6 @@ export function Plan({ data }: { data: AppData }) {
             ))}
           </div>
         </div>
-        <details style="margin-top:12px">
-          <summary class="muted small" style="cursor:pointer">Standing commitments (optional)</summary>
-          <p class="faint small" style="margin:6px 0 8px">Only if a day is already spoken for, like a class or a friend you lift with. Otherwise leave these alone and let the plan choose.</p>
-          <div class="row wrap" style="gap:8px">
-            {DAYS.map((d, i) => (
-              <label key={d} class="row small" style="gap:6px"><span class="faint" style="width:28px">{d}</span>
-                <select value={(av.pins ?? []).find((p) => p.dow === i)?.kind ?? ''} onChange={(e) => setPin(i, (e.target as HTMLSelectElement).value as SessionKind | '')} style="min-height:32px;padding:4px 6px">
-                  <option value="">—</option><option value="strength">Strength</option><option value="ride">Ride</option><option value="walk">Walk</option>
-                </select></label>
-            ))}
-          </div>
-        </details>
         <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Recovery rhythm</label>
             <div class="seg"><button class={masters ? 'on' : ''} onClick={() => setMasters(true)}>Masters (more recovery)</button><button class={!masters ? 'on' : ''} onClick={() => setMasters(false)}>Standard</button></div></div>

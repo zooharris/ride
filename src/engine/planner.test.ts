@@ -223,6 +223,21 @@ describe('planner', () => {
     expect(strength[0].workout.exercises!.every((e) => e.equipment.includes('bodyweight'))).toBe(true);
     expect(plan.weeks[0].sessions.some((s) => s.kind === 'walk')).toBe(false);
   });
+  it('honours standing commitments: strength on Tue/Thu, rides at the weekend, a rest day, a walk day', () => {
+    const plan = generatePlan(req({ availability: { hours: [3, 0, 1, 1, 1, 0.75, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['dumbbells', 'bench', 'treadmill'],
+      pins: [{ dow: 2, kind: 'strength' }, { dow: 4, kind: 'strength' }, { dow: 6, kind: 'ride' }, { dow: 0, kind: 'ride' }, { dow: 3, kind: 'rest' }, { dow: 5, kind: 'walk' }] } }));
+    const dowOf = (d: string) => new Date(d + 'T00:00:00').getDay();
+    for (const w of plan.weeks.slice(0, 4)) {
+      const on = (dw: number) => w.sessions.filter((s) => dowOf(s.date) === dw);
+      expect(on(2).some((s) => s.kind === 'strength'), `${w.start} Tue strength`).toBe(true);
+      expect(on(4).some((s) => s.kind === 'strength'), `${w.start} Thu strength`).toBe(true);
+      expect(on(2).some((s) => s.kind === 'ride'), `${w.start} Tue no ride`).toBe(false);
+      expect(on(6).some((s) => s.kind === 'ride'), `${w.start} Sat ride`).toBe(true);
+      expect(on(0).some((s) => s.kind === 'ride'), `${w.start} Sun ride`).toBe(true);
+      expect(on(3).length, `${w.start} Wed rest`).toBe(0);
+      expect(on(5).some((s) => s.kind === 'walk'), `${w.start} Fri walk`).toBe(true);
+    }
+  });
   it('uses a no-bike day for a walk', () => {
     const plan = generatePlan(req({ availability: { hours: [3, 1, 1, 0, 1, 0, 3], outdoor: [], noBike: [false, false, true, false, false, false, false], equipment: ['outdoor-walk', 'bodyweight'], pins: [] } }));
     const tue = plan.weeks.flatMap((w) => w.sessions).filter((s) => new Date(s.date + 'T00:00:00').getDay() === 2);

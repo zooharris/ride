@@ -18,7 +18,7 @@ export interface Availability {
   outdoor: boolean[];     // ride outdoors on that day when the slot allows
   noBike: boolean[];      // the bike is not available that day (travel, logistics)
   equipment: Equipment[]; // what the rider has: bodyweight, dumbbells, bench, band, treadmill, outdoor-walk, trainer
-  pins: Array<{ dow: number; kind: SessionKind }>;  // optional standing commitments the plan should honour
+  pins: Array<{ dow: number; kind: SessionKind | 'rest' }>;  // standing commitments the plan must honour
 }
 
 export interface PlanRequest {
@@ -105,8 +105,13 @@ export function generatePlan(req: PlanRequest): Plan {
   const d = demand(goal, profile, a, req.longRideKmh);
   const n = planWeeks(goal, req.start);
   const { seq, decisions } = phaseSequence(n, d, a, goal, req.masters);
-  const daysWithTime = [0, 1, 2, 3, 4, 5, 6].filter((i) => (av.hours[i] ?? 0) > 0);
-  const slotsAll = daysWithTime.filter((i) => !av.noBike?.[i]);
+  // Standing commitments: a day pinned to rest carries nothing; a day pinned to strength,
+  // a walk or mobility is kept clear of rides; a day pinned to a ride always gets one.
+  const pinOf = (dw: number): SessionKind | 'rest' | undefined => (av.pins ?? []).find((p) => p.dow === dw)?.kind;
+  const daysWithTime = [0, 1, 2, 3, 4, 5, 6].filter((i) => (av.hours[i] ?? 0) > 0 && pinOf(i) !== 'rest');
+  const slotsAll = daysWithTime.filter((i) => !av.noBike?.[i] && !['strength', 'walk', 'mobility'].includes(pinOf(i) ?? ''));
+  const pinsUsed = (av.pins ?? []).filter((p) => (av.hours[p.dow] ?? 0) > 0 || p.kind === 'rest');
+  if (pinsUsed.length) decisions.push(`Standing commitments honoured: ${pinsUsed.map((p) => `${DAY[p.dow]} is ${p.kind === 'rest' ? 'a rest day' : p.kind === 'ride' ? 'always a ride' : p.kind}`).join(', ')}.`);
   const capMinutes = slotsAll.reduce((s, i) => s + av.hours[i] * 60, 0);
   const capTss = capMinutes / 60 * 62;
   const canWalk = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk');
@@ -237,7 +242,7 @@ export function generatePlan(req: PlanRequest): Plan {
 
     // Fillers: endurance where there is at least 45 minutes; easy spin the day after a long ride if long days cost you.
     for (const s of slotsThisWeek) {
-      if (used.has(s) || av.hours[s] * 60 < 45) continue;
+      if (used.has(s) || (av.hours[s] * 60 < 45 && pinOf(s) !== 'ride')) continue;
       const afterLong = longSlots.includes((s + 6) % 7);
       const easy = afterLong && afterLongPenalty >= 0.4;
       used.add(s);
@@ -254,6 +259,8 @@ export function generatePlan(req: PlanRequest): Plan {
     // How much strength this week, and how heavy. Masters riders lose muscle and
     // tendon strength fastest, so they keep two sessions through base and build.
     let strengthCount = phase === 'base' ? 2 : phase === 'build' ? (req.masters ? 2 : 1) : phase === 'peak' ? 1 : phase === 'taper' ? (phaseIdx === 0 ? 1 : 0) : 1;
+    const pinnedStrengthDays = pinned('strength').filter((dw) => daysThisWeek.includes(dw));
+    strengthCount = Math.max(strengthCount, pinnedStrengthDays.length);   // a standing commitment is kept even in weeks the plan would lift less
     const level: StrengthLevel = phase === 'base' ? (phaseIdx < 2 && i < 4 ? 'foundation' : 'build') : phase === 'build' ? (quality.length >= 2 ? 'maintain' : 'build') : phase === 'recovery' || phase === 'taper' ? 'light' : 'maintain';
     const strengthDays: number[] = [];
     const strengthCost = (dw: number) => {
@@ -272,7 +279,7 @@ export function generatePlan(req: PlanRequest): Plan {
       const cands = strengthCandidates().sort((x, y) => strengthCost(x) - strengthCost(y));
       if (!cands.length) break;
       const dw = cands[0];
-      if (strengthCost(dw) >= 4) break;
+      if (strengthCost(dw) >= 4 && !pinnedStrengthDays.includes(dw)) break;
       strengthDays.push(dw);
       const freeMin = av.hours[dw] * 60 - (rideOn.get(dw)?.minutes ?? 0);
       const minutes = Math.round(Math.min(level === 'build' ? 50 : 40, Math.max(25, freeMin)));
@@ -288,12 +295,13 @@ export function generatePlan(req: PlanRequest): Plan {
       : 'No strength session fitted this week: every day with time is already carrying a hard or long ride. Adding 30 minutes on a rest day would make room.');
 
     // Walks: zone-2 aerobic work for the slots a ride cannot use (too short, or no bike that day).
-    if (canWalk) {
-      const walkDays = daysThisWeek.filter((dw) => !rideOn.has(dw) && !strengthDays.includes(dw) && av.hours[dw] * 60 >= 25 && (av.noBike?.[dw] || av.hours[dw] * 60 < 45));
+    const pinnedWalkDays = pinned('walk').filter((dw) => daysThisWeek.includes(dw));
+    if (canWalk || pinnedWalkDays.length) {
+      const walkDays = daysThisWeek.filter((dw) => pinOf(dw) === 'walk' || (canWalk && !rideOn.has(dw) && !strengthDays.includes(dw) && av.hours[dw] * 60 >= 25 && (av.noBike?.[dw] || av.hours[dw] * 60 < 45)));
       const packKg = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk') ? Math.round(Math.min(11, 7 + loadingProgress * 4)) : undefined;
       for (const dw of walkDays) {
         const minutes = Math.min(60, Math.round(av.hours[dw] * 60));
-        const reason = av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from a brisk walk instead of nothing.' : 'Too short a window for a ride worth doing; a zone 2 walk uses it well and adds the impact loading cycling lacks.';
+        const reason = pinOf(dw) === 'walk' ? 'Your standing walk day: zone 2 on foot.' : av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from a brisk walk instead of nothing.' : 'Too short a window for a ride worth doing; a zone 2 walk uses it well and adds the impact loading cycling lacks.';
         const w = generateWalk({ minutes, packKg, where: av.equipment.includes('treadmill') ? 'treadmill' : 'outdoor', reason });
         extra.push({ date: dateOf(dw), kind: 'walk', type: 'walk', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason });
       }
@@ -309,6 +317,11 @@ export function generatePlan(req: PlanRequest): Plan {
     for (const dw of strengthDays) {
       const w = generateMobility({ focus: 'after-strength', minutes: 10, reason: 'Ten minutes after lifting: the hips and legs just worked.' });
       extra.push({ date: dateOf(dw), kind: 'mobility', type: 'mobility', workout: w, seconds: 10 * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
+    }
+    for (const dw of pinned('mobility').filter((x) => daysThisWeek.includes(x))) {
+      const minutes = Math.min(20, Math.max(10, Math.round(av.hours[dw] * 60)));
+      const w = generateMobility({ focus: 'full', minutes, reason: 'Your standing mobility day: the whole body, unhurried.' });
+      extra.push({ date: dateOf(dw), kind: 'mobility', type: 'mobility', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
     }
     if (i === 0) decisions.push('Mobility is attached to the long ride and to strength days: ten to twelve minutes while the muscles are warm, which is when stretching does the most and costs the least.');
 

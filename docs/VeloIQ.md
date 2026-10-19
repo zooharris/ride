@@ -1,6 +1,6 @@
 # VeloIQ 2.0 — how it works
 
-Written 18 October 2026, at the point the app reached usable form; updated the same night after the plan, library and print work. This is the reference for anyone (including a future Claude session) who needs to understand the app without reading the code: what it is for, how it is built, how the training engine thinks, and the standing requirements that shaped it.
+Written 18 October 2026, at the point the app reached usable form; updated the same night after the plan, library and print work, and on 19 October after the coach, day-note and sync-security work. This is the reference for anyone (including a future Claude session) who needs to understand the app without reading the code: what it is for, how it is built, how the training engine thinks, and the standing requirements that shaped it.
 
 ## What it is
 
@@ -16,13 +16,13 @@ Garmin's developer programme is closed to individuals and Apple Health has no we
 - Any activity recorded to Intervals.icu — from the Edge, a watch, a manual entry — comes back to the app on Sync, whatever device recorded it. The app never assumes a particular device.
 - Wellness (HRV, sleep, resting HR) comes from Intervals.icu too, from whatever writes it there (Garmin, Oura, by hand).
 - FTP, threshold HR and max HR are kept in step both ways.
-- **Sync across devices** (`src/data/devicesync.ts`): the app's own data (profile, settings, plans, calendar entries, workouts) lives in a private note in the rider's own Intervals.icu calendar (31 Dec 2099, gzip+base64). Every write stamps `updatedAt` and every delete leaves a tombstone (Dexie hooks in db.ts, `untracked()` for applying remote records); each device merges with the note on launch, on return to the foreground (≤ once a minute), after every Intervals sync, and ~4 s after any local change (`notify()` → `schedulePush`). Newest record wins, deletions carry, unstamped legacy records union. The same note is the backup a new device restores from; a file backup remains. No server; each account's note is its own, so nothing mixes.
+- **Sync across devices** (`src/data/devicesync.ts`): the app's own data (profile, settings, plans, calendar entries, workouts, day notes) lives in a private note in the rider's own Intervals.icu calendar (31 Dec 2099, gzip+base64 — compressed, not encrypted; only the rider's Intervals.icu login or API key reaches it). **The Intervals.icu and Claude API keys never go into the note** (`SECRET_SETTINGS`): each device keeps its own, pasted once; a restore from the note keeps the keys the device already has. The file backup does carry them, by design, for a one-step restore. Every write stamps `updatedAt` and every delete leaves a tombstone (Dexie hooks in db.ts, `untracked()` for applying remote records); each device merges with the note on launch, on return to the foreground (≤ once a minute), after every Intervals sync, and ~4 s after any local change (`notify()` → `schedulePush`). Newest record wins, deletions carry, unstamped legacy records union. The same note is the backup a new device restores from; a file backup remains. No server; each account's note is its own, so nothing mixes.
 
 Map tiles come from OpenStreetMap (free, no key). Claude (Anthropic API) is optional and off unless a key is entered.
 
 ## Technology
 
-Vite 5 + Preact 10 + TypeScript. IndexedDB via Dexie for storage. Hash routing. vite-plugin-pwa for offline. Leaflet for maps. Vitest for the engine tests (47). Hosted on GitHub Pages from `main` via GitHub Actions; every push deploys in about two minutes. No server of any kind.
+Vite 5 + Preact 10 + TypeScript. IndexedDB via Dexie for storage. Hash routing. vite-plugin-pwa for offline. Leaflet for maps. Vitest for the engine, sync and coach tests (65). Hosted on GitHub Pages from `main` via GitHub Actions; every push deploys in about two minutes. No server of any kind.
 
 ```
 src/
@@ -56,6 +56,7 @@ src/
 - **planned**: calendar entries — date, workoutId, basis, status (planned → sent → completed, or missed), Intervals event id, matched activity id, planId if a plan created it.
 - **rides**: every activity from Intervals.icu with the app's own TSS; `sport` is ride | strength | mobility | walk | other.
 - **wellness**: per-day HRV, resting HR, sleep, weight.
+- **dayNotes**: per-day rider note (`text`) and `badWellness` flag; synced and backed up with the calendar. `trustedWellness()` in store.ts drops flagged days, so `data.wellness` everywhere is already the trusted set (`wellnessAll` is the raw one).
 - **streams**: cached recordings (time, power, HR, cadence, distance, altitude, speed, temperature, GPS).
 
 Workout model: a workout is blocks of steps; each step is a duration and a target as a *fraction of threshold* (plus an optional cadence note). The same workout renders as %FTP or %LTHR depending on the basis it is sent on, because Garmin accepts one target type per workout. VO2max and above are power-only (HR lags too much for short efforts).
@@ -78,17 +79,19 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - Strength count and level by phase; mobility after the long ride and after strength; walks for windows under 45 minutes or no-bike days when a treadmill or outdoor walking is available.
 - Output: weeks of sessions with reasons, a fitness projection, verdict (on track / close / short), advice, and a list of decisions in sentences. Plan weeks start on Monday; nothing before today.
 
-**Adaptation**: every day after a sync the plan is regenerated from today, diffed against the calendar, and last week is reviewed (done / missed / over-cooked). Each change is a tick box: changes to plan-made sessions are ticked, suggestions touching sessions the rider replaced or moved (`userEdited`, `movedFrom` on the calendar entry) are unticked; only ticked changes apply, unchanged sessions are kept. Cancelling a plan removes only future, undone sessions the plan created.
+**Adaptation**: every day after a sync the plan is regenerated from today, diffed against the calendar, and last week is reviewed (done / missed / over-cooked). Each change is a tick box: changes to plan-made sessions are ticked, suggestions touching sessions the rider replaced, moved or added by hand (`userEdited`, `movedFrom`, or no `planId` on the calendar entry; `userAdded` on the change) are unticked; only ticked changes apply, unchanged sessions are kept. Cancelling a plan removes only future, undone sessions the plan created.
 
 **Pairing**: on every sync a recording is matched to its planned session by Intervals.icu's `paired_event_id`, else the same day and kind, else the same day and name (the watch names the recording after the workout). A recording paired to a planned walk or strength session takes that kind whatever type the device gave it (a treadmill walk often arrives as a Run; a Run slower than 7 km/h is a walk anyway) and is scored for it. The calendar then shows one row, marked done with the recorded time, load and heart rate, and a link to the recording.
 
 **Compliance** (`scoreRide`, `analyseRide`): a ride matched to its planned workout (by Intervals event id, else date + kind) gets a verdict and an interval-by-interval comparison laid along elapsed time from the recording.
 
-**Readiness**: HRV 40%, sleep 30%, resting HR 15%, form 15%, each against the rider's own 2-week baseline → a score and a band (go / ease / easy / rest).
+**Readiness**: HRV 40%, sleep 30%, resting HR 15%, form 15%, each against the rider's own 2-week baseline → a score and a band (go / ease / easy / rest). The advice line under it (`readinessAdvice()` in Today.tsx) is written for what is actually on the day — strength only, walk or mobility only, nothing — not an assumed ride.
+
+**Day notes and the coach.** Two cases, kept distinct: (1) the watch was not measuring (sleep mode off, on the nightstand) → the rider ticks "not real measurements" and the day's wellness drops out of readiness and of every average; (2) the numbers are real but explained (a late glass of wine, a flight, a cold coming on) → the rider just writes the note; nothing drops. The coach reads the rider's notes before the numbers and is told they outrank them. The daily note is built from **everything on today's calendar** (`describeSession()` in coach/claude.ts: kind, size, exercises, done/not done, hand-added or plan-made) and is remade when the day's calendar or note changes; it gets three months of day notes so a recurring cause can be named. The post-sync review gets two weeks of notes.
 
 ## Screens
 
-- **Today**: getting-started checklist (first run), today's ride with Send to Garmin, other sessions, next up, readiness with explanations, fitness chart with form bands, the plan's daily re-check (per-change tick boxes), the coach review. The app always opens here.
+- **Today**: getting-started checklist (first run), today's ride with Send to Garmin, other sessions, next up, readiness with explanations and, under it, "Your note about today" (text + the not-measured switch; collapses to a one-line summary with Edit once saved), fitness chart with form bands, the plan's daily re-check (per-change tick boxes), the coach review. The app always opens here.
 - **Plan** (its own tab, "Plan my training"): the list of plans (name, dates, current / upcoming / finished; Re-check on the current one, Print and Cancel per plan); the new-plan form with name, start date, goal, your week (hours; Outdoors / Indoors / No bike; a commitment per day: App decides / Always a ride / strength / walk / mobility / rest), equipment, masters toggle → result with verdict, projection chart with shaded form bands, decisions, weeks; Put on calendar / Discard. Plans never overlap; a clash is refused with the reason. Plans without an event end on a recovery week.
 - **Print** (`#/print/<planId>`): US Letter landscape with its own `@page` rules; calendar layout (one row per week, one column per day, done/missed marks, recovery weeks tinted, weekly hours and TSS) or list layout; 12 weeks comfortably and 16 tightly on one page, longer plans paginate with the header repeated. Verified by printing to PDF in headless Chromium.
 - **Calendar**: list (two weeks) or month; + Add any kind; ⋯ on any session to replace it with another workout of any kind, move it to another date, or remove it (confirm); Send N to Garmin.
@@ -110,6 +113,8 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - Library rides have unique, memorable place names (Virginia, around the W&OD from Herndon) with the descriptive name as subtitle; the library offers a range of durations up to six hours and can be filtered by length.
 - No device assumed; Intervals.icu is the single source of completed activities; app-logged sessions are written back to it.
 - Must run without Claude; Claude is optional and never changes the plan without the rider's OK.
+- The coach and anything that reasons about "today" take the calendar as the plan: every session on the date, however it got there.
+- Secrets (API keys) never leave the device in the sync note; the rider is security-conscious about anything stored outside the device.
 - Giveable to others with no mixing of data.
 - Must look like a professionally designed, commercially available app.
 - The rider never touches git; API keys are pasted into the app, never shared in chat.
@@ -119,13 +124,13 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - **Workout player** (receive sensor data, control a trainer in ERG mode, record and upload): parked 18 Oct 2026. Feasible on a laptop in Chrome/Edge via Web Bluetooth; impossible in iPhone browsers (Apple allows no Web Bluetooth), so the phone version would need a native shell. Note the KICKR ROLLR has no power meter of its own.
 - Optional Sunday narrative from Claude.
 
-## Open items (as of 19 Oct 2026, morning)
+## Open items (as of 19 Oct 2026, mid-morning)
 
-1. **Coach note ignores the actual calendar.** The daily coach note said "Nothing is on the plan for today" while a hand-added strength session (Full body express) sat on today's calendar. The coach prompt is built from the active plan's sessions rather than from everything on the calendar for the day. Fix: the coach (and anything else that reasons about "today") must take the calendar as the plan — every session on the date, plan-made or added by hand — and never describe a day with a scheduled session as empty. Check Today's "main card" / "Also today" logic and the readiness advice for the same assumption.
+1. **Encrypt the sync note** — proposed to the rider, awaiting his go. Design: a passphrase chosen in Settings, entered once per device and kept only there; the note is AES-GCM encrypted in the browser (WebCrypto, key from PBKDF2) before it leaves, so Intervals.icu holds only ciphertext. Costs: a device without the passphrase cannot sync until it is typed; a forgotten passphrase makes the note unreadable, but every device and any file backup still hold the data, and a new passphrase simply overwrites the note on the next push. Also worth confirming on the Intervals.icu side whether calendar notes are visible to followers or a coach the rider has shared with.
 2. **Strength and mobility on the Garmin — experiment in progress.** Sessions go through Intervals.icu as step-by-step workouts (one lap-press step per set, timed rests and holds, names as words only). On the Epix Pro gen 2 every step showed only "Go" when sent as type Weight Training; the latest build sends type `Workout` (Garmin Cardio) instead, untested as of this note. If names still don't show, Intervals.icu cannot carry a guided strength session to this watch; the fallbacks discussed with the rider are (a) build the handful of session shapes once by hand in Garmin Connect (native, with rep counting) and have the app name which to pick, or (b) a script on his Mac using the unofficial Garmin Connect API (password on the machine, fragile, outside Garmin's terms). A .fit workout file cannot be sent wirelessly; Garmin Connect imports only activity files.
 3. **Paired-recording fix to confirm.** A treadmill walk came back from the watch as a Run type and was not paired; sync now pairs by Intervals' pairing, then day + kind (slow Runs count as walks), then day + name, and reclassifies the recording to the planned kind. The rider should see one row for the next sent-and-done session.
-4. **Sync across devices to confirm** on the phone (plans made on the laptop should appear after opening the app; Settings shows the last merge).
-5. **No-minimum recovery** shipped (walk low = 0, ride builder low = 0, recovery-family rides floorless); the device receives a token floor since Garmin needs a range.
+4. **Sync across devices to confirm** on the phone (plans made on the laptop should appear after opening the app; Settings shows the last merge). Note that after the 19 Oct build each device must hold its own API keys: the phone will need the Intervals.icu key pasted once if it was relying on the note for it.
+5. **Shipped 19 Oct**: coach reads the whole calendar (fix for "Nothing is on the plan for today" with a hand-added session present); readiness advice written for the day's actual sessions; hand-added sessions are offered-only in the re-check; day notes with the not-measured switch; API keys out of the sync note; no-minimum recovery (walk low = 0, ride builder low = 0, recovery-family rides floorless; the device receives a token floor since Garmin needs a range).
 
 ## Verification still owed by the rider (needs his key and devices)
 

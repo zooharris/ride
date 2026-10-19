@@ -1,6 +1,6 @@
 # VeloIQ 2.0 — how it works
 
-Written 18 October 2026, at the point the app reached usable form. This is the reference for anyone (including a future Claude session) who needs to understand the app without reading the code: what it is for, how it is built, how the training engine thinks, and the standing requirements that shaped it.
+Written 18 October 2026, at the point the app reached usable form; updated the same night after the plan, library and print work. This is the reference for anyone (including a future Claude session) who needs to understand the app without reading the code: what it is for, how it is built, how the training engine thinks, and the standing requirements that shaped it.
 
 ## What it is
 
@@ -50,7 +50,7 @@ src/
 ## Data model (IndexedDB, one database per browser profile)
 
 - **profile**: name, FTP, LTHR, max/resting HR, weight, units, default basis (power/HR), masters flag.
-- **settings**: key/value — Intervals credentials, Claude key, active plan, plan request, view preferences, tour state.
+- **settings**: key/value — Intervals credentials, Claude key, `plans` (the list of named plans), plan request, view preferences, tour state.
 - **workouts**: hand-built (`source: 'mine'`) and generated copies (`source: 'generated'`); the library itself is code.
 - **planned**: calendar entries — date, workoutId, basis, status (planned → sent → completed, or missed), Intervals event id, matched activity id, planId if a plan created it.
 - **rides**: every activity from Intervals.icu with the app's own TSS; `sport` is ride | strength | mobility | walk | other.
@@ -67,7 +67,7 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 
 **Demand** (`demand()`): the goal turned into numbers — for an event, the estimated duration and intensity, the TSS of the day, the fitness needed, the longest training ride wanted, and the emphasis (durability / threshold / VO2 / recovery). Other goals (FTP, endurance, weight, general) have their own demand shapes.
 
-**Planning** (`generatePlan()`): the rider gives only **hours per day**, which days can be outdoors, which days have no bike, their equipment, and standing commitments ("Tuesday is strength"). The planner decides, for every day, ride / strength / mobility / walk / rest:
+**Planning** (`generatePlan()`): the rider gives only **hours per day**, where they can ride each day (outdoors / indoors / no bike), their equipment, and standing commitments (a day pinned to a ride, strength, a walk, mobility or rest, honoured every week; a pinned day is kept clear of anything else). The planner decides, for every other day, ride / strength / mobility / walk / rest:
 
 - Phase sequence from weeks available and the goal: base → build → peak → taper, proportioned by what the goal rewards and what the data flags as the limiter.
 - Sessions generated to fit each slot (an endurance ride sized to the slot, intervals by phase and progression), named and explained.
@@ -85,10 +85,11 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 
 ## Screens
 
-- **Today**: getting-started checklist (first run), today's ride with Send to Garmin, other sessions, next up, readiness with explanations, fitness chart, the plan's daily re-check, the coach review.
-- **Plan** (its own tab, "Plan my training"): assessment panel, goal, your week, equipment, commitments, masters toggle → result with verdict, projection chart, decisions, weeks; Put on calendar / Discard; active plan with Re-check / Cancel.
+- **Today**: getting-started checklist (first run), today's ride with Send to Garmin, other sessions, next up, readiness with explanations, fitness chart with form bands, the plan's daily re-check (per-change tick boxes), the coach review. The app always opens here.
+- **Plan** (its own tab, "Plan my training"): the list of plans (name, dates, current / upcoming / finished; Re-check on the current one, Print and Cancel per plan); the new-plan form with name, start date, goal, your week (hours; Outdoors / Indoors / No bike; a commitment per day: App decides / Always a ride / strength / walk / mobility / rest), equipment, masters toggle → result with verdict, projection chart with shaded form bands, decisions, weeks; Put on calendar / Discard. Plans never overlap; a clash is refused with the reason. Plans without an event end on a recovery week.
+- **Print** (`#/print/<planId>`): US Letter landscape with its own `@page` rules; calendar layout (one row per week, one column per day, done/missed marks, recovery weeks tinted, weekly hours and TSS) or list layout; 12 weeks comfortably and 16 tightly on one page, longer plans paginate with the header repeated. Verified by printing to PDF in headless Chromium.
 - **Calendar**: list (two weeks) or month; + Add any kind; ⋯ on any session to replace it with another workout of any kind, move it to another date, or remove it (confirm); Send N to Garmin.
-- **Library**: Rides by family, filterable by length (under 1 h … 4 h and up), searchable, sortable by type or duration; Strength / Mobility / Walks ready-made for the rider's equipment; My … sections; "New workout" → chooser → ride, strength, mobility or walk builder, each showing estimated TSS live. Walks carry a heart-rate target (% of max, shown in bpm).
+- **Library**: Rides with a filter toolbar (search, Type menu, Length menu, Sort menu; dropdowns on a laptop, bottom sheets on a phone); Strength / Mobility / Walks ready-made for the rider's equipment; My … sections; "New workout" → chooser → ride, strength, mobility or walk builder, each showing estimated TSS live. Walks carry a heart-rate target (% of max, shown in bpm).
 - **Ride names**: every library ride is named for a place (src/library/names.ts): where you would turn around on an out-and-back from Old Town Herndon at the ride's intensity. Outdoor-shaped rides go west on the W&OD (long rides = trail towns, interval rides = roads off the trail), core rides go east toward Washington, indoor rides take the loops near home; tests keep plain names. The descriptive name is the subtitle and goes to the Garmin with the place name. The file lists unused names for future rides.
 - **Activities**: list or month; detail with verdict, route map, stacked interactive charts (shared cursor with the map; mouse or touch), time in zone, numbers with descriptions.
 - **Settings**: Intervals credentials + connection checks; your numbers; zones; coach key and auto-review toggle; backup now / restore from Intervals / file backup.

@@ -304,19 +304,17 @@ export function sessionSteps(workout: Workout): string[] {
 }
 
 /**
- * Step text the way Intervals.icu passes it to Garmin as the step name: words
- * only. Digits read as targets and symbols cut the name short, so numbers are
- * spelled out ("ten to twelve reps", "thirty five lb") and punctuation goes.
+ * Step text the way Intervals.icu passes it to Garmin: short and readable.
+ * Numbers stay as numerals ("8 reps", "40 lb"), which take less of the watch's
+ * screen; a range is written "8 to 10" because a bare "8-10" could be read by
+ * Intervals.icu as a target range. Decimals are rounded and punctuation goes.
  */
 export function garminText(text: string): string {
-  const ones = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
-  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-  const words = (n: number): string => n < 20 ? ones[n] : n < 100 ? `${tens[Math.floor(n / 10)]}${n % 10 ? ' ' + ones[n % 10] : ''}` : n < 1000 ? `${ones[Math.floor(n / 100)]} hundred${n % 100 ? ' ' + words(n % 100) : ''}` : String(n);
   return text
-    .replace(/(\d+)\s*[-–—]\s*(\d+)/g, (_m, a, b) => `${words(+a)} to ${words(+b)}`)
-    .replace(/\d+(\.\d+)?/g, (m) => words(Math.round(+m)))
+    .replace(/(\d+)\s*[-–—]\s*(\d+)/g, '$1 to $2')
+    .replace(/\d+\.\d+/g, (m) => String(Math.round(+m)))
     .replace(/×|(?<=\s|^)x(?=\s)/g, ' ')
-    .replace(/[^A-Za-z ]+/g, ' ')
+    .replace(/[^A-Za-z0-9 ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -497,11 +495,11 @@ function num(v: unknown): number | undefined {
  */
 export async function sendStepTextProbe(c: IntervalsCredentials, date: string): Promise<number[]> {
   const steps = [
-    '- Press lap Goblet squat eight reps 1m',
+    '- Press lap Goblet squat 8 reps 40 lb 1m',
     '- Rest 30s',
-    '- Press lap Dumbbell row ten reps 1m',
+    '- Press lap Dumbbell row 8 to 10 reps 1m',
     '- Rest 30s',
-    '- Press lap Glute bridge twelve reps 1m',
+    '- Press lap Glute bridge 12 reps 1m',
   ];
   const description = ['A one-off test of whether step text shows on the watch. Delete when done.', '', ...steps].join('\n');
   const ids: number[] = [];

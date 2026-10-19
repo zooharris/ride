@@ -13,9 +13,9 @@ import { db } from '../../data/db';
 import { FAMILY_LABEL } from '../../library/workouts';
 import type { PlannedWorkout, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
-import { deleteEvent, sendWorkout } from '../../sync/intervals';
+import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
-import { movePlanned, pruneOrphanWorkouts, replacePlanned } from '../planService';
+import { movePlanned, removePlanned, replacePlanned } from '../planService';
 
 const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
 
@@ -45,18 +45,7 @@ export function Calendar({ data }: { data: AppData }) {
     setChanging(null);
   }
 
-  async function remove(id: string) {
-    const p = await db.planned.get(id);
-    const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
-    if (!confirm(`Remove ${w?.name ?? 'this workout'} from ${p ? fmtDate(p.date) : 'the calendar'}?${p?.icuEventId ? ' It will also be removed from Intervals.icu and your Garmin.' : ''}`)) return;
-    if (p?.icuEventId) {
-      const c = await credentials();
-      if (c) { try { await deleteEvent(c, p.icuEventId); } catch { /* the app's record is what matters; a stale event is harmless */ } }
-    }
-    await db.planned.delete(id);
-    await pruneOrphanWorkouts();
-    notify();
-  }
+  async function remove(id: string) { await removePlanned(id, data.mine); }
 
   async function sendWeek(ws: string) {
     const c = await credentials();

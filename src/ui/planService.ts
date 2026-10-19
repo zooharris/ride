@@ -11,7 +11,7 @@ import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
-import { fitnessFromRides, fitnessOn, weekStart } from './derived';
+import { fitnessFromRides, fitnessOn, fmtDate, weekStart } from './derived';
 import type { AppData } from './store';
 import { findWorkout, notify } from './store';
 
@@ -151,6 +151,29 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
 }
 
 /** Move a planned session to another date. A session already on the Garmin comes off it and waits to be sent again. */
+/**
+ * Take a session off the calendar, after the rider confirms. Anything sent to
+ * Intervals.icu (and so the Garmin) comes off there too; a completed session's
+ * recording stays, only the calendar entry goes. Returns false if the rider
+ * said no.
+ */
+export async function removePlanned(id: string, mine: Workout[]): Promise<boolean> {
+  const p = await db.planned.get(id);
+  if (!p) return false;
+  const w = findWorkout(mine, p.workoutId);
+  const what = `${w?.name ?? 'this session'} from ${fmtDate(p.date)}`;
+  const also = p.status === 'completed' ? ' The recording stays in Intervals.icu and in your activities; only the calendar entry goes.' : p.icuEventId ? ' It will also be removed from Intervals.icu and your Garmin.' : '';
+  if (!confirm(`Remove ${what}?${also}`)) return false;
+  if (p.icuEventId && p.status !== 'completed') {
+    const c = await credentials();
+    if (c) { try { await deleteEvent(c, p.icuEventId); } catch { /* the app's record is what matters; a stale event is harmless */ } }
+  }
+  await db.planned.delete(id);
+  await pruneOrphanWorkouts();
+  notify();
+  return true;
+}
+
 export async function movePlanned(p: PlannedWorkout, date: string): Promise<void> {
   if (date === p.date) return;
   const c = await credentials();

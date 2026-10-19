@@ -16,6 +16,7 @@ import { credentials } from '../../sync/syncService';
 import { sessionSteps } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
+import { removePlanned } from '../planService';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -31,7 +32,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const plannedEntry = params.get('date')
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -74,7 +75,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
           <input type="date" min={today()} style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) schedule(v); }} />
         </label>
       </div>
-      {params.get('date') && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(params.get('date')!)}.</p>}
+      {plannedEntry && (
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}. <button class="btn sm quiet" style="margin-left:6px" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
+      )}
 
       <section class="section">
         <h2>Steps · {basis === 'power' ? `watts at FTP ${profile.ftp}` : `bpm at LTHR ${profile.lthr}`}</h2>
@@ -115,7 +118,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number; lthr: number }) {
+function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -139,7 +142,7 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNul
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
-      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.</p>}
+      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{onRemove && <button class="btn sm quiet" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 

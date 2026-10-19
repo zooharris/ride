@@ -14,6 +14,7 @@ import { notify, saveDayNote, trustedWellness } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart } from '../FitnessChart';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, recentNoteLines, replan, type ActivePlan } from '../planService';
 import type { CoachReview } from '../../coach/claude';
 import type { Replan } from '../../engine/adapt';
@@ -201,7 +202,7 @@ export function Today({ data }: { data: AppData }) {
         <section class="panel accent" style="padding:18px 18px 16px">
           <div class="row between">
             <span class="tag" style={`background:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
-            <span class="pill"><span class="dot" style={`background:${plan.status === 'completed' ? 'var(--good)' : plan.status === 'sent' ? 'var(--z2)' : 'var(--ink-3)'}`} />{statusLabel(plan.status)}</span>
+            <span class="row" style="gap:8px"><StatusMark status={statusOf(plan.status)} /><StatusPill status={statusOf(plan.status)} /></span>
           </div>
           <h2 style="font-size:24px;margin:10px 0 2px">{workout.name}</h2>
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
@@ -229,8 +230,10 @@ export function Today({ data }: { data: AppData }) {
           <div class="stack" style="margin-top:8px">
             {others.map(({ p, w }) => (
               <a class={`cal-item ${p.status}`} key={p.id} href={`#/workout/${w!.id}?from=today&date=${date}`}>
+                <StatusMark status={statusOf(p.status)} />
                 <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]} · {p.status === 'completed' ? 'done' : 'tap for the details and to log it'}</span></div>
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? '' : ' · tap for the details and to log it'}</span></div>
+                <StatusPill status={statusOf(p.status)} />
               </a>
             ))}
           </div>
@@ -300,9 +303,11 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
       <h2>Next up <span class="muted" style="font-weight:400">· {days === 1 ? 'tomorrow' : fmtDate(nextDate, { weekday: 'long' })}</span></h2>
       <div class="stack" style="margin-top:8px">
         {items.map(({ p, w }) => (
-          <a class="cal-item" key={p.id} href={`#/workout/${w!.id}?from=today&date=${nextDate}`}>
+          <a class={`cal-item ${p.status}`} key={p.id} href={`#/workout/${w!.id}?from=today&date=${nextDate}`}>
+            <StatusMark status={statusOf(p.status)} />
             {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
-            <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS · ${p.status === 'sent' ? 'on Garmin' : 'not sent yet'}` : KIND_LABEL[w!.kind]}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>
+            <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS` : `${KIND_LABEL[w!.kind]}${w!.minutes ? ` · ${w!.minutes} min` : ''}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>
+            <StatusPill status={statusOf(p.status)} />
           </a>
         ))}
       </div>
@@ -382,6 +387,3 @@ const READINESS_HELP: Record<string, string> = {
   Form: 'Fitness minus fatigue. Negative while building, positive when fresh; +5 to +20 is the window for an event.',
 };
 
-export function statusLabel(s: string): string {
-  return { planned: 'Not sent yet', sent: 'On your Garmin', completed: 'Completed', missed: 'Missed' }[s] ?? s;
-}

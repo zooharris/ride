@@ -179,8 +179,10 @@ p { margin: 0; }
 .cal-item .t { flex: 1; min-width: 0; }
 .cal-item .t b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-item .t span { font-size: 12px; color: var(--ink-3); }
-.cal-item.done { border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+.cal-item.completed, .cal-item.done { border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
 .cal-item.missed { opacity: 0.6; }
+.cal-item .status-pill { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 520px) { .cal-item .status-pill { display: none; } }
 .cal-add { color: var(--ink-3); font-size: 13px; background: none; border: 1px dashed var(--line); border-radius: var(--radius-s); padding: 7px 10px; text-align: left; cursor: pointer; }
 .cal-add:hover { color: var(--ink-2); border-color: var(--line-2); }
 
@@ -218,7 +220,7 @@ p { margin: 0; }
 .month-item { display: flex; align-items: center; gap: 4px; font-size: 10.5px; line-height: 1.2; text-decoration: none; color: var(--ink-2); min-width: 0; }
 .month-item .sw { width: 6px; height: 12px; border-radius: 2px; flex: 0 0 6px; }
 .month-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.month-item.done span { color: var(--ink); }
+.month-item.completed span, .month-item.done span { color: var(--ink); }
 .month-item.missed { opacity: 0.55; text-decoration: line-through; }
 @media (min-width: 900px) { .month-cell { min-height: 96px; } .month-item { font-size: 12px; } }
 

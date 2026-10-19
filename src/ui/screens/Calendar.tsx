@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
+import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { getSetting, setSetting } from '../../data/db';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
@@ -108,9 +109,9 @@ export function Calendar({ data }: { data: AppData }) {
                   const w = findWorkout(data.mine, p.workoutId);
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
-                  return <a class={`month-item ${p.status}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={w.name}><span class="sw" style={`background:${colour}`} /><span>{w.name}</span></a>;
+                  return <a class={`month-item ${p.status}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`}><StatusMark status={statusOf(p.status)} size={11} /><span class="sw" style={`background:${colour}`} /><span>{w.name}</span></a>;
                 })}
-                {rides.map((r) => <a class="month-item done" key={r.id} href={`#/rides/${r.id}`} title={r.name}><span class="sw" style="background:var(--good)" /><span>{r.name}</span></a>)}
+                {rides.map((r) => <a class="month-item completed" key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`}><StatusMark status="done" size={11} /><span class="sw" style={`background:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`} /><span>{r.name}</span></a>)}
                 {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking({ date: d })}>+</button>}
               </>
             );
@@ -147,21 +148,29 @@ export function Calendar({ data }: { data: AppData }) {
                         if (!w) return null;
                         const s = workoutStats(w.blocks);
                         const rec = p.status === 'completed' && p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined;
-                        const done = rec ? `done · ${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · NP ${rec.normalizedPower} W` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'done' : '';
+                        // A done row shows what was recorded; a scheduled one what is planned.
+                        const recorded = rec ? `${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · NP ${rec.normalizedPower} W` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'logged by hand' : '';
+                        const plannedLine = w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''}`;
+                        const st = statusOf(p.status);
                         return (
                           <div class={`cal-item ${p.status}`} key={p.id}>
                             <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
+                              <StatusMark status={st} />
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status === 'completed' ? done : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? done : p.status === 'sent' ? 'on Garmin' : w.kind === 'walk' && p.status === 'planned' ? 'not sent' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
+                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
+                            <StatusPill status={st} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
                             {rec && <a class="btn sm quiet" href={`#/rides/${rec.id}`} title="Open the recording">Recording ›</a>}
                           </div>
                         );
                       })}
                       {rides.filter((r) => !plans.some((p) => p.activityId === r.id)).map((r) => (
-                        <a class="cal-item done" key={r.id} href={`#/rides/${r.id}`}>
-                          <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · NP ${r.normalizedPower} W` : r.averageHr ? ` · ${r.averageHr} bpm` : ''}</span></div>
+                        <a class="cal-item completed" key={r.id} href={`#/rides/${r.id}`}>
+                          <StatusMark status="done" />
+                          <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
+                          <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · NP ${r.normalizedPower} W` : r.averageHr ? ` · ${r.averageHr} bpm` : ''} · unscheduled</span></div>
+                          <StatusPill status="done" />
                         </a>
                       ))}
                       {d >= today() && <button class="cal-add" onClick={() => setPicking({ date: d })}>+ Add</button>}

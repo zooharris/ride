@@ -44,7 +44,8 @@ async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit 
   }
   if (res.status === 401 || res.status === 403) throw new IntervalsError('Intervals.icu rejected the athlete ID or API key.', res.status);
   if (!res.ok) throw new IntervalsError(`Intervals.icu answered ${res.status}.`, res.status);
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export interface AthleteNumbers {
@@ -326,6 +327,16 @@ export async function writeBackupNote(c: IntervalsCredentials, payload: string):
 
 export async function deleteEvent(c: IntervalsCredentials, eventId: number): Promise<void> {
   await call(c, `/athlete/${c.athleteId}/events/${eventId}`, { method: 'DELETE' });
+}
+
+/** Any calendar event (note, workout) from a raw body; returns its id. */
+export async function createEvent(c: IntervalsCredentials, body: Record<string, unknown>): Promise<number> {
+  const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
+  return ev.id;
+}
+
+export async function deleteActivity(c: IntervalsCredentials, activityId: string): Promise<void> {
+  await call(c, `/activity/${activityId}`, { method: 'DELETE' });
 }
 
 function num(v: unknown): number | undefined {

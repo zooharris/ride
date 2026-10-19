@@ -39,7 +39,7 @@ export interface SyncState {
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;
   settings!: Table<Settings, string>;
-  workouts!: Table<Workout, string>;        // only source === 'mine'; the library is code
+  workouts!: Table<Workout, string>;        // source 'mine' (hand-built) and 'generated' (plan or ready-made copies); the library is code
   planned!: Table<PlannedWorkout, string>;
   rides!: Table<Ride, string>;
   wellness!: Table<Wellness, string>;

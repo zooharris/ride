@@ -6,6 +6,7 @@ import { autoBackup, downloadBackup, fetchAutoBackup, restoreBackup } from '../.
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
 import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
+import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
 import { ZONE_VAR } from '../Profile';
 
@@ -77,6 +78,14 @@ export function Settings({ data }: { data: AppData }) {
     } finally { setBusy(false); }
   }
 
+  const [checks, setChecks] = useState<CheckResult[]>([]);
+  const [testing, setTesting] = useState(false);
+  async function runChecks() {
+    setTesting(true); setChecks([]);
+    const c = { athleteId: creds.athleteId.trim(), apiKey: creds.apiKey.trim() };
+    try { await runSelfTest(c, (r) => setChecks((prev) => [...prev, r])); } finally { setTesting(false); }
+  }
+
   async function disconnect() {
     await setSetting('intervals', null);
     await db.sync.clear();
@@ -135,10 +144,25 @@ export function Settings({ data }: { data: AppData }) {
           <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} /></div>
           <div class="field"><label>API key</label><input type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>
         </div>
-        <div class="row" style="margin-top:12px">
+        <div class="row wrap" style="margin-top:12px">
           <button class="btn" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Checking…' : 'Connect'}</button>
           <button class="btn quiet" onClick={disconnect}>Disconnect</button>
+          <button class="btn quiet" onClick={runChecks} disabled={testing || !creds.athleteId || !creds.apiKey} style="margin-left:auto">{testing ? 'Running checks…' : 'Run connection checks'}</button>
         </div>
+        {checks.length > 0 && (
+          <div class="panel" style="margin-top:12px;padding:10px 14px">
+            <div class="row between"><b class="small">Connection checks</b><span class="faint small">{checks.filter((c) => c.ok).length} of {checks.length} passed{testing ? '…' : ''}</span></div>
+            <div class="stack" style="gap:6px;margin-top:8px">
+              {checks.map((c) => (
+                <div key={c.name} class="row" style="align-items:flex-start;gap:10px">
+                  <span class="tick" style={`width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;background:${c.ok ? 'var(--good)' : 'var(--bad)'};color:#0b1410`}>{c.ok ? '✓' : '!'}</span>
+                  <div class="small"><b>{c.name}</b><div class="muted" style="line-height:1.45">{c.detail}</div></div>
+                </div>
+              ))}
+            </div>
+            <p class="faint small" style="margin:10px 0 0">Every kind of call the app makes, tried for real. Writes are limited to a test note and a one-minute test session on 30 Dec 2099, both deleted again at once, and your backup.</p>
+          </div>
+        )}
       </section>
 
       <section class="section">

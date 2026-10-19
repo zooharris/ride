@@ -107,7 +107,7 @@ export function Today({ data }: { data: AppData }) {
       notify();
       setMsg({ ok: true, text: 'Sent. It will be on your Garmin after the next phone sync, under Training, Workouts.' });
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      setMsg({ ok: false, text: `Could not send: ${(e as Error).message}` });
     } finally { setBusy(null); }
   }
 
@@ -127,7 +127,7 @@ export function Today({ data }: { data: AppData }) {
         } catch (e) { setMsg({ ok: false, text: `Synced, but the coach review failed: ${(e as Error).message}` }); }
       }
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      setMsg({ ok: false, text: `Sync failed: ${(e as Error).message} Your calendar and activities here are unchanged; try again, or run the connection checks in Settings.` });
     } finally { setBusy(null); }
   }
 

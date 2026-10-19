@@ -30,6 +30,12 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/ride/index.html',
+        // Map tiles already seen stay available offline for a month.
+        runtimeCaching: [{
+          urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
+          handler: 'CacheFirst',
+          options: { cacheName: 'map-tiles', expiration: { maxEntries: 600, maxAgeSeconds: 30 * 24 * 3600 } },
+        }],
       },
     }),
   ],

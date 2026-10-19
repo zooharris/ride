@@ -80,6 +80,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await db.workouts.bulkPut(toAdd.map((x) => x.s.workout));
   await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId })));
   added = toAdd.length;
+  await pruneOrphanWorkouts();
   const active: ActivePlan = { id: planId, goal, availability, masters, start: plan.weeks[0]?.start ?? from, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
   await setSetting('activePlan', active);
   notify();
@@ -124,8 +125,21 @@ export async function cancelPlan(data: AppData): Promise<{ removed: number }> {
     await db.planned.delete(p.id);
   }
   await setSetting('activePlan', null);
+  await pruneOrphanWorkouts();
   notify();
   return { removed: future.length };
+}
+
+/**
+ * Generated workouts (from a plan or a ready-made session) that nothing on the
+ * calendar points at any more are just clutter in storage; drop them. Hand-built
+ * and library workouts are never touched.
+ */
+export async function pruneOrphanWorkouts(): Promise<number> {
+  const used = new Set((await db.planned.toArray()).map((p) => p.workoutId));
+  const orphans = (await db.workouts.where('source').equals('generated').toArray()).filter((w) => !used.has(w.id));
+  if (orphans.length) await db.workouts.bulkDelete(orphans.map((w) => w.id));
+  return orphans.length;
 }
 
 export async function markChecked(): Promise<void> {

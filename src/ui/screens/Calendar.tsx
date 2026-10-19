@@ -15,6 +15,7 @@ import type { Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { deleteEvent, sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
+import { pruneOrphanWorkouts } from '../planService';
 
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -43,6 +44,7 @@ export function Calendar({ data }: { data: AppData }) {
       if (c) { try { await deleteEvent(c, p.icuEventId); } catch { /* the app's record is what matters; a stale event is harmless */ } }
     }
     await db.planned.delete(id);
+    await pruneOrphanWorkouts();
     notify();
   }
 

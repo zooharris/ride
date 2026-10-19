@@ -11,6 +11,8 @@ import { go } from '../router';
 import type { Basis, PlannedWorkout, WorkoutStep } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
+import { sendWorkout } from '../../sync/intervals';
+import { credentials } from '../../sync/syncService';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 
@@ -23,7 +25,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
   const plannedEntry = params.get('date') ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id) : undefined;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -107,8 +109,23 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, basis, maxHr }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number }) {
+function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number; lthr: number }) {
   const [adding, setAdding] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function sendWalk() {
+    if (!planned) return;
+    const c = await credentials();
+    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
+    setSending(true);
+    try {
+      const id = await sendWorkout(c, w, planned.date, basis, { maxHr, lthr });
+      await db.planned.update(planned.id, { status: 'sent', icuEventId: id });
+      notify();
+      setSendMsg({ ok: true, text: 'Sent. It reaches your Garmin on its next phone sync.' });
+    } catch (e) { setSendMsg({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
+    finally { setSending(false); }
+  }
   const estimated = Math.round((w.exercises ?? []).reduce((s, e) => s + ((e.holdSeconds ?? 0) * (e.reps === 'each side' ? 2 : 1) + 15) * (e.sets ?? 1) + (e.sets && !e.holdSeconds ? e.sets * 75 : 0), 0) / 60);
   const minutes = w.minutes ?? w.walk?.minutes ?? (estimated || 30);
   return (
@@ -153,9 +170,17 @@ function SessionScreen({ w, backHref, planned, basis, maxHr }: { w: NonNullable<
         </section>
       )}
 
+      {planned && w.kind === 'walk' && (
+        <section class="section">
+          <h2>On the Garmin</h2>
+          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : planned.status === 'completed' ? 'Done.' : 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.'}</p>
+          {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
+          {sendMsg && <p class={`msg ${sendMsg.ok ? 'ok' : 'err'}`} style="margin-top:8px">{sendMsg.text}</p>}
+        </section>
+      )}
       {planned && (
         <section class="section">
-          <h2>Log it</h2>
+          <h2>{w.kind === 'walk' ? 'Or log it by hand' : 'Log it'}</h2>
           <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} /></div>
         </section>
       )}

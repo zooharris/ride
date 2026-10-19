@@ -102,7 +102,7 @@ export function Today({ data }: { data: AppData }) {
     if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
     setBusy('send');
     try {
-      const id = await sendWorkout(c, workout, plan.date, plan.basis);
+      const id = await sendWorkout(c, workout, plan.date, plan.basis, profile);
       await db.planned.update(plan.id, { status: 'sent', icuEventId: id });
       notify();
       setMsg({ ok: true, text: 'Sent. It will be on your Garmin after the next phone sync, under Training, Workouts.' });

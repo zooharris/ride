@@ -17,6 +17,8 @@ import { deleteEvent, sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { movePlanned, pruneOrphanWorkouts, replacePlanned } from '../planService';
 
+const sendable = (k?: string) => k === 'ride' || k === 'walk';
+
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;
   const [start, setStart] = useState(weekStart(today()));
@@ -60,7 +62,7 @@ export function Calendar({ data }: { data: AppData }) {
     const c = await credentials();
     if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
     const end = addDays(ws, 6);
-    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && (findWorkout(data.mine, p.workoutId)?.kind ?? 'ride') === 'ride');
+    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind));
     if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
     setBusy(ws);
     let sent = 0;
@@ -68,7 +70,7 @@ export function Calendar({ data }: { data: AppData }) {
       for (const p of todo) {
         const w = findWorkout(data.mine, p.workoutId);
         if (!w) continue;
-        const id = await sendWorkout(c, w, p.date, p.basis);
+        const id = await sendWorkout(c, w, p.date, p.basis, profile);
         await db.planned.update(p.id, { status: 'sent', icuEventId: id });
         sent++;
       }
@@ -132,7 +134,7 @@ export function Calendar({ data }: { data: AppData }) {
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
         const t = weekTss(ws);
-        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && (findWorkout(data.mine, p.workoutId)?.kind ?? 'ride') === 'ride').length;
+        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind)).length;
         return (
           <section class="section" key={ws} style={offset ? '' : 'margin-top:0'}>
             <div class="row between" style="margin-bottom:8px">
@@ -159,7 +161,7 @@ export function Calendar({ data }: { data: AppData }) {
                           <div class={`cal-item ${p.status}`} key={p.id}>
                             <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? 'done' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
+                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? 'done' : p.status === 'sent' ? 'on Garmin' : w.kind === 'walk' && p.status === 'planned' ? 'not sent' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
                           </div>

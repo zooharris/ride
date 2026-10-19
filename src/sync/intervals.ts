@@ -229,9 +229,15 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  * Garmin Connect, which sends it to the Edge on its next phone sync.
  * Returns the event id, which is how the ride is later paired back.
  */
-export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis): Promise<number> {
+export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: { maxHr: number; lthr: number }): Promise<number> {
+  const body = workout.kind === 'walk' ? walkEvent(workout, date, profile) : rideEvent(workout, date, basis);
+  const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
+  return ev.id;
+}
+
+function rideEvent(workout: Workout, date: string, basis: Basis) {
   const stats = workoutStats(workout.blocks);
-  const body = {
+  return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
     type: 'Ride',
@@ -240,8 +246,31 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
     moving_time: stats.seconds,
     icu_training_load: stats.tss,
   };
-  const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
-  return ev.id;
+}
+
+/**
+ * A walk goes to the Garmin as a walking workout with one heart-rate step. The
+ * app's target is a share of max heart rate; Intervals.icu takes heart-rate
+ * targets as a share of threshold, so it is converted with the rider's numbers.
+ */
+function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
+  const w = workout.walk ?? { minutes: workout.minutes ?? 30, hrLow: 0.6, hrHigh: 0.7 };
+  const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));
+  const pack = w.packKg ? ` with a ${Math.round(w.packKg * 2.2)} lb pack` : '';
+  const lines = [
+    `${workout.purpose}${pack ? ` Walk${pack}.` : ''}`,
+    '',
+    `- ${w.minutes}m ${toLthr(w.hrLow)}-${toLthr(w.hrHigh)}% LTHR`,
+  ];
+  return {
+    category: 'WORKOUT',
+    start_date_local: `${date}T00:00:00`,
+    type: 'Walk',
+    name: workout.name,
+    description: lines.join('\n'),
+    moving_time: w.minutes * 60,
+    icu_training_load: workout.estimatedTss ?? 0,
+  };
 }
 
 /**

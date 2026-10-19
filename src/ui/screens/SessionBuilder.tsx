@@ -31,7 +31,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const walkSpec = { minutes, hrLow: hrLow / 100, hrHigh: hrHigh / 100, packKg: packLb ? packLb / 2.2 : undefined };
   const tss = estimateSessionTss({ kind, minutes, walk: kind === 'walk' ? walkSpec : undefined, effort: kind === 'strength' ? effort : undefined });
   const WALK_TARGETS: Array<[string, number, number, string]> = [
-    ['Recovery', 50, 60, 'very easy; the day after a hard ride'],
+    ['Recovery', 0, 60, 'no minimum: stroll, and slow down if the heart rate climbs'],
     ['Zone 2', 60, 70, 'talk in full sentences; the default'],
     ['Brisk', 68, 78, 'purposeful; top of zone 2 into zone 3'],
   ];
@@ -87,13 +87,13 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
           <h2>Heart-rate target</h2>
           <p class="muted small" style="margin:6px 0 10px;max-width:64ch">Walks go by heart rate, not power: there is no power meter on foot, and a treadmill’s readout is not comparable to a bike’s. The target is a share of your maximum heart rate.</p>
           <div class="chips" style="margin-bottom:10px">
-            {WALK_TARGETS.map(([l, lo, hi, d]) => <button key={l} class={`chip${hrLow === lo && hrHigh === hi ? ' on' : ''}`} title={d} onClick={() => { setHrLow(lo); setHrHigh(hi); }}>{l} {lo}–{hi}%</button>)}
+            {WALK_TARGETS.map(([l, lo, hi, d]) => <button key={l} class={`chip${hrLow === lo && hrHigh === hi ? ' on' : ''}`} title={d} onClick={() => { setHrLow(lo); setHrHigh(hi); }}>{l} {lo ? `${lo}–${hi}` : `up to ${hi}`}%</button>)}
           </div>
           <div class="form">
-            <div class="field"><label>Low (% of max heart rate)</label><input type="number" min="40" max="95" value={hrLow} onInput={(e) => setHrLow(Math.min(95, Math.max(40, Number((e.target as HTMLInputElement).value) || 60)))} /></div>
+            <div class="field"><label>Low (% of max heart rate; 0 for no minimum)</label><input type="number" min="0" max="95" value={hrLow} onInput={(e) => setHrLow(Math.min(95, Math.max(0, Number((e.target as HTMLInputElement).value) || 0)))} /></div>
             <div class="field"><label>High (% of max heart rate)</label><input type="number" min="45" max="100" value={hrHigh} onInput={(e) => setHrHigh(Math.min(100, Math.max(45, Number((e.target as HTMLInputElement).value) || 70)))} /></div>
           </div>
-          <p class="small" style="margin-top:10px">{maxHr ? <>That is <b>{Math.round(maxHr * hrLow / 100)}–{Math.round(maxHr * hrHigh / 100)} bpm</b> for your max of {maxHr}.</> : 'Set your max heart rate in Settings to see this in beats per minute.'}{hrHigh <= hrLow && <span style="color:var(--bad)"> The high end must be above the low end.</span>}</p>
+          <p class="small" style="margin-top:10px">{maxHr ? <>That is <b>{hrLow ? `${Math.round(maxHr * hrLow / 100)}–` : 'up to '}{Math.round(maxHr * hrHigh / 100)} bpm</b> for your max of {maxHr}.{hrLow ? '' : ' No minimum: a casual stroll counts, even if the heart rate stays near resting.'}</> : 'Set your max heart rate in Settings to see this in beats per minute.'}{hrHigh <= hrLow && <span style="color:var(--bad)"> The high end must be above the low end.</span>}</p>
         </section>
       )}
 

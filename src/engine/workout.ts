@@ -80,11 +80,18 @@ export function renderIntervalsText(workout: Workout, basis: Basis): string {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
+/**
+ * Intervals.icu and Garmin need a range with two ends, so a step with no
+ * minimum is sent with a floor nothing moving falls under: 10% of FTP (a
+ * couple of dozen watts) or 20% of threshold heart rate (about 30 bpm).
+ */
+export const NO_FLOOR: Record<Basis, number> = { power: 0.1, hr: 0.2 };
+
 function renderStep(step: WorkoutStep, basis: Basis): string {
-  const lo = basis === 'power' ? step.intensity : powerToHrFraction(step.intensity);
+  const lo = step.noFloor ? NO_FLOOR[basis] : basis === 'power' ? step.intensity : powerToHrFraction(step.intensity);
   const hi = step.intensityHigh
     ? (basis === 'power' ? step.intensityHigh : powerToHrFraction(step.intensityHigh))
-    : undefined;
+    : step.noFloor ? (basis === 'power' ? step.intensity : powerToHrFraction(step.intensity)) : undefined;
   const pct = (f: number) => Math.round(f * 100);
   const target = hi ? `${pct(lo)}-${pct(hi)}%` : `${pct(lo)}%`;
   const unit = basis === 'power' ? '' : ' LTHR';
@@ -117,6 +124,10 @@ export function clock(seconds: number): string {
 export function stepTargets(step: WorkoutStep, profile: Profile): { watts: string; bpm: string } {
   const w = (f: number) => Math.round(f * profile.ftp);
   const b = (f: number) => Math.round(powerToHrFraction(f) * profile.lthr);
+  if (step.noFloor) {
+    const top = step.intensityHigh ?? step.intensity;
+    return { watts: `up to ${w(top)}`, bpm: `up to ${b(top)}` };
+  }
   return {
     watts: step.intensityHigh ? `${w(step.intensity)}–${w(step.intensityHigh)}` : `${w(step.intensity)}`,
     bpm: step.intensityHigh ? `${b(step.intensity)}–${b(step.intensityHigh)}` : `${b(step.intensity)}`,
@@ -125,4 +136,16 @@ export function stepTargets(step: WorkoutStep, profile: Profile): { watts: strin
 
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+/**
+ * A recovery workout enforces no minimum: every easy step (under 60% of
+ * threshold) becomes "up to" its ceiling, so the rider may spin as softly as
+ * they like without the Garmin complaining. Harder steps (openers' efforts) keep
+ * their targets.
+ */
+export function relaxFloors(w: Workout): Workout {
+  if (w.family !== 'recovery' || w.kind !== 'ride') return w;
+  const relax = (s: WorkoutStep): WorkoutStep => (s.intensity < 0.6 && (s.intensityHigh ?? s.intensity) <= 0.65 ? { ...s, noFloor: true } : s);
+  return { ...w, blocks: w.blocks.map((b) => b.kind === 'step' ? relax(b) : { ...b, steps: b.steps.map(relax) }) };
 }

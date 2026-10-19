@@ -1,3 +1,4 @@
+import { relaxFloors } from '../engine/workout';
 import type { Family, Phase, Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 
 /**
@@ -37,7 +38,7 @@ function trail(opts: {
   const fill = opts.total - used - 5;
   if (fill > 0) blocks.push(step(fill, 0.6, { intensityHigh: 0.72, label: 'Zone 2 for the rest' }));
   blocks.push(step(5, 0.5, { label: 'Cool down' }));
-  return { ...opts, blocks, source: 'library', setting: 'outdoor', kind: 'ride' };
+  return relaxFloors({ ...opts, blocks, source: 'library', setting: 'outdoor', kind: 'ride' });
 }
 
 /** A long zone-2 ride with the quality set at the end, on tired legs. */

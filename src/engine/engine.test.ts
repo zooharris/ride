@@ -228,3 +228,25 @@ describe('ready-made sessions', () => {
     for (const w of readyMadeSessions(['bodyweight']).filter((w) => w.kind === 'strength')) for (const e of w.exercises ?? []) expect(e.equipment).toContain('bodyweight');
   });
 });
+
+describe('no minimum on recovery', () => {
+  it('recovery-family rides lose their floors and render with a token floor', async () => {
+    const { LIBRARY } = await import('../library/workouts');
+    const { renderIntervalsText, stepTargets } = await import('./workout');
+    const easy = LIBRARY.find((w) => w.family === 'recovery' && w.id === 'lib-spin-30')!;
+    const steps = easy.blocks.flatMap((b) => (b.kind === 'step' ? [b] : b.steps));
+    expect(steps.every((s) => s.noFloor)).toBe(true);
+    expect(renderIntervalsText(easy, 'power')).toMatch(/ 10-\d+%/);
+    expect(renderIntervalsText(easy, 'hr')).toMatch(/ 20-\d+% LTHR/);
+    expect(stepTargets(steps[0], { ftp: 200, lthr: 150 } as never).watts).toMatch(/^up to \d+$/);
+    const hard = LIBRARY.find((w) => w.family === 'threshold')!;
+    expect(hard.blocks.flatMap((b) => (b.kind === 'step' ? [b] : b.steps)).some((s) => s.noFloor)).toBe(false);
+  });
+  it('a walk with no minimum is estimated as a stroll', async () => {
+    const { estimateSessionTss } = await import('./sessions');
+    const none = estimateSessionTss({ kind: 'walk', walk: { minutes: 60, hrLow: 0, hrHigh: 0.6 } });
+    const z2 = estimateSessionTss({ kind: 'walk', walk: { minutes: 60, hrLow: 0.6, hrHigh: 0.7 } });
+    expect(none).toBeGreaterThan(0);
+    expect(none).toBeLessThan(z2);
+  });
+});

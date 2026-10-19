@@ -26,6 +26,13 @@ export interface WorkoutStep {
   intensity: number;
   /** Optional upper bound for a range target; when set, intensity is the lower bound. */
   intensityHigh?: number;
+  /**
+   * No minimum: the rider may go as easy as they like, up to intensityHigh.
+   * `intensity` then stays the effort expected for load estimates (recovery
+   * steps are typically ridden around it) but nothing is enforced; the Garmin
+   * gets a floor far below anything a moving rider produces.
+   */
+  noFloor?: boolean;
   label?: string;
   cadence?: number;
 }
@@ -63,7 +70,7 @@ export type Equipment = 'bodyweight' | 'dumbbells' | 'bench' | 'band' | 'treadmi
 
 export interface WalkSpec {
   minutes: number;
-  hrLow: number;            // fraction of max HR
+  hrLow: number;            // fraction of max HR; 0 means no minimum (a stroll counts)
   hrHigh: number;
   packKg?: number;          // weighted pack, if any
 }

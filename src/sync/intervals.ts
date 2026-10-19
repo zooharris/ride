@@ -13,7 +13,7 @@
  *     text in `description`; Intervals.icu pushes it to Garmin Connect.
  */
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
-import { renderIntervalsText, workoutStats } from '../engine/workout';
+import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
 
 const BASE = 'https://intervals.icu/api/v1';
 
@@ -265,7 +265,7 @@ function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lt
   const lines = [
     `${workout.purpose}${pack ? ` Walk${pack}.` : ''}`,
     '',
-    `- ${w.minutes}m ${toLthr(w.hrLow)}-${toLthr(w.hrHigh)}% LTHR`,
+    `- ${w.minutes}m ${w.hrLow > 0 ? toLthr(w.hrLow) : Math.round(NO_FLOOR.hr * 100)}-${toLthr(w.hrHigh)}% LTHR`,
   ];
   return {
     category: 'WORKOUT',

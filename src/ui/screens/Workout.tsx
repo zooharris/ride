@@ -142,12 +142,12 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNul
           <h2>The walk</h2>
           <div class="stats" style="margin-top:10px">
             <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
-            <div class="stat"><div class="v">{Math.round(w.walk.hrLow * 100)}–{Math.round(w.walk.hrHigh * 100)}%</div><div class="l">of max heart rate</div></div>
-            {maxHr > 0 && <div class="stat"><div class="v">{Math.round(maxHr * w.walk.hrLow)}–{Math.round(maxHr * w.walk.hrHigh)}</div><div class="l">beats per minute (your max {maxHr})</div></div>}
+            <div class="stat"><div class="v">{w.walk.hrLow ? `${Math.round(w.walk.hrLow * 100)}–` : 'up to '}{Math.round(w.walk.hrHigh * 100)}%</div><div class="l">of max heart rate{w.walk.hrLow ? '' : ' · no minimum'}</div></div>
+            {maxHr > 0 && <div class="stat"><div class="v">{w.walk.hrLow ? `${Math.round(maxHr * w.walk.hrLow)}–` : 'up to '}{Math.round(maxHr * w.walk.hrHigh)}</div><div class="l">beats per minute (your max {maxHr})</div></div>}
             {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate target{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
             {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
           </div>
-          <p class="muted small" style="margin-top:10px">{w.walk.hrHigh <= 0.6 ? 'Very easy: this is recovery, so if the heart rate climbs, slow down.' : w.walk.hrLow >= 0.68 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the target, and back off if it drifts higher.</p>
+          <p class="muted small" style="margin-top:10px">{w.walk.hrLow === 0 ? 'No minimum: stroll as casually as you like; the only rule is to slow down if the heart rate climbs past the ceiling.' : w.walk.hrHigh <= 0.6 ? 'Very easy: this is recovery, so if the heart rate climbs, slow down.' : w.walk.hrLow >= 0.68 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the target, and back off if it drifts higher.</p>
         </section>
       )}
 

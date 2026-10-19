@@ -1,3 +1,4 @@
+import { relaxFloors } from '../engine/workout';
 import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 
 /** Indoor and short-form workouts: tighter structure, less filler, trainer-friendly. */
@@ -7,7 +8,7 @@ const step = (minutes: number, intensity: number, extra: Partial<WorkoutStep> = 
 const warm = (minutes = 10) => step(minutes, 0.5, { intensityHigh: 0.65, label: 'Warm up' });
 const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down' });
 const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
-const lib = (w: Omit<Workout, 'source' | 'setting' | 'kind'>): Workout => ({ ...w, source: 'library', setting: 'indoor', kind: 'ride' });
+const lib = (w: Omit<Workout, 'source' | 'setting' | 'kind'>): Workout => relaxFloors({ ...w, source: 'library', setting: 'indoor', kind: 'ride' });
 
 export const INDOOR: Workout[] = [
   // Endurance with structure, for a trainer that gets boring

@@ -158,7 +158,9 @@ export function generateWalk(intent: WalkIntent): Workout {
  */
 export function sessionTssPerHour(kind: Workout['kind'], opts: { hrLow?: number; hrHigh?: number; packKg?: number; effort?: number } = {}): number {
   if (kind === 'walk') {
-    const mid = ((opts.hrLow ?? 0.6) + (opts.hrHigh ?? 0.7)) / 2;
+    const lo = opts.hrLow ?? 0.6, hi = opts.hrHigh ?? 0.7;
+    // No minimum (lo = 0): assume a stroll, around half of max heart rate, never above the ceiling.
+    const mid = lo > 0 ? (lo + hi) / 2 : Math.min(hi, 0.5);
     const intensity = mid / 0.92;
     return intensity * intensity * 100 + (opts.packKg ?? 0) * 0.5;
   }

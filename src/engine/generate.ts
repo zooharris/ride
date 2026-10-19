@@ -1,5 +1,5 @@
 import type { Family, Workout, WorkoutBlock, WorkoutStep } from './types';
-import { clock, newId } from './workout';
+import { clock, newId, relaxFloors } from './workout';
 
 /**
  * Build a session to fit a slot. The planner says what it wants (type, minutes,
@@ -131,7 +131,7 @@ export function generateSession(intent: SessionIntent): Workout {
   blocks.push(step(cm, 0.5, { label: 'Cool down' }));
 
   const bases: Workout['bases'] = type === 'vo2max' || type === 'anaerobic' || type === 'openers' ? ['power'] : ['power', 'hr'];
-  return {
+  return relaxFloors({
     id: `gen-${newId()}`,
     name,
     kind: 'ride',
@@ -143,7 +143,7 @@ export function generateSession(intent: SessionIntent): Workout {
     setting: outdoor ? 'outdoor' : 'indoor',
     blocks,
     source: 'generated',
-  };
+  });
 }
 
 const PHYSIOLOGY: Record<SessionType, string> = {

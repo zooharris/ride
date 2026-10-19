@@ -15,14 +15,19 @@ type Row = { id: string; kind: 'step'; minutes: number; pct: number; pctHigh?: n
 
 function toBlocks(rows: Row[]): WorkoutBlock[] {
   const st = (r: { minutes: number; pct: number; pctHigh?: number; label: string; cadence?: number }): WorkoutStep => ({
-    kind: 'step', seconds: Math.round(r.minutes * 60), intensity: r.pct / 100,
-    intensityHigh: r.pctHigh ? r.pctHigh / 100 : undefined, label: r.label || undefined, cadence: r.cadence || undefined,
+    // A low of 0 means no minimum: the step is "up to" its high end (50% if none given), and the
+    // load estimate assumes the rider sits around half of that.
+    kind: 'step', seconds: Math.round(r.minutes * 60),
+    intensity: r.pct === 0 ? (r.pctHigh || 50) / 200 : r.pct / 100,
+    intensityHigh: r.pct === 0 ? (r.pctHigh || 50) / 100 : r.pctHigh ? r.pctHigh / 100 : undefined,
+    noFloor: r.pct === 0 || undefined,
+    label: r.label || undefined, cadence: r.cadence || undefined,
   });
   return rows.map((r) => r.kind === 'step' ? st(r) : { kind: 'repeat', times: r.times, label: r.label || undefined, steps: r.steps.map(st) });
 }
 
 function fromBlocks(blocks: WorkoutBlock[]): Row[] {
-  const row = (s: WorkoutStep) => ({ id: newId(), minutes: Math.round(s.seconds / 6) / 10, pct: Math.round(s.intensity * 100), pctHigh: s.intensityHigh ? Math.round(s.intensityHigh * 100) : undefined, label: s.label ?? '', cadence: s.cadence });
+  const row = (s: WorkoutStep) => ({ id: newId(), minutes: Math.round(s.seconds / 6) / 10, pct: s.noFloor ? 0 : Math.round(s.intensity * 100), pctHigh: s.intensityHigh ? Math.round(s.intensityHigh * 100) : undefined, label: s.label ?? '', cadence: s.cadence });
   return blocks.map((b) => b.kind === 'step' ? { kind: 'step', ...row(b) } : { id: newId(), kind: 'repeat', times: b.times, label: b.label ?? '', steps: b.steps.map(row) });
 }
 
@@ -97,7 +102,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   }
 
   const pctField = (value: number | undefined, on: (v: number | undefined) => void, placeholder = '') => (
-    <input type="number" min="30" max="250" value={value ?? ''} placeholder={placeholder} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); on(v || undefined); }} style="width:64px" />
+    <input type="number" min="0" max="250" value={value ?? ''} placeholder={placeholder} title="0 in the low box means no minimum" onInput={(e) => { const raw = (e.target as HTMLInputElement).value; on(raw === '' ? undefined : Math.max(0, Number(raw) || 0)); }} style="width:64px" />
   );
   const minField = (value: number, on: (v: number) => void) => (
     <input type="number" min="0.25" step="0.25" value={value} onInput={(e) => on(Number((e.target as HTMLInputElement).value) || 0)} style="width:64px" />

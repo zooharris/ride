@@ -235,7 +235,9 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  * Returns the event id, which is how the ride is later paired back.
  */
 export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: { maxHr: number; lthr: number }): Promise<number> {
-  const body = workout.kind === 'walk' ? walkEvent(workout, date, profile) : rideEvent(workout, date, basis);
+  const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
+    : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)
+    : rideEvent(workout, date, basis);
   const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
   return ev.id;
 }
@@ -258,6 +260,67 @@ function rideEvent(workout: Workout, date: string, basis: Basis) {
  * app's target is a share of max heart rate; Intervals.icu takes heart-rate
  * targets as a share of threshold, so it is converted with the rider's numbers.
  */
+/**
+ * A strength or mobility session goes to the Garmin as a step-by-step workout:
+ * Intervals.icu carries no exercises, so each set is a step that ends on a
+ * lap press (the estimate after the name is only for the plan's clock), each
+ * rest and each hold is a timed step the watch counts down. Garmin shows the
+ * step's name, so the name carries the exercise, reps and load.
+ */
+export function sessionSteps(workout: Workout): string[] {
+  const ex = workout.exercises ?? [];
+  const effort = workout.effort ?? 6;
+  const restSec = workout.kind === 'mobility' ? 0 : effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
+  const dur = (s: number) => (s >= 60 && s % 60 === 0 ? `${s / 60}m` : s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`);
+  const tidy = (t: string) => t.replace(/\s+/g, ' ').trim();
+  // Ranges like "10–12" are written out so Intervals.icu cannot read them as a target.
+  const reps = (r: string) => tidy(r).replace(/(\d+)\s*[-–]\s*(\d+)/g, '$1 to $2');
+  const blocks: Array<{ times: number; steps: string[] }> = [];
+  for (const e of ex) {
+    const sets = Math.max(1, e.sets ?? 1);
+    const load = e.load && !/bodyweight|slow and controlled|keep moving|reps in reserve/i.test(e.load) ? ` · ${tidy(e.load)}` : '';
+    const name = tidy(e.name.length > 40 ? e.name.slice(0, 39) + '…' : e.name);
+    if (e.holdSeconds) {
+      // Holds and stretches are timed and the watch counts them down; stretches get a step a side.
+      const perSide = workout.kind === 'mobility' && /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
+      const steps = perSide ? [`- ${name}, left ${dur(e.holdSeconds)}`, `- ${name}, right ${dur(e.holdSeconds)}`] : [`- ${name} ${dur(e.holdSeconds)}`];
+      if (restSec) steps.push(`- Rest ${dur(restSec / 2)}`);
+      blocks.push({ times: sets, steps });
+      continue;
+    }
+    // A set ends on the lap press; the time after it is only the plan's estimate of a set.
+    const estimate = Math.max(30, Math.round((parseInt(e.reps ?? '10', 10) || 10) * 4 / 5) * 5 + 10);
+    const steps = [`- Press lap ${name}${e.reps ? ` × ${reps(e.reps)}` : ''}${load} ${dur(estimate)}`];
+    if (restSec) steps.push(`- Rest ${dur(restSec)}`);
+    blocks.push({ times: sets, steps });
+  }
+  // No rest after the very last set of the session.
+  const last = blocks[blocks.length - 1];
+  if (last && last.times === 1 && /^- Rest /.test(last.steps[last.steps.length - 1])) last.steps.pop();
+  const lines: string[] = [];
+  for (const b of blocks) {
+    if (b.times > 1) lines.push('', `${b.times}x`, ...b.steps, '');
+    else lines.push(...b.steps);
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().split('\n');
+}
+
+function sessionEvent(workout: Workout, date: string) {
+  const steps = sessionSteps(workout);
+  const intro = workout.kind === 'strength'
+    ? 'Each set ends when you press lap; rests count down. '
+    : 'Each stretch is timed; the watch moves you on. ';
+  return {
+    category: 'WORKOUT',
+    start_date_local: `${date}T00:00:00`,
+    type: workout.kind === 'strength' ? 'WeightTraining' : 'Yoga',
+    name: workout.name,
+    description: [`${workout.purpose} ${intro}`, '', ...steps].join('\n'),
+    moving_time: (workout.minutes ?? 30) * 60,
+    icu_training_load: workout.estimatedTss ?? 0,
+  };
+}
+
 function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
   const w = workout.walk ?? { minutes: workout.minutes ?? 30, hrLow: 0.6, hrHigh: 0.7 };
   const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));

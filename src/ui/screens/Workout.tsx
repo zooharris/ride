@@ -13,6 +13,7 @@ import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { sendWorkout } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
+import { sessionSteps } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 
@@ -170,17 +171,23 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr }: { w: NonNul
         </section>
       )}
 
-      {planned && w.kind === 'walk' && (
+      {planned && w.kind !== 'ride' && (
         <section class="section">
           <h2>On the Garmin</h2>
-          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : planned.status === 'completed' ? 'Done.' : 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.'}</p>
+          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : planned.status === 'completed' ? 'Done.' : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
           {sendMsg && <p class={`msg ${sendMsg.ok ? 'ok' : 'err'}`} style="margin-top:8px">{sendMsg.text}</p>}
+          {w.kind !== 'walk' && planned.status !== 'completed' && (
+            <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
+              <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{sessionSteps(w).map((l) => /^\d+x$/.test(l) ? `${l.slice(0, -1)} sets of:` : l.replace(/^- /, '  ')).join('\n')}</pre>
+              <p class="faint small">"Press lap" steps end when you press the lap button; the time after a set is only the estimate the plan uses. Rests and holds count down on the watch. Repeated sets appear as repeats.</p>
+            </details>
+          )}
         </section>
       )}
       {planned && (
         <section class="section">
-          <h2>{w.kind === 'walk' ? 'Or log it by hand' : 'Log it'}</h2>
+          <h2>{planned.status === 'completed' ? 'Logged' : 'Or log it by hand'}</h2>
           <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} /></div>
         </section>
       )}

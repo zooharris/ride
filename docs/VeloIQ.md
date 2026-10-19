@@ -12,7 +12,7 @@ Live at https://zooharris.github.io/ride/ (source: github.com/zooharris/ride). A
 
 Garmin's developer programme is closed to individuals and Apple Health has no web API, so **Intervals.icu is the single pipe**:
 
-- Workouts sent from the app become Intervals.icu calendar events, which Intervals.icu pushes to Garmin Connect and so to the Edge.
+- Workouts sent from the app become Intervals.icu calendar events, which Intervals.icu pushes to Garmin Connect and so to the Edge or watch. Rides carry power/HR steps; walks a HR target (type Walk); strength sessions go as type WeightTraining with one step per set ending on a lap press (`- Press lap <name> × reps · load <estimate>`), timed rests (60/90/120 s by effort) and timed holds, sets as repeat blocks; mobility as type Yoga with timed holds, a step a side (`sessionSteps()` in intervals.ts). Intervals.icu carries no exercises, so the device shows step names only — no rep counting.
 - Any activity recorded to Intervals.icu — from the Edge, a watch, a manual entry — comes back to the app on Sync, whatever device recorded it. The app never assumes a particular device.
 - Wellness (HRV, sleep, resting HR) comes from Intervals.icu too, from whatever writes it there (Garmin, Oura, by hand).
 - FTP, threshold HR and max HR are kept in step both ways.

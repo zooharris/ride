@@ -17,7 +17,7 @@ import { deleteEvent, sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { movePlanned, pruneOrphanWorkouts, replacePlanned } from '../planService';
 
-const sendable = (k?: string) => k === 'ride' || k === 'walk';
+const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
 
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;

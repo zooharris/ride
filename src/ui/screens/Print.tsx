@@ -4,7 +4,7 @@ import { findWorkout } from '../store';
 import { getPlans, type ActivePlan } from '../planService';
 import { addDays, today } from '../../engine/load';
 import { workoutStats } from '../../engine/workout';
-import { weekStart } from '../derived';
+import { DAY_SHORT, dayOrder, weekStart } from '../derived';
 import { APP_NAME } from '../../appName';
 import type { PlannedWorkout, SessionKind, Workout } from '../../engine/types';
 import { KIND_LABEL } from './Plan';
@@ -27,7 +27,7 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
   if (!plan) return <div class="main"><div class="empty">No plan to print. <a href="#/plan">Plan my training</a> first.</div></div>;
   const profile = data.profile!;
 
-  // Every session in the plan's date range, plan-made or added by hand, grouped by week from the plan's first Monday.
+  // Every session in the plan's date range, plan-made or added by hand, grouped by week from the plan's first week day (the rider's choice of Monday or Sunday).
   const first = weekStart(plan.start);
   const last = plan.goalDate;
   const sessions = data.planned.filter((p) => p.date >= first && p.date <= last);
@@ -86,7 +86,7 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
             <>
               <Legend />
               <table class="p-table">
-                <thead><tr><th>Week</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th><th class="r">Total</th></tr></thead>
+                <thead><tr><th>Week</th>{dayOrder().map((d) => <th key={d}>{DAY_SHORT[d]}</th>)}<th class="r">Total</th></tr></thead>
                 <tbody>
                   {pw.map((w) => (
                     <tr class={w.phase === 'Recovery' ? 'recovery' : w.phase === 'Taper' ? 'taper' : ''} key={w.start}>

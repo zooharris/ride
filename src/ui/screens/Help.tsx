@@ -114,7 +114,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
       <>
         <ul>
           <li><b>Intervals.icu</b>: athlete ID and API key, and a connection test that tries each call the app makes and reports what passed.</li>
-          <li><b>Your numbers</b>: FTP, LTHR, max and resting heart rate, weight, units, power or heart rate as the default basis for sending workouts. Garmin accepts one target type per workout, so each one is sent on one basis.</li>
+          <li><b>Your numbers</b>: FTP, LTHR, max and resting heart rate, weight, units, power or heart rate as the default basis for sending workouts, and which day your week starts on (Monday or Sunday) for the calendar, the lists, the plan and the printout. Garmin accepts one target type per workout, so each one is sent on one basis.</li>
           <li><b>Backup</b>: "Back up now" writes a compressed copy of everything into a private note in your Intervals.icu calendar (on 31 Dec 2099, named "App backup"); it also happens automatically once a week. On any other browser or phone, connect Intervals.icu and the app offers to restore from it. You can also download a backup file and restore from a file.</li>
           <li><b>Giving the app to someone else</b>: they open the same address and connect their own Intervals.icu account. Each install holds only its own person's data; nothing is shared.</li>
           <li><b>Coach</b>: optionally, an Anthropic API key lets the app ask Claude for a short daily note and, if you turn it on, a review each time new activities arrive. The review can recommend plan changes but never makes them; you apply or dismiss.</li>

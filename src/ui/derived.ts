@@ -19,9 +19,17 @@ export function readinessToday(wellness: Wellness[], fitness: Fitness | undefine
   return readiness(todayW, baseline, fitness?.tsb ?? 0);
 }
 
-export function weekStart(date: string, firstDay = 1): string {
+/** The rider's first day of the week (0 Sunday, 1 Monday), set from the profile when it loads. */
+let FIRST_DAY: 0 | 1 = 1;
+export function setFirstDay(d: 0 | 1): void { FIRST_DAY = d; }
+export function firstDay(): 0 | 1 { return FIRST_DAY; }
+export const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Weekday numbers (JS style, 0 = Sunday) in the rider's display order. */
+export function dayOrder(): number[] { return [0, 1, 2, 3, 4, 5, 6].map((i) => (i + FIRST_DAY) % 7); }
+
+export function weekStart(date: string, first: number = FIRST_DAY): string {
   const d = new Date(date + 'T00:00:00');
-  const diff = (d.getDay() - firstDay + 7) % 7;
+  const diff = (d.getDay() - first + 7) % 7;
   return addDays(date, -diff);
 }
 

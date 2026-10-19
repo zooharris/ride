@@ -13,6 +13,8 @@ export interface Profile {
   basis: Basis;         // default basis for new workouts
   masters: boolean;     // masters recovery ratios in the plan builder
   units: 'imperial' | 'metric';
+  /** First day of the week on calendars, lists and printouts: 0 = Sunday, 1 = Monday. */
+  weekStartsOn?: 0 | 1;
   rideDays: number[];   // 0 = Sunday .. 6 = Saturday
   hoursPerWeek: number;
 }

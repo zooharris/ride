@@ -11,7 +11,7 @@ import { hoursText } from '../../engine/goals';
 import { addDays, today } from '../../engine/load';
 import { clock } from '../../engine/workout';
 import { getSetting, setSetting } from '../../data/db';
-import { fmtDate } from '../derived';
+import { dayOrder, fmtDate } from '../derived';
 import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
@@ -206,7 +206,8 @@ export function Plan({ data }: { data: AppData }) {
         <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, mobility or rest for every other day. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
         <div class="week-table">
           <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>
-          {DAYS.map((d, i) => {
+          {dayOrder().map((i) => {
+            const d = DAYS[i];
             const where: 'out' | 'in' | 'none' = av.noBike?.[i] ? 'none' : av.outdoor[i] ? 'out' : 'in';
             const setWhere = (w: 'out' | 'in' | 'none') => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'out' : !!av.outdoor[k])), noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'none' : !!av.noBike?.[k])) });
             const pin = (av.pins ?? []).find((p) => p.dow === i)?.kind ?? '';

@@ -1,10 +1,11 @@
 import type { ComponentChildren } from 'preact';
 import { addDays, today } from '../engine/load';
+import { DAY_SHORT, dayOrder, firstDay } from './derived';
 
-/** A month as a seven-column grid, Monday first. The caller renders each day's contents. */
+/** A month as a seven-column grid, starting on the rider's first day of the week. The caller renders each day's contents. */
 export function MonthGrid({ month, render, onPrev, onNext, onToday }: { month: string; render: (date: string) => ComponentChildren; onPrev: () => void; onNext: () => void; onToday: () => void }) {
   const first = `${month}-01`;
-  const firstDow = (new Date(first + 'T00:00:00').getDay() + 6) % 7;   // Monday = 0
+  const firstDow = (new Date(first + 'T00:00:00').getDay() - firstDay() + 7) % 7;   // offset of the 1st from the week's first day
   const start = addDays(first, -firstDow);
   const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
   const rows = Math.ceil((firstDow + daysInMonth) / 7);
@@ -21,7 +22,7 @@ export function MonthGrid({ month, render, onPrev, onNext, onToday }: { month: s
         </div>
       </div>
       <div class="month">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div class="month-head" key={d}>{d}</div>)}
+        {dayOrder().map((d) => <div class="month-head" key={d}>{DAY_SHORT[d]}</div>)}
         {Array.from({ length: rows * 7 }, (_, i) => {
           const date = addDays(start, i);
           const inMonth = date.slice(0, 7) === month;

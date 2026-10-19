@@ -1,3 +1,4 @@
+import { DAY_SHORT, dayOrder, setFirstDay } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { notify } from '../store';
@@ -10,7 +11,6 @@ import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
 import { ZONE_VAR } from '../Profile';
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function Settings({ data }: { data: AppData }) {
   const [p, setP] = useState<Profile>(data.profile!);
@@ -41,6 +41,7 @@ export function Settings({ data }: { data: AppData }) {
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
 
   async function save() {
+    setFirstDay(p.weekStartsOn === 0 ? 0 : 1);
     await saveProfile(p);
     await setSetting('claudeKey', claudeKey.trim());
     await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
@@ -183,11 +184,13 @@ export function Settings({ data }: { data: AppData }) {
             <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
           <div class="field"><label>Units</label>
             <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
+          <div class="field"><label>Week starts on</label>
+            <div class="seg"><button class={(p.weekStartsOn ?? 1) === 1 ? 'on' : ''} onClick={() => upd('weekStartsOn', 1)}>Monday</button><button class={p.weekStartsOn === 0 ? 'on' : ''} onClick={() => upd('weekStartsOn', 0)}>Sunday</button></div></div>
           <div class="field"><label>Masters recovery (over 50)</label>
             <div class="seg"><button class={p.masters ? 'on' : ''} onClick={() => upd('masters', true)}>On</button><button class={!p.masters ? 'on' : ''} onClick={() => upd('masters', false)}>Off</button></div></div>
         </div>
         <div class="field" style="margin-top:14px"><label>Days you can ride</label>
-          <div class="chips">{DAYS.map((d, i) => <button key={d} class={`chip${p.rideDays.includes(i) ? ' on' : ''}`} onClick={() => upd('rideDays', p.rideDays.includes(i) ? p.rideDays.filter((x) => x !== i) : [...p.rideDays, i].sort())}>{d}</button>)}</div></div>
+          <div class="chips">{dayOrder().map((i) => <button key={i} class={`chip${p.rideDays.includes(i) ? ' on' : ''}`} onClick={() => upd('rideDays', p.rideDays.includes(i) ? p.rideDays.filter((x) => x !== i) : [...p.rideDays, i].sort())}>{DAY_SHORT[i]}</button>)}</div></div>
       </section>
 
       <section class="section">

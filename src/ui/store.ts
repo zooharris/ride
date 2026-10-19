@@ -4,6 +4,7 @@ import type { Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
+import { setFirstDay } from './derived';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
@@ -30,6 +31,7 @@ export function useAppData(): AppData {
         db.wellness.orderBy('date').toArray(),
         db.workouts.toArray(),
       ]);
+      setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
       if (alive) setData({ profile, planned, rides, wellness, mine, loaded: true });
     };
     load();

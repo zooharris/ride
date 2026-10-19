@@ -26,11 +26,11 @@ import { Skeleton } from './PageHead';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
-  { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
-  { path: 'calendar', label: 'Calendar', icon: <Icon.calendar />, groupEnd: true },
+  { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
+  { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} />, groupEnd: true },
   { path: 'progress', label: 'Progress', icon: <Icon.progress /> },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
-  { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
+  { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
   { path: 'settings', label: 'Settings', icon: <Icon.settings />, railOnly: true, railFirst: true },
   { path: 'help', label: 'Help', icon: <Icon.help />, railOnly: true },
 ];

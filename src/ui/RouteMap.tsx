@@ -4,18 +4,16 @@ import 'leaflet/dist/leaflet.css';
 import type { Sample } from './ActivityCharts';
 import { cssVar, onThemeChange, resolvedTheme } from './theme';
 
-const TILES = {
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-};
-const ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>';
+// OpenStreetMap's own tiles: free and keyless. (CARTO's dark/light tiles were tried and now demand an API key.)
+// The dark theme darkens these same tiles with a CSS filter (see .map.dark in global.css).
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 /**
  * The route on a map, with a marker that follows the chart cursor and a
- * cursor that follows the mouse over the route. Tiles are CARTO's dark or
- * light map (OpenStreetMap data) to match the app's theme, swapped when the
- * theme changes; without a connection the track still draws on a blank
- * background. `height` may be a CSS length, so a pinned map can fill its column.
+ * cursor that follows the mouse over the route. Tiles are OpenStreetMap's,
+ * darkened by a filter in the dark theme; without a connection the track
+ * still draws on a blank background. `height` may be a CSS length, so a pinned map can fill its column.
  */
 export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: Sample[]; hover: number | null; onHover: (i: number | null) => void; height?: number | string }) {
   const el = useRef<HTMLDivElement>(null);
@@ -26,14 +24,16 @@ export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: S
   useEffect(() => {
     if (!el.current || pts.length < 2) return;
     const m = L.map(el.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
-    let tiles = L.tileLayer(TILES[resolvedTheme()], { maxZoom: 19, subdomains: 'abcd', attribution: ATTRIBUTION }).addTo(m);
+    L.tileLayer(TILE_URL, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(m);
+    el.current.classList.toggle('dark', resolvedTheme() === 'dark');
     const latlngs = pts.map((p) => [p.lat, p.lng] as [number, number]);
     const halo = cssVar('--bg') || '#0A1220';
     L.polyline(latlngs, { color: halo, weight: 7, opacity: 0.55, interactive: false }).addTo(m);   // a halo under the track so it reads on any tile
     const line = L.polyline(latlngs, { color: cssVar('--accent') || '#20D6B5', weight: 3.5, opacity: 0.95 }).addTo(m);
     L.circleMarker(latlngs[0], { radius: 5, color: '#fff', weight: 2, fillColor: cssVar('--good') || '#34C77B', fillOpacity: 1 }).addTo(m).bindTooltip('Start');
     L.circleMarker(latlngs[latlngs.length - 1], { radius: 5, color: '#fff', weight: 2, fillColor: cssVar('--bad') || '#F0506E', fillOpacity: 1 }).addTo(m).bindTooltip('Finish');
-    const offTheme = onThemeChange((t) => { m.removeLayer(tiles); tiles = L.tileLayer(TILES[t], { maxZoom: 19, subdomains: 'abcd', attribution: ATTRIBUTION }).addTo(m); tiles.bringToBack(); line.setStyle({ color: cssVar('--accent') }); });
+    const box = el.current;
+    const offTheme = onThemeChange((t) => { box.classList.toggle('dark', t === 'dark'); line.setStyle({ color: cssVar('--accent') }); });
     // A pinned map changes size with the window; keep Leaflet's idea of it current.
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(el.current);

@@ -1,14 +1,13 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, notify } from '../store';
-import { WorkoutProfile, ZONE_VAR } from '../Profile';
-import { clock, formatDuration, newId, renderIntervalsText, stepTargets, workoutStats } from '../../engine/workout';
-import { powerZone } from '../../engine/zones';
+import { WorkoutProfile } from '../Profile';
+import { clock, newId, renderIntervalsText, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
 import { db } from '../../data/db';
 import { go } from '../router';
-import type { Basis, PlannedWorkout, WorkoutStep } from '../../engine/types';
+import type { Basis, PlannedWorkout } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { sendWorkout } from '../../sync/intervals';
@@ -19,6 +18,7 @@ import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
+import { StepsTable } from '../StepsTable';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -43,11 +43,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     go('calendar');
   }
 
-  const rows: Array<{ step: WorkoutStep; set?: string }> = [];
-  for (const b of w.blocks) {
-    if (b.kind === 'step') rows.push({ step: b });
-    else { rows.push({ step: b.steps[0], set: `${b.label ?? 'Set'} × ${b.times}` }); for (const st of b.steps.slice(1)) rows.push({ step: st }); }
-  }
+
 
   return (
     <div>
@@ -83,23 +79,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       <section class="section">
         <h2>Steps · {basis === 'power' ? `watts at FTP ${profile.ftp}` : `bpm at LTHR ${profile.lthr}`}</h2>
-        <table class="steps">
-          {rows.map(({ step, set }, i) => {
-            const t = stepTargets(step, profile);
-            const z = powerZone(step.intensity);
-            return (
-              <>
-                {set && <tr key={`s${i}`}><td colSpan={4} class="set">{set}</td></tr>}
-                <tr key={i}>
-                  <td><span class="z" style={`background:${ZONE_VAR[z - 1]}`} /></td>
-                  <td>{step.label ?? `Zone ${z}`}{step.cadence ? <span class="faint"> · {step.cadence} rpm</span> : null}</td>
-                  <td class="r muted">{formatDuration(step.seconds)}</td>
-                  <td class="r num">{basis === 'power' ? `${t.watts} W` : `${t.bpm} bpm`}</td>
-                </tr>
-              </>
-            );
-          })}
-        </table>
+        <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
       {plannedEntry && plannedEntry.status !== 'completed' && (

@@ -1,10 +1,10 @@
 import type { Fitness, PlannedWorkout, Profile, Ride, Wellness } from '../engine/types';
-import { addDays, fitnessSeries, today } from '../engine/load';
+import { addDays, fitnessSeries, historyStart, today } from '../engine/load';
 import { readiness, type Readiness } from '../engine/readiness';
 
-/** Fitness series from stored rides, from 120 days ago to today. */
+/** Fitness series from stored activities, from the start of the history (see historyStart) to today. */
 export function fitnessFromRides(rides: Ride[], to = today()): Fitness[] {
-  const from = addDays(to, -120);
+  const from = historyStart(rides.map((r) => r.date), to);
   const loads = rides.filter((r) => r.date >= from).map((r) => ({ date: r.date, tss: r.tss ?? 0 }));
   return fitnessSeries(loads, from, to);
 }

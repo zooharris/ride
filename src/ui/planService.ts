@@ -5,7 +5,7 @@ import { clock } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { addDays, today } from '../engine/load';
-import { generatePlan, type Availability, type Plan } from '../engine/planner';
+import { generatePlan, type Availability, type Plan, type Phase as PlanPhase } from '../engine/planner';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
@@ -28,7 +28,11 @@ export interface ActivePlan {
   projection: Fitness[];
   appliedAt: string;
   lastCheck?: string;
+  /** The plan's weeks as built (phase and planned load), for the timeline and the calendar's recovery-week shading. Plans applied before this was kept have none. */
+  weeks?: PlanWeekSummary[];
 }
+
+export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number }
 
 /** Every plan on the calendar, oldest first. Plans never overlap in time. */
 export async function getPlans(): Promise<ActivePlan[]> {
@@ -128,7 +132,9 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId })));
   added = toAdd.length;
   await pruneOrphanWorkouts();
-  const active: ActivePlan = { id: planId, name, goal, availability, masters, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from };
+  const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
+  const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from, weeks };
   await savePlans([...plans.filter((p) => p.id !== planId), active]);
   notify();
   if (c) autoBackup(c, true);

@@ -250,3 +250,13 @@ describe('no minimum on recovery', () => {
     expect(none).toBeLessThan(z2);
   });
 });
+
+describe('historyStart', () => {
+  it('starts at least 120 days back, at the earliest activity, never more than two years', async () => {
+    const { historyStart } = await import('./load');
+    expect(historyStart([], '2026-10-19')).toBe('2026-06-21');
+    expect(historyStart(['2026-09-01'], '2026-10-19')).toBe('2026-06-21');
+    expect(historyStart(['2026-01-05', '2026-09-01'], '2026-10-19')).toBe('2026-01-05');
+    expect(historyStart(['2023-01-01', '2025-03-01'], '2026-10-19')).toBe('2025-03-01');
+  });
+});

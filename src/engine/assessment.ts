@@ -1,5 +1,5 @@
 import type { Fitness, PlannedWorkout, Profile, Ride, Wellness } from './types';
-import { addDays, fitnessSeries } from './load';
+import { addDays, fitnessSeries, historyStart } from './load';
 
 /**
  * What the data say about this rider. Every number carries a confidence and a
@@ -49,9 +49,9 @@ export function assess(inp: AssessmentInput): Assessment {
   const { today, wellness } = inp;
   const rides = inp.rides.filter((r) => r.sport === 'ride');   // riding metrics come from rides; every activity counts toward load
   const allActs = inp.rides;
-  const from120 = addDays(today, -120);
-  const loads = allActs.filter((r) => r.date >= from120).map((r) => ({ date: r.date, tss: r.tss ?? 0 }));
-  const series = fitnessSeries(loads, from120, today);
+  const from = historyStart(allActs.map((r) => r.date), today);
+  const loads = allActs.filter((r) => r.date >= from).map((r) => ({ date: r.date, tss: r.tss ?? 0 }));
+  const series = fitnessSeries(loads, from, today);
   const fitness = series[series.length - 1] ?? { date: today, ctl: 0, atl: 0, tsb: 0 };
 
   // Ramp rate: fitness now versus six weeks ago.

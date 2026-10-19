@@ -3,7 +3,7 @@ import { addDays, today } from '../engine/load';
 import { DAY_SHORT, dayOrder, firstDay } from './derived';
 
 /** A month as a seven-column grid, starting on the rider's first day of the week. The caller renders each day's contents. */
-export function MonthGrid({ month, render, onPrev, onNext, onToday }: { month: string; render: (date: string) => ComponentChildren; onPrev: () => void; onNext: () => void; onToday: () => void }) {
+export function MonthGrid({ month, render, onPrev, onNext, onToday, cellClass, weekNote }: { month: string; render: (date: string) => ComponentChildren; onPrev: () => void; onNext: () => void; onToday: () => void; cellClass?: (date: string) => string; weekNote?: (weekStart: string) => ComponentChildren }) {
   const first = `${month}-01`;
   const firstDow = (new Date(first + 'T00:00:00').getDay() - firstDay() + 7) % 7;   // offset of the 1st from the week's first day
   const start = addDays(first, -firstDow);
@@ -21,17 +21,24 @@ export function MonthGrid({ month, render, onPrev, onNext, onToday }: { month: s
           <button class="btn sm quiet" onClick={onNext} aria-label="Next month">›</button>
         </div>
       </div>
-      <div class="month">
+      <div class={`month${weekNote ? ' with-notes' : ''}`}>
         {dayOrder().map((d) => <div class="month-head" key={d}>{DAY_SHORT[d]}</div>)}
-        {Array.from({ length: rows * 7 }, (_, i) => {
-          const date = addDays(start, i);
-          const inMonth = date.slice(0, 7) === month;
-          return (
-            <div class={`month-cell${inMonth ? '' : ' out'}${date === t ? ' today' : ''}`} key={date}>
-              <div class="month-day">{Number(date.slice(8))}</div>
-              {render(date)}
-            </div>
-          );
+        {weekNote && <div class="month-head month-note-head">Week</div>}
+        {Array.from({ length: rows }, (_, r) => {
+          const ws = addDays(start, r * 7);
+          return [
+            ...Array.from({ length: 7 }, (_, c) => {
+              const date = addDays(ws, c);
+              const inMonth = date.slice(0, 7) === month;
+              return (
+                <div class={`month-cell${inMonth ? '' : ' out'}${date === t ? ' today' : ''}${cellClass ? ` ${cellClass(date)}` : ''}`} key={date}>
+                  <div class="month-day">{Number(date.slice(8))}</div>
+                  {render(date)}
+                </div>
+              );
+            }),
+            weekNote ? <div class="month-note" key={`n${ws}`}>{weekNote(ws)}</div> : null,
+          ];
         })}
       </div>
     </div>

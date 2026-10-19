@@ -16,23 +16,39 @@ import type { PlannedWorkout, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
-import { movePlanned, removePlanned, replacePlanned } from '../planService';
+import { getPlans, movePlanned, removePlanned, replacePlanned } from '../planService';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
+import { WeekBar } from '../Glance';
+import { weekSummary } from '../week';
 import { Icon } from '../icons';
 
 const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
 
-export function Calendar({ data }: { data: AppData }) {
+export function Calendar({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;
-  const [start, setStart] = useState(weekStart(today()));
+  const focus = params?.get('d') ?? undefined;
+  const [start, setStart] = useState(weekStart(focus && /^\d{4}-\d{2}-\d{2}$/.test(focus) ? focus : today()));
   const [view, setView] = useState<'list' | 'month'>('list');
   const [month, setMonth] = useState(monthOf(today()));
-  useEffect(() => { getSetting<'list' | 'month'>('calendarView', 'list').then(setView); }, []);
+  // Opened from Today's week strip or its ⋯ button: show that week as a list, and open the change sheet if asked.
+  useEffect(() => { if (focus) { setView('list'); return; } getSetting<'list' | 'month'>('calendarView', 'list').then(setView); }, [focus]);
+  useEffect(() => { if (focus) setStart(weekStart(focus)); }, [focus]);
   const pickView = (v: 'list' | 'month') => { setView(v); setSetting('calendarView', v); };
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
   const [moveDate, setMoveDate] = useState('');
+  // Recovery weeks of every plan, to shade them on the month view.
+  const [recoveryWeeks, setRecoveryWeeks] = useState<Set<string>>(new Set());
+  useEffect(() => { getPlans().then((ps) => setRecoveryWeeks(new Set(ps.flatMap((p) => (p.weeks ?? []).filter((w) => w.phase === 'recovery').map((w) => weekStart(w.start)))))); }, [data.planned.length]);
+  const changeId = params?.get('change');
+  useEffect(() => {
+    if (!changeId) return;
+    const p = data.planned.find((x) => x.id === changeId);
+    if (p && p.status !== 'completed') { setChanging(p); setMoveDate(p.date); }
+    history.replaceState(null, '', `${location.pathname}#/calendar${focus ? `?d=${focus}` : ''}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changeId]);
   const setMsg = toast;
   const [busy, setBusy] = useState<string | null>(null);
   const days = Array.from({ length: 14 }, (_, i) => addDays(start, i));
@@ -73,18 +89,6 @@ export function Calendar({ data }: { data: AppData }) {
     } finally { setBusy(null); notify(); }
   }
 
-  const weekTss = (ws: string) => {
-    let planned = 0, done = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(ws, i);
-      for (const p of plannedOn(data.planned, d)) {
-        const w = findWorkout(data.mine, p.workoutId);
-        if (w) planned += w.kind === 'ride' ? workoutStats(w.blocks).tss : (w.estimatedTss ?? 0);
-      }
-      for (const r of data.rides.filter((r) => r.date === d)) done += r.tss ?? 0;
-    }
-    return { planned, done };
-  };
 
   return (
     <div>
@@ -102,6 +106,8 @@ export function Calendar({ data }: { data: AppData }) {
 
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
+          cellClass={(d) => (recoveryWeeks.has(weekStart(d)) ? 'recovery' : '')}
+          weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <><b class="num">{wk.doneTss}</b>{wk.plannedTss > 0 && <span class="faint"> of {wk.plannedTss}</span>}<span class="faint">TSS</span>{recoveryWeeks.has(ws) && <span class="mn-tag">recovery</span>}</> : null; }}
           render={(d) => {
             const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
             const rides = data.rides.filter((r) => r.date === d && !plans.some((p) => p.activityId === r.id));
@@ -111,9 +117,14 @@ export function Calendar({ data }: { data: AppData }) {
                   const w = findWorkout(data.mine, p.workoutId);
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
-                  return <a class={`month-item ${p.status}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`}><StatusMark status={statusOf(p.status)} size={11} /><span class="sw" style={`background:${colour}`} /><span>{w.name}</span></a>;
+                  return (
+                    <a class={`month-item ${p.status} k-${w.kind}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
+                      <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <span class="sw" />}</span>
+                      <span class="mi-name">{w.name}</span>
+                    </a>
+                  );
                 })}
-                {rides.map((r) => <a class="month-item completed" key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`}><StatusMark status="done" size={11} /><span class="sw" style={`background:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`} /><span>{r.name}</span></a>)}
+                {rides.map((r) => <a class={`month-item completed k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`} style={`--c:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`}><span class="mi-top"><StatusMark status="done" size={11} /><span class="sw" /></span><span class="mi-name">{r.name}</span></a>)}
                 {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking({ date: d })}>+</button>}
               </>
             );
@@ -124,17 +135,13 @@ export function Calendar({ data }: { data: AppData }) {
 
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
-        const t = weekTss(ws);
+        const wk = weekSummary(ws, data.planned, data.rides, data.mine);
         const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind)).length;
         return (
           <section class="section" key={ws} style={offset ? '' : 'margin-top:0'}>
-            <div class="row between" style="margin-bottom:8px">
-              <h2>{fmtDate(ws, { month: 'short', day: 'numeric' })} – {fmtDate(addDays(ws, 6), { month: 'short', day: 'numeric' })}</h2>
-              <div class="row">
-                <span class="muted small">{t.done} done · {t.planned} planned TSS</span>
-                {unsent > 0 && <button class="btn sm" onClick={() => sendWeek(ws)} disabled={busy === ws}>{busy === ws ? 'Sending…' : `Send ${unsent} to Garmin`}</button>}
-              </div>
-            </div>
+            <WeekBar week={wk}>
+              {unsent > 0 && <button class="btn sm" onClick={() => sendWeek(ws)} disabled={busy === ws}><Icon.send size={14} />{busy === ws ? 'Sending…' : `Send ${unsent} to Garmin`}</button>}
+            </WeekBar>
             <div class="cal-week">
               {days.slice(offset, offset + 7).map((d) => {
                 const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
@@ -174,7 +181,7 @@ export function Calendar({ data }: { data: AppData }) {
                           <StatusPill status="done" />
                         </a>
                       ))}
-                      {d >= today() && <button class="cal-add" onClick={() => setPicking({ date: d })}>+ Add</button>}
+                      {d >= today() && <button class="cal-add" onClick={() => setPicking({ date: d })} aria-label={`Add a session on ${fmtDate(d)}`}>+ Add</button>}
                     </div>
                   </div>
                 );

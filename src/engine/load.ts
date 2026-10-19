@@ -77,6 +77,19 @@ export function addDays(date: string, n: number): string {
   return isoDate(d);
 }
 
+/**
+ * Where a fitness series should start: the earliest activity on record, but no
+ * more than two years back and never less than 120 days (fitness needs about
+ * that long to settle from zero). Every screen starts from the same day, so the
+ * fitness number agrees everywhere.
+ */
+export function historyStart(dates: string[], to: string): string {
+  const floor = addDays(to, -730), ceil = addDays(to, -120);
+  let earliest = ceil;
+  for (const d of dates) if (d < earliest && d >= floor) earliest = d;
+  return earliest;
+}
+
 export function today(): string {
   return isoDate(new Date());
 }

@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 
-export interface ChartSeries { name: string; color: string; values: number[]; dash?: string; width?: number; explain?: string }
+/** A series; null leaves a gap (a projection that starts where the history ends, say). */
+export interface ChartSeries { name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string }
 export interface ChartMarker { index: number; label: string; color?: string }
 export interface ChartRefLine { value: number; label: string; color?: string }
 export interface ChartBand { from: number; to: number; label: string; color: string; explain?: string }
@@ -28,13 +29,13 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   const n = xLabels.length;
   if (n < 2) return <div class="empty small">Not enough data to draw.</div>;
   const W = 480, H = height, padL = 36, padR = 10, padT = 10, padB = 22;
-  const all = series.flatMap((s) => s.values).concat(refLines.map((r) => r.value));
+  const all = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refLines.map((r) => r.value));
   const lo = yMin ?? Math.min(0, ...all);
   const hi0 = yMax ?? Math.max(...all);
   const hi = hi0 === lo ? lo + 1 : hi0 + (hi0 - lo) * 0.08;
   const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-  const path = (vals: number[]) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const path = (vals: Array<number | null>) => { let pen = false; return vals.map((v, i) => { if (v == null) { pen = false; return ''; } const c = `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; pen = true; return c; }).join(' '); };
   // y ticks: 4 round steps
   const step = niceStep((hi - lo) / 4);
   const ticks: number[] = [];
@@ -54,14 +55,14 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
         {markers.map((m) => <g key={m.label}><line x1={x(m.index)} x2={x(m.index)} y1={padT} y2={H - padB} stroke={m.color ?? 'var(--line-2)'} stroke-dasharray="2 3" /><text x={x(m.index) + 3} y={H - padB - 4} fill={m.color ?? 'var(--ink-3)'} font-size="9">{m.label}</text></g>)}
         {series.map((s) => <path key={s.name} d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width ?? 1.8} stroke-dasharray={s.dash} />)}
         {h != null && <line x1={x(h)} x2={x(h)} y1={padT} y2={H - padB} stroke="var(--accent)" />}
-        {h != null && series.map((s) => <circle key={s.name} cx={x(h)} cy={y(s.values[h])} r="3" fill={s.color} />)}
+        {h != null && series.map((s) => s.values[h] == null ? null : <circle key={s.name} cx={x(h)} cy={y(s.values[h] as number)} r="3" fill={s.color} />)}
       </svg>
       <div class="row wrap faint small" style="gap:14px;margin-top:4px">
         {series.map((s) => <span key={s.name} title={s.explain}><span style={`color:${s.color}`}>{s.dash ? '- -' : '—'}</span> {s.name}</span>)}
       </div>
       {h != null && (
         <div class="panel small" style="position:absolute;top:6px;right:6px;padding:6px 10px;pointer-events:none;max-width:70%">
-          {readout ? readout(h) : <><b>{xLabels[h]}</b>{series.map((s) => ` · ${s.name} ${fmtTick(s.values[h])}`)}</>}
+          {readout ? readout(h) : <><b>{xLabels[h]}</b>{series.filter((s) => s.values[h] != null).map((s) => ` · ${s.name} ${fmtTick(s.values[h] as number)}`)}</>}
         </div>
       )}
     </div>

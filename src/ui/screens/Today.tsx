@@ -6,13 +6,17 @@ import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday } from '../derived';
+import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, trustedWellness } from '../store';
 import { dailyNote } from '../../coach/claude';
-import { FitnessChart } from '../FitnessChart';
+import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
+import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
+import { lastPlannedDate, projectFitness, weekSummary } from '../week';
+import { StepsTable } from '../StepsTable';
+import { addDays } from '../../engine/load';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
 import { StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { applyPlan, coachReviewAfterSync, getActivePlan, markChecked, recentNoteLines, replan, type ActivePlan } from '../planService';
@@ -50,6 +54,10 @@ export function Today({ data }: { data: AppData }) {
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<CoachReview | null>(null);
   const [tourDone, setTourDone] = useState<boolean | null>(null);
+  const [showSteps, setShowSteps] = useState(false);
+  const [range, setRange] = useState<RangeKey>('3m');
+  useEffect(() => { getSetting<RangeKey>('fitnessRange', '3m').then(setRange); }, []);
+  const pickRange = (k: RangeKey) => { setRange(k); setSetting('fitnessRange', k); };
   useEffect(() => { getSetting<boolean>('tourDone', false).then(setTourDone); }, []);
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
@@ -145,6 +153,11 @@ export function Today({ data }: { data: AppData }) {
     } finally { setBusy(null); }
   }
 
+  const last = series[series.length - 1];
+  const projEnd = lastPlannedDate(data.planned, date);
+  const projection = last && projEnd ? projectFitness(last, data.planned, data.mine, projEnd > addDays(date, 180) ? addDays(date, 180) : projEnd) : [];
+  const events = active && active.goal.kind === 'event' ? [{ date: active.goalDate, label: 'event' }] : [];
+
   const bandText = readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
 
   return (
@@ -152,6 +165,8 @@ export function Today({ data }: { data: AppData }) {
       <PageHead eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
         <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}><Icon.sync size={15} />{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
       </PageHead>
+
+      <WeekStrip week={weekSummary(weekStart(date), data.planned, data.rides, data.mine)} />
 
       <div class="today-grid">
       <div class="today-main">
@@ -200,7 +215,7 @@ export function Today({ data }: { data: AppData }) {
             <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
             <span class="row" style="gap:8px"><StatusMark status={statusOf(plan.status)} /><StatusPill status={statusOf(plan.status)} /></span>
           </div>
-          <h2 style="font-size:24px;margin:10px 0 2px">{workout.name}</h2>
+          <h2 style="font-size:28px;line-height:32px;font-weight:700;letter-spacing:-0.02em;margin:12px 0 2px">{workout.name}</h2>
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
           <p class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>
           <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero /></div>
@@ -208,9 +223,11 @@ export function Today({ data }: { data: AppData }) {
           <div class="row wrap" style="margin-top:14px;gap:8px">
             {plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
             {plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
-            <a class="btn" href={`#/workout/${workout.id}?from=today&date=${date}`}>Steps and targets</a>
-            <a class="btn quiet" href="#/calendar">Change</a>
+            <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
+            <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>Details</a>
+            {plan.status !== 'completed' && <a class="icon-btn" style="margin-left:auto" href={`#/calendar?d=${date}&change=${plan.id}`} title="Replace, move or remove" aria-label="Replace, move or remove"><Icon.more /></a>}
           </div>
+          {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>
       ) : others.length === 0 ? (
         <Empty title="Nothing planned today." action={<a class="btn primary sm" href="#/library">Choose a workout</a>}>Pick something from the library, build a plan, or take the day.</Empty>
@@ -243,39 +260,33 @@ export function Today({ data }: { data: AppData }) {
       </div>
       <div class="today-side">
       <section class="section">
-        <div class="row between" style="margin-bottom:10px">
-          <h2>Readiness</h2>
-          <span class="big" style={`color:${ready.band === 'go' ? 'var(--good)' : ready.band === 'rest' ? 'var(--bad)' : ready.band === 'easy' ? 'var(--warn)' : 'var(--ink)'}`}>{ready.score}</span>
+        <h2 style="margin-bottom:12px">Readiness</h2>
+        <div class="panel readiness">
+          <div class="rd-top">
+            <ReadinessDial score={ready.score} band={ready.band} />
+            <p class="rd-advice">{bandText}.</p>
+          </div>
+          <ReadinessRows data={data} date={date} series={series} drivers={ready.drivers} />
+          {wellnessSetAside ? (
+            <p class="small" style="margin-top:10px;color:var(--warn)">Today's HRV, sleep and resting heart rate are set aside as wrong, so the score is from form alone and the day is left out of your averages.</p>
+          ) : (
+            <p class="faint small" style="margin-top:10px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own two-week normal. Lines show the last two weeks; green is better than normal, red worse.</p>
+          )}
+          {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
+          <DayNoteEditor date={date} note={todayNote} hasWellness={data.wellnessAll.some((w) => w.date === date)} />
         </div>
-        <p class="muted small" style="margin-bottom:10px">{bandText}.</p>
-        <div class="stats">
-          {ready.drivers.map((d) => (
-            <div class="stat" key={d.name} title={READINESS_HELP[d.name] ?? ''}>
-              <div class="v" style={`font-size:16px;color:${d.effect === 'up' ? 'var(--good)' : d.effect === 'down' ? 'var(--bad)' : 'var(--ink)'}`}>{d.value}</div>
-              <div class="l">{d.name}{d.name !== 'Form' ? ' today vs your 2-week average' : ' (fitness minus fatigue)'}</div>
-            </div>
-          ))}
-        </div>
-        {wellnessSetAside ? (
-          <p class="small" style="margin-top:8px;color:var(--warn)">Today's HRV, sleep and resting heart rate are set aside as wrong, so the score is from form alone and the day is left out of your averages.</p>
-        ) : (
-          <p class="faint small" style="margin-top:8px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own recent normal. Green is better than normal, red worse.</p>
-        )}
-        {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
-        <DayNoteEditor date={date} note={todayNote} hasWellness={data.wellnessAll.some((w) => w.date === date)} />
       </section>
 
       <section class="section">
-        <div class="row between" style="margin-bottom:10px">
+        <div class="row between wrap" style="margin-bottom:12px;gap:8px">
           <h2>Fitness</h2>
-          <div class="stats" style="gap:4px 16px;grid-template-columns:repeat(3,max-content);margin-left:auto">
-            <div class="stat"><div class="v" style="font-size:18px;color:var(--z2)">{fit?.ctl.toFixed(0) ?? '–'}</div><div class="l">Fitness</div></div>
-            <div class="stat"><div class="v" style="font-size:18px;color:var(--z5)">{fit?.atl.toFixed(0) ?? '–'}</div><div class="l">Fatigue</div></div>
-            <div class="stat"><div class="v" style="font-size:18px">{fit ? (fit.tsb > 0 ? '+' : '') + fit.tsb.toFixed(0) : '–'}</div><div class="l">Form</div></div>
-          </div>
+          <RangePicker value={range} onChange={pickRange} />
         </div>
-        <FitnessChart series={series.slice(-84)} />
-        <p class="faint small" style="margin-top:6px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Hover a band or a line for more.</p>
+        <div class="panel">
+          <FitnessTiles series={series} />
+          <FitnessChart series={series} range={range} projection={projection} events={events} />
+        </div>
+        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry fitness and form forward over what is on your calendar. Hover a band or a line for more.</p>
       </section>
       </div>
       </div>
@@ -379,3 +390,60 @@ const READINESS_HELP: Record<string, string> = {
   Form: 'Fitness minus fatigue. Negative while building, positive when fresh; +5 to +20 is the window for an event.',
 };
 
+
+/** Fitness, fatigue and form today, each with its change over the last seven days. */
+function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> }) {
+  const now = series[series.length - 1], ago = valueDaysAgo(series, 7);
+  const tile = (label: string, v: number | undefined, prev: number | undefined, color: string, help: string, signed = false) => {
+    const d = v != null && prev != null ? Math.round(v) - Math.round(prev) : null;
+    return (
+      <div class="stat" title={help}>
+        <div class="v" style={`font-size:28px;line-height:32px;color:${color}`}>{v == null ? '–' : `${signed && v > 0 ? '+' : ''}${Math.round(v)}`}</div>
+        <div class="l">{label}{d != null && <span class="delta" style={`color:${d === 0 ? 'var(--ink-3)' : 'var(--ink-2)'}`}>{d > 0 ? '▲' : d < 0 ? '▼' : '·'} {Math.abs(d)} in 7 days</span>}</div>
+      </div>
+    );
+  };
+  return (
+    <div class="stats tiles" style="margin-bottom:12px">
+      {tile('Fitness', now?.ctl, ago?.ctl, 'var(--info)', 'Fitness: the 42-day weighted average of daily training load.')}
+      {tile('Fatigue', now?.atl, ago?.atl, 'var(--z5)', 'Fatigue: the 7-day weighted average of daily training load.')}
+      {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', 'Form: fitness minus fatigue.', true)}
+    </div>
+  );
+}
+
+/**
+ * The four inputs to readiness, each with this morning's value, its last two
+ * weeks as a line, and the difference from the two-week normal, coloured by
+ * whether that difference helps.
+ */
+function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: Array<{ name: string; value: string; effect: 'up' | 'down' | 'flat' }> }) {
+  const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
+  const w = (d: string) => data.wellness.find((x) => x.date === d);
+  const mean = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const rows: Array<{ name: string; vals: Array<number | null>; fmt: (v: number) => string; unit: string; help: string }> = [
+    { name: 'HRV', vals: days.map((d) => w(d)?.hrv ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
+    { name: 'Sleep', vals: days.map((d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }), fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
+    { name: 'Resting HR', vals: days.map((d) => w(d)?.restingHr ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Resting HR'] },
+    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => `${v > 0 ? '+' : ''}${Math.round(v)}`, unit: '', help: READINESS_HELP.Form },
+  ];
+  return (
+    <div class="rd-rows">
+      {rows.map((r) => {
+        const todayV = r.vals[14];
+        const base = r.name === 'Form' ? null : mean(r.vals.slice(0, 14));
+        const eff = drivers.find((d) => d.name === r.name)?.effect ?? 'flat';
+        const color = eff === 'up' ? 'var(--good)' : eff === 'down' ? 'var(--bad)' : 'var(--ink-2)';
+        const diff = todayV != null && base != null ? todayV - base : null;
+        return (
+          <div class="rd-row" key={r.name} title={r.help}>
+            <span class="rd-name">{r.name}</span>
+            <Sparkline values={r.vals} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} />
+            <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}<span class="faint" style="font-weight:400">{todayV != null && r.unit ? ` ${r.unit}` : ''}</span></span>
+            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'no data' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? r.fmt(Math.abs(diff)) : Math.abs(Math.round(diff))} vs normal`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -51,7 +51,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
           render={(d) => data.rides.filter((r) => r.date === d).map((r) => (
-            <a class="month-item done" key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`}><span class="sw" style={`background:${KIND_COLOR[r.sport]}`} /><span>{r.name}</span></a>
+            <a class={`month-item done k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`} style={`--c:${KIND_COLOR[r.sport]}`}><span class="mi-name">{r.name}</span></a>
           ))} />
       )}
       {view === 'list' && <div class="stack">

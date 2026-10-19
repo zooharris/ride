@@ -19,6 +19,7 @@ import type { Equipment, Fitness, SessionKind } from '../../engine/types';
 import { KIND_ICON } from '../icons';
 import { FORM_BANDS, LineChart } from '../LineChart';
 import { PageHead } from '../PageHead';
+import { PlanTimeline } from '../Glance';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -131,6 +132,7 @@ export function Plan({ data }: { data: AppData }) {
                       {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
                     </div>
                   </div>
+                  {p.weeks && p.weeks.length > 0 && <div style="margin-top:12px"><PlanTimeline weeks={p.weeks} goalDate={p.goalDate} event={p.goal.kind === 'event' ? (p.goal.name || 'Event') : undefined} /></div>}
                   {isActive && check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
                 </div>
               );
@@ -142,8 +144,8 @@ export function Plan({ data }: { data: AppData }) {
 
       <section>
         <h2>What your data say</h2>
-        <p class="faint small" style="margin:4px 0 10px">The plan is built on these. Grey dots are guesses with no data behind them yet; they firm up as rides and wellness come in.</p>
-        <div class="stack" style="gap:5px">
+        <p class="faint small" style="margin:4px 0 10px">The plan is built on these. Green: well supported by your data; amber: thin evidence; grey: a guess with no data behind it yet. They firm up as rides and wellness come in.</p>
+        <div class="panel"><div class="stack" style="gap:6px">
           {([assessment.weeklyHours, assessment.longestRide, assessment.decoupling, assessment.efficiencyTrend, assessment.powerProfile, assessment.ftpStatus, assessment.afterStrength, assessment.afterLongRide, assessment.afterHardRide, assessment.compliance, assessment.rampRate] as Evidence<unknown>[]).map((e, i) => (
             <div class="row" key={i} style="align-items:flex-start;gap:10px">
               <span class="dot" style={`margin-top:7px;width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${e.confidence === 'good' ? 'var(--good)' : e.confidence === 'thin' ? 'var(--warn)' : 'var(--ink-3)'}`} />
@@ -151,12 +153,12 @@ export function Plan({ data }: { data: AppData }) {
             </div>
           ))}
         </div>
-        <p class="small" style="margin-top:10px">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p>
+        <p class="small" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p></div>
       </section>
 
       <section class="section">
-        <h2>{plans.length ? 'New plan' : 'Goal'}</h2>
-        <div class="form" style="margin-top:10px">
+        <h2 style="margin-bottom:12px">{plans.length ? 'New plan' : 'Goal'}</h2>
+        <div class="panel"><div class="form">
           <div class="field"><label>Plan name</label><input value={name} placeholder={defaultPlanName(goal)} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
           <div class="field"><label>Starts on</label><input type="date" value={startDate} min={today()} onInput={(e) => setStartDate((e.target as HTMLInputElement).value || today())} /></div>
           <div class="field"><label>What you are training for</label>
@@ -198,12 +200,13 @@ export function Plan({ data }: { data: AppData }) {
           {goal.kind === 'endurance' && (
             <div class="field"><label>Ride this long comfortably (hours)</label><input type="number" step="0.5" value={goal.targetHours} onInput={(e) => setGoal({ ...goal, targetHours: Number((e.target as HTMLInputElement).value) || 3 })} /></div>
           )}
-        </div>
+        </div></div>
       </section>
 
       <section class="section">
         <h2>Your week</h2>
         <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, mobility or rest for every other day. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
+        <div class="panel">
         <div class="week-table">
           <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>
           {dayOrder().map((i) => {
@@ -239,6 +242,7 @@ export function Plan({ data }: { data: AppData }) {
             <div class="seg"><button class={masters ? 'on' : ''} onClick={() => setMasters(true)}>Masters (more recovery)</button><button class={!masters ? 'on' : ''} onClick={() => setMasters(false)}>Standard</button></div></div>
           <span class="faint small" style="align-self:flex-end;padding-bottom:10px">Targets in {profile.basis === 'power' ? 'power' : 'heart rate'} (change in Settings).</span>
         </div>
+        </div>
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">
@@ -257,8 +261,26 @@ export function Plan({ data }: { data: AppData }) {
           </section>
 
           <section class="section">
-            <h2>Fitness projection</h2>
-            <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} goalDate={plan.goalDate} />
+            <h2 style="margin-bottom:12px">The plan's shape</h2>
+            <div class="panel">
+              <PlanTimeline weeks={plan.weeks} goalDate={plan.goalDate} event={goal.kind === 'event' ? (goal.name || 'Event') : undefined} />
+              <p class="faint small" style="margin-top:6px">{plan.weeks.length} weeks, one cell each, coloured by phase. Hover a week for its name and load.</p>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2 style="margin-bottom:12px">Fitness projection</h2>
+            <div class="panel">
+              <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} goalDate={plan.goalDate} />
+            </div>
+          </section>
+
+          <section class="section">
+            <h2 style="margin-bottom:12px">Weekly load</h2>
+            <div class="panel">
+              <PlanTimeline weeks={plan.weeks} goalDate={plan.goalDate} event={goal.kind === 'event' ? (goal.name || 'Event') : undefined} bars />
+              <p class="faint small" style="margin-top:6px">Planned training load (TSS) for each week. Load climbs through each block and drops in the recovery weeks, so fitness can catch up with the work.</p>
+            </div>
           </section>
 
           <section class="section">
@@ -329,11 +351,11 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
       <p class="muted small" style="margin:4px 0 10px;max-width:68ch">
         What your fitness, fatigue and form would do if every session in this plan is done as written, day by day from today to the goal.
         Fitness is the same number as on the Today page: a 42-day weighted average of daily training load (TSS). Fatigue is the 7-day average; form is fitness minus fatigue. Fitness only rises while fatigue sits above it, so form is negative through a build (the shaded "building" band) and comes back up in recovery weeks and the taper; above zero is where you want to be on an event day, not every day.
-        {required > 0 && ' The dashed amber line is the fitness the goal asks for.'}
+        {required > 0 && ' The dashed line is the fitness the goal asks for.'}
       </p>
       <LineChart
         series={[
-          { name: 'fitness', color: 'var(--z2)', values: series.map((f) => Math.round(f.ctl)), width: 2.2, explain: '42-day weighted average of daily training load' },
+          { name: 'fitness', color: 'var(--info)', values: series.map((f) => Math.round(f.ctl)), width: 2.2, explain: '42-day weighted average of daily training load' },
           { name: 'fatigue', color: 'var(--z5)', values: series.map((f) => Math.round(f.atl)), width: 1.3, explain: '7-day weighted average of daily training load' },
           { name: 'form', color: 'var(--ink-3)', values: series.map((f) => Math.round(f.tsb)), dash: '2 3', width: 1.2, explain: 'fitness minus fatigue; positive means fresh' },
         ]}

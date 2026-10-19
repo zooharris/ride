@@ -52,7 +52,7 @@ export function App() {
   if (root === 'print') return <PrintView data={data} planId={id} params={route.params} />;
   let screen;
   switch (root) {
-    case 'calendar': screen = <Calendar data={data} />; break;
+    case 'calendar': screen = <Calendar data={data} params={route.params} />; break;
     case 'library': screen = <Library data={data} />; break;
     case 'workout': screen = <WorkoutScreen data={data} id={id} params={route.params} />; break;
     case 'build': {

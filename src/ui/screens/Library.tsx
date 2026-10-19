@@ -13,23 +13,50 @@ import { fmtDate } from '../derived';
 const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks']];
+type Duration = 'all' | 'u60' | '60-90' | '90-120' | '120-180' | '180-240' | '240+';
+const DURATIONS: Array<[Duration, string, [number, number]]> = [
+  ['all', 'Any', [0, 1e9]], ['u60', 'Under 1 h', [0, 60]], ['60-90', '1–1½ h', [60, 90]], ['90-120', '1½–2 h', [90, 120]], ['120-180', '2–3 h', [120, 180]], ['180-240', '3–4 h', [180, 240]], ['240+', '4 h and up', [240, 1e9]],
+];
 
 export function Library({ data }: { data: AppData }) {
   const [tab, setTab] = useState<Tab>('ride');
   const [family, setFamily] = useState<Family | 'all'>('all');
   const [adding, setAdding] = useState<Workout | null>(null);
-  const all = allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated');
-  const list = tab === 'ride' ? all.filter((w) => family === 'all' || w.family === family) : all;
+  const [duration, setDuration] = useState<Duration>('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'family' | 'short' | 'long'>('family');
+  const q = query.trim().toLowerCase();
+  const minutesOf = (w: Workout) => (w.kind === 'ride' ? workoutStats(w.blocks).seconds / 60 : (w.minutes ?? 0));
+  const inDuration = (w: Workout) => { const m = minutesOf(w); const [lo, hi] = DURATIONS.find((d) => d[0] === duration)![2]; return m >= lo && m < hi; };
+  const matches = (w: Workout) => !q || `${w.name} ${w.subtitle ?? ''} ${FAMILY_LABEL[w.family]} ${w.purpose}`.toLowerCase().includes(q);
+  const all = allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated').filter(inDuration).filter(matches);
+  const ordered = sort === 'family' ? all : [...all].sort((a, b) => (sort === 'short' ? minutesOf(a) - minutesOf(b) : minutesOf(b) - minutesOf(a)));
+  const list = tab === 'ride' ? ordered.filter((w) => family === 'all' || w.family === family) : ordered;
   const mine = list.filter((w) => w.source === 'mine');
   const ready = list.filter((w) => w.source === 'library');
   return (
     <div>
       <div class="page-head">
         <h1>Library</h1>
-        <div class="row"><span class="muted small">{list.length} {tab === 'ride' ? 'workouts' : 'sessions'}</span><a class="btn sm primary" href="#/build">Build</a></div>
+        <div class="row wrap"><span class="muted small">{list.length} {tab === 'ride' ? 'rides' : 'sessions'}</span><a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a></div>
       </div>
-      <div class="seg" style="margin-bottom:16px">
-        {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
+      <div class="row wrap" style="gap:10px;margin-bottom:12px">
+        <div class="seg">
+          {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
+        </div>
+        <input value={query} placeholder="Search by name or purpose" onInput={(e) => setQuery((e.target as HTMLInputElement).value)} style="flex:1;min-width:180px;max-width:320px" aria-label="Search the library" />
+      </div>
+      <div class="row wrap" style="gap:6px 10px;margin-bottom:12px;align-items:center">
+        <span class="faint small">Length</span>
+        <div class="chips">
+          {DURATIONS.map(([d, l]) => <button key={d} class={`chip${duration === d ? ' on' : ''}`} onClick={() => setDuration(d)}>{l}</button>)}
+        </div>
+        <span class="faint small" style="margin-left:auto">Sort</span>
+        <div class="seg">
+          <button class={sort === 'family' ? 'on' : ''} onClick={() => setSort('family')}>By type</button>
+          <button class={sort === 'short' ? 'on' : ''} onClick={() => setSort('short')}>Shortest</button>
+          <button class={sort === 'long' ? 'on' : ''} onClick={() => setSort('long')}>Longest</button>
+        </div>
       </div>
 
       {mine.length > 0 && (
@@ -47,14 +74,15 @@ export function Library({ data }: { data: AppData }) {
             <button class={`chip${family === 'all' ? ' on' : ''}`} onClick={() => setFamily('all')}>All</button>
             {ORDER.map((f) => <button key={f} class={`chip${family === f ? ' on' : ''}`} onClick={() => setFamily(f)}>{FAMILY_LABEL[f]}</button>)}
           </div>
+          {ready.length === 0 && mine.length === 0 && <div class="empty small">Nothing matches. Widen the length or clear the search.</div>}
           <div class="grid">{ready.map((w) => <Card key={w.id} w={w} />)}</div>
         </>
       ) : (
         <>
           <p class="muted small" style="margin:0 0 14px;max-width:62ch">
-            {tab === 'strength' && 'Built for your equipment from the planner’s own sessions: the same lifts, sets and reps a plan would give you, at each level. Add one to any date, or Build your own.'}
-            {tab === 'mobility' && 'Stretching routines by what cycling tightens. Each one names the stretches and how long to hold them. Add one to any date, or Build your own.'}
-            {tab === 'walk' && 'Zone 2 on foot for days the bike is out: treadmill or outdoors, with or without a weighted pack. Add one to any date, or Build your own.'}
+            {tab === 'strength' && 'Built for your equipment from the planner’s own sessions: the same lifts, sets and reps a plan would give you, at each level. Add one to any date, or make your own with New workout.'}
+            {tab === 'mobility' && 'Stretching routines by what cycling tightens. Each one names the stretches and how long to hold them. Add one to any date, or make your own with New workout.'}
+            {tab === 'walk' && 'Zone 2 on foot for days the bike is out: treadmill or outdoors, with or without a weighted pack. Add one to any date, or make your own with New workout.'}
           </p>
           <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} />)}</div>
         </>
@@ -75,7 +103,8 @@ function Card({ w, mine = false }: { w: Workout; mine?: boolean }) {
       </div>
       <WorkoutProfile blocks={w.blocks} height={56} />
       <h3>{w.name}</h3>
-      <p class="muted small">{clock(s.seconds)} · {s.tss} TSS · IF {s.intensityFactor.toFixed(2)}</p>
+      {w.subtitle && <p class="small" style="margin:-2px 0 2px;color:var(--ink-2)">{w.subtitle}</p>}
+      <p class="muted small">{clock(s.seconds)} · {s.tss} TSS · IF {s.intensityFactor.toFixed(2)}{w.setting === 'outdoor' ? ' · outdoors' : w.setting === 'indoor' ? ' · indoor' : ''}</p>
     </a>
   );
 }

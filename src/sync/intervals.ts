@@ -235,7 +235,7 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
     type: 'Ride',
-    name: workout.name,
+    name: workout.subtitle ? `${workout.name} · ${workout.subtitle}` : workout.name,
     description: renderIntervalsText(workout, basis),
     moving_time: stats.seconds,
     icu_training_load: stats.tss,

@@ -1,6 +1,7 @@
 import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 import { OUTDOOR } from './outdoor';
 import { INDOOR } from './indoor';
+import { RIDE_NAMES } from './names';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -100,6 +101,44 @@ const CORE: Workout[] = [
     physiology: 'Anaerobic capacity and buffering.',
     blocks: [warm(15), rep(6, 'Anaerobic', step(1, 1.35), step(5, 0.5)), cool(10)] }),
 
+  // Longer and extra sessions
+  lib({ id: 'lib-spin-45', name: 'Easy Spin 45', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
+    purpose: 'Forty-five minutes of light pedalling with a few minutes of higher cadence in the middle. For the day after the long ride when thirty minutes is not quite enough to feel loose.',
+    physiology: 'Circulation and neuromuscular refresh.',
+    blocks: [step(15, 0.45, { intensityHigh: 0.55 }), step(10, 0.55, { cadence: 100, label: 'High cadence' }), step(20, 0.45, { intensityHigh: 0.55 })] }),
+  lib({ id: 'lib-z2-120', name: 'Foundation 120', family: 'endurance', phases: ['base', 'build', 'any'], bases: ['power', 'hr'],
+    purpose: 'Two hours of zone 2 with a cadence change every half hour. The mid-week long ride for a rider with the time, or a weekend ride in a recovery week.',
+    physiology: 'Aerobic base; fat oxidation.',
+    blocks: [warm(10), step(25, 0.62, { intensityHigh: 0.72 }), step(5, 0.68, { cadence: 100, label: 'High cadence' }), step(25, 0.62, { intensityHigh: 0.72 }), step(5, 0.68, { cadence: 100, label: 'High cadence' }), step(25, 0.62, { intensityHigh: 0.72 }), step(5, 0.68, { cadence: 100, label: 'High cadence' }), step(15, 0.62, { intensityHigh: 0.72 }), cool(5)] }),
+  lib({ id: 'lib-long-180', name: 'Long Steady 3:00', family: 'endurance', phases: ['base', 'build'], bases: ['power', 'hr'],
+    purpose: 'Three hours in the aerobic zone. The weekly long ride once the base is in; eat from the first half hour and keep the second half as steady as the first.',
+    physiology: 'Aerobic durability; glycogen sparing.',
+    blocks: [warm(15), step(160, 0.6, { intensityHigh: 0.72 }), cool(5)] }),
+  lib({ id: 'lib-long-210', name: 'Long Steady 3:30', family: 'endurance', phases: ['build'], bases: ['power', 'hr'],
+    purpose: 'Three and a half hours of zone 2. Watch heart rate against power in the final hour: if it drifts up more than five percent, the base is not done yet.',
+    physiology: 'Aerobic durability; the decoupling test at length.',
+    blocks: [warm(15), step(190, 0.6, { intensityHigh: 0.72 }), cool(5)] }),
+  lib({ id: 'lib-long-240', name: 'Long Steady 4:00', family: 'endurance', phases: ['build', 'peak'], bases: ['power', 'hr'],
+    purpose: 'Four hours. Century preparation: seventy grams of carbohydrate an hour after the first forty-five minutes, and a position you can hold for the last hour.',
+    physiology: 'Event-specific durability.',
+    blocks: [warm(15), step(220, 0.6, { intensityHigh: 0.72 }), cool(5)] }),
+  lib({ id: 'lib-long-300', name: 'Long Steady 5:00', family: 'endurance', phases: ['peak'], bases: ['power', 'hr'],
+    purpose: 'Five hours of zone 2: the final long ride before a century, three to four weeks out. Nothing above zone 2, a proper stop for food, and a rest day after.',
+    physiology: 'Deep aerobic durability.',
+    blocks: [warm(15), step(280, 0.6, { intensityHigh: 0.72 }), cool(5)] }),
+  lib({ id: 'lib-tempo-3x15', name: 'Tempo 3 x 15', family: 'tempo', phases: ['base', 'build'], bases: ['power', 'hr'],
+    purpose: 'Three fifteen-minute tempo blocks with short recoveries. Forty-five minutes of comfortably hard riding; the staple of a base block for a rider who finds sweet spot too much every week.',
+    physiology: 'Muscular endurance at moderate strain.',
+    blocks: [warm(12), rep(3, 'Tempo', step(15, 0.8, { intensityHigh: 0.86 }), step(4, 0.5)), cool(8)] }),
+  lib({ id: 'lib-thr-3x12', name: 'Threshold 3 x 12', family: 'threshold', phases: ['build', 'peak'], bases: ['power', 'hr'],
+    purpose: 'Thirty-six minutes at FTP in three efforts. Sits between 3 x 10 and 2 x 20 in the threshold progression; the recovery between efforts is long enough that each one should be as good as the first.',
+    physiology: 'Lactate threshold; repeatability at FTP.',
+    blocks: [warm(15), rep(3, 'Threshold', step(12, 0.97, { intensityHigh: 1.02 }), step(6, 0.5)), cool(10)] }),
+  lib({ id: 'lib-vo2-4x5', name: 'VO2max 4 x 5', family: 'vo2max', phases: ['peak'], bases: ['power'],
+    purpose: 'Four five-minute efforts above threshold with five minutes easy. Longer than 4 x 4 and the top of the VO2max progression for a masters rider; once a week at most, fresh.',
+    physiology: 'Maximal oxygen uptake; sustained high-intensity tolerance.',
+    blocks: [warm(15), rep(4, 'VO2max', step(5, 1.08, { intensityHigh: 1.15 }), step(5, 0.5)), cool(10)] }),
+
   // Tests
   lib({ id: 'lib-ramp', name: 'Ramp Test', family: 'test', phases: ['any'], bases: ['power'],
     purpose: 'Start easy and add six percent every minute until you cannot. FTP is estimated as seventy-five percent of the best one-minute power. Takes twenty minutes and needs no pacing judgement; do it at the start of each block.',
@@ -116,7 +155,10 @@ const CORE: Workout[] = [
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */
-export const LIBRARY: Workout[] = [...CORE, ...OUTDOOR, ...INDOOR];
+export const LIBRARY: Workout[] = [...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
+  const place = RIDE_NAMES[w.id];
+  return place ? { ...w, name: place, subtitle: w.name } : w;
+});
 
 export function libraryById(id: string): Workout | undefined {
   return LIBRARY.find((w) => w.id === id);

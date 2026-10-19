@@ -77,7 +77,7 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - Strength count and level by phase; mobility after the long ride and after strength; walks for windows under 45 minutes or no-bike days when a treadmill or outdoor walking is available.
 - Output: weeks of sessions with reasons, a fitness projection, verdict (on track / close / short), advice, and a list of decisions in sentences. Plan weeks start on Monday; nothing before today.
 
-**Adaptation**: every day after a sync the plan is regenerated from today, diffed against the calendar, and last week is reviewed (done / missed / over-cooked). Changes are shown and applied only on a tap; unchanged sessions are kept. Cancelling a plan removes only future, undone sessions the plan created.
+**Adaptation**: every day after a sync the plan is regenerated from today, diffed against the calendar, and last week is reviewed (done / missed / over-cooked). Each change is a tick box: changes to plan-made sessions are ticked, suggestions touching sessions the rider replaced or moved (`userEdited`, `movedFrom` on the calendar entry) are unticked; only ticked changes apply, unchanged sessions are kept. Cancelling a plan removes only future, undone sessions the plan created.
 
 **Compliance** (`scoreRide`, `analyseRide`): a ride matched to its planned workout (by Intervals event id, else date + kind) gets a verdict and an interval-by-interval comparison laid along elapsed time from the recording.
 
@@ -86,9 +86,10 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 ## Screens
 
 - **Today**: getting-started checklist (first run), today's ride with Send to Garmin, other sessions, next up, readiness with explanations, fitness chart, the plan's daily re-check, the coach review.
-- **Calendar**: list (two weeks) or month; + Add any kind; Send N to Garmin; confirm on remove; Plan.
-- **Plan**: assessment panel, goal, your week, equipment, commitments, masters toggle → result with verdict, projection chart, decisions, weeks; Put on calendar / Discard; active plan with Re-check / Cancel.
-- **Library**: Rides by family; Strength / Mobility / Walks ready-made for the rider's equipment; My … sections; Build → chooser → ride, strength, mobility or walk builder, each showing estimated TSS live. Walks carry a heart-rate target (% of max, shown in bpm).
+- **Plan** (its own tab, "Plan my training"): assessment panel, goal, your week, equipment, commitments, masters toggle → result with verdict, projection chart, decisions, weeks; Put on calendar / Discard; active plan with Re-check / Cancel.
+- **Calendar**: list (two weeks) or month; + Add any kind; ⋯ on any session to replace it with another workout of any kind, move it to another date, or remove it (confirm); Send N to Garmin.
+- **Library**: Rides by family, filterable by length (under 1 h … 4 h and up), searchable, sortable by type or duration; Strength / Mobility / Walks ready-made for the rider's equipment; My … sections; "New workout" → chooser → ride, strength, mobility or walk builder, each showing estimated TSS live. Walks carry a heart-rate target (% of max, shown in bpm).
+- **Ride names**: every library ride is named for a place (src/library/names.ts): where you would turn around on an out-and-back from Old Town Herndon at the ride's intensity. Outdoor-shaped rides go west on the W&OD (long rides = trail towns, interval rides = roads off the trail), core rides go east toward Washington, indoor rides take the loops near home; tests keep plain names. The descriptive name is the subtitle and goes to the Garmin with the place name. The file lists unused names for future rides.
 - **Activities**: list or month; detail with verdict, route map, stacked interactive charts (shared cursor with the map; mouse or touch), time in zone, numbers with descriptions.
 - **Settings**: Intervals credentials + connection checks; your numbers; zones; coach key and auto-review toggle; backup now / restore from Intervals / file backup.
 - **Help**: one section per screen, the numbers explained, backup and other devices, troubleshooting.
@@ -101,6 +102,8 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - The rider specifies only hours and constraints; the app decides the kind of session.
 - Strength sessions name real exercises, sets, reps and load for the rider's equipment; mobility sessions name stretches and holds; walking is a session kind.
 - No stopgaps or templates.
+- Any calendared session, plan-made or not, can be replaced (any kind), moved or removed by the rider; the plan keeps the rider's change and may only suggest otherwise.
+- Library rides have unique, memorable place names (Virginia, around the W&OD from Herndon) with the descriptive name as subtitle; the library offers a range of durations up to six hours and can be filtered by length.
 - No device assumed; Intervals.icu is the single source of completed activities; app-logged sessions are written back to it.
 - Must run without Claude; Claude is optional and never changes the plan without the rider's OK.
 - Giveable to others with no mixing of data.

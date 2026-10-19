@@ -8,12 +8,12 @@ const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: s
   { kind: 'walk', title: 'Walk', text: 'Treadmill or outdoors, with or without a weighted pack.' },
 ];
 
-/** The first step of Build: say what kind of session this is. */
+/** The first step of New workout: say what kind of session this is. */
 export function BuildChooser() {
   return (
     <div>
       <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
-      <div class="page-head"><h1>Build</h1></div>
+      <div class="page-head"><h1>New workout</h1></div>
       <p class="muted" style="margin:0 0 16px">What kind of session?</p>
       <div class="grid">
         {KINDS.map((k) => (

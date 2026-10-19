@@ -4,7 +4,7 @@ import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, getActivePlan, isPlanSession, markChecked, replan, type ActivePlan } from '../planService';
-import type { Replan } from '../../engine/adapt';
+import { changeKey, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
@@ -82,10 +82,10 @@ export function Plan({ data }: { data: AppData }) {
     try { await cancelPlan(data); setActive(null); setCheck(null); setPlan(null); } finally { setBusy(false); }
   }
 
-  async function applyCheck() {
+  async function applyCheck(accepted: Set<string>) {
     if (!check || !active) return;
     setBusy(true);
-    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters); setCheck(null); go('calendar'); } finally { setBusy(false); }
+    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters, accepted); setCheck(null); go('calendar'); } finally { setBusy(false); }
   }
 
   const DEFAULT_AV: Availability = { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
@@ -106,8 +106,7 @@ export function Plan({ data }: { data: AppData }) {
 
   return (
     <div>
-      <a href="#/calendar" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Calendar</a>
-      <div class="page-head"><h1>Plan</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
+      <div class="page-head"><h1>Plan my training</h1><span class="muted small">Fitness today {assessment.fitness.ctl.toFixed(0)}</span></div>
 
       {active && (
         <section class="panel accent" style="margin-bottom:22px">
@@ -224,7 +223,7 @@ export function Plan({ data }: { data: AppData }) {
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">
-        <button class="btn primary" style="flex:1" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Build the plan</button>
+        <button class="btn primary" style="flex:1" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Plan my training</button>
         <button class="btn quiet" onClick={resetForm}>Reset</button>
       </div>
 
@@ -342,8 +341,13 @@ export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolea
 
 const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer', weight: 'Lose weight', general: 'General fitness' };
 
-export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: () => void; busy: boolean }) {
+export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (accepted: Set<string>) => void; busy: boolean }) {
   const r = check.review;
+  // Each change is a tick box. Changes to sessions the plan made are on by default; changes to anything the rider edited are off.
+  const [accepted, setAccepted] = useState<Set<string>>(() => new Set(check.changes.filter((c) => !c.userEdited).map(changeKey)));
+  useEffect(() => { setAccepted(new Set(check.changes.filter((c) => !c.userEdited).map(changeKey))); }, [check]);
+  const toggle = (k: string) => setAccepted((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const edited = check.changes.filter((c) => c.userEdited).length;
   return (
     <div style="margin-top:12px">
       <div class="small"><b>Last week:</b> {r.completed} of {r.planned} done{r.missed ? `, ${r.missed} missed` : ''}.</div>
@@ -353,14 +357,21 @@ export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (
       {check.summary.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
       {check.changes.length > 0 && (
         <div class="stack" style="margin-top:10px;gap:4px">
-          {check.changes.slice(0, 12).map((c, i) => (
-            <div class="small" key={i}><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}</div>
-          ))}
-          {check.changes.length > 12 && <div class="faint small">and {check.changes.length - 12} more</div>}
+          {check.changes.slice(0, 14).map((c, i) => {
+            const k = changeKey(c);
+            return (
+              <label class="small row" key={i} style="gap:8px;align-items:flex-start;cursor:pointer">
+                <input type="checkbox" checked={accepted.has(k)} onChange={() => toggle(k)} style="margin-top:3px" />
+                <span><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}{c.userEdited && <span class="faint"> · you changed this; a suggestion only</span>}</span>
+              </label>
+            );
+          })}
+          {check.changes.length > 14 && <div class="faint small">and {check.changes.length - 14} more</div>}
+          {edited > 0 && <div class="faint small" style="margin-top:4px">Untick anything you want left as it is. Suggestions for sessions you changed yourself start unticked.</div>}
         </div>
       )}
       <div class="row" style="margin-top:12px">
-        {check.changes.length > 0 ? <button class="btn primary sm" onClick={onApply} disabled={busy}>Apply these changes</button> : <span class="muted small">Nothing to change.</span>}
+        {check.changes.length > 0 ? <button class="btn primary sm" onClick={() => onApply(accepted)} disabled={busy || accepted.size === 0}>Apply {accepted.size === check.changes.length ? 'these changes' : accepted.size === 1 ? '1 change' : `${accepted.size} changes`}</button> : <span class="muted small">Nothing to change.</span>}
       </div>
     </div>
   );

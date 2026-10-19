@@ -158,12 +158,15 @@ describe('library', () => {
   it('has unique ids and sane numbers for every workout', async () => {
     const { LIBRARY } = await import('../library/workouts');
     const ids = new Set<string>();
+    const names = LIBRARY.map((w) => w.name);
+    expect(new Set(names).size, 'every library ride has a unique name').toBe(names.length);
     for (const w of LIBRARY) {
+      if (w.family !== 'test') expect(w.subtitle, w.name).toBeTruthy();
       expect(ids.has(w.id), `duplicate id ${w.id}`).toBe(false);
       ids.add(w.id);
       const s = workoutStats(w.blocks);
       expect(s.seconds, w.name).toBeGreaterThan(20 * 60);
-      expect(s.seconds, w.name).toBeLessThanOrEqual(4 * 3600 + 60);
+      expect(s.seconds, w.name).toBeLessThanOrEqual(6 * 3600 + 60);
       expect(s.tss, w.name).toBeGreaterThan(5);
       expect(w.purpose.length, w.name).toBeGreaterThan(40);
       for (const st of flattenSteps(w.blocks)) {

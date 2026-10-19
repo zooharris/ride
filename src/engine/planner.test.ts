@@ -255,4 +255,24 @@ describe('adaptation', () => {
     expect(review.missed).toBe(1);
     expect(review.lines[0]).toMatch(/was missed/);
   });
+  it('marks changes that touch sessions the rider edited or moved, so they are offered rather than applied', async () => {
+    const { diffPlan } = await import('./adapt');
+    const plan = generatePlan(req());
+    const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const, planId: 'p' })));
+    // the rider swaps one future ride for another ride (same kind) and moves one session a day later
+    const future = planned.filter((p) => p.date > today);
+    const rideIdx = future.findIndex((p) => workouts.get(p.workoutId)?.kind === 'ride');
+    const other = [...workouts.values()].find((w) => w.kind === 'ride' && w.id !== future[rideIdx].workoutId)!;
+    future[rideIdx] = { ...future[rideIdx], workoutId: other.id, userEdited: true } as typeof future[number];
+    const moveIdx = future.findIndex((p, i) => i !== rideIdx && workouts.get(p.workoutId)?.kind !== 'ride');
+    const from = future[moveIdx].date;
+    future[moveIdx] = { ...future[moveIdx], date: addDays(from, 1), movedFrom: from, userEdited: true } as typeof future[number];
+    const diff = diffPlan([...planned.filter((p) => p.date <= today), ...future], workouts, plan, today);
+    const edited = diff.filter((c) => c.userEdited);
+    expect(edited.length).toBeGreaterThan(0);
+    expect(edited.some((c) => c.date === future[rideIdx].date && c.kind === 'ride')).toBe(true);
+    expect(edited.some((c) => c.date === from)).toBe(true);
+    expect(diff.filter((c) => !c.userEdited).length).toBe(0);
+  });
 });

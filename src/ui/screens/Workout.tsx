@@ -51,6 +51,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         ) : <span class="faint small">{w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>}
       </div>
       <h1>{w.name}</h1>
+      {w.subtitle && <p style="margin:2px 0 0;font-size:16px;color:var(--ink-2)">{w.subtitle}</p>}
       <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · IF {s.intensityFactor.toFixed(2)}</p>
       <WorkoutProfile blocks={w.blocks} height={110} hero />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>

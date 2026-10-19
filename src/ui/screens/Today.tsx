@@ -63,10 +63,10 @@ export function Today({ data }: { data: AppData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.rides.length, data.planned.length]);
 
-  async function applyCheck() {
+  async function applyCheck(accepted: Set<string>) {
     if (!check || !active) return;
     setChecking(true);
-    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters); setCheck(null); setMsg({ ok: true, text: 'Plan updated on the calendar.' }); } finally { setChecking(false); }
+    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters, accepted); setCheck(null); setMsg({ ok: true, text: 'Plan updated on the calendar.' }); } finally { setChecking(false); }
   }
 
   async function recheckNow() {
@@ -186,6 +186,7 @@ export function Today({ data }: { data: AppData }) {
             <span class="pill"><span class="dot" style={`background:${plan.status === 'completed' ? 'var(--good)' : plan.status === 'sent' ? 'var(--z2)' : 'var(--ink-3)'}`} />{statusLabel(plan.status)}</span>
           </div>
           <h2 style="font-size:24px;margin:10px 0 2px">{workout.name}</h2>
+          {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
           <p class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>
           <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero /></div>
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
@@ -277,7 +278,7 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
         {items.map(({ p, w }) => (
           <a class="cal-item" key={p.id} href={`#/workout/${w!.id}?from=today&date=${nextDate}`}>
             {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
-            <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS · ${p.status === 'sent' ? 'on Garmin' : 'not sent yet'}` : KIND_LABEL[w!.kind]}{p.note ? ` · ${p.note}` : ''}</span></div>
+            <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS · ${p.status === 'sent' ? 'on Garmin' : 'not sent yet'}` : KIND_LABEL[w!.kind]}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>
           </a>
         ))}
       </div>

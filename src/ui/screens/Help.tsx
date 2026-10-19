@@ -14,7 +14,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <li><b>Connect Intervals.icu</b> (Settings). Intervals.icu is the pipe between the app and Garmin: workouts you send go to Intervals.icu, which Garmin Connect picks up and puts on your Edge; rides you record flow back the same way. Your athlete ID and API key are on the Intervals.icu website under Settings → Developer. The app never sends them anywhere but Intervals.icu.</li>
           <li><b>Check your numbers</b> (Settings). FTP, threshold heart rate, max heart rate and weight are pulled from Intervals.icu when you connect. Every zone and every TSS depends on them, so correct them if they are stale; the app pushes changes back so the two stay in step.</li>
           <li><b>Sync</b> (Today). Pulls your activities and wellness (sleep, HRV, resting heart rate, from whatever you record them with). Do this before building a plan so the planner has something to assess.</li>
-          <li><b>Build a plan</b> (Calendar → Plan). Give it a goal, your hours for each day of the week, your equipment and any standing commitments. It assesses your own data and decides what each day should be. Put it on the calendar when you like what you see.</li>
+          <li><b>Plan my training</b> (the Plan tab). Give it a goal, your hours for each day of the week, your equipment and any standing commitments. It assesses your own data and decides what each day should be. Put it on the calendar when you like what you see.</li>
           <li><b>Send the week</b> (Calendar). One tap sends every ride for the week to your Garmin. Ride it from the Edge's Training menu, sync as usual, then tap Sync here to see how it went.</li>
         </ol>
       </>
@@ -23,7 +23,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
   {
     id: 'today', title: 'Today', body: (
       <>
-        <p>The day's plan and how ready you are for it.</p>
+        <p>The day's plan and how ready you are for it. On the phone, Settings and Help are the two icons in the header; on a laptop they sit at the bottom of the left rail.</p>
         <ul>
           <li><b>The main card</b> is today's ride with its profile, duration and training load, and the Send to Garmin button. Strength, mobility and walks for the day sit under "Also today"; tap one for the exercises and to log it.</li>
           <li><b>Next up</b> shows the next scheduled session when today is a rest day.</li>
@@ -41,8 +41,8 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <li><b>List or Calendar</b> view, remembered between visits. The list shows two weeks with each day's sessions and the week's planned and completed load; the calendar shows a month.</li>
           <li><b>+ Add</b> on any future day puts a ride, strength session, mobility routine or walk on it from the library, or lets you build one.</li>
           <li><b>Send N to Garmin</b> sends every unsent ride in the week. Rides show "not sent", "on Garmin" or "done".</li>
-          <li><b>×</b> removes a session after asking you to confirm. If it was on your Garmin it comes off there too.</li>
-          <li><b>Plan</b> opens the plan builder (below).</li>
+          <li><b>⋯</b> on any session: replace it with another workout of any kind (a longer ride for a free Saturday, a ride instead of the strength session when the weather is too good), move it to another day, or remove it (after a confirmation). Anything on the Garmin comes off it; send the new one when ready. A plan session you change stays changed; the daily re-check may suggest something for that day, which you accept or ignore.</li>
+          <li><b>Plan my training</b> opens the planner (its own tab; also here for convenience).</li>
         </ul>
       </>
     ),
@@ -56,18 +56,19 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <li><b>Your week</b>: hours available each day, whether that day can be outdoors, whether the bike is available at all, your equipment (bench, dumbbells, bands, treadmill, somewhere to walk), and standing commitments such as "Tuesday is always strength". You do not say what kind of session goes on which day; the planner decides ride, strength, mobility, walk or rest.</li>
           <li><b>Masters rider</b> starts the recovery rhythm at every third week and caps the fitness ramp. Your own data moves both: good recovery evidence loosens them, poor evidence tightens them.</li>
           <li><b>The result</b> shows a verdict (on track, close, short), the fitness projection, a list of decisions in plain sentences, and every week with every session and the reason for it. Nothing is placed on the calendar until you tap "Put on calendar".</li>
-          <li><b>Re-check</b> compares last week's plan to what happened and regenerates from today; Apply keeps the sessions that did not change. <b>Cancel plan</b> removes only future, undone sessions the plan created; anything you added by hand stays.</li>
+          <li><b>Re-check</b> compares last week's plan to what happened and regenerates from today. Each proposed change is a tick box: changes to sessions the plan made are ticked, suggestions for sessions you changed yourself are not; untick anything you want left alone, then Apply. <b>Cancel plan</b> removes only future, undone sessions the plan created; anything you added or changed by hand stays.</li>
         </ul>
       </>
     ),
   },
   {
-    id: 'library', title: 'Library and Build', body: (
+    id: 'library', title: 'Library and New workout', body: (
       <>
         <ul>
-          <li><b>Rides</b>: sixty-odd workouts by family (recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic, tests), each with its purpose, the physiology behind it, and the steps. "Power or HR" means it can be sent on either basis; VO2max and above are power only, because heart rate lags too much for short efforts.</li>
+          <li><b>Rides</b>: eighty-odd workouts by family (recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic, tests), from thirty minutes to six hours, each with its purpose, the physiology behind it, and the steps. "Power or HR" means it can be sent on either basis; VO2max and above are power only, because heart rate lags too much for short efforts. Filter by length, search by name or purpose, and sort by type or duration.</li>
+          <li><b>The names</b>: every ride is named for a place, so you can talk about "Oatlands" the way you would a route. The rule: it is where you would turn around on an out-and-back from Old Town Herndon at that ride's intensity. Outdoor-shaped rides go west on the W&OD into Loudoun (long rides named for the trail towns, interval rides for the roads off the trail); core rides go east toward Washington; indoor rides take the loops near home. The descriptive name ("Sweet Spot 3 × 12") is always shown underneath, and goes to the Garmin with the place name. Tests keep their plain names.</li>
           <li><b>Strength, Mobility, Walks</b>: ready-made sessions built for your equipment, the same ones the planner uses, plus themed sessions. Each names the exercises or stretches, sets, reps, holds and why. "Add to a date" puts one on the calendar.</li>
-          <li><b>Build</b> asks what kind of session, then opens the builder for it: steps and intervals for a ride; exercises for your equipment with sets, reps and load for strength; stretches and hold times for mobility; minutes, pack weight and heart-rate target for a walk. Every builder shows the estimated TSS as you edit. Saved sessions appear under "My …" at the top of each tab and can be edited or deleted.</li>
+          <li><b>New workout</b> asks what kind of session, then opens the builder for it: steps and intervals for a ride; exercises for your equipment with sets, reps and load for strength; stretches and hold times for mobility; minutes, pack weight and heart-rate target for a walk. Every builder shows the estimated TSS as you edit. Saved sessions appear under "My …" at the top of each tab and can be edited or deleted.</li>
           <li><b>Copy and edit</b> on any library workout makes your own version.</li>
         </ul>
       </>
@@ -162,7 +163,7 @@ export function GettingStarted({ connected, synced, planned, sent, reviewed, onD
   const steps: Array<[boolean, string, string, string]> = [
     [connected, 'Connect Intervals.icu', 'Settings', '#/settings'],
     [synced, 'Sync your activities and wellness', 'Today', '#/today'],
-    [planned, 'Build a plan and put it on the calendar', 'Plan', '#/plan'],
+    [planned, 'Plan my training and put it on the calendar', 'Plan', '#/plan'],
     [sent, 'Send the week to your Garmin', 'Calendar', '#/calendar'],
     [reviewed, 'Ride, sync, and open the activity', 'Activities', '#/rides'],
   ];

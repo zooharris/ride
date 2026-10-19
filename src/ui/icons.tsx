@@ -14,6 +14,7 @@ export const Icon = {
   settings: (p: { size?: number }) => <svg {...base} width={p.size ?? 22} height={p.size ?? 22}><circle cx="12" cy="12" r="3" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></svg>,
   check: (p: { size?: number }) => <svg {...base} width={p.size ?? 16} height={p.size ?? 16}><path d="M5 12l4 4L19 7" /></svg>,
   sync: (p: { size?: number }) => <svg {...base} width={p.size ?? 16} height={p.size ?? 16}><path d="M20 11a8 8 0 0 0-14.5-4M4 13a8 8 0 0 0 14.5 4M4 4v5h5M20 20v-5h-5" /></svg>,
+  plan: (p: { size?: number }) => <svg {...base} width={p.size ?? 22} height={p.size ?? 22}><path d="M4 19h16M4 19V5M7 15l3-4 3 2 4-6" /><circle cx="17" cy="7" r="1.5" /></svg>,
   help: (p: { size?: number }) => <svg {...base} width={p.size ?? 22} height={p.size ?? 22}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14M12 17h.01" /></svg>,
   send: (p: { size?: number }) => <svg {...base} width={p.size ?? 16} height={p.size ?? 16}><path d="M4 12l16-8-6 16-2-7z" /></svg>,
 };

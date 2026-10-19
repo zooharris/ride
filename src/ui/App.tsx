@@ -18,10 +18,11 @@ import { Icon } from './icons';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
+  { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
   { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
   { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
-  { path: 'settings', label: 'Settings', icon: <Icon.settings /> },
+  { path: 'settings', label: 'Settings', icon: <Icon.settings />, railOnly: true, railFirst: true },
   { path: 'help', label: 'Help', icon: <Icon.help />, railOnly: true },
 ];
 
@@ -53,7 +54,7 @@ export function App() {
     case 'help': screen = <Help />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : root === 'plan' ? 'calendar' : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : root || 'today';
 
   return (
     <div class="shell">
@@ -63,13 +64,14 @@ export function App() {
           {APP_NAME}
         </div>
         {TABS.map((t) => (
-          <a key={t.path} href={`#/${t.path}`} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}`}>{t.icon}<span>{t.label}</span></a>
+          <a key={t.path} href={`#/${t.path}`} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>
         ))}
       </nav>
       <header class="topbar">
         <svg viewBox="0 0 512 512" class="mark"><rect width="512" height="512" rx="112" fill="#101418" /><g transform="translate(64 112)"><rect x="0" y="208" width="56" height="80" fill="#3C8DD6" /><rect x="64" y="96" width="56" height="192" fill="#D9D45A" /><rect x="128" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="176" y="48" width="56" height="240" fill="#F08A4B" /><rect x="240" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="288" y="0" width="56" height="288" fill="#E0485B" /><rect x="352" y="224" width="32" height="64" fill="#6B7A8F" /></g></svg>
         <span>{APP_NAME}</span>
         <a href="#/help" class="help-link" aria-label="Help"><Icon.help size={20} /></a>
+        <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>
       </header>
       <main class="main">{screen}</main>
     </div>

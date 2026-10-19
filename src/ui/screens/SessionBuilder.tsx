@@ -66,7 +66,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     <div>
       <a href="#/library" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Library</a>
       <div class="page-head">
-        <h1>{existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `Build a ${KIND_LABEL[kind].toLowerCase()} session`}</h1>
+        <h1>{existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`}</h1>
         <span class="muted small" title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>
       </div>
       <div class="form">

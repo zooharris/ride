@@ -11,11 +11,11 @@ import { clock, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
 import { db } from '../../data/db';
 import { FAMILY_LABEL } from '../../library/workouts';
-import type { Workout } from '../../engine/types';
+import type { PlannedWorkout, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { deleteEvent, sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
-import { pruneOrphanWorkouts } from '../planService';
+import { movePlanned, pruneOrphanWorkouts, replacePlanned } from '../planService';
 
 export function Calendar({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -24,15 +24,23 @@ export function Calendar({ data }: { data: AppData }) {
   const [month, setMonth] = useState(monthOf(today()));
   useEffect(() => { getSetting<'list' | 'month'>('calendarView', 'list').then(setView); }, []);
   const pickView = (v: 'list' | 'month') => { setView(v); setSetting('calendarView', v); };
-  const [picking, setPicking] = useState<string | null>(null);
+  const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
+  const [changing, setChanging] = useState<PlannedWorkout | null>(null);
+  const [moveDate, setMoveDate] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const days = Array.from({ length: 14 }, (_, i) => addDays(start, i));
 
   const [pickKind, setPickKind] = useState<'ride' | 'strength' | 'mobility' | 'walk'>('ride');
   async function add(date: string, w: Workout) {
-    await scheduleWorkout(w, date, profile.basis);
+    if (picking?.replace) await replacePlanned(picking.replace, w, profile.basis);
+    else await scheduleWorkout(w, date, profile.basis);
     setPicking(null);
+  }
+  async function move() {
+    if (!changing || !moveDate) return;
+    await movePlanned(changing, moveDate);
+    setChanging(null);
   }
 
   async function remove(id: string) {
@@ -88,7 +96,7 @@ export function Calendar({ data }: { data: AppData }) {
       <div class="page-head">
         <h1>Calendar</h1>
         <div class="row">
-          <a class="btn sm" href="#/plan">Plan</a>
+          <a class="btn sm" href="#/plan">Plan my training</a>
           <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
           {view === 'list' && <>
             <button class="btn sm quiet" onClick={() => setStart(addDays(start, -7))}>‹</button>
@@ -112,7 +120,7 @@ export function Calendar({ data }: { data: AppData }) {
                   return <a class={`month-item ${p.status}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={w.name}><span class="sw" style={`background:${colour}`} /><span>{w.name}</span></a>;
                 })}
                 {rides.map((r) => <a class="month-item done" key={r.id} href={`#/rides/${r.id}`} title={r.name}><span class="sw" style="background:var(--good)" /><span>{r.name}</span></a>)}
-                {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking(d)}>+</button>}
+                {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking({ date: d })}>+</button>}
               </>
             );
           }} />
@@ -151,9 +159,9 @@ export function Calendar({ data }: { data: AppData }) {
                           <div class={`cal-item ${p.status}`} key={p.id}>
                             <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? 'done' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}</span></div>
+                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? 'done' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
-                            {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Remove" onClick={() => remove(p.id)}>×</button>}
+                            {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
                           </div>
                         );
                       })}
@@ -162,7 +170,7 @@ export function Calendar({ data }: { data: AppData }) {
                           <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · NP ${r.normalizedPower} W` : r.averageHr ? ` · ${r.averageHr} bpm` : ''}</span></div>
                         </a>
                       ))}
-                      {d >= today() && <button class="cal-add" onClick={() => setPicking(d)}>+ Add</button>}
+                      {d >= today() && <button class="cal-add" onClick={() => setPicking({ date: d })}>+ Add</button>}
                     </div>
                   </div>
                 );
@@ -174,25 +182,50 @@ export function Calendar({ data }: { data: AppData }) {
 
       </>}
 
+      {changing && (() => {
+        const w = findWorkout(data.mine, changing.workoutId);
+        return (
+          <div class="modal-bg" onClick={() => setChanging(null)}>
+            <div class="modal" onClick={(e) => e.stopPropagation()} style="max-width:480px">
+              <div class="row between" style="margin-bottom:6px"><h2>{w?.name ?? 'This session'}</h2><button class="btn sm quiet" onClick={() => setChanging(null)}>Close</button></div>
+              <p class="muted small" style="margin:0 0 14px">{fmtDate(changing.date)}{changing.planId ? ' · from your plan' : ''}{changing.status === 'sent' ? ' · on your Garmin' : ''}</p>
+              <div class="stack">
+                <button class="btn" style="justify-content:flex-start" onClick={() => { setPicking({ date: changing.date, replace: changing }); setChanging(null); }}>Replace with another workout<span class="faint small" style="margin-left:auto">any kind</span></button>
+                <div class="panel" style="padding:10px 12px">
+                  <div class="small" style="margin-bottom:6px"><b>Move to another day</b></div>
+                  <div class="row wrap" style="gap:8px">
+                    <input type="date" value={moveDate} min={today()} onInput={(e) => setMoveDate((e.target as HTMLInputElement).value)} style="width:auto" />
+                    <button class="btn sm" onClick={move} disabled={!moveDate || moveDate === changing.date}>Move</button>
+                  </div>
+                </div>
+                <button class="btn quiet" style="justify-content:flex-start;color:var(--bad)" onClick={() => { const id = changing.id; setChanging(null); remove(id); }}>Remove from the calendar</button>
+              </div>
+              {changing.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Replacing or moving takes it off the Garmin; send the new one when you are ready.</p>}
+              {changing.planId && <p class="faint small" style="margin:8px 0 0">The plan keeps your change. The daily re-check may still suggest something for this day, which you can accept or ignore.</p>}
+            </div>
+          </div>
+        );
+      })()}
+
       {picking && (
         <div class="modal-bg" onClick={() => setPicking(null)}>
           <div class="modal" onClick={(e) => e.stopPropagation()}>
             <div class="row between" style="margin-bottom:12px">
-              <h2>{fmtDate(picking)}</h2>
+              <h2>{picking.replace ? `Replace ${findWorkout(data.mine, picking.replace.workoutId)?.name ?? 'this session'}` : fmtDate(picking.date)}</h2>
               <button class="btn sm quiet" onClick={() => setPicking(null)}>Close</button>
             </div>
             <div class="seg" style="margin-bottom:12px">
               {(['ride', 'strength', 'mobility', 'walk'] as const).map((k) => <button key={k} class={pickKind === k ? 'on' : ''} onClick={() => setPickKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : KIND_LABEL[k]}</button>)}
             </div>
-            <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">build your own</a>.</p>
+            <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">make a new workout</a>.</p>
             <div class="stack">
               {allWorkouts(data.mine).filter((w) => w.kind === pickKind && w.source !== 'generated').map((w) => {
                 const s = workoutStats(w.blocks);
                 const n = w.exercises?.length ?? 0;
                 return (
-                  <button class="cal-item" key={w.id} onClick={() => add(picking, w)} style="cursor:pointer;text-align:left">
+                  <button class="cal-item" key={w.id} onClick={() => add(picking.date, w)} style="cursor:pointer;text-align:left">
                     {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                    <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${FAMILY_LABEL[w.family]} · ${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
+                    <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : FAMILY_LABEL[w.family] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
                   </button>
                 );
               })}

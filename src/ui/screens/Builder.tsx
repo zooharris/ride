@@ -111,7 +111,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     <div>
       <button class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px" onClick={cancel}>‹ Library</button>
       <div class="page-head">
-        <h1>{existing ? 'Edit workout' : 'Build a workout'}</h1>
+        <h1>{existing ? 'Edit workout' : 'New ride workout'}</h1>
         <span class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)}</span>
       </div>
 

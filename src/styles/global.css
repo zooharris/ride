@@ -277,7 +277,7 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 
 /* help */
 .nav a.rail-only { display: none; }
-@media (min-width: 900px) { .nav a.rail-only { display: flex; margin-top: auto; } }
+@media (min-width: 900px) { .nav a.rail-only { display: flex; } .nav a.rail-first { margin-top: auto; } }
 .topbar .help-link { margin-left: auto; color: var(--ink-3); display: inline-flex; }
 .help { display: grid; gap: 24px; }
 .help-toc { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 14px; }

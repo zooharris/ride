@@ -67,6 +67,8 @@ export interface WalkSpec {
 }
 
 export interface Workout {
+  /** The descriptive form of a named library ride ("Sweet Spot 3 × 12"); the name itself is a place. */
+  subtitle?: string;
   id: string;
   name: string;
   /** Rides have blocks; strength and mobility have exercises; walks have a walk spec. */
@@ -111,6 +113,10 @@ export interface PlannedWorkout {
   note?: string;
   /** Set when a plan put this on the calendar; hand-added sessions have none. */
   planId?: string;
+  /** The rider replaced or moved this plan session by hand; the re-check may suggest changes but never applies them unasked. */
+  userEdited?: boolean;
+  /** When a session was moved here, the date it came from. */
+  movedFrom?: string;
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
   rpe?: number;
   loggedSeconds?: number;

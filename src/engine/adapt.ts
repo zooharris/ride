@@ -24,7 +24,10 @@ export interface Change {
   before?: string;        // session name before
   after?: string;         // session name after
   note: string;
+  /** The rider edited what is on this date and kind (or moved something away from it); offered, not pre-selected. */
+  userEdited?: boolean;
 }
+export const changeKey = (c: { date: string; kind: string }) => `${c.date}|${c.kind}`;
 
 export interface Replan {
   review: WeekReview;
@@ -77,6 +80,12 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const k = key(s.date, s.kind);
     after.set(k, [...(after.get(k) ?? []), s]);
   }
+  const edited = new Set<string>();
+  for (const p of future) {
+    const w = workouts.get(p.workoutId);
+    if (p.userEdited && w) edited.add(key(p.date, w.kind));
+    if (p.movedFrom && w) edited.add(key(p.movedFrom, w.kind));
+  }
   const changes: Change[] = [];
   const keys = new Set([...before.keys(), ...after.keys()]);
   for (const k of [...keys].sort()) {
@@ -86,9 +95,10 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const bNames = b.map((w) => w.name);
     const aNames = a.map((s) => s.workout.name);
     if (bNames.join(',') === aNames.join(',')) continue;
-    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added' });
-    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed' });
-    else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed' });
+    const userEdited = edited.has(k) || undefined;
+    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited });
+    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed', userEdited });
+    else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed', userEdited });
   }
   return changes;
 }

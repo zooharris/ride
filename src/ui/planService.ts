@@ -6,7 +6,7 @@ import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adap
 import type { Goal } from '../engine/goals';
 import { today } from '../engine/load';
 import { generatePlan, type Availability, type Plan } from '../engine/planner';
-import type { Fitness, Profile } from '../engine/types';
+import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
@@ -48,7 +48,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
  * plan keeps (same date, kind and name) are left alone, so a ride already on
  * the Garmin is not deleted and re-sent for nothing.
  */
-export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean): Promise<{ added: number; removed: number; kept: number }> {
+export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>): Promise<{ added: number; removed: number; kept: number }> {
   const from = today();
   const profile = data.profile as Profile;
   const previous = await getActivePlan();
@@ -56,7 +56,17 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   // Only sessions a plan put there are replaced; anything added by hand stays.
   const future = data.planned.filter((p) => p.date >= from && p.status !== 'completed' && isPlanSession(p, data));
   const incoming = plan.weeks.flatMap((w) => w.sessions.filter((s) => s.date >= from).map((s) => ({ s, label: w.label })));
+  const key = (date: string, kind: string) => `${date}|${kind}`;
   const sig = (date: string, kind: string, name: string) => `${date}|${kind}|${name}`;
+  // Which date-and-kind slots may change. Without an explicit list, every slot the rider has not edited.
+  const edited = new Set<string>();
+  for (const p of future) {
+    const w = findWorkout(data.mine, p.workoutId);
+    if (!w) continue;
+    if (p.userEdited) edited.add(key(p.date, w.kind));
+    if (p.movedFrom) edited.add(key(p.movedFrom, w.kind));
+  }
+  const allowed = (k: string) => (accept ? accept.has(k) : !edited.has(k));
   const keep = new Map<string, true>();
   const existing = new Map<string, typeof future[number]>();
   for (const p of future) {
@@ -69,10 +79,12 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   for (const item of incoming) {
     const k = sig(item.s.date, item.s.kind, item.s.workout.name);
     if (existing.has(k) && !keep.has(k)) { keep.set(k, true); kept++; }
-    else toAdd.push(item);
+    else if (allowed(key(item.s.date, item.s.kind))) toAdd.push(item);
   }
   for (const [k, p] of existing) {
     if (keep.has(k)) continue;
+    const w = findWorkout(data.mine, p.workoutId);
+    if (w && !allowed(key(p.date, w.kind))) { kept++; continue; }   // the rider's own edit, or a change they declined
     if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* a stale event is harmless */ } }
     await db.planned.delete(p.id);
     removed++;
@@ -86,6 +98,30 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   notify();
   if (c) autoBackup(c, true);
   return { added, removed, kept };
+}
+
+/**
+ * Replace what is planned on a date with another workout of any kind. The old
+ * entry's slot, date and plan membership are kept; if it was already on the
+ * Garmin the old event is removed and the new one waits to be sent.
+ */
+export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis): Promise<void> {
+  const c = await credentials();
+  if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* harmless */ } }
+  let workoutId = w.id;
+  if (w.source === 'library' && w.kind !== 'ride') { workoutId = `gen-${newId()}`; await db.workouts.put({ ...w, id: workoutId, source: 'generated' }); }
+  await db.planned.put({ ...p, workoutId, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned', icuEventId: undefined, activityId: undefined, userEdited: p.planId ? true : p.userEdited });
+  await pruneOrphanWorkouts();
+  notify();
+}
+
+/** Move a planned session to another date. A session already on the Garmin comes off it and waits to be sent again. */
+export async function movePlanned(p: PlannedWorkout, date: string): Promise<void> {
+  if (date === p.date) return;
+  const c = await credentials();
+  if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* harmless */ } }
+  await db.planned.put({ ...p, date, status: p.status === 'sent' ? 'planned' : p.status, icuEventId: undefined, userEdited: p.planId ? true : p.userEdited, movedFrom: p.movedFrom ?? p.date });
+  notify();
 }
 
 /** Did a plan put this on the calendar? Older plan entries carry no id but point at generated sessions. */

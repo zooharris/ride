@@ -119,6 +119,14 @@ Workout model: a workout is blocks of steps; each step is a duration and a targe
 - **Workout player** (receive sensor data, control a trainer in ERG mode, record and upload): parked 18 Oct 2026. Feasible on a laptop in Chrome/Edge via Web Bluetooth; impossible in iPhone browsers (Apple allows no Web Bluetooth), so the phone version would need a native shell. Note the KICKR ROLLR has no power meter of its own.
 - Optional Sunday narrative from Claude.
 
+## Open items (as of 19 Oct 2026, morning)
+
+1. **Coach note ignores the actual calendar.** The daily coach note said "Nothing is on the plan for today" while a hand-added strength session (Full body express) sat on today's calendar. The coach prompt is built from the active plan's sessions rather than from everything on the calendar for the day. Fix: the coach (and anything else that reasons about "today") must take the calendar as the plan — every session on the date, plan-made or added by hand — and never describe a day with a scheduled session as empty. Check Today's "main card" / "Also today" logic and the readiness advice for the same assumption.
+2. **Strength and mobility on the Garmin — experiment in progress.** Sessions go through Intervals.icu as step-by-step workouts (one lap-press step per set, timed rests and holds, names as words only). On the Epix Pro gen 2 every step showed only "Go" when sent as type Weight Training; the latest build sends type `Workout` (Garmin Cardio) instead, untested as of this note. If names still don't show, Intervals.icu cannot carry a guided strength session to this watch; the fallbacks discussed with the rider are (a) build the handful of session shapes once by hand in Garmin Connect (native, with rep counting) and have the app name which to pick, or (b) a script on his Mac using the unofficial Garmin Connect API (password on the machine, fragile, outside Garmin's terms). A .fit workout file cannot be sent wirelessly; Garmin Connect imports only activity files.
+3. **Paired-recording fix to confirm.** A treadmill walk came back from the watch as a Run type and was not paired; sync now pairs by Intervals' pairing, then day + kind (slow Runs count as walks), then day + name, and reclassifies the recording to the planned kind. The rider should see one row for the next sent-and-done session.
+4. **Sync across devices to confirm** on the phone (plans made on the laptop should appear after opening the app; Settings shows the last merge).
+5. **No-minimum recovery** shipped (walk low = 0, ride builder low = 0, recovery-family rides floorless); the device receives a token floor since Garmin needs a range.
+
 ## Verification still owed by the rider (needs his key and devices)
 
 Run the connection checks in Settings; ride one planned workout end to end; install on the iPhone; back up then restore on a second browser; add the Claude key and read a daily note and a post-sync review.

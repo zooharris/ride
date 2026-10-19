@@ -267,3 +267,10 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 .skeleton { background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; border-radius: var(--radius); }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .btn, .wcard, .cal-item { transition: none; } }
+
+/* route map */
+.map .leaflet-container { background: var(--bg-3); font-family: inherit; }
+.map .leaflet-control-attribution { background: rgba(16,20,24,.7); color: var(--ink-3); font-size: 10px; }
+.map .leaflet-control-attribution a { color: var(--ink-2); }
+.map .leaflet-bar a { background: var(--bg-2); color: var(--ink); border-color: var(--line); }
+.map .leaflet-tooltip { background: var(--bg-2); color: var(--ink); border-color: var(--line); }

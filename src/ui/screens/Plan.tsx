@@ -17,6 +17,7 @@ import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
 import type { Equipment, Fitness, SessionKind } from '../../engine/types';
 import { KIND_ICON } from '../icons';
+import { LineChart } from '../LineChart';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -239,7 +240,7 @@ export function Plan({ data }: { data: AppData }) {
 
           <section class="section">
             <h2>Fitness projection</h2>
-            <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} />
+            <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} goalDate={plan.goalDate} />
           </section>
 
           <section class="section">
@@ -297,26 +298,35 @@ export function Plan({ data }: { data: AppData }) {
   );
 }
 
-function Projection({ series, required, taperStart }: { series: Fitness[]; required: number; taperStart?: string }) {
+function Projection({ series, required, taperStart, goalDate }: { series: Fitness[]; required: number; taperStart?: string; goalDate: string }) {
   if (series.length < 2) return null;
-  const W = 400, H = 130, pad = 6;
-  const max = Math.max(required || 0, ...series.map((f) => f.ctl)) * 1.08;
-  const x = (i: number) => pad + (i / (series.length - 1)) * (W - pad * 2);
-  const y = (v: number) => H - pad - (v / max) * (H - pad * 2);
-  const path = series.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(f.ctl).toFixed(1)}`).join(' ');
+  const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const ti = taperStart ? series.findIndex((f) => f.date === taperStart) : -1;
+  const markers = [];
+  if (ti > 0) markers.push({ index: ti, label: 'taper starts' });
+  const last = series[series.length - 1];
+  const first = series[0];
   return (
-    <div class="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} aria-label="Projected fitness">
-        {required > 0 && <line x1={pad} x2={W - pad} y1={y(required)} y2={y(required)} stroke="var(--accent)" stroke-dasharray="4 4" />}
-        {ti > 0 && <line x1={x(ti)} x2={x(ti)} y1={pad} y2={H - pad} stroke="var(--line-2)" stroke-dasharray="2 3" />}
-        <path d={path} fill="none" stroke="var(--z2)" stroke-width="2.2" />
-      </svg>
-      <div class="row faint small" style="gap:14px;margin-top:6px">
-        <span><span style="color:var(--z2)">—</span> fitness if the plan is followed</span>
-        {required > 0 && <span><span style="color:var(--accent)">- -</span> what the goal wants</span>}
-        {ti > 0 && <span>| taper starts</span>}
-      </div>
+    <div>
+      <p class="muted small" style="margin:4px 0 10px;max-width:68ch">
+        What your fitness, fatigue and form would do if every session in this plan is done as written, day by day from today to the goal.
+        Fitness is the same number as on the Today page: a 42-day weighted average of daily training load (TSS). Fatigue is the 7-day average; form is fitness minus fatigue, and is what you want above zero on the day.
+        {required > 0 && ' The dashed amber line is the fitness the goal asks for.'}
+      </p>
+      <LineChart
+        series={[
+          { name: 'fitness', color: 'var(--z2)', values: series.map((f) => Math.round(f.ctl)), width: 2.2, explain: '42-day weighted average of daily training load' },
+          { name: 'fatigue', color: 'var(--z5)', values: series.map((f) => Math.round(f.atl)), width: 1.3, explain: '7-day weighted average of daily training load' },
+          { name: 'form', color: 'var(--ink-3)', values: series.map((f) => Math.round(f.tsb)), dash: '2 3', width: 1.2, explain: 'fitness minus fatigue; positive means fresh' },
+        ]}
+        xLabels={series.map((f) => f.date)}
+        xTick={(d, i) => (i === 0 || i === series.length - 1 || (i % 14 === 0 && i < series.length - 7)) ? fmt(d) : null}
+        yTitle="training load points"
+        refLines={required > 0 ? [{ value: required, label: `goal needs ${required}` }] : []}
+        markers={markers}
+        readout={(i) => { const f = series[i]; return `${fmt(f.date)} · fitness ${Math.round(f.ctl)} · fatigue ${Math.round(f.atl)} · form ${f.tsb > 0 ? '+' : ''}${Math.round(f.tsb)}`; }}
+      />
+      <p class="faint small" style="margin-top:8px">Starts at fitness {Math.round(first.ctl)} today; reaches {Math.round(ti > 0 ? series[ti].ctl : last.ctl)}{ti > 0 ? ' when the taper starts' : ` by ${fmt(goalDate)}`}, with form {last.tsb > 0 ? '+' : ''}{Math.round(last.tsb)} on {fmt(last.date)}. Hover the chart for any day.</p>
     </div>
   );
 }

@@ -8,12 +8,20 @@ export interface Settings {
 
 export interface StreamSet {
   id: string;               // activity id
+  v?: number;               // stream-set version; older cached sets are refetched for the fields they lack
   time: number[];           // seconds from start
   watts?: number[];
   heartrate?: number[];
   cadence?: number[];
+  distance?: number[];      // metres from start
+  altitude?: number[];      // metres
+  velocity?: number[];      // metres per second
+  temp?: number[];          // °C
+  lat?: number[];
+  lng?: number[];
   intervals?: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
 }
+export const STREAMS_VERSION = 2;
 
 export interface SyncState {
   key: 'intervals';

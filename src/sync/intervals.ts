@@ -263,11 +263,28 @@ export async function createManualActivity(c: IntervalsCredentials, a: { date: s
  * detected. Streams come as a list of {type, data}; intervals as a list with
  * start/end indices and averages.
  */
-export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[]; cadence?: number[]; intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }> }> {
-  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence`);
-  const by = (t: string) => list.find((x) => x.type === t)?.data;
+export interface FetchedStreams {
+  time: number[];
+  watts?: number[];
+  heartrate?: number[];
+  cadence?: number[];
+  distance?: number[];      // metres from start
+  altitude?: number[];      // metres
+  velocity?: number[];      // m/s
+  temp?: number[];          // °C
+  lat?: number[];
+  lng?: number[];
+  intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
+}
+
+/** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
+export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams> {
+  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng`);
+  const find = (t: string) => list.find((x) => x.type === t);
+  const by = (t: string) => find(t)?.data;
   const time = by('time') ?? [];
-  let intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }> = [];
+  const ll = find('latlng');
+  let intervals: FetchedStreams['intervals'] = [];
   try {
     const iv = await call<{ icu_intervals?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(c, `/activity/${activityId}/intervals`);
     const arr = Array.isArray(iv) ? iv : (iv.icu_intervals ?? []);
@@ -280,7 +297,10 @@ export async function fetchStreams(c: IntervalsCredentials, activityId: string):
       avgHr: num(x.average_heartrate),
     }));
   } catch { /* intervals are optional */ }
-  return { time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), intervals };
+  return {
+    time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), distance: by('distance'), altitude: by('altitude'),
+    velocity: by('velocity_smooth'), temp: by('temp'), lat: ll?.data, lng: ll?.data2, intervals,
+  };
 }
 
 /**

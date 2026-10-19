@@ -5,12 +5,13 @@ import { distance, elevation, fmtDate } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import { ZONE_VAR } from '../Profile';
 import type { Ride } from '../../engine/types';
-import { useEffect, useState } from 'preact/hooks';
-import { db, type StreamSet } from '../../data/db';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials } from '../../sync/syncService';
 import { fetchStreams } from '../../sync/intervals';
 import { analyseRide, type Analysis } from '../../engine/analysis';
-import { RideTrace } from '../RideTrace';
+import { ActivityCharts, resample } from '../ActivityCharts';
+import { RouteMap } from '../RouteMap';
 import { KIND_COLOR, KIND_LABEL } from './Plan';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { getSetting, setSetting } from '../../data/db';
@@ -88,12 +89,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     let alive = true;
     (async () => {
       const cached = await db.streams.get(r.id);
-      if (cached) { if (alive) setStreams(cached); return; }
+      if (cached && cached.v === STREAMS_VERSION) { if (alive) setStreams(cached); return; }
       const cred = await credentials();
-      if (!cred) { if (alive) setStreams(null); return; }
+      if (!cred) { if (alive) setStreams(cached ?? null); return; }
       try {
         const st = await fetchStreams(cred, r.id);
-        const set: StreamSet = { id: r.id, ...st };
+        const set: StreamSet = { id: r.id, v: STREAMS_VERSION, ...st };
         await db.streams.put(set);
         if (alive) setStreams(set);
       } catch (e) {
@@ -104,6 +105,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   }, [r.id]);
 
   const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate) : undefined;
+  const samples = useMemo(() => (streams ? resample(streams, 700) : []), [streams]);
+  const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
+  const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
   const items: Array<[string, string | number | undefined, string?]> = [
     ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
@@ -136,14 +140,23 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         </div>
       )}
 
-      {r.sport === 'ride' && (
-        <section class="section">
-          <h2>{basis === 'power' ? 'Power' : 'Heart rate'} through the ride</h2>
-          <p class="faint small" style="margin:4px 0 8px">{analysis ? 'The shaded bands are the planned targets for each step; the line is what you rode.' : 'The line is what you rode. Rides done from a plan show the planned targets as shaded bands.'}</p>
-          {streams === undefined ? <div class="empty small">Loading the recording from Intervals.icu…</div>
-            : streams === null ? <div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording.'}</div>
-            : <RideTrace streams={streams} analysis={analysis} ftp={profile.ftp} basis={basis} />}
-        </section>
+      {streams === undefined && <section class="section"><div class="empty small">Loading the recording from Intervals.icu…</div></section>}
+      {streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
+      {streams && samples.length > 1 && (
+        <>
+          {hasRoute && (
+            <section class="section">
+              <h2>Route</h2>
+              <p class="faint small" style="margin:4px 0 8px">Green dot: start. Red: finish. The amber marker follows the charts below, and moving the mouse along the route moves the charts.</p>
+              <RouteMap samples={samples} hover={hover} onHover={setHover} />
+            </section>
+          )}
+          <section class="section">
+            <h2>The recording</h2>
+            <p class="faint small" style="margin:4px 0 8px">{analysis ? 'Shaded bands on the first chart are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
+            <ActivityCharts samples={samples} analysis={analysis} profile={profile} hover={hover} onHover={setHover} />
+          </section>
+        </>
       )}
 
       {analysis && analysis.steps.some((s) => s.work) && (

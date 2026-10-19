@@ -1,4 +1,4 @@
-import { DAY_SHORT, dayOrder, setFirstDay } from '../derived';
+import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { notify } from '../store';
@@ -14,6 +14,8 @@ import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
 import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
+import { historyCoverage, loadHistory } from '../../sync/syncService';
+import { addDays, today } from '../../engine/load';
 
 
 export function Settings({ data }: { data: AppData }) {
@@ -157,6 +159,8 @@ export function Settings({ data }: { data: AppData }) {
           </div>
         )}
       </section>
+
+      <HistoryLoader />
 
       <section class="section">
         <h2>You</h2>
@@ -352,6 +356,50 @@ function Appearance() {
             <button key={c} role="radio" aria-checked={t === c} class={t === c ? 'on' : ''} onClick={() => pick(c)}>{l}</button>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Older history on demand. The first sync brings 120 days and later ones the
+ * last two weeks; this pulls further back, for the long Progress ranges, the
+ * power curve and a fitness number built on the full record.
+ */
+function HistoryLoader() {
+  const [cov, setCov] = useState<{ from?: string; activities: number } | null>(null);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  const [custom, setCustom] = useState('');
+  const refresh = () => historyCoverage().then(setCov);
+  useEffect(() => { refresh(); }, []);
+  const t = today();
+  async function load(back: string) {
+    if (cov?.from && back >= cov.from) { toast({ ok: true, text: `This device already has everything from ${fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}.` }); return; }
+    setProg({ done: 0, total: 1 });
+    try {
+      const r = await loadHistory(back, (done, total) => setProg({ done, total }));
+      notify();
+      toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness.` });
+    } catch (e) {
+      toast({ ok: false, text: `Stopped part-way: ${(e as Error).message} What arrived is kept; try again to continue.` });
+    } finally { setProg(null); refresh(); }
+  }
+  const busy = prog != null;
+  return (
+    <section class="section">
+      <h2>History</h2>
+      <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have.</p>
+      <div class="panel">
+        <p class="small" style="margin-bottom:10px">{cov?.from ? <>This device has <b>{cov.activities}</b> activities, back to <b>{fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>.</> : 'Nothing synced yet. Press Sync on Today first.'}</p>
+        <div class="row wrap" style="gap:8px">
+          <button class="btn sm" disabled={busy || !cov?.from} onClick={() => load(addDays(t, -365))}>Back one year</button>
+          <button class="btn sm" disabled={busy || !cov?.from} onClick={() => load(addDays(t, -730))}>Back two years</button>
+          <span class="faint small">or from</span>
+          <input type="date" value={custom} max={cov?.from} onInput={(e) => setCustom((e.target as HTMLInputElement).value)} style="width:auto;min-height:32px;padding:4px 8px" aria-label="Load history from this date" />
+          <button class="btn sm" disabled={busy || !custom || !cov?.from} onClick={() => load(custom)}>Load</button>
+        </div>
+        {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}
+        <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
       </div>
     </section>
   );

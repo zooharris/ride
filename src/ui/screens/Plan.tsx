@@ -391,6 +391,9 @@ export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (
   useEffect(() => { setAccepted(new Set(check.changes.filter((c) => !c.userEdited).map(changeKey))); }, [check]);
   const toggle = (k: string) => setAccepted((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const edited = check.changes.filter((c) => c.userEdited).length;
+  // Four changes show at first; Show all lists every one, so nothing is applied that cannot be seen.
+  const [all, setAll] = useState(false);
+  const shown = all ? check.changes : check.changes.slice(0, 4);
   return (
     <div style="margin-top:12px">
       <div class="small"><b>Last week:</b> {r.completed} of {r.planned} done{r.missed ? `, ${r.missed} missed` : ''}.</div>
@@ -400,7 +403,7 @@ export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (
       {check.summary.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
       {check.changes.length > 0 && (
         <div class="stack" style="margin-top:10px;gap:4px">
-          {check.changes.slice(0, 14).map((c, i) => {
+          {shown.map((c, i) => {
             const k = changeKey(c);
             return (
               <label class="small row" key={i} style="gap:8px;align-items:flex-start;cursor:pointer">
@@ -409,7 +412,7 @@ export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (
               </label>
             );
           })}
-          {check.changes.length > 14 && <div class="faint small">and {check.changes.length - 14} more</div>}
+          {check.changes.length > 4 && <button class="btn sm quiet" style="align-self:flex-start;margin-left:-10px" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${check.changes.length} changes (${accepted.size} ticked)`}</button>}
           {edited > 0 && <div class="faint small" style="margin-top:4px">Untick anything you want left as it is. Suggestions for sessions you changed or added yourself start unticked.</div>}
         </div>
       )}

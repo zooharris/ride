@@ -1,7 +1,7 @@
 import type { AppData } from '../store';
 import { findWorkout } from '../store';
 import { clock } from '../../engine/workout';
-import { distance, elevation, fmtDate } from '../derived';
+import { distance, elevation, fmtDate, weekStart } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
@@ -11,12 +11,15 @@ import { fetchStreams } from '../../sync/intervals';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
 import { RouteMap } from '../RouteMap';
-import { KIND_COLOR, KIND_LABEL } from './Plan';
+import { KIND_COLOR, KIND_LABEL, KindDot } from './Plan';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { getSetting, setSetting } from '../../data/db';
-import { today } from '../../engine/load';
+import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
 import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
+import { ZONE_VAR } from '../Profile';
+import { KindStack } from '../Glance';
+import { hoursLabel, type WeekSummary } from '../week';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -54,22 +57,44 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
             <a class={`month-item done k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`} style={`--c:${KIND_COLOR[r.sport]}`}><span class="mi-name">{r.name}</span></a>
           ))} />
       )}
-      {view === 'list' && <div class="stack">
-        {data.rides.map((r) => {
-          const p = data.planned.find((x) => x.activityId === r.id);
-          const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
-          const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
+      {view === 'list' && <div class="actlist">
+        {groupByWeek(data.rides).map(({ start, rides }) => {
+          const secs = rides.reduce((a, r) => a + r.seconds, 0);
+          const tss = rides.reduce((a, r) => a + (r.tss ?? 0), 0);
           return (
-            <a class="cal-item" key={r.id} href={`#/rides/${r.id}`}>
-              <div class="t">
-                <b>{r.name}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
-                <span>{fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {clock(r.seconds)} · {distance(r.distanceM, profile)}{mph(r.averageSpeedMs) ? ` · ${mph(r.averageSpeedMs)}` : ''}</span>
+            <section key={start} class="actweek">
+              <div class="aw-head">
+                <h2>{fmtDate(start, { month: 'short', day: 'numeric' })} – {fmtDate(addDays(start, 6), { month: 'short', day: 'numeric' })}</h2>
+                <div class="wb-stats small muted">
+                  <span>{rides.length} {rides.length === 1 ? 'activity' : 'activities'}</span>
+                  <span><b class="num">{hoursLabel(secs / 60)}</b></span>
+                  <span><b class="num">{Math.round(tss)}</b> TSS</span>
+                  <KindStack week={doneOnly(rides)} width={110} />
+                </div>
               </div>
-              <div style="text-align:right">
-                <div class="num" style="font-size:18px">{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></div>
-                {c && <span class="pill" style={`border-color:${verdictColor(c.verdict)};color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</span>}
+              <div class="stack" style="gap:6px">
+                {rides.map((r) => {
+                  const p = data.planned.find((x) => x.activityId === r.id);
+                  const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
+                  const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
+                  const zones = r.powerZoneSeconds?.length ? r.powerZoneSeconds : r.hrZoneSeconds;
+                  return (
+                    <a class="cal-item act" key={r.id} href={`#/rides/${r.id}`} style={c ? `--edge:${verdictColor(c.verdict)}` : ''}>
+                      <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
+                      <div class="t">
+                        <b>{r.name}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
+                        <span>{fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {clock(r.seconds)}{r.distanceM ? ` · ${distance(r.distanceM, profile)}` : ''}{mph(r.averageSpeedMs) && r.sport === 'ride' ? ` · ${mph(r.averageSpeedMs)}` : ''}</span>
+                      </div>
+                      {zones && zones.some((z) => z > 0) && <ZoneStrip seconds={zones} power={!!r.powerZoneSeconds?.length} />}
+                      <div class="act-load">
+                        <div class="num" style="font-size:18px;line-height:22px">{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></div>
+                        {c && <div class="small" style="color:var(--ink-2)"><span class="sw-dot" style={`background:${verdictColor(c.verdict)}`} /> {verdictLabel(c.verdict)}</div>}
+                      </div>
+                    </a>
+                  );
+                })}
               </div>
-            </a>
+            </section>
           );
         })}
       </div>}
@@ -193,8 +218,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {streams?.intervals?.length ? (
         <section class="section">
           <h2>Laps and intervals</h2>
-          <p class="faint small" style="margin:4px 0 10px">The laps you pressed and the efforts Intervals.icu found, in order. Bars compare {streams.intervals.some((i) => i.avgWatts) ? 'average power' : 'average heart rate'}.</p>
-          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} /></div>
+          <p class="faint small" style="margin:4px 0 10px">The laps you pressed and the efforts Intervals.icu found, in order.</p>
+          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={profile.lthr} /></div>
         </section>
       ) : null}
       <section class="section">
@@ -217,4 +242,33 @@ function verdictColor(v: string): string {
 }
 function verdictLabel(v: string): string {
   return { nailed: 'Nailed it', done: 'Done', partial: 'Partial', overcooked: 'Over-cooked', missed: 'Missed' }[v] ?? v;
+}
+
+/** Activities by week, newest week first, each week's activities newest first. */
+function groupByWeek(rides: Ride[]): Array<{ start: string; rides: Ride[] }> {
+  const out: Array<{ start: string; rides: Ride[] }> = [];
+  for (const r of rides) {
+    const ws = weekStart(r.date);
+    const g = out.find((x) => x.start === ws);
+    if (g) g.rides.push(r); else out.push({ start: ws, rides: [r] });
+  }
+  return out.sort((a, b) => b.start.localeCompare(a.start));
+}
+
+/** A week of activities in the shape the kind bar reads (everything done, nothing outstanding). */
+function doneOnly(rides: Ride[]): WeekSummary {
+  const byKind = { ride: { done: 0, planned: 0 }, strength: { done: 0, planned: 0 }, walk: { done: 0, planned: 0 }, mobility: { done: 0, planned: 0 }, other: { done: 0, planned: 0 } };
+  for (const r of rides) { byKind[r.sport ?? 'ride'].done += r.tss ?? 0; byKind[r.sport ?? 'ride'].planned += r.tss ?? 0; }
+  return { start: '', days: [], plannedTss: 0, doneTss: 0, plannedMinutes: 0, doneMinutes: 0, sessionsPlanned: 0, sessionsDone: 0, byKind };
+}
+
+/** A small bar of an activity's time in each zone. */
+function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
+  const total = seconds.reduce((a, b) => a + b, 0) || 1;
+  const title = `Time in ${power ? 'power' : 'heart-rate'} zones: ` + seconds.map((s, i) => (s / total >= 0.01 ? `Z${i + 1} ${Math.round((s / total) * 100)}%` : null)).filter(Boolean).join(', ');
+  return (
+    <span class="zonestrip" title={title} role="img" aria-label={title}>
+      {seconds.map((s, i) => s > 0 ? <span key={i} style={`flex:${s};background:${ZONE_VAR[Math.min(i, 6)]}`} /> : null)}
+    </span>
+  );
 }

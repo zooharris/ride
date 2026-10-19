@@ -1,6 +1,6 @@
 import type { StreamSet } from '../data/db';
 import { clock } from '../engine/workout';
-import { powerZone } from '../engine/zones';
+import { hrZone, powerZone } from '../engine/zones';
 import { powerHistogram } from '../engine/progress';
 import { BarChart } from './BarChart';
 import { ZONE_VAR } from './Profile';
@@ -24,29 +24,46 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
   );
 }
 
-/** The laps or intervals Intervals.icu found in the recording, with their averages drawn as bars. */
-export function LapsTable({ intervals }: { intervals: NonNullable<StreamSet['intervals']> }) {
+/**
+ * The laps you pressed and the efforts Intervals.icu found. Each bar is the
+ * lap's average power against your FTP (the tick on every track), coloured by
+ * the power zone it falls in, so a lap's effort reads without the numbers.
+ * Without power, the bar is heart rate against threshold heart rate.
+ */
+export function LapsTable({ intervals, ftp, lthr }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number }) {
   const rows = intervals.filter((iv) => iv.end > iv.start);
   if (!rows.length) return null;
-  const byW = rows.some((r) => r.avgWatts);
-  const max = Math.max(1, ...rows.map((r) => (byW ? r.avgWatts ?? 0 : r.avgHr ?? 0)));
+  const byW = rows.some((r) => r.avgWatts) && ftp > 0;
+  const ref = byW ? ftp : lthr || 1;
+  const scaleTop = Math.max(ref * 1.25, ...rows.map((r) => (byW ? r.avgWatts ?? 0 : r.avgHr ?? 0)));
+  const refPct = (ref / scaleTop) * 100;
   return (
-    <table class="steps laps">
-      <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td><td class="r faint small">Avg power</td><td class="r faint small">Avg HR</td><td class="faint small lap-barcol" /></tr>
-      {rows.map((r, i) => {
-        const v = byW ? r.avgWatts ?? 0 : r.avgHr ?? 0;
-        return (
-          <tr key={i}>
-            <td class="faint">{i + 1}</td>
-            <td>{r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
-            <td class="r num">{clock(Math.round(r.end - r.start))}</td>
-            <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>
-            <td class="r num">{r.avgHr ? `${Math.round(r.avgHr)} bpm` : '–'}</td>
-            <td class="lap-barcol"><span class="zb-track"><span class="zb-fill" style={`width:${(v / max) * 100}%;background:${byW ? 'var(--info)' : 'var(--z5)'}`} /></span></td>
-          </tr>
-        );
-      })}
-    </table>
+    <>
+      <table class="steps laps">
+        <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td><td class="r faint small">Avg power</td><td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
+        {rows.map((r, i) => {
+          const v = byW ? r.avgWatts ?? 0 : r.avgHr ?? 0;
+          const zone = byW ? powerZone(v / ftp) : hrZone(v / ref);
+          const pctOfRef = Math.round((v / ref) * 100);
+          return (
+            <tr key={i}>
+              <td class="faint">{i + 1}</td>
+              <td>{r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
+              <td class="r num">{clock(Math.round(r.end - r.start))}</td>
+              <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>
+              <td class="r num">{r.avgHr ? `${Math.round(r.avgHr)} bpm` : '–'}</td>
+              <td class="lap-barcol" title={`${pctOfRef}% of ${byW ? 'FTP' : 'threshold heart rate'} · zone ${zone}`}>
+                <div class="lap-cell">
+                  <span class="lap-bar"><span class="zb-track"><span class="zb-fill" style={`width:${Math.min(100, (v / scaleTop) * 100)}%;background:${ZONE_VAR[zone - 1]}`} /></span><span class="lap-ref" style={`left:${refPct}%`} /></span>
+                  <span class="lap-pct faint small">{pctOfRef}%</span>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </table>
+      <p class="faint small" style="margin-top:8px">Each bar is the lap's average {byW ? 'power' : 'heart rate'}, coloured by its zone; the upright tick marks {byW ? 'your FTP' : 'your threshold heart rate'}, and the figure is the lap as a share of it. Labels such as "Work" and "Recovery" are Intervals.icu's guess from the recording.</p>
+    </>
   );
 }
 

@@ -27,7 +27,7 @@ import { Skeleton } from './PageHead';
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
   { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
-  { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} />, groupEnd: true },
+  { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
   { path: 'progress', label: 'Progress', icon: <Icon.progress /> },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
   { path: 'plan', label: 'Plan', icon: <Icon.plan /> },

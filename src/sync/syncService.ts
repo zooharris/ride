@@ -38,13 +38,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // Rides score from power or heart rate; walks from heart rate; strength from
   // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
   // own load is the fallback whenever the app has nothing better.
-  const score = (r: Ride) => {
-    const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
-    r.tss = r.sport === 'ride' ? (rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0)
-      : r.sport === 'walk' ? (hrOnly || r.icuLoad || Math.round(r.seconds / 3600 * 38))
-      : r.sport === 'strength' ? (r.icuLoad || Math.round(hrOnly * 0.7) || Math.round(r.seconds / 3600 * 32))
-      : (r.icuLoad || Math.round(r.seconds / 3600 * 8));
-  };
+  const score = (r: Ride) => scoreActivity(r, profile);
   rides.forEach(score);
 
   // Pair activities to planned sessions. Two passes. First the certain matches:
@@ -91,6 +85,62 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
   return { rides: rides.length, wellness: wellness.length, newIds };
+}
+
+/** The app's own training load for an activity (see the comment in syncAll). */
+export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | undefined | null): void {
+  const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
+  r.tss = r.sport === 'ride' ? (rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0)
+    : r.sport === 'walk' ? (hrOnly || r.icuLoad || Math.round(r.seconds / 3600 * 38))
+    : r.sport === 'strength' ? (r.icuLoad || Math.round(hrOnly * 0.7) || Math.round(r.seconds / 3600 * 32))
+    : (r.icuLoad || Math.round(r.seconds / 3600 * 8));
+}
+
+/** The earliest day this device has activities or wellness for, or undefined before the first sync. */
+export async function historyCoverage(): Promise<{ from?: string; activities: number }> {
+  const first = await db.rides.orderBy('date').first();
+  const firstW = await db.wellness.orderBy('date').first();
+  const dates = [first?.date, firstW?.date].filter((d): d is string => !!d).sort();
+  return { from: dates[0], activities: await db.rides.count() };
+}
+
+/**
+ * Pull older activities and wellness, back to `back`, in 60-day pieces so a
+ * long history arrives steadily and a failure part-way keeps what came. Only
+ * days before what this device already has are fetched, and an activity
+ * already here is never overwritten (it may carry corrections made since).
+ * The fitness history and the long Progress ranges use it at once; the power
+ * curve reads the new rides the next time Progress opens.
+ */
+export async function loadHistory(back: string, onProgress: (done: number, total: number) => void): Promise<{ activities: number; wellness: number }> {
+  const c = await credentials();
+  if (!c) throw new Error('Connect Intervals.icu in Settings first.');
+  const profile = await db.profile.get('me');
+  const have = await historyCoverage();
+  const until = addDays(have.from ?? today(), -1);
+  if (back > until) return { activities: 0, wellness: 0 };
+  const pieces: Array<[string, string]> = [];
+  for (let from = back; from <= until; from = addDays(from, 60)) {
+    const to = addDays(from, 59) < until ? addDays(from, 59) : until;
+    pieces.push([from, to]);
+  }
+  let acts = 0, well = 0;
+  onProgress(0, pieces.length);
+  for (let i = 0; i < pieces.length; i++) {
+    const [from, to] = pieces[i];
+    const rides = await fetchRides(c, from, to);
+    const existing = new Set((await db.rides.where('date').between(from, to, true, true).primaryKeys()) as string[]);
+    const fresh = rides.filter((r) => !existing.has(r.id));
+    fresh.forEach((r) => scoreActivity(r, profile));
+    await db.rides.bulkPut(fresh);
+    const wellness = await fetchWellness(c, from, to);
+    const haveW = new Set((await db.wellness.where('date').between(from, to, true, true).primaryKeys()) as string[]);
+    const newW = wellness.filter((w) => !haveW.has(w.date));
+    await db.wellness.bulkPut(newW);
+    acts += fresh.length; well += newW.length;
+    onProgress(i + 1, pieces.length);
+  }
+  return { activities: acts, wellness: well };
 }
 
 /**

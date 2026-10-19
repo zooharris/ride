@@ -10,6 +10,7 @@ import { KIND_ICON } from '../icons';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { PageHead } from '../PageHead';
+import { toast } from '../Toast';
 
 const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk';
@@ -60,15 +61,15 @@ export function Library({ data }: { data: AppData }) {
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
           <div class="grid">
-            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} />)}
+            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} />)}
           </div>
         </section>
       )}
 
       {tab === 'ride' ? (
         <>
-          {ready.length === 0 && mine.length === 0 && <div class="empty small">Nothing matches. Widen the length or clear the search.</div>}
-          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} />)}</div>
+          {ready.length === 0 && mine.length === 0 && <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length, pick another type, or clear the search.</span></div>}
+          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} />)}</div>
         </>
       ) : (
         <>
@@ -86,19 +87,30 @@ export function Library({ data }: { data: AppData }) {
   );
 }
 
-function Card({ w, mine = false }: { w: Workout; mine?: boolean }) {
+/**
+ * A ride in the library: family and basis, the workout's shape, its place name
+ * and descriptive name, then length, load and intensity. On a laptop, hovering
+ * shows Ride today and Pick a date; on a phone, the workout's page has both.
+ */
+function Card({ w, mine = false, basis, onPick }: { w: Workout; mine?: boolean; basis: 'power' | 'hr'; onPick: () => void }) {
   const s = workoutStats(w.blocks);
   return (
-    <a class="wcard" href={`#/workout/${w.id}?from=library`}>
-      <div class="row between">
-        <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
-        <span class="faint small">{mine ? 'mine' : w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
+    <div class="wcard ride">
+      <a class="wcard-main" href={`#/workout/${w.id}?from=library`}>
+        <div class="row between">
+          <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
+          <span class="faint small">{mine ? 'mine' : w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
+        </div>
+        <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} /></div>
+        <h3>{w.name}</h3>
+        <p class="wc-sub small">{w.subtitle ?? '\u00a0'}</p>
+        <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span><b class="num">{s.intensityFactor.toFixed(2)}</b> IF</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
+      </a>
+      <div class="wcard-actions">
+        <button class="btn sm primary" onClick={async () => { await scheduleWorkout(w, today(), basis); toast({ ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
+        <button class="btn sm" onClick={onPick}>Pick a date</button>
       </div>
-      <WorkoutProfile blocks={w.blocks} height={56} />
-      <h3>{w.name}</h3>
-      {w.subtitle && <p class="small" style="margin:-2px 0 2px;color:var(--ink-2)">{w.subtitle}</p>}
-      <p class="muted small">{clock(s.seconds)} · {s.tss} TSS · IF {s.intensityFactor.toFixed(2)}{w.setting === 'outdoor' ? ' · outdoors' : w.setting === 'indoor' ? ' · indoor' : ''}</p>
-    </a>
+    </div>
   );
 }
 

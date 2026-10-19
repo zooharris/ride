@@ -4,7 +4,7 @@ import type { StreamSet } from '../data/db';
 import type { Analysis } from '../engine/analysis';
 import type { Profile } from '../engine/types';
 import { ZONE_VAR } from './Profile';
-import { powerZone } from '../engine/zones';
+import { hrZone, powerZone } from '../engine/zones';
 import { clock } from '../engine/workout';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
@@ -140,7 +140,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
-          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrBandZone((s.targetLow + s.targetHigh) / 2, lthr);
+          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1));
           const x1 = byTime(s.startSec), x2 = byTime(s.endSec);
           return <rect key={s.index} x={x1} y={y(Math.min(hi, s.targetHigh))} width={Math.max(0.5, x2 - x1)} height={Math.max(2, y(s.targetLow) - y(Math.min(hi, s.targetHigh)))} fill={ZONE_VAR[zone - 1]} fill-opacity="0.28" />;
         })}
@@ -152,10 +152,4 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
       </svg>
     </div>
   );
-}
-
-/** The heart-rate zone (1..5, drawn with the first five zone colours) of a bpm target, by its share of threshold heart rate. */
-function hrBandZone(bpm: number, lthr: number): number {
-  const f = bpm / (lthr || 1);
-  return f < 0.81 ? 1 : f < 0.9 ? 2 : f < 0.94 ? 3 : f < 1.0 ? 4 : 5;
 }

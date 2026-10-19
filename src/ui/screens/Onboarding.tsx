@@ -2,9 +2,7 @@ import { useState } from 'preact/hooks';
 import { DEFAULT_PROFILE, saveProfile, setSetting } from '../../data/db';
 import type { Basis, Profile } from '../../engine/types';
 import { notify } from '../store';
-import { APP_NAME } from '../../appName';
-import { LIBRARY } from '../../library/workouts';
-import { WorkoutProfile } from '../Profile';
+import { Logo } from '../Brand';
 import { testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
 import { fetchAutoBackup, restoreBackup } from '../../data/backup';
@@ -24,7 +22,6 @@ export function Onboarding() {
   const [p, setP] = useState<Profile>({ ...DEFAULT_PROFILE });
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
-  const sample = LIBRARY.find((w) => w.id === 'lib-ss-3x15')!;
 
   async function connect() {
     setBusy(true); setErr(null);
@@ -51,15 +48,27 @@ export function Onboarding() {
   const missing = found ? [!found.ftp && 'FTP', !found.lthr && 'threshold heart rate'].filter(Boolean) : [];
 
   return (
-    <main class="main" style="max-width:560px">
-      <div style="margin:24px 0 28px"><WorkoutProfile blocks={sample.blocks} height={64} hero /></div>
-      <h1 style="font-size:32px">{APP_NAME}</h1>
+    <main class="main onboard">
+      <div class="ob-brand"><Logo height={40} /></div>
+      <p class="ob-lede">Plan your training from your own data, send every session to your Garmin, and see what each one did for you.</p>
+      <ol class="ob-steps" aria-label="Setup steps">
+        <li class={step === 'connect' ? 'on' : 'done'}><span>1</span>Connect Intervals.icu</li>
+        <li class={step === 'review' ? 'on' : ''}><span>2</span>Check your numbers</li>
+      </ol>
 
       {step === 'connect' ? (
-        <>
-          <p class="muted" style="margin:8px 0 26px;font-size:16px;line-height:1.55">Plan the week, send each ride to your Garmin, and see what the ride did for you. Everything stays on this device.</p>
+        <div class="panel ob-card">
           <h2>Connect Intervals.icu</h2>
-          <p class="muted small" style="margin:6px 0 14px">It already has your FTP, threshold heart rate and ride history from Garmin, so there is nothing to type. On intervals.icu, open Settings and scroll to the Developer section: your athlete ID is there, and a button generates the API key.</p>
+          <p class="muted small" style="margin:6px 0 14px">Intervals.icu is the free service that links the app to your Garmin: workouts go out through it and your recordings, sleep and HRV come back through it. It already has your FTP, threshold heart rate and history, so there is nothing to type. On intervals.icu, open <b>Settings</b> and scroll to <b>Developer</b>: your athlete ID is there, and a button makes the API key.</p>
+          <details class="ob-help">
+            <summary>New to Intervals.icu? How to set it up</summary>
+            <ol class="small muted">
+              <li>Go to <b>intervals.icu</b> and sign up (free). The quickest way is “Sign in with Garmin”, or sign up with an email and connect Garmin after.</li>
+              <li>In Intervals.icu, open <b>Settings</b> and connect <b>Garmin</b>, letting it import your activities and wellness (sleep, HRV, resting heart rate). Then tick <b>Upload planned workouts</b> on the same page and approve it in Garmin Connect: that is how sessions from this app reach your bike computer or watch. If you use an Oura ring or Strava, connect them there too.</li>
+              <li>Give it a little while to pull your history from Garmin. Check that Intervals.icu has your FTP and threshold heart rate in its cycling sport settings; set them if they are blank.</li>
+              <li>Still in Settings, scroll to <b>Developer</b>. Copy your <b>athlete ID</b> (it starts with i) and press the button to make an <b>API key</b>. Paste both here. The key stays on this device; the app sends it only to Intervals.icu.</li>
+            </ol>
+          </details>
           {err && <div class="msg err" style="margin-bottom:12px">{err}</div>}
           <div class="form">
             <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} autofocus /></div>
@@ -67,10 +76,11 @@ export function Onboarding() {
           </div>
           <button class="btn primary block" style="margin-top:22px" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Connecting…' : 'Connect'}</button>
           <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('review')}>No account yet, enter numbers by hand</button>
-        </>
+        </div>
       ) : (
-        <>
-          <p class="muted" style="margin:8px 0 22px;font-size:16px;line-height:1.55">
+        <div class="panel ob-card">
+          <h2>Check your numbers</h2>
+          <p class="muted small" style="margin:6px 0 18px">
             {found ? `Connected as ${found.name}. These came from Intervals.icu; check them and change anything that is out of date.` : 'A few numbers to start. You can change them any time in Settings.'}
           </p>
           {backup && (
@@ -98,8 +108,9 @@ export function Onboarding() {
           </div>
           <button class="btn primary block" style="margin-top:26px" onClick={start} disabled={!p.ftp || !p.lthr}>{found ? 'Start and pull my rides' : 'Start'}</button>
           {!found && <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('connect')}>Back to connecting Intervals.icu</button>}
-        </>
+        </div>
       )}
+      <p class="faint small ob-foot">Your data stays on your devices and in your own Intervals.icu account. Nothing is sent anywhere else.</p>
     </main>
   );
 }

@@ -62,6 +62,10 @@ export function Progress({ data }: { data: AppData }) {
         <RangePicker value={range} onChange={pick} keys={['6w', '3m', '6m', '1y', 'all']} />
       </PageHead>
 
+      {range !== 'all' && earliest > from && (
+        <p class="small muted" style="margin:-8px 0 8px">Your synced history starts {fmtDate(earliest, { month: 'long', day: 'numeric', year: 'numeric' })}, so the charts start there. <a href="#/settings" style="color:var(--accent)">Load older history in Settings</a>.</p>
+      )}
+
       <Card title="Fitness, fatigue and form" explain="Fitness is the 42-day weighted average of daily training load, fatigue the 7-day average, form the difference. Dashed lines carry fitness and form forward over what is on your calendar.">
         <FitnessChart series={series} range={range} projection={projection} events={events} height={190} />
       </Card>

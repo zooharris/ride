@@ -2,9 +2,9 @@ import type { Fitness } from '../engine/types';
 import { addDays } from '../engine/load';
 import { FORM_BANDS, LineChart, type ChartMarker } from './LineChart';
 
-export type RangeKey = '6w' | '3m' | '6m' | '1y';
-export const RANGE_DAYS: Record<RangeKey, number> = { '6w': 42, '3m': 91, '6m': 182, '1y': 365 };
-const RANGE_LABEL: Record<RangeKey, string> = { '6w': '6 wk', '3m': '3 mo', '6m': '6 mo', '1y': '1 yr' };
+export type RangeKey = '6w' | '3m' | '6m' | '1y' | 'all';
+export const RANGE_DAYS: Record<RangeKey, number> = { '6w': 42, '3m': 91, '6m': 182, '1y': 365, all: 100000 };
+const RANGE_LABEL: Record<RangeKey, string> = { '6w': '6 wk', '3m': '3 mo', '6m': '6 mo', '1y': '1 yr', all: 'All' };
 
 /** The range picker every long-run chart shares. */
 export function RangePicker({ value, onChange, keys = ['6w', '3m', '6m', '1y'] }: { value: RangeKey; onChange: (k: RangeKey) => void; keys?: RangeKey[] }) {
@@ -30,10 +30,10 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
   if (series.length < 2) return <div class="empty small">Fitness and fatigue draw here once activities are synced.</div>;
   const days = RANGE_DAYS[range];
   const hist = series.slice(-days);
-  const proj = projection.slice(0, Math.max(14, Math.round(days / 2.5)));
+  const proj = projection.slice(0, Math.max(14, Math.round(Math.min(days, hist.length) / 2.5)));
   const all = [...hist, ...proj];
   const n = hist.length;
-  const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, days > 200 ? { month: 'short', year: '2-digit' } : { month: 'short', day: 'numeric' });
+  const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, hist.length > 200 ? { month: 'short', year: '2-digit' } : { month: 'short', day: 'numeric' });
   const histOnly = (f: (x: Fitness) => number) => all.map((x, i) => (i < n ? Math.round(f(x)) : null));
   const projOnly = (f: (x: Fitness) => number) => all.map((x, i) => (i >= n - 1 && proj.length ? Math.round(f(x)) : null));
   const step = Math.ceil(all.length / 5);

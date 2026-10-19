@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { useEffect, useRef } from 'preact/hooks';
 import { Mark } from './Brand';
 
 /**
@@ -12,8 +13,19 @@ export function PageHead({ title, eyebrow, back, children }: {
   back?: { label: string; href?: string; onClick?: () => void };
   children?: ComponentChildren;
 }) {
+  // Things pinned below the header (the ride page's map and readout) need its real height, which varies by page.
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const set = () => document.documentElement.style.setProperty('--sticky-top', window.matchMedia('(min-width: 900px)').matches ? `${Math.round(el.getBoundingClientRect().height)}px` : '0px');
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    addEventListener('resize', set);
+    return () => { ro.disconnect(); removeEventListener('resize', set); };
+  }, []);
   return (
-    <header class="page-head">
+    <header class="page-head" ref={ref}>
       <div class="ph-title">
         {back
           ? (back.href ? <a class="eyebrow back" href={back.href}>‹ {back.label}</a> : <button class="eyebrow back" onClick={back.onClick}>‹ {back.label}</button>)

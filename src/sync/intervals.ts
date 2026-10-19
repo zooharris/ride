@@ -420,6 +420,12 @@ export interface FetchedStreams {
   intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
 }
 
+/** Just time and power for one activity: what the power curve needs, a fraction of the full recording. */
+export async function fetchPowerStream(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[] }> {
+  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts`);
+  return { time: list.find((x) => x.type === 'time')?.data ?? [], watts: list.find((x) => x.type === 'watts')?.data };
+}
+
 /** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
 export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams> {
   const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng`);

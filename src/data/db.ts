@@ -30,6 +30,13 @@ export interface StreamSet {
 }
 export const STREAMS_VERSION = 2;
 
+/** A ride's mean-maximal power at CURVE_SECONDS, computed once from its power stream (a cache; rebuilt if lost). */
+export interface PowerCurve {
+  id: string;               // activity id
+  date: string;
+  w: number[];
+}
+
 export interface SyncState {
   key: 'intervals';
   athleteId: string;
@@ -54,6 +61,7 @@ class RideDb extends Dexie {
   streams!: Table<StreamSet, string>;
   tombstones!: Table<Tombstone, string>;
   dayNotes!: Table<DayNote, string>;
+  powerCurves!: Table<PowerCurve, string>;
 
   constructor() {
     super('ride');
@@ -69,6 +77,7 @@ class RideDb extends Dexie {
     this.version(2).stores({ streams: 'id' });
     this.version(3).stores({ tombstones: 'id' });
     this.version(4).stores({ dayNotes: 'date' });
+    this.version(5).stores({ powerCurves: 'id, date' });
   }
 }
 

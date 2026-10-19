@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
+import { useWidth } from './useWidth';
 import type { StreamSet } from '../data/db';
 import type { Analysis } from '../engine/analysis';
 import type { Profile } from '../engine/types';
@@ -41,7 +42,7 @@ type Axis = 'time' | 'distance';
  * and a readout of every value under the cursor. The same cursor index drives
  * the route map, so the parent owns it.
  */
-export function ActivityCharts({ samples, analysis, profile, hover, onHover }: { samples: Sample[]; analysis?: Analysis; profile: Profile; hover: number | null; onHover: (i: number | null) => void }) {
+export function ActivityCharts({ samples, targets, profile, hover, onHover }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void }) {
   const [axis, setAxis] = useState<Axis>(() => (samples.some((s) => s.d > 0) ? 'distance' : 'time'));
   const imperial = profile.units === 'imperial';
   const hasDist = samples.some((s) => s.d > 0);
@@ -52,7 +53,7 @@ export function ActivityCharts({ samples, analysis, profile, hover, onHover }: {
   const panels = useMemo(() => {
     const list: Array<{ key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> }> = [];
     if (samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP; shaded bands are planned targets when the ride was from a plan.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
-    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: 'Beats per minute. The dashed line is your threshold heart rate.', refs: profile.lthr ? [{ v: profile.lthr, label: `LTHR ${profile.lthr}` }] : [] });
+    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.', refs: profile.lthr ? [{ v: profile.lthr, label: `LTHR ${profile.lthr}` }] : [] });
     if (samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     if (samples.some((s) => s.speed != null)) list.push({ key: 'speed', title: 'Speed', unit: imperial ? 'mph' : 'km/h', color: 'var(--z4)', get: (p) => (p.speed == null ? undefined : imperial ? p.speed * 2.23694 : p.speed * 3.6), explain: 'Ground speed from GPS or the wheel sensor.' });
     if (samples.some((s) => s.alt != null)) list.push({ key: 'alt', title: 'Elevation', unit: imperial ? 'ft' : 'm', color: 'var(--ink-3)', get: (p) => (p.alt == null ? undefined : imperial ? p.alt * 3.28084 : p.alt), area: true, explain: 'Height above sea level along the route.' });
@@ -69,39 +70,49 @@ export function ActivityCharts({ samples, analysis, profile, hover, onHover }: {
           <button class={axis === 'time' ? 'on' : ''} onClick={() => setAxis('time')}>By time</button>
           <button class={axis === 'distance' ? 'on' : ''} onClick={() => setAxis('distance')} disabled={!hasDist} title={hasDist ? '' : 'No distance in this recording'}>By distance</button>
         </div>
-        <span class="faint small">Move the mouse (or a finger) across any chart to read every value at that point; the map follows.</span>
       </div>
-      {h && (
-        <div class="panel small row wrap" style="gap:14px;padding:8px 12px;margin-bottom:8px">
-          <b>{fmtX(xOf(h))}</b>
-          {panels.map((p) => { const v = p.get(h); return v == null ? null : <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{Math.round(v)}</b> <span class="faint">{p.unit}</span></span>; })}
-        </div>
-      )}
-      <div class="stack" style="gap:6px">
+      <div class="rec-readout panel small" aria-live="off">
+        {h ? <>
+          <b class="num">{fmtX(xOf(h))}</b>
+          {panels.map((p) => { const v = p.get(h); return v == null ? null : <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{p.key === 'speed' ? v.toFixed(1) : Math.round(v)}</b> <span class="faint">{p.unit}</span></span>; })}
+        </> : <span class="faint">Move the mouse, or a finger, across any chart to read every value at that point; the map follows.</span>}
+      </div>
+      <div class="stack" style="gap:4px">
         {panels.map((p, idx) => (
-          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={idx === 0 && (p.key === 'watts' || p.key === 'hr') ? analysis : undefined} ftp={profile.ftp} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
+          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={profile.lthr} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
         ))}
       </div>
     </div>
   );
 }
 
-function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, basis, showXAxis }: {
+/**
+ * One channel of the recording. Drawn at its real pixel width with a fixed,
+ * compact height, so a wide window shows more of the ride rather than taller
+ * charts, and the text stays the same size at any width.
+ */
+function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, basis, showXAxis }: {
   samples: Sample[]; panel: { title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> };
-  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; basis: 'power' | 'hr'; showXAxis: boolean;
+  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; basis: 'power' | 'hr'; showXAxis: boolean;
 }) {
-  const W = 480, H = showXAxis ? 112 : 96, padL = 40, padR = 8, padT = 8, padB = showXAxis ? 20 : 6;
+  const [box, W] = useWidth(480);
+  const H = showXAxis ? 86 : 66, padL = 34, padR = 6, padT = 6, padB = showXAxis ? 18 : 4;
   const vals = samples.map(panel.get);
   const present = vals.filter((v): v is number => v != null);
-  const lo = panel.area ? Math.min(...present) : 0;
-  const hi0 = Math.max(...present, ...(panel.refs?.map((r) => r.v) ?? []), ...(analysis && basis === 'power' ? analysis.steps.map((s) => s.targetHigh) : []));
+  // Power starts at zero (coasting is real); heart rate, cadence, speed and elevation start just under
+  // their own low end, so the trace uses the chart's height instead of floating in the top third.
+  const floorAtZero = panel.title === 'Power';
+  const sorted = floorAtZero ? [] : [...present].sort((a, b) => a - b);
+  const low = sorted.length ? sorted[Math.floor(sorted.length * 0.02)] : 0;
+  const lo = floorAtZero ? 0 : Math.max(0, low - Math.max(2, (Math.max(...present) - low) * 0.12));
+  const hi0 = Math.max(...present, ...(panel.refs?.map((r) => r.v) ?? []), ...(analysis ? analysis.steps.map((s) => s.targetHigh) : []));
   const hi = hi0 <= lo ? lo + 1 : hi0 + (hi0 - lo) * 0.08;
   const x = (v: number) => padL + (v / xMax) * (W - padL - padR);
   const y = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
   let d = '';
-  samples.forEach((p, i) => { const v = vals[i]; if (v == null) return; d += `${d && vals[i - 1] != null ? 'L' : 'M'}${x(xOf(p)).toFixed(1)} ${y(v).toFixed(1)}`; });
+  samples.forEach((p, i) => { const v = vals[i]; if (v == null) return; d += `${d && vals[i - 1] != null ? 'L' : 'M'}${x(xOf(p)).toFixed(1)} ${y(Math.max(lo, v)).toFixed(1)}`; });
   const area = panel.area ? `M${x(xOf(samples[0])).toFixed(1)} ${H - padB} ${samples.map((p, i) => `L${x(xOf(p)).toFixed(1)} ${y(vals[i] ?? lo).toFixed(1)}`).join(' ')} L${x(xOf(samples[samples.length - 1])).toFixed(1)} ${H - padB} Z` : '';
-  const step = (() => { const raw = (hi - lo) / 3; const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const r = raw / p; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p; })();
+  const step = (() => { const raw = (hi - lo) / 2; const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const r = raw / p; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p; })();
   const ticks: number[] = [];
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
   const xt = [0, 0.25, 0.5, 0.75, 1].map((f) => f * xMax);
@@ -119,26 +130,32 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
     onHover(best);
   };
   return (
-    <div style="position:relative">
-      <div class="row between" style="margin-bottom:2px"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit})</span></span>{hv != null && <span class="num small" style={`color:${panel.color}`}>{Math.round(hv)} {panel.unit}</span>}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
+    <div style="position:relative" ref={box}>
+      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit})</span></span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
         onMouseMove={(e) => pick(e.currentTarget as SVGSVGElement, e.clientX)}
         onMouseLeave={() => onHover(null)}
         onTouchStart={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}
         onTouchMove={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}>
-        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="9" text-anchor="end">{Math.round(t)}</text></g>)}
-        {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 6} fill="var(--ink-3)" font-size="9" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
+        {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
-          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : 2;
+          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrBandZone((s.targetLow + s.targetHigh) / 2, lthr);
           const x1 = byTime(s.startSec), x2 = byTime(s.endSec);
           return <rect key={s.index} x={x1} y={y(Math.min(hi, s.targetHigh))} width={Math.max(0.5, x2 - x1)} height={Math.max(2, y(s.targetLow) - y(Math.min(hi, s.targetHigh)))} fill={ZONE_VAR[zone - 1]} fill-opacity="0.28" />;
         })}
-        {panel.refs?.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.v)} y2={y(r.v)} stroke="var(--line-2)" stroke-dasharray="3 4" /><text x={W - padR - 2} y={y(r.v) - 2} fill="var(--ink-3)" font-size="8" text-anchor="end">{r.label}</text></g>)}
+        {panel.refs?.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.v)} y2={y(r.v)} stroke="var(--line-2)" stroke-dasharray="3 4" /><text x={W - padR - 2} y={y(r.v) - 2} fill="var(--ink-3)" font-size="10" text-anchor="end">{r.label}</text></g>)}
         {area && <path d={area} fill={panel.color} fill-opacity="0.18" />}
-        <path d={d} fill="none" stroke={panel.color} stroke-width="1.2" />
+        <path d={d} fill="none" stroke={panel.color} stroke-width="1.4" stroke-linejoin="round" />
         {hover != null && <line x1={x(xOf(samples[hover]))} x2={x(xOf(samples[hover]))} y1={padT} y2={H - padB} stroke="var(--accent)" />}
         {hover != null && hv != null && <circle cx={x(xOf(samples[hover]))} cy={y(hv)} r="3" fill="var(--accent)" />}
       </svg>
     </div>
   );
+}
+
+/** The heart-rate zone (1..5, drawn with the first five zone colours) of a bpm target, by its share of threshold heart rate. */
+function hrBandZone(bpm: number, lthr: number): number {
+  const f = bpm / (lthr || 1);
+  return f < 0.81 ? 1 : f < 0.9 ? 2 : f < 0.94 ? 3 : f < 1.0 ? 4 : 5;
 }

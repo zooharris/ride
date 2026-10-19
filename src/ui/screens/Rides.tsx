@@ -3,7 +3,6 @@ import { findWorkout } from '../store';
 import { clock } from '../../engine/workout';
 import { distance, elevation, fmtDate } from '../derived';
 import { scoreRide } from '../../engine/compliance';
-import { ZONE_VAR } from '../Profile';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
@@ -17,6 +16,7 @@ import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { getSetting, setSetting } from '../../data/db';
 import { today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
+import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -106,6 +106,11 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   }, [r.id]);
 
   const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate) : undefined;
+  // Planned targets for both charts: the ride's own basis as analysed, the other converted (watts to the matching heart rate, and back).
+  const targets = streams && w && w.kind === 'ride' ? {
+    watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate)) : undefined,
+    hr: streams.heartrate?.length ? (basis === 'hr' ? analysis : analyseRide(w, profile, 'hr', streams.time, streams.watts, streams.heartrate)) : undefined,
+  } : undefined;
   const samples = useMemo(() => (streams ? resample(streams, 700) : []), [streams]);
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
@@ -126,14 +131,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     ['Average temperature', tempF],
     ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
   ];
-  const zones = r.powerZoneSeconds ?? r.hrZoneSeconds;
-  const zTotal = zones?.reduce((a, b) => a + b, 0) || 1;
   return (
     <div>
-      <a href="#/rides" class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Rides</a>
-      <p class="muted small">{fmtDate(r.date)}</p>
-      <h1>{r.name}</h1>
-      {r.sport !== 'ride' && <p class="muted small" style="margin-top:4px">{KIND_LABEL[r.sport]} · {r.type}</p>}
+      <PageHead back={{ label: 'Activities', href: '#/rides' }} title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]} · ${r.type}` : ''}`} />
       {c && w && (
         <div class="panel" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {w.name}</span>
@@ -145,17 +145,13 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
       {streams && samples.length > 1 && (
         <>
-          {hasRoute && (
-            <section class="section">
-              <h2>Route</h2>
-              <p class="faint small" style="margin:4px 0 8px">Green dot: start. Red: finish. The amber marker follows the charts below; moving the mouse along the route, or tapping it, moves the charts.</p>
-              <RouteMap samples={samples} hover={hover} onHover={setHover} />
-            </section>
-          )}
           <section class="section">
             <h2>The recording</h2>
-            <p class="faint small" style="margin:4px 0 8px">{analysis ? 'Shaded bands on the first chart are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
-            <ActivityCharts samples={samples} analysis={analysis} profile={profile} hover={hover} onHover={setHover} />
+            <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded bands are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
+            <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
+              {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
+              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} /></div>
+            </div>
           </section>
         </>
       )}
@@ -177,18 +173,30 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. Compared by laying the plan along elapsed time, so a long pause mid-ride shifts the windows; pressing lap on the computer keeps them aligned.</p>
         </section>
       )}
-      {zones && (
+      {(r.powerZoneSeconds?.length || r.hrZoneSeconds?.length) && (
         <section class="section">
           <h2>Time in zone</h2>
-          <p class="faint small" style="margin-bottom:8px">Share of the ride spent in each {r.powerZoneSeconds ? 'power' : 'heart-rate'} zone.</p>
-          <div style="display:flex;height:14px;border-radius:4px;overflow:hidden;gap:2px">
-            {zones.map((s, i) => s > 0 && <div key={i} style={`flex:${s};background:${ZONE_VAR[Math.min(i, 6)]}`} title={`Z${i + 1}: ${clock(s)}`} />)}
-          </div>
-          <div class="row wrap faint small" style="margin-top:6px;gap:10px">
-            {zones.map((s, i) => s / zTotal > 0.03 && <span key={i}><span style={`color:${ZONE_VAR[Math.min(i, 6)]}`}>■</span> Z{i + 1} {Math.round((s / zTotal) * 100)}%</span>)}
+          <p class="faint small" style="margin:4px 0 10px">How the ride's time was spread across your zones{r.powerZoneSeconds?.length && r.hrZoneSeconds?.length ? ', by power and by heart rate. Heart rate lags power, so short efforts show more in the power zones' : ''}.</p>
+          <div class="panel zonepair">
+            {r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
+            {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
           </div>
         </section>
       )}
+      {streams?.watts?.length ? (
+        <section class="section">
+          <h2>Power distribution</h2>
+          <p class="faint small" style="margin:4px 0 10px">Minutes spent in each 25-watt band, coloured by zone. A steady endurance ride is one tall hump; intervals show two.</p>
+          <div class="panel"><PowerDistribution streams={streams} ftp={r.ftpAtRide ?? profile.ftp} /></div>
+        </section>
+      ) : null}
+      {streams?.intervals?.length ? (
+        <section class="section">
+          <h2>Laps and intervals</h2>
+          <p class="faint small" style="margin:4px 0 10px">The laps you pressed and the efforts Intervals.icu found, in order. Bars compare {streams.intervals.some((i) => i.avgWatts) ? 'average power' : 'average heart rate'}.</p>
+          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} /></div>
+        </section>
+      ) : null}
       <section class="section">
         <h2>Numbers</h2>
         <table class="steps">

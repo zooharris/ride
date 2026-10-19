@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { useWidth } from './useWidth';
 import type { SessionKind } from '../engine/types';
 import { today } from '../engine/load';
 import { fmtDate } from './derived';
@@ -153,10 +154,11 @@ function phaseColours(weeks: TLWeek[]): string[] {
  */
 export function PlanTimeline({ weeks, goalDate, event, bars = false, height }: { weeks: TLWeek[]; goalDate?: string; event?: string; bars?: boolean; height?: number }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [box, Wm] = useWidth(480);
   if (!weeks.length) return null;
   const t = today();
   const colours = phaseColours(weeks);
-  const W = 480, H = height ?? (bars ? 150 : 34), padL = bars ? 36 : 0, padR = event ? 14 : 2, padT = bars ? 10 : 4, padB = bars ? 22 : 12;
+  const W = Wm, H = height ?? (bars ? 150 : 36), padL = bars ? 36 : 0, padR = event ? 14 : 2, padT = bars ? 10 : 4, padB = bars ? 22 : 12;
   const n = weeks.length, cw = (W - padL - padR) / n, gap = Math.min(3, cw * 0.18);
   const maxT = Math.max(1, ...weeks.map((w) => w.tss));
   const step = niceStep(maxT / 3);
@@ -166,21 +168,21 @@ export function PlanTimeline({ weeks, goalDate, event, bars = false, height }: {
   const phasesUsed = Array.from(new Set(weeks.map((w) => w.phase)));
   const h = hover;
   return (
-    <div class="timeline" style="position:relative">
-      <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" role="img" aria-label={`Plan of ${n} weeks: ${phasesUsed.map((p) => PHASE_WORD[p]).join(', ')}`}
+    <div class="timeline" style="position:relative" ref={box}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" role="img" aria-label={`Plan of ${n} weeks: ${phasesUsed.map((p) => PHASE_WORD[p]).join(', ')}`}
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); setHover(i >= 0 && i < n ? i : null); }}
         onMouseLeave={() => setHover(null)}>
-        {bars && [0, step, 2 * step, 3 * step].filter((v) => v <= top).map((v) => <g key={v}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="var(--line)" /><text x={padL - 5} y={y(v) + 3} font-size="9" text-anchor="end" fill="var(--ink-3)">{v}</text></g>)}
-        {bars && <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="9" text-anchor="middle">planned TSS a week</text>}
+        {bars && [0, step, 2 * step, 3 * step].filter((v) => v <= top).map((v) => <g key={v}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="var(--line)" /><text x={padL - 5} y={y(v) + 3} font-size="10" text-anchor="end" fill="var(--ink-3)">{v}</text></g>)}
+        {bars && <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">planned TSS a week</text>}
         {weeks.map((w, i) => {
           const x = padL + i * cw + gap / 2, cwid = cw - gap;
           if (bars) { const yy = y(w.tss); return <rect key={w.start} x={x} y={yy} width={cwid} height={Math.max(1, H - padB - yy)} rx="2" fill={colours[i]} fill-opacity={i < todayIdx ? 0.45 : h === i ? 1 : 0.85} />; }
           const full = H - padT - padB, hh = w.phase === 'recovery' ? full * 0.5 : full;
           return <rect key={w.start} x={x} y={padT + full - hh} width={cwid} height={hh} rx="2" fill={colours[i]} fill-opacity={i < todayIdx ? 0.45 : h === i ? 1 : 0.85} />;
         })}
-        {todayIdx >= 0 && (() => { const x = padL + todayIdx * cw + cw / 2; return <g><line x1={x} x2={x} y1={padT - 2} y2={H - padB + 2} stroke="var(--ink)" stroke-width="1.5" /><text x={x} y={H - 1} font-size="9" text-anchor="middle" fill="var(--ink-2)">today</text></g>; })()}
+        {todayIdx >= 0 && (() => { const x = padL + todayIdx * cw + cw / 2; return <g><line x1={x} x2={x} y1={padT - 2} y2={H - padB + 2} stroke="var(--ink)" stroke-width="1.5" /><text x={x} y={H - 1} font-size="10" text-anchor="middle" fill="var(--ink-2)">today</text></g>; })()}
         {event && <g><line x1={W - padR + 4} x2={W - padR + 4} y1={padT} y2={H - padB} stroke="var(--today)" stroke-width="1.5" /><path d={`M${W - padR + 4} ${padT}l8 3.5l-8 3.5z`} fill="var(--today)" /></g>}
-        {bars && weeks.map((w, i) => (i === 0 || i === n - 1 || i % Math.ceil(n / 6) === 0) && i !== todayIdx ? <text key={`x${i}`} x={padL + i * cw + cw / 2} y={H - 6} font-size="9" text-anchor="middle" fill="var(--ink-3)">{new Date(w.start + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</text> : null)}
+        {bars && weeks.map((w, i) => (i === 0 || i === n - 1 || i % Math.ceil(n / 6) === 0) && i !== todayIdx ? <text key={`x${i}`} x={padL + i * cw + cw / 2} y={H - 6} font-size="10" text-anchor="middle" fill="var(--ink-3)">{new Date(w.start + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</text> : null)}
       </svg>
       <div class="row wrap faint small" style="gap:4px 14px;margin-top:4px">
         {phasesUsed.filter((p) => p !== 'recovery').map((p) => <span key={p}><span class="sw-dot" style={`background:${PHASE_COLOR[p as Exclude<PlanPhaseKey, 'recovery'>]}`} /> {PHASE_WORD[p]}</span>)}

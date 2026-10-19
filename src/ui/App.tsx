@@ -16,6 +16,7 @@ import { SessionBuilder } from './screens/SessionBuilder';
 import { BuildChooser } from './screens/BuildChooser';
 import { findWorkout } from './store';
 import { Plan } from './screens/Plan';
+import { Progress } from './screens/Progress';
 import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
 import { Icon } from './icons';
@@ -27,6 +28,7 @@ const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
   { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
   { path: 'calendar', label: 'Calendar', icon: <Icon.calendar />, groupEnd: true },
+  { path: 'progress', label: 'Progress', icon: <Icon.progress /> },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
   { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
   { path: 'settings', label: 'Settings', icon: <Icon.settings />, railOnly: true, railFirst: true },
@@ -66,6 +68,7 @@ export function App() {
       break;
     }
     case 'plan': screen = <Plan data={data} />; break;
+    case 'progress': screen = <Progress data={data} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     case 'help': screen = <Help />; break;

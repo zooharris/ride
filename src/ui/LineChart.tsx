@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
+import { useWidth } from './useWidth';
 
 /** A series; null leaves a gap (a projection that starts where the history ends, say). */
-export interface ChartSeries { name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string }
+export interface ChartSeries { name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string; dots?: boolean }
 export interface ChartMarker { index: number; label: string; color?: string }
 export interface ChartRefLine { value: number; label: string; color?: string }
 export interface ChartBand { from: number; to: number; label: string; color: string; explain?: string }
@@ -26,9 +27,11 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   yMax?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [box, W] = useWidth(480);
   const n = xLabels.length;
   if (n < 2) return <div class="empty small">Not enough data to draw.</div>;
-  const W = 480, H = height, padL = 36, padR = 10, padT = 10, padB = 22;
+  const H = height, padR = 10, padT = 12, padB = 22;
+  let padL = 40;
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refLines.map((r) => r.value));
   const lo = yMin ?? Math.min(0, ...all);
   const hi0 = yMax ?? Math.max(...all);
@@ -40,25 +43,31 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   const step = niceStep((hi - lo) / 4);
   const ticks: number[] = [];
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(Math.round(v * 1000) / 1000);
-  const xTicks = xLabels.map((l, i) => [i, xTick ? xTick(l, i) : (i % Math.ceil(n / 6) === 0 ? l : null)] as const).filter(([, t]) => t != null);
+  padL = Math.max(40, 24 + Math.max(...ticks.map((t) => fmtStep(t, step).length)) * 6);
+  const xTicks0 = xLabels.map((l, i) => [i, xTick ? xTick(l, i) : (i % Math.ceil(n / 6) === 0 ? l : null)] as const).filter(([, t]) => t != null);
+  // Drop tick labels that would sit on top of the one before (or the last one), whatever the caller asked for.
+  const xTicks: typeof xTicks0 = [];
+  for (const t of xTicks0) { const prev = xTicks[xTicks.length - 1]; if (prev && x(t[0]) - x(prev[0]) < 46) { if (t[0] === n - 1) xTicks[xTicks.length - 1] = t; continue; } xTicks.push(t); }
   const h = hover;
   return (
-    <div class="chart" style="position:relative">
-      <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={yTitle}
+    <div class="chart" style="position:relative" ref={box}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={yTitle}
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
         onMouseLeave={() => setHover(null)}>
-        {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="8" text-anchor="end">{b.label}</text>}</g>; })}
-        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="9" text-anchor="end">{fmtTick(t)}</text></g>)}
-        {xTicks.map(([i, t]) => <text key={i} x={x(i)} y={H - 6} fill="var(--ink-3)" font-size="9" text-anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{t}</text>)}
-        <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="9" text-anchor="middle">{yTitle}</text>
-        {refLines.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.value)} y2={y(r.value)} stroke={r.color ?? 'var(--accent)'} stroke-dasharray="4 4" /><text x={W - padR - 2} y={y(r.value) < padT + 12 ? y(r.value) + 11 : y(r.value) - 3} fill={r.color ?? 'var(--accent)'} font-size="9" text-anchor="end">{r.label}</text></g>)}
-        {markers.map((m) => <g key={m.label}><line x1={x(m.index)} x2={x(m.index)} y1={padT} y2={H - padB} stroke={m.color ?? 'var(--line-2)'} stroke-dasharray="2 3" /><text x={x(m.index) + 3} y={H - padB - 4} fill={m.color ?? 'var(--ink-3)'} font-size="9">{m.label}</text></g>)}
-        {series.map((s) => <path key={s.name} d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width ?? 1.8} stroke-dasharray={s.dash} />)}
+        {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end">{b.label}</text>}</g>; })}
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{fmtStep(t, step)}</text></g>)}
+        {xTicks.map(([i, t]) => <text key={i} x={x(i)} y={H - 6} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{t}</text>)}
+        <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">{yTitle}</text>
+        {refLines.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.value)} y2={y(r.value)} stroke={r.color ?? 'var(--accent)'} stroke-dasharray="4 4" /><text x={W - padR - 2} y={y(r.value) < padT + 12 ? y(r.value) + 11 : y(r.value) - 3} fill={r.color ?? 'var(--accent)'} font-size="10" text-anchor="end">{r.label}</text></g>)}
+        {markers.map((m) => <g key={m.label}><line x1={x(m.index)} x2={x(m.index)} y1={padT} y2={H - padB} stroke={m.color ?? 'var(--line-2)'} stroke-dasharray="2 3" /><text x={x(m.index) + 3} y={padT + 2} fill={m.color ?? 'var(--ink-3)'} font-size="10">{m.label}</text></g>)}
+        {series.map((s) => s.dots
+          ? <g key={s.name}>{s.values.map((v, i) => v == null ? null : <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={s.color} fill-opacity="0.55" />)}</g>
+          : <path key={s.name} d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width ?? 1.8} stroke-dasharray={s.dash} />)}
         {h != null && <line x1={x(h)} x2={x(h)} y1={padT} y2={H - padB} stroke="var(--accent)" />}
         {h != null && series.map((s) => s.values[h] == null ? null : <circle key={s.name} cx={x(h)} cy={y(s.values[h] as number)} r="3" fill={s.color} />)}
       </svg>
       <div class="row wrap faint small" style="gap:14px;margin-top:4px">
-        {series.map((s) => <span key={s.name} title={s.explain}><span style={`color:${s.color}`}>{s.dash ? '- -' : '—'}</span> {s.name}</span>)}
+        {series.map((s) => <span key={s.name} title={s.explain}><span style={`color:${s.color}`}>{s.dots ? '•' : s.dash ? '- -' : '—'}</span> {s.name}</span>)}
       </div>
       {h != null && (
         <div class="panel small" style="position:absolute;top:6px;right:6px;padding:6px 10px;pointer-events:none;max-width:70%">
@@ -84,3 +93,6 @@ export const FORM_BANDS: ChartBand[] = [
   { from: -30, to: -10, label: 'building', color: 'var(--info)', explain: 'Form −30 to −10: building. Fatigue above fitness is how fitness rises; this is the productive zone.' },
   { from: -60, to: -30, label: 'overreaching', color: 'var(--bad)', explain: 'Form below −30: overreaching. Fine for a few days at the end of a big block; a rest week is due.' },
 ];
+
+/** A tick label with as many decimals as the step needs (0.05 steps show two). */
+function fmtStep(v: number, step: number): string { const d = step >= 1 ? 0 : step >= 0.1 ? 1 : 2; return v.toFixed(d); }

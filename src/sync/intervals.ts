@@ -484,31 +484,3 @@ export async function deleteActivity(c: IntervalsCredentials, activityId: string
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && isFinite(v) ? v : undefined;
 }
-
-/**
- * Diagnostic: does step text reach the watch at all, and for which workout
- * type? Two short workouts for today with the same three lap-ended steps, each
- * carrying an exercise name as its text: one sent as a Ride, one as the generic
- * Workout type strength sessions use. On the watch, the one that shows the
- * names tells us where the text is lost. Returns the event ids so they can be
- * removed again.
- */
-export async function sendStepTextProbe(c: IntervalsCredentials, date: string): Promise<number[]> {
-  const steps = [
-    '- Press lap Goblet squat 8 reps 40 lb 1m',
-    '- Rest 30s',
-    '- Press lap Dumbbell row 8 to 10 reps 1m',
-    '- Rest 30s',
-    '- Press lap Glute bridge 12 reps 1m',
-  ];
-  const description = ['A one-off test of whether step text shows on the watch. Delete when done.', '', ...steps].join('\n');
-  const ids: number[] = [];
-  for (const type of ['Ride', 'Workout'] as const) {
-    const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, {
-      method: 'POST',
-      body: JSON.stringify({ category: 'WORKOUT', start_date_local: `${date}T00:00:00`, type, name: `Step text test (${type === 'Ride' ? 'ride' : 'cardio'})`, description, moving_time: 240, icu_training_load: 0 }),
-    });
-    ids.push(ev.id);
-  }
-  return ids;
-}

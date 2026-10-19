@@ -7,8 +7,7 @@ import { autoBackup, downloadBackup, restoreBackup } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
-import { deleteEvent, pushAthleteNumbers, sendStepTextProbe, testConnection, type IntervalsCredentials } from '../../sync/intervals';
-import { today } from '../../engine/load';
+import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
 import { ZONE_VAR } from '../Profile';
@@ -20,31 +19,6 @@ export function Settings({ data }: { data: AppData }) {
   const [claudeKey, setClaudeKey] = useState('');
   const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
-  const [probe, setProbe] = useState<number[]>([]);
-  useEffect(() => { getSetting<number[]>('stepTextProbe', []).then(setProbe); }, []);
-
-  async function sendProbe() {
-    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
-    if (!c?.apiKey) return;
-    setBusy(true);
-    try {
-      const ids = await sendStepTextProbe(c, today());
-      await setSetting('stepTextProbe', ids); setProbe(ids);
-      setMsg({ ok: true, text: 'Two test workouts are on today in Intervals.icu. Sync the watch, then look under Today\'s Workouts in a bike activity and in a cardio activity.' });
-    } catch (e) { setMsg({ ok: false, text: `Could not send the test: ${(e as Error).message}` }); }
-    finally { setBusy(false); }
-  }
-
-  async function removeProbe() {
-    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
-    if (!c?.apiKey) return;
-    setBusy(true);
-    try {
-      for (const id of probe) { try { await deleteEvent(c, id); } catch { /* already gone */ } }
-      await setSetting('stepTextProbe', []); setProbe([]);
-      setMsg({ ok: true, text: 'Test workouts removed from Intervals.icu; they leave the watch on its next sync.' });
-    } finally { setBusy(false); }
-  }
   const [devices, setDevices] = useState<DeviceSyncState | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,12 +150,6 @@ export function Settings({ data }: { data: AppData }) {
             <p class="faint small" style="margin:10px 0 0">Every kind of call the app makes, tried for real. Writes are limited to a test note and a one-minute test session on 30 Dec 2099, both deleted again at once, and your backup.</p>
           </div>
         )}
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-          <div class="row between" style="gap:10px;align-items:flex-start">
-            <div class="small"><b>Step-text test for the watch</b><div class="muted" style="line-height:1.45;margin-top:2px">Sends two four-minute test workouts to today with the same three lap-ended steps, each named for an exercise: one as a ride, one as a cardio workout. Start a bike activity on the watch and pick the ride one under Today's Workouts; then the cardio one from a cardio or strength activity. Whichever shows the exercise names tells us where the text is being lost. Remove them when done.</div></div>
-            {probe.length ? <button class="btn sm quiet" onClick={removeProbe} disabled={busy || !creds.apiKey}>Remove test workouts</button> : <button class="btn sm" onClick={sendProbe} disabled={busy || !creds.apiKey}>Send test workouts</button>}
-          </div>
-        </div>
       </section>
 
       <section class="section">

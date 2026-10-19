@@ -14,6 +14,7 @@ import { BuildChooser } from './screens/BuildChooser';
 import { findWorkout } from './store';
 import { Plan } from './screens/Plan';
 import { Help } from './screens/Help';
+import { PrintView } from './screens/Print';
 import { Icon } from './icons';
 
 const TABS = [
@@ -33,6 +34,7 @@ export function App() {
   if (!data.profile) return <Onboarding />;
 
   const [root, id] = route.parts;
+  if (root === 'print') return <PrintView data={data} planId={id} params={route.params} />;
   let screen;
   switch (root) {
     case 'calendar': screen = <Calendar data={data} />; break;

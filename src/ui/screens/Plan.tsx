@@ -127,6 +127,7 @@ export function Plan({ data }: { data: AppData }) {
                     </div>
                     <div class="row" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
+                      <a class="btn sm quiet" href={`#/print/${p.id}`}>Print</a>
                       {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
                     </div>
                   </div>
@@ -359,6 +360,7 @@ export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolea
 }
 
 const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer', weight: 'Lose weight', general: 'General fitness' };
+export const GOAL_LABEL_FULL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer comfortably', weight: 'Lose weight', general: 'General fitness' };
 
 export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (accepted: Set<string>) => void; busy: boolean }) {
   const r = check.review;

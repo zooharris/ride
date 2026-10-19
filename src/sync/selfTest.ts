@@ -65,11 +65,14 @@ export async function runSelfTest(c: IntervalsCredentials, onStep: (r: CheckResu
     return 'Created a test note on 30 Dec 2099 and deleted it again.';
   });
   await step('Manual activity: create and delete', async () => {
-    const date = addDays(BACKUP_DATE, -1);
-    const id = await createManualActivity(c, { date, name: 'App connection test (deleted)', type: 'Yoga', seconds: 60, tss: 1, rpe: 1, description: 'Created by the app’s connection test; it deletes itself.' });
-    if (!id) throw new Error('Intervals.icu created the activity but returned no id, so it could not be deleted; look for "App connection test" on 30 Dec 2099 and delete it by hand.');
+    // Try the far-future date first; if Intervals.icu refuses future activities, try today and delete at once.
+    const tryOn = async (date: string) => createManualActivity(c, { date, name: 'App connection test (deleted)', type: 'Yoga', seconds: 60, tss: 1, rpe: 1, description: 'Created by the app’s connection test; it deletes itself.' });
+    let id = '', where = '30 Dec 2099';
+    try { id = await tryOn(addDays(BACKUP_DATE, -1)); }
+    catch (e) { where = 'today'; try { id = await tryOn(t); } catch (e2) { throw new Error(`On 30 Dec 2099: ${(e as Error).message} On today: ${(e2 as Error).message}`); } }
+    if (!id) throw new Error(`Intervals.icu created the activity (${where}) but returned no id, so it could not be deleted; look for "App connection test" and delete it by hand.`);
     await deleteActivity(c, id);
-    return 'Logged a one-minute test session on 30 Dec 2099 and deleted it again.';
+    return `Logged a one-minute test session (${where}) and deleted it again.`;
   });
   await step('Automatic backup', async () => {
     const r = await autoBackup(c, true);

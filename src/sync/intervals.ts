@@ -43,7 +43,11 @@ async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit 
     throw new IntervalsError('Could not reach intervals.icu. Check your connection.');
   }
   if (res.status === 401 || res.status === 403) throw new IntervalsError('Intervals.icu rejected the athlete ID or API key.', res.status);
-  if (!res.ok) throw new IntervalsError(`Intervals.icu answered ${res.status}.`, res.status);
+  if (!res.ok) {
+    let why = '';
+    try { const t = await res.text(); try { const j = JSON.parse(t) as { error?: string; message?: string }; why = j.error ?? j.message ?? t; } catch { why = t; } } catch { /* no body */ }
+    throw new IntervalsError(`Intervals.icu answered ${res.status}${why ? `: ${why.slice(0, 200)}` : '.'}`, res.status);
+  }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
@@ -245,7 +249,7 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
  * holds the complete record and the next sync treats it like any other.
  */
 export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga'; seconds: number; tss: number; rpe?: number; description?: string }): Promise<string> {
-  const body = {
+  const full = {
     start_date_local: `${a.date}T12:00:00`,
     name: a.name,
     type: a.type,
@@ -255,8 +259,19 @@ export async function createManualActivity(c: IntervalsCredentials, a: { date: s
     icu_rpe: a.rpe,
     description: a.description,
   };
-  const res = await call<{ id?: string | number; icu_athlete_id?: string }>(c, `/athlete/${c.athleteId}/activities/manual`, { method: 'POST', body: JSON.stringify(body) });
-  return String(res.id ?? '');
+  // Intervals.icu validates the body strictly; if it refuses the load/effort fields, send the plain record
+  // and then set the load with an update, so the session still counts.
+  try {
+    const res = await call<{ id?: string | number }>(c, `/athlete/${c.athleteId}/activities/manual`, { method: 'POST', body: JSON.stringify(full) });
+    return String(res.id ?? '');
+  } catch (e) {
+    if (!(e instanceof IntervalsError) || e.status !== 422) throw e;
+    const minimal = { start_date_local: full.start_date_local, name: a.name, type: a.type, moving_time: a.seconds, description: a.description };
+    const res = await call<{ id?: string | number }>(c, `/athlete/${c.athleteId}/activities/manual`, { method: 'POST', body: JSON.stringify(minimal) });
+    const id = String(res.id ?? '');
+    if (id) { try { await call(c, `/activity/${id}`, { method: 'PUT', body: JSON.stringify({ icu_training_load: a.tss, icu_rpe: a.rpe }) }); } catch { /* the record exists; load can be edited on Intervals.icu */ } }
+    return id;
+  }
 }
 
 /**

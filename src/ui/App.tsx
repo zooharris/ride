@@ -19,6 +19,7 @@ import { Plan } from './screens/Plan';
 import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
 import { Icon } from './icons';
+import { Logo, Mark } from './Brand';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
@@ -73,16 +74,13 @@ export function App() {
   return (
     <div class="shell">
       <nav class="nav">
-        <div class="brand">
-          <svg viewBox="0 0 512 512"><rect width="512" height="512" fill="#101418" /><g transform="translate(64 112)"><rect x="0" y="208" width="56" height="80" fill="#3C8DD6" /><rect x="64" y="96" width="56" height="192" fill="#D9D45A" /><rect x="128" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="176" y="48" width="56" height="240" fill="#F08A4B" /><rect x="240" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="288" y="0" width="56" height="288" fill="#E0485B" /><rect x="352" y="224" width="32" height="64" fill="#6B7A8F" /></g></svg>
-          {APP_NAME}
-        </div>
+        <div class="brand"><Logo height={26} /></div>
         {TABS.map((t) => (
           <a key={t.path} href={`#/${t.path}`} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>
         ))}
       </nav>
       <header class="topbar">
-        <svg viewBox="0 0 512 512" class="mark"><rect width="512" height="512" rx="112" fill="#101418" /><g transform="translate(64 112)"><rect x="0" y="208" width="56" height="80" fill="#3C8DD6" /><rect x="64" y="96" width="56" height="192" fill="#D9D45A" /><rect x="128" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="176" y="48" width="56" height="240" fill="#F08A4B" /><rect x="240" y="208" width="40" height="80" fill="#3C8DD6" /><rect x="288" y="0" width="56" height="288" fill="#E0485B" /><rect x="352" y="224" width="32" height="64" fill="#6B7A8F" /></g></svg>
+        <Mark size={24} />
         <span>{APP_NAME}</span>
         <a href="#/help" class="help-link" aria-label="Help"><Icon.help size={20} /></a>
         <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>

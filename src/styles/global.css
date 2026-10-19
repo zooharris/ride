@@ -98,7 +98,7 @@ p { margin: 0; }
   .nav a { flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 10px 12px; border-radius: var(--radius-s); font-size: 14px; }
   .nav a.active { background: var(--bg-2); }
   .brand { display: flex; align-items: center; gap: 10px; padding: 4px 12px 22px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
-  .brand svg { width: 26px; height: 26px; border-radius: 7px; }
+  .brand { color: var(--ink); }
   .main { padding: 36px 40px 60px; max-width: 980px; }
 }
 
@@ -226,7 +226,6 @@ p { margin: 0; }
 
 /* ---- design pass ---- */
 .topbar { display: flex; align-items: center; gap: 9px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 6px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; color: var(--ink-2); }
-.topbar .mark { width: 22px; height: 22px; border-radius: 6px; }
 @media (min-width: 900px) { .topbar { display: none; } }
 .kind-tile { border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 

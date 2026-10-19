@@ -329,7 +329,9 @@ function sessionEvent(workout: Workout, date: string) {
   return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
-    type: workout.kind === 'strength' ? 'WeightTraining' : 'Yoga',
+    // Garmin's native strength and yoga workouts build their steps from Garmin's own exercise library, so a
+    // step from outside gets no name on the watch, just "Go". A generic cardio workout keeps its step text.
+    type: 'Workout',
     name: workout.name,
     description: [`${workout.purpose} ${intro}`, '', ...steps].join('\n'),
     moving_time: (workout.minutes ?? 30) * 60,

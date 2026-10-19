@@ -1,5 +1,6 @@
 import { db, getSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
+import type { Ride } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import type { IntervalsCredentials } from './intervals';
 import { fetchPowerCurve, fetchRides, fetchWellness, testConnection } from './intervals';
@@ -33,34 +34,47 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   const rides = await fetchRides(c, oldest, newest);
   const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).map((r) => r.id));
   const newIds = first ? [] : rides.filter((r) => !known.has(r.id)).map((r) => r.id);
-  for (const r of rides) {
-    // Rides score from power or heart rate; walks from heart rate; strength from
-    // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
-    // own load is the fallback whenever the app has nothing better.
+  // Rides score from power or heart rate; walks from heart rate; strength from
+  // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
+  // own load is the fallback whenever the app has nothing better.
+  const score = (r: Ride) => {
     const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
     r.tss = r.sport === 'ride' ? (rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0)
       : r.sport === 'walk' ? (hrOnly || r.icuLoad || Math.round(r.seconds / 3600 * 38))
       : r.sport === 'strength' ? (r.icuLoad || Math.round(hrOnly * 0.7) || Math.round(r.seconds / 3600 * 32))
       : (r.icuLoad || Math.round(r.seconds / 3600 * 8));
-  }
-  await db.rides.bulkPut(rides);
+  };
+  rides.forEach(score);
 
-  // Pair activities to planned sessions: by Intervals event id, else by date and kind.
+  // Pair activities to planned sessions. In order: Intervals.icu's own pairing
+  // (the event the Garmin was following), then the same day and kind, then the
+  // same day and name (the watch names its recording after the workout, even
+  // when it files a treadmill walk as a run). A recording paired to a planned
+  // walk or strength session is treated as that kind, whatever type the device
+  // gave it, and scored accordingly.
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
   const workouts = await db.workouts.toArray();
-  const kindOf = (workoutId: string) => workouts.find((w) => w.id === workoutId)?.kind ?? LIBRARY.find((w) => w.id === workoutId)?.kind ?? 'ride';
+  const workoutOf = (id: string) => workouts.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
   const taken = new Set<string>();
+  const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   for (const p of planned) {
-    const kind = kindOf(p.workoutId);
+    const w = workoutOf(p.workoutId);
+    const kind = w?.kind ?? 'ride';
+    const free = (r: Ride) => !taken.has(r.id);
     const match = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId)
-      ?? rides.find((r) => r.date === p.date && r.sport === kind && !taken.has(r.id));
-    if (match) taken.add(match.id);
-    if (match && p.status !== 'completed') {
+      ?? rides.find((r) => r.date === p.date && r.sport === kind && free(r))
+      ?? (w ? rides.find((r) => r.date === p.date && free(r) && r.sport !== 'ride' && kind !== 'ride' && (sameName(r.name, w.name) || (w.subtitle ? sameName(r.name, `${w.name} · ${w.subtitle}`) : false))) : undefined);
+    if (match) {
+      taken.add(match.id);
+      if (kind !== 'ride' && match.sport !== kind) { match.sport = kind; score(match); }
+    }
+    if (match && (p.status !== 'completed' || p.activityId !== match.id)) {
       await db.planned.update(p.id, { status: 'completed', activityId: match.id });
     } else if (!match && p.date < today() && p.status !== 'completed') {
       await db.planned.update(p.id, { status: 'missed' });
     }
   }
+  await db.rides.bulkPut(rides);
 
   // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
   try {

@@ -157,13 +157,16 @@ export function Calendar({ data }: { data: AppData }) {
                         const w = findWorkout(data.mine, p.workoutId);
                         if (!w) return null;
                         const s = workoutStats(w.blocks);
+                        const rec = p.status === 'completed' && p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined;
+                        const done = rec ? `done · ${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · NP ${rec.normalizedPower} W` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'done' : '';
                         return (
                           <div class={`cal-item ${p.status}`} key={p.id}>
                             <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? 'done' : p.status === 'sent' ? 'on Garmin' : w.kind === 'walk' && p.status === 'planned' ? 'not sent' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
+                              <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS · ${p.status === 'planned' ? 'not sent' : p.status === 'sent' ? 'on Garmin' : p.status === 'completed' ? done : p.status}` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''} · ${p.status === 'completed' ? done : p.status === 'sent' ? 'on Garmin' : w.kind === 'walk' && p.status === 'planned' ? 'not sent' : 'to do'}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
+                            {rec && <a class="btn sm quiet" href={`#/rides/${rec.id}`} title="Open the recording">Recording ›</a>}
                           </div>
                         );
                       })}

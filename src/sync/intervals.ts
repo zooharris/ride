@@ -128,10 +128,15 @@ interface IcuActivity {
   paired_event_id?: number;
 }
 
-/** How Intervals.icu activity types map onto the app's session kinds. Anything else is ignored. */
-export function sportOf(type: string): SessionKind {
+/**
+ * How Intervals.icu activity types map onto the app's session kinds. A walk
+ * done on a treadmill, or recorded on a watch profile Garmin files as running,
+ * arrives as a Run type: a "run" slower than 7 km/h (4.4 mph) is a walk.
+ */
+export function sportOf(type: string, averageSpeedMs?: number): SessionKind {
   if (/Ride/.test(type) || type === 'Velomobile') return 'ride';
-  if (/^(Walk|Hike|Rucking)$/.test(type)) return 'walk';
+  if (/Walk|Hike|Ruck/.test(type)) return 'walk';
+  if (/Run|Treadmill/.test(type) && averageSpeedMs != null && averageSpeedMs > 0 && averageSpeedMs < 1.95) return 'walk';
   if (/^(WeightTraining|Workout|Crossfit|HIIT)$/.test(type)) return 'strength';
   if (/^(Yoga|Pilates|Stretching|Mobility)$/.test(type)) return 'mobility';
   return 'other';   // runs, swims, rows, anything else: counted toward load, never planned
@@ -150,7 +155,7 @@ function toRide(a: IcuActivity): Ride {
     startTime: a.start_date_local,
     name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
-    sport: sportOf(a.type ?? 'Ride'),
+    sport: sportOf(a.type ?? 'Ride', a.average_speed),
     seconds: a.moving_time ?? a.elapsed_time ?? 0,
     distanceM: a.distance,
     elevationM: a.total_elevation_gain,

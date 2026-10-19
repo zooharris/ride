@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
-import { autoBackup, downloadBackup, fetchAutoBackup, restoreBackup } from '../../data/backup';
+import { autoBackup, downloadBackup, restoreBackup } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { zoneTable } from '../../engine/zones';
@@ -104,22 +104,6 @@ export function Settings({ data }: { data: AppData }) {
     setBusy(false);
     if (r.ok) { notify(); setMsg({ ok: true, text: 'Synced with your Intervals.icu account: this device and the note there now match.' }); }
     else setMsg({ ok: false, text: `Sync across devices failed: ${r.error}. The file backup below still works.` });
-  }
-
-  async function restoreFromIntervals() {
-    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
-    if (!c?.apiKey) return;
-    setBusy(true);
-    try {
-      const b = await fetchAutoBackup(c);
-      if (!b) { setMsg({ ok: false, text: 'No automatic backup found in your Intervals.icu account.' }); return; }
-      if (!confirm(`Replace everything on this device with the note from ${new Date(b.exportedAt).toLocaleString()}? Anything here that is not in the note is lost; use this only if the merge has gone wrong.`)) return;
-      const r = await restoreBackup(b.text);
-      notify();
-      setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
-      setTimeout(() => location.reload(), 800);
-    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
-    finally { setBusy(false); }
   }
 
   async function restore(e: Event) {
@@ -225,11 +209,10 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Across your devices, and backup</h2>
-        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. The same note is the backup a new device restores from. Activities come back from Intervals.icu on their own.</p>
+        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. A new device picks everything up from the note on its first merge. Activities come back from Intervals.icu on their own.</p>
         <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
         <div class="row wrap">
           <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
-          <button class="btn" onClick={restoreFromIntervals} disabled={busy}>Replace this device with the note</button>
         </div>
         <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
         <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping; unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>

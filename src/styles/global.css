@@ -313,3 +313,27 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
   .week-row { grid-template-columns: 36px 60px 1fr; grid-template-areas: "day hours where" "day hours pin"; row-gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .week-row > :nth-child(1) { grid-area: day; } .week-row > :nth-child(2) { grid-area: hours; } .week-row > :nth-child(3) { grid-area: where; } .week-row > :nth-child(4) { grid-area: pin; }
 }
+
+/* library filter bar */
+.filterbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.filterbar input { flex: 1 1 160px; min-width: 140px; max-width: 320px; min-height: 36px; }
+.menu { position: relative; }
+.menu-btn { white-space: nowrap; }
+.menu-btn .caret { margin-left: 6px; font-size: 10px; opacity: .7; }
+.menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 200px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius-s); box-shadow: 0 12px 32px rgba(0,0,0,.35); padding: 6px; }
+.menu-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); padding: 6px 10px 4px; }
+.menu-list button { display: flex; justify-content: space-between; width: 100%; text-align: left; padding: 9px 10px; border: 0; background: transparent; color: var(--ink); border-radius: 6px; cursor: pointer; font-size: 14px; }
+.menu-list button:hover { background: var(--bg-3); }
+.menu-list button.on { color: var(--accent); }
+.menu-bg { position: fixed; inset: 0; z-index: 25; }
+@media (max-width: 599px) {
+  .menu { position: static; }
+  .menu-bg { background: rgba(0,0,0,.5); }
+  .menu-list { position: fixed; left: 0; right: 0; bottom: 0; top: auto; border-radius: 16px 16px 0 0; padding: 12px 12px calc(12px + var(--safe-b)); max-height: 70dvh; overflow: auto; }
+  .menu-list button { padding: 13px 12px; font-size: 16px; }
+}
+.menu-btn.quiet { border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2); }
+@media (max-width: 599px) {
+  .seg.kinds { width: 100%; }
+  .seg.kinds button { flex: 1; padding: 8px 4px; font-size: 13px; justify-content: center; gap: 4px; }
+}

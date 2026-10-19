@@ -25,6 +25,7 @@ export function Library({ data }: { data: AppData }) {
   const [duration, setDuration] = useState<Duration>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'family' | 'short' | 'long'>('family');
+  const [menu, setMenu] = useState<'type' | 'length' | 'sort' | null>(null);
   const q = query.trim().toLowerCase();
   const minutesOf = (w: Workout) => (w.kind === 'ride' ? workoutStats(w.blocks).seconds / 60 : (w.minutes ?? 0));
   const inDuration = (w: Workout) => { const m = minutesOf(w); const [lo, hi] = DURATIONS.find((d) => d[0] === duration)![2]; return m >= lo && m < hi; };
@@ -41,24 +42,20 @@ export function Library({ data }: { data: AppData }) {
         <div class="row wrap"><span class="muted small">{list.length} {tab === 'ride' ? 'rides' : 'sessions'}</span><a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a></div>
       </div>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
-        <div class="seg">
+        <div class="seg kinds">
           {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
         </div>
-        <input value={query} placeholder="Search by name or purpose" onInput={(e) => setQuery((e.target as HTMLInputElement).value)} style="flex:1;min-width:180px;max-width:320px" aria-label="Search the library" />
       </div>
-      <div class="row wrap" style="gap:6px 10px;margin-bottom:12px;align-items:center">
-        <span class="faint small">Length</span>
-        <div class="chips">
-          {DURATIONS.map(([d, l]) => <button key={d} class={`chip${duration === d ? ' on' : ''}`} onClick={() => setDuration(d)}>{l}</button>)}
-        </div>
-        <span class="faint small" style="margin-left:auto">Sort</span>
-        <div class="seg">
-          <button class={sort === 'family' ? 'on' : ''} onClick={() => setSort('family')}>By type</button>
-          <button class={sort === 'short' ? 'on' : ''} onClick={() => setSort('short')}>Shortest</button>
-          <button class={sort === 'long' ? 'on' : ''} onClick={() => setSort('long')}>Longest</button>
-        </div>
+      <div class="filterbar">
+        <input value={query} placeholder="Search" onInput={(e) => setQuery((e.target as HTMLInputElement).value)} aria-label="Search the library" />
+        {tab === 'ride' && <Menu label={family === 'all' ? 'All types' : FAMILY_LABEL[family]} active={family !== 'all'} open={menu === 'type'} onOpen={() => setMenu(menu === 'type' ? null : 'type')} onClose={() => setMenu(null)} title="Type"
+          options={[['all', 'All types'], ...ORDER.map((f) => [f, FAMILY_LABEL[f]] as [string, string])]} value={family} onPick={(v) => setFamily(v as Family | 'all')} />}
+        <Menu label={duration === 'all' ? 'Any length' : DURATIONS.find((d) => d[0] === duration)![1]} active={duration !== 'all'} open={menu === 'length'} onOpen={() => setMenu(menu === 'length' ? null : 'length')} onClose={() => setMenu(null)} title="Length"
+          options={DURATIONS.map(([d, l]) => [d, l] as [string, string])} value={duration} onPick={(v) => setDuration(v as Duration)} />
+        <Menu label={sort === 'family' ? 'By type' : sort === 'short' ? 'Shortest first' : 'Longest first'} active={false} open={menu === 'sort'} onOpen={() => setMenu(menu === 'sort' ? null : 'sort')} onClose={() => setMenu(null)} title="Sort"
+          options={[['family', 'By type'], ['short', 'Shortest first'], ['long', 'Longest first']]} value={sort} onPick={(v) => setSort(v as 'family' | 'short' | 'long')} />
+        {(family !== 'all' || duration !== 'all' || q) && <button class="btn sm quiet" onClick={() => { setFamily('all'); setDuration('all'); setQuery(''); }}>Clear</button>}
       </div>
-
       {mine.length > 0 && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
@@ -70,10 +67,6 @@ export function Library({ data }: { data: AppData }) {
 
       {tab === 'ride' ? (
         <>
-          <div class="chips" style="margin-bottom:18px">
-            <button class={`chip${family === 'all' ? ' on' : ''}`} onClick={() => setFamily('all')}>All</button>
-            {ORDER.map((f) => <button key={f} class={`chip${family === f ? ' on' : ''}`} onClick={() => setFamily(f)}>{FAMILY_LABEL[f]}</button>)}
-          </div>
           {ready.length === 0 && mine.length === 0 && <div class="empty small">Nothing matches. Widen the length or clear the search.</div>}
           <div class="grid">{ready.map((w) => <Card key={w.id} w={w} />)}</div>
         </>
@@ -144,6 +137,24 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A filter menu: a button that names the current choice; the options open as a dropdown on a laptop and a sheet on a phone. */
+function Menu({ label, active, open, onOpen, onClose, title, options, value, onPick }: { label: string; active: boolean; open: boolean; onOpen: () => void; onClose: () => void; title: string; options: Array<[string, string]>; value: string; onPick: (v: string) => void }) {
+  return (
+    <div class="menu">
+      <button class={`btn sm${active ? '' : ' quiet'} menu-btn`} aria-haspopup="listbox" aria-expanded={open} onClick={onOpen}>{label}<span class="caret">▾</span></button>
+      {open && (
+        <>
+          <div class="menu-bg" onClick={onClose} />
+          <div class="menu-list" role="listbox">
+            <div class="menu-title">{title}</div>
+            {options.map(([v, l]) => <button key={v} role="option" aria-selected={v === value} class={v === value ? 'on' : ''} onClick={() => { onPick(v); onClose(); }}><span>{l}</span>{v === value && <span class="tick">✓</span>}</button>)}
+          </div>
+        </>
+      )}
     </div>
   );
 }

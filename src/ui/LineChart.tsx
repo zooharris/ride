@@ -3,6 +3,7 @@ import { useState } from 'preact/hooks';
 export interface ChartSeries { name: string; color: string; values: number[]; dash?: string; width?: number; explain?: string }
 export interface ChartMarker { index: number; label: string; color?: string }
 export interface ChartRefLine { value: number; label: string; color?: string }
+export interface ChartBand { from: number; to: number; label: string; color: string; explain?: string }
 
 /**
  * A labelled line chart over evenly spaced x positions (dates, usually), with
@@ -10,13 +11,14 @@ export interface ChartRefLine { value: number; label: string; color?: string }
  * readout naming every series. Small on purpose: everything in the app that
  * draws a line over time uses it so the charts read the same way.
  */
-export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], height = 170, readout, yMin, yMax }: {
+export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], bands = [], height = 170, readout, yMin, yMax }: {
   series: ChartSeries[];
   xLabels: string[];                 // one per x position (dates as YYYY-MM-DD)
   xTick?: (label: string, i: number) => string | null;   // what to print under the axis; null for nothing
   yTitle: string;
   refLines?: ChartRefLine[];
   markers?: ChartMarker[];
+  bands?: ChartBand[];           // shaded horizontal bands with a label at the right edge
   height?: number;
   readout?: (i: number) => string;   // the hover text; defaults to series values
   yMin?: number;
@@ -44,6 +46,7 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
       <svg viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={yTitle}
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
         onMouseLeave={() => setHover(null)}>
+        {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="8" text-anchor="end">{b.label}</text>}</g>; })}
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="9" text-anchor="end">{fmtTick(t)}</text></g>)}
         {xTicks.map(([i, t]) => <text key={i} x={x(i)} y={H - 6} fill="var(--ink-3)" font-size="9" text-anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{t}</text>)}
         <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="9" text-anchor="middle">{yTitle}</text>
@@ -72,3 +75,11 @@ function niceStep(raw: number): number {
   return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p;
 }
 function fmtTick(v: number): string { return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(0) : (Math.round(v * 10) / 10).toString(); }
+
+/** The form bands coaches use: where fitness-minus-fatigue sits tells you what the body is doing. */
+export const FORM_BANDS: ChartBand[] = [
+  { from: 5, to: 25, label: 'fresh', color: '#2fbf71', explain: 'Form +5 to +25: fresh. Where you want to be on an event day; staying here for long means fitness is slipping.' },
+  { from: -10, to: 5, label: 'neutral', color: '#9aa6b2', explain: 'Form −10 to +5: neutral. Recovery weeks and easy stretches land here.' },
+  { from: -30, to: -10, label: 'building', color: '#3c8dd6', explain: 'Form −30 to −10: building. Fatigue above fitness is how fitness rises; this is the productive zone.' },
+  { from: -60, to: -30, label: 'overreaching', color: '#e0485b', explain: 'Form below −30: overreaching. Fine for a few days at the end of a big block; a rest week is due.' },
+];

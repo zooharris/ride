@@ -17,7 +17,7 @@ import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
 import type { Equipment, Fitness, SessionKind } from '../../engine/types';
 import { KIND_ICON } from '../icons';
-import { LineChart } from '../LineChart';
+import { FORM_BANDS, LineChart } from '../LineChart';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -309,7 +309,7 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
     <div>
       <p class="muted small" style="margin:4px 0 10px;max-width:68ch">
         What your fitness, fatigue and form would do if every session in this plan is done as written, day by day from today to the goal.
-        Fitness is the same number as on the Today page: a 42-day weighted average of daily training load (TSS). Fatigue is the 7-day average; form is fitness minus fatigue, and is what you want above zero on the day.
+        Fitness is the same number as on the Today page: a 42-day weighted average of daily training load (TSS). Fatigue is the 7-day average; form is fitness minus fatigue. Fitness only rises while fatigue sits above it, so form is negative through a build (the shaded "building" band) and comes back up in recovery weeks and the taper; above zero is where you want to be on an event day, not every day.
         {required > 0 && ' The dashed amber line is the fitness the goal asks for.'}
       </p>
       <LineChart
@@ -323,6 +323,7 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
         yTitle="training load points"
         refLines={required > 0 ? [{ value: required, label: `goal needs ${required}` }] : []}
         markers={markers}
+        bands={FORM_BANDS}
         readout={(i) => { const f = series[i]; return `${fmt(f.date)} · fitness ${Math.round(f.ctl)} · fatigue ${Math.round(f.atl)} · form ${f.tsb > 0 ? '+' : ''}${Math.round(f.tsb)}`; }}
       />
       <p class="faint small" style="margin-top:8px">Starts at fitness {Math.round(first.ctl)} today; reaches {Math.round(ti > 0 ? series[ti].ctl : last.ctl)}{ti > 0 ? ' when the taper starts' : ` by ${fmt(goalDate)}`}, with form {last.tsb > 0 ? '+' : ''}{Math.round(last.tsb)} on {fmt(last.date)}. Hover the chart for any day.</p>

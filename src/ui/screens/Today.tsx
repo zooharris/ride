@@ -257,6 +257,7 @@ export function Today({ data }: { data: AppData }) {
           </div>
         </div>
         <FitnessChart series={series.slice(-84)} />
+        <p class="faint small" style="margin-top:6px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Hover a band or a line for more.</p>
       </section>
       </div>
       </div>

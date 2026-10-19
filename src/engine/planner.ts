@@ -83,8 +83,15 @@ export function phaseSequence(n: number, d: Demand, a: Assessment, goal: Goal, m
   // shortened to every second when the evidence says long and hard days leave the rider flat.
   const cycle = masters ? 3 : 4;
   for (let i = cycle - 1; i < seq.length - taper - 1; i += cycle) seq[i] = 'recovery';
-  decisions.push(`${base} base week${base === 1 ? '' : 's'}, ${build} build, ${peak} peak${taper ? `, ${taper} taper` : ''}: the split follows what the goal rewards (${topEmphasis(d)}) and what your data flag as the limiter (${a.limiters[0]}).`);
+  // No event to taper for: finish on a recovery week, so the block ends fresh and the fitness shows, rather than mid-load.
+  if (!taper && n >= 4 && seq[n - 1] !== 'recovery') {
+    if (seq[n - 2] === 'recovery') seq[n - 2] = seq[n - 1];
+    seq[n - 1] = 'recovery';
+  }
+  const count = (ph: Phase) => seq.filter((x) => x === ph).length;
+  decisions.push(`${count('base')} base week${count('base') === 1 ? '' : 's'}, ${count('build')} build, ${count('peak')} peak, ${count('recovery')} recovery${taper ? `, ${taper} taper` : ''}: the split follows what the goal rewards (${topEmphasis(d)}) and what your data flag as the limiter (${a.limiters[0]}).`);
   decisions.push(`A recovery week every ${cycle} weeks is the starting rhythm${masters ? ' for a masters rider' : ''}; as rides and wellness come in, the plan brings one forward when fatigue says so.`);
+  if (!taper && n >= 4) decisions.push('No event to taper for, so the last week is a recovery week: you finish the block with form back near zero and rising, and the fitness in the bank for the next one.');
   return { seq, decisions };
 }
 

@@ -98,7 +98,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <dt>Intensity factor</dt><dd>Normalized power over FTP. 0.70 is endurance, 1.00 is threshold.</dd>
           <dt>Fitness</dt><dd>A 42-day weighted average of daily TSS. It rises slowly with consistent training and is what the goal needs on the day.</dd>
           <dt>Fatigue</dt><dd>A 7-day weighted average of daily TSS. It rises fast after hard days and falls fast with rest.</dd>
-          <dt>Form</dt><dd>Fitness minus fatigue. Below zero while building (normal); above zero when fresh; you want roughly +5 to +20 on an event day.</dd>
+          <dt>Form</dt><dd>Fitness minus fatigue. Fitness can only rise while fatigue is above it, so form is negative through any build: −10 to −30 is the productive "building" band, below −30 is overreaching and a rest week is due, −10 to +5 is neutral (recovery weeks), and +5 to +25 is fresh, where you want to be on an event day but not for long. The charts shade these bands.</dd>
           <dt>Ramp rate</dt><dd>How many fitness points a week you are adding. The planner caps it (4 a week for a masters rider, more with evidence you recover well).</dd>
           <dt>Efficiency factor</dt><dd>Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving.</dd>
           <dt>Heart-rate drift (decoupling)</dt><dd>How much heart rate rose for the same power in the second half of a ride. Under 5% on a long ride is a sign of a good aerobic base.</dd>

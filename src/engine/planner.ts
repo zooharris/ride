@@ -42,6 +42,15 @@ export interface PlanRequest {
   profile: Profile;
   assessment: Assessment;
   longRideKmh?: number;   // the rider's own pace on long rides, if known
+  /**
+   * Re-checking a plan already on the calendar: its weeks and phases as they
+   * were laid out when it was made, first week first (`start` is that week).
+   * The phases are kept, weeks already past are not rebuilt (they still count
+   * for where each block stands), and only the sessions are fitted again to the
+   * rider's latest data. Without it the plan is laid out afresh, which shifts
+   * every phase as the weeks go by.
+   */
+  layout?: Array<{ start: string; phase: Phase }>;
 }
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
@@ -114,8 +123,15 @@ function topEmphasis(d: Demand): string {
 export function generatePlan(req: PlanRequest): Plan {
   const { goal, availability: av, assessment: a, profile } = req;
   const d = demand(goal, profile, a, req.longRideKmh);
-  const n = planWeeks(goal, req.start);
-  const { seq, decisions } = phaseSequence(n, d, a, goal, req.masters);
+  const fixed = req.layout?.length ? req.layout : undefined;
+  const n = fixed ? fixed.length : planWeeks(goal, req.start);
+  const { seq, decisions } = fixed
+    ? { seq: fixed.map((w) => w.phase), decisions: ['The weeks keep the phases the plan was made with; only the sessions are fitted again to your latest data.'] }
+    : phaseSequence(n, d, a, goal, req.masters);
+  // Re-checking: weeks already begun are left as they are on the calendar (their days are done,
+  // missed or under way, and squeezing a week's load into the days left would pile it up); they
+  // still count for where each block stands. A new plan starting mid-week fills the days left.
+  const pastWeeks = fixed && req.notBefore ? seq.filter((_, i) => addDays(req.start, i * 7) < req.notBefore!).length : 0;
   // Standing commitments: a day pinned to rest carries nothing; a day pinned to strength,
   // a walk or mobility is kept clear of rides; a day pinned to a ride always gets one.
   const pinOf = (dw: number): SessionKind | 'rest' | undefined => (av.pins ?? []).find((p) => p.dow === dw)?.kind;
@@ -133,11 +149,13 @@ export function generatePlan(req: PlanRequest): Plan {
   // a week needs D = fitness + 6Δ. The ramp is capped for safety and raised a
   // little when the evidence says the rider absorbs load well.
   const ctl0 = a.fitness.ctl;
-  const loadingWeeks = seq.filter((p) => p === 'base' || p === 'build' || p === 'peak').length;
+  const isLoading = (p: Phase) => p === 'base' || p === 'build' || p === 'peak';
+  const loadingWeeks = seq.filter(isLoading).length;
+  const loadingLeft = seq.slice(pastWeeks).filter(isLoading).length;
   let maxRamp = req.masters ? 4 : 6;
   if (a.afterLongRide.confidence !== 'none' && a.afterLongRide.value < 0.2 && a.compliance.value >= 0.8) maxRamp += 1;
   if (a.rampRate.confidence === 'good' && a.rampRate.value > maxRamp) maxRamp = Math.min(maxRamp + 2, a.rampRate.value);
-  const needRamp = d.requiredCtl ? (d.requiredCtl - ctl0) / Math.max(1, loadingWeeks) : 2.5;
+  const needRamp = d.requiredCtl ? (d.requiredCtl - ctl0) / Math.max(1, loadingLeft) : 2.5;
   const ramp = Math.max(1, Math.min(maxRamp, needRamp));
   decisions.push(`Fitness ${d.requiredCtl ? `needs to rise from ${Math.round(ctl0)} toward ${d.requiredCtl}` : `starts at ${Math.round(ctl0)}`}; the plan climbs about ${ramp.toFixed(1)} points a week (cap ${maxRamp}${maxRamp > (req.masters ? 4 : 6) ? ', raised because your recovery data look good' : ''}).`);
   if (needRamp > maxRamp) decisions.push(`The goal would want ${needRamp.toFixed(1)} a week, which is more than is safe; the verdict below says what that means.`);
@@ -166,6 +184,15 @@ export function generatePlan(req: PlanRequest): Plan {
     phaseIdx = phase === lastPhase ? phaseIdx + 1 : 0;
     lastPhase = phase;
     const weekStart = addDays(req.start, i * 7);
+    if (i < pastWeeks) {
+      if (isLoading(phase)) {
+        loadingSeen++;
+        // The week under way is being ridden now: fitness is expected to climb through it as planned,
+        // so the weeks after it start from where it will end. Weeks wholly past are already in today's fitness.
+        if (req.notBefore && addDays(weekStart, 7) > req.notBefore) { ctl += ramp; lastLoading = Math.min(capTss, 7 * (ctl + 6 * ramp)) * loadScale; }
+      }
+      return;
+    }
     const isAway = (slot: number) => (req.away ?? []).some((r) => { const d = dateOfSlot(weekStart, slot); return d >= r.from && d <= r.to; });
     const gone = (slot: number) => (req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false) || isAway(slot);
     const awayDays = awayDaysInWeek(weekStart, req.away);

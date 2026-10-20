@@ -24,7 +24,7 @@ export async function applyUpdate(): Promise<void> {
   applying = true;
   const reg = registration;
   const sw = navigator.serviceWorker;
-  if (!reg || !sw) { location.reload(); return; }
+  if (!reg || !sw) { await hardReload(); return; }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   let found = false;
   const onFound = () => { found = true; };
@@ -36,10 +36,10 @@ export async function applyUpdate(): Promise<void> {
   reg.removeEventListener('updatefound', onFound);
   for (let t = Date.now(); reg.installing && Date.now() - t < 10000;) await sleep(150);
   const waiting = reg.waiting;
-  if (!waiting) { location.reload(); return; }
+  if (!waiting) { await hardReload(); return; }
   sw.addEventListener('controllerchange', () => location.reload(), { once: true });
   waiting.postMessage({ type: 'SKIP_WAITING' });
-  setTimeout(() => location.reload(), 5000);   // in case the switch is never announced
+  setTimeout(() => { void hardReload(); }, 5000);   // in case the switch is never announced
 }
 
 /** When this copy of the app was built, in the rider's own time. */
@@ -58,11 +58,41 @@ export function setRegistration(r: ServiceWorkerRegistration): void { registrati
  * background timer happens to fire. Resolves true if one is now waiting.
  */
 export async function checkForUpdate(force = false): Promise<boolean> {
-  if (!registration) return ready;
   if (!force && Date.now() - lastCheck < 60_000) return ready;
   lastCheck = Date.now();
-  try { await registration.update(); } catch { /* offline: try again later */ }
-  // a found update takes a moment to install before the banner's signal arrives
-  await new Promise((r) => setTimeout(r, 1500));
-  return ready || !!registration.waiting;
+  if (registration) {
+    try { await registration.update(); } catch { /* offline: try again later */ }
+    // a found update takes a moment to install before the banner's signal arrives
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  // The second, independent check: the build the server publishes against this one. It catches a
+  // browser whose service worker never noticed (an iPhone home-screen app resumed from the background).
+  const published = await publishedBuild();
+  if (!ready && published && published !== __BUILD__ && published > __BUILD__) setUpdateReady();
+  return ready || !!registration?.waiting;
+}
+
+/** The build time of the newest published version, read past every cache; undefined offline. */
+async function publishedBuild(): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return undefined;
+    return ((await res.json()) as { build?: string }).build;
+  } catch { return undefined; }
+}
+
+/**
+ * The last resort when the usual switch cannot happen (no newer version waiting
+ * although the server has one): forget the cached copy of the app and load it
+ * fresh from the server. The app's own data (IndexedDB) is untouched.
+ */
+async function hardReload(): Promise<void> {
+  const published = await publishedBuild();
+  if (published && published !== __BUILD__) {
+    try { for (const r of (await navigator.serviceWorker?.getRegistrations()) ?? []) await r.unregister(); } catch { /* ignore */ }
+    try { if ('caches' in window) for (const k of await caches.keys()) await caches.delete(k); } catch { /* ignore */ }
+    location.replace(`${location.pathname}?v=${encodeURIComponent(published)}${location.hash}`);
+    return;
+  }
+  location.reload();
 }

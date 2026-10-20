@@ -14,11 +14,16 @@ registerSW({
   onRegisteredSW(_url, r) {
     if (!r) return;
     setRegistration(r);
-    setInterval(() => { void checkForUpdate(true); }, 15 * 60 * 1000);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void checkForUpdate(); });
-    window.addEventListener('focus', () => { void checkForUpdate(); });
+    void checkForUpdate(true);
   },
 });
+// Look for a newer version at launch, every 15 minutes, and whenever the app comes back to the front
+// (including an iPhone home-screen app resumed from the background, which fires pageshow).
+setTimeout(() => { void checkForUpdate(true); }, 3000);
+setInterval(() => { void checkForUpdate(true); }, 15 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void checkForUpdate(); });
+window.addEventListener('focus', () => { void checkForUpdate(); });
+window.addEventListener('pageshow', () => { void checkForUpdate(); });
 // Every launch opens on Today, whatever screen was showing when the app was last closed.
 if (location.hash && location.hash !== '#/today') history.replaceState(null, '', `${location.pathname}#/today`);
 initTheme();

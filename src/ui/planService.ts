@@ -147,7 +147,7 @@ export function overlapping(plans: ActivePlan[], start: string, end: string, exc
   return plans.find((p) => p.id !== exceptId && p.start <= end && p.goalDate >= start);
 }
 
-export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[]): Promise<Plan> {
+export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[], layout?: Array<{ start: string; phase: PlanPhase }>): Promise<Plan> {
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
@@ -157,7 +157,28 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
   const start = weekStart(notBefore);
   // Re-planning a block already under way: keep its end date, so only the remaining weeks are regenerated.
   const g: Goal = goal.kind !== 'event' && endDate ? { ...goal, weeks: Math.max(1, Math.round((Date.parse(endDate) - Date.parse(start) + 864e5) / (7 * 864e5))) } : goal;
+  // Re-checking a plan already under way: its own weeks and phases, from its first week; only the sessions are fitted again.
+  if (layout?.length) return generatePlan({ start: layout[0].start, notBefore: today(), goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout });
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });
+}
+
+/**
+ * The plan's weeks and phases as it was laid out. Plans saved since the 19 Oct
+ * build keep them; for an older one they are worked out once from the plan's
+ * own first week and saved, so every later re-check uses the same layout.
+ */
+async function planLayout(data: AppData, active: ActivePlan): Promise<Array<{ start: string; phase: PlanPhase }>> {
+  if (active.weeks?.length) return active.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+  const first = weekStart(active.start);
+  const weeksTo = Math.max(1, Math.round((Date.parse(active.goalDate) - Date.parse(first) + 864e5) / (7 * 864e5)));
+  const g: Goal = active.goal.kind === 'event' ? active.goal : { ...active.goal, weeks: weeksTo };
+  const profile = data.profile as Profile;
+  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
+  const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
+  const original = generatePlan({ start: first, notBefore: first, goal: g, availability: active.availability, basis: profile.basis, masters: active.masters, profile, assessment, away: active.away });
+  const weeks: PlanWeekSummary[] = original.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
+  await putPlan({ ...active, weeks });
+  return weeks.map((w) => ({ start: w.start, phase: w.phase }));
 }
 
 /**
@@ -280,13 +301,14 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const active = await getActivePlan();
   if (!active) return null;
   if (active.goal.kind === 'event' && active.goal.date <= today()) return null;
-  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away);
+  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, await planLayout(data, active));
   const workouts = new Map(data.mine.map((w) => [w.id, w]));
   for (const p of data.planned) { const w = findWorkout(data.mine, p.workoutId); if (w) workouts.set(w.id, w); }
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
   const review = reviewLastWeek(mine, workouts, data.rides);
   const rejected = await rejectedSigs();
-  const changes = diffPlan(mine, workouts, plan).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
+  // The week under way stays as it is; the re-check adjusts from the next week the new plan covers.
+  const changes = diffPlan(mine, workouts, plan, plan.weeks[0]?.start ?? today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
   const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;

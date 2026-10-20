@@ -328,3 +328,27 @@ describe('hand-added sessions in the re-check', () => {
     expect(diff.filter((c) => !c.userEdited)).toHaveLength(0);
   });
 });
+
+describe('re-checking a plan keeps its layout', () => {
+  it('keeps every remaining week\u2019s phase and does not rebuild past weeks', () => {
+    const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
+    const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+    const later = '2026-11-04';   // two weeks and two days into the plan
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout }));
+    expect(again.weeks[0].start > later && again.weeks[0].start <= addDays(later, 7)).toBe(true);   // from next Monday
+    for (const w of again.weeks) expect(w.phase).toBe(layout.find((x) => x.start === w.start)!.phase);
+    expect(again.weeks.every((w) => w.sessions.every((s) => s.date >= later))).toBe(true);
+  });
+  it('fitted again on the same data, two days on, offers next to nothing', () => {
+    const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
+    const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+    const later = addDays(today, 2);
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout }));
+    const from = again.weeks[0].start;
+    const name = (p: typeof original) => new Map(p.weeks.flatMap((w) => w.sessions).filter((x) => x.date >= from).map((x) => [`${x.date}|${x.kind}`, x.workout.name]));
+    const a = name(original), b = name(again);
+    const differ = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).length;
+    if (differ) console.log([...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).map((k) => `${k}: ${a.get(k)} -> ${b.get(k)}`).join("\n"));
+    expect(differ).toBe(0);   // same evidence: the same sessions
+  });
+});

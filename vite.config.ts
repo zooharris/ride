@@ -3,12 +3,16 @@ import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { APP_NAME, APP_SHORT_NAME } from './src/appName';
 
+// One build time for the app and for version.json, the file the app checks to know a newer build is published.
+const BUILD = new Date().toISOString();
+
 // Served from https://<user>.github.io/ride/ — the base must match the repo name.
 export default defineConfig({
-  define: { __BUILD__: JSON.stringify(new Date().toISOString()) },
+  define: { __BUILD__: JSON.stringify(BUILD) },
   base: '/ride/',
   plugins: [
     preact(),
+    { name: 'version-json', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD }) }); } },
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'mark.svg', 'apple-touch-icon.png'],

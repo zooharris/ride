@@ -134,10 +134,39 @@ export interface PlannedWorkout {
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
   rpe?: number;
   loggedSeconds?: number;
+  /** The manual activity the app created in Intervals.icu when the session was logged by hand; the only activity an undo may delete. */
+  manualActivityId?: string;
   /** Recordings the rider said were not this session ("Not this session"); never matched to it again. */
   notActivityIds?: string[];
   /** When the app relabelled the matched recording's type in Intervals.icu, what it was before, so an unmatch can put it back. */
   relabelled?: { activityId: string; from: string };
+  /** What was actually done, captured from the plan when the session became done and editable by the rider. */
+  done?: DoneRecord;
+}
+
+/** One exercise as done: the plan's by default, then whatever the rider corrects. */
+export interface DoneExercise {
+  name: string;
+  /** Library id (strength or mobility) when known, so "last time" finds it under a renamed copy too. */
+  exerciseId?: string;
+  sets?: number;
+  reps?: string;
+  holdSeconds?: number;
+  /** As entered, in the unit shown at the time. */
+  weight?: number;
+  unit?: 'lb' | 'kg';
+  skipped?: boolean;
+  cue?: string;
+  why?: string;
+  equipment?: Equipment[];
+}
+
+/** The record of a done strength, mobility or walk session. Rides have none: the device's data is the record. */
+export interface DoneRecord {
+  exercises?: DoneExercise[];
+  walk?: { minutes: number; packKg?: number };
+  /** Set when the rider edits it; absent means "assumed done as planned". */
+  editedAt?: string;
 }
 
 /** A completed activity from the watch or computer (ride, walk, strength session), as stored locally after sync. */
@@ -170,6 +199,8 @@ export interface Ride {
   ftpAtRide?: number;
   eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one
   pairedEventId?: number;
+  /** The activity's description in Intervals.icu (the app writes its record there when it is empty). */
+  description?: string;
 }
 
 export interface Wellness {

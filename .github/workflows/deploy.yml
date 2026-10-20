@@ -3,6 +3,8 @@ name: Build and deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # Documents and source art are not the app: changing them must not publish a new version.
+    paths-ignore: ['docs/**', 'art/**', '**/*.md']
   workflow_dispatch:
 
 permissions:

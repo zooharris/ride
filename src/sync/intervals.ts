@@ -126,6 +126,7 @@ interface IcuActivity {
   icu_ftp?: number;
   icu_eftp?: number;
   paired_event_id?: number;
+  description?: string;
 }
 
 /**
@@ -190,6 +191,7 @@ function toRide(a: IcuActivity): Ride {
     ftpAtRide: a.icu_ftp,
     eftp: a.icu_eftp,
     pairedEventId: a.paired_event_id,
+    description: a.description ?? undefined,
   };
 }
 
@@ -303,7 +305,9 @@ export function sessionSteps(workout: Workout): string[] {
     // A set ends on the lap press; the time after it is only the plan's estimate of a set.
     const estimate = Math.max(30, Math.round((parseInt(e.reps ?? '10', 10) || 10) * 4 / 5) * 5 + 10);
     const reps = e.reps ? ` ${garminText(e.reps)}${/rep/i.test(e.reps) ? '' : ' reps'}` : '';
-    const steps = [`- Press lap ${name}${reps}${load} ${dur(estimate)}`];
+    const lastW = lastWeightOf(e.name);
+    const last = lastW ? ` last ${garminText(lastW)}` : '';
+    const steps = [`- Press lap ${name}${reps}${load}${last} ${dur(estimate)}`];
     if (restSec) steps.push(`- Rest ${dur(restSec)}`);
     blocks.push({ times: sets, steps });
   }
@@ -366,6 +370,19 @@ export async function updateActivityType(c: IntervalsCredentials, activityId: st
   await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ type }) });
 }
 
+/** Write the app's record of what was done into an activity's description (callers check it is empty or the app's own). */
+export async function updateActivityDescription(c: IntervalsCredentials, activityId: string, description: string): Promise<void> {
+  await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ description }) });
+}
+
+/**
+ * "Last time" for an exercise, for the step text sent to the Garmin
+ * ("last 35 lb"). Set by the app at start-up from the calendar's done records;
+ * the adapter itself keeps no state.
+ */
+let lastWeightOf: (name: string) => string | undefined = () => undefined;
+export function setLastWeightLookup(fn: (name: string) => string | undefined): void { lastWeightOf = fn; }
+
 function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
   const w = workout.walk ?? { minutes: workout.minutes ?? 30, hrLow: 0.6, hrHigh: 0.7 };
   const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));
@@ -390,7 +407,7 @@ function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lt
  * Record a session done without a device as a manual activity, so Intervals.icu
  * holds the complete record and the next sync treats it like any other.
  */
-export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga'; seconds: number; tss: number; rpe?: number; description?: string }): Promise<string> {
+export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga' | 'Ride'; seconds: number; tss: number; rpe?: number; description?: string }): Promise<string> {
   const full = {
     start_date_local: `${a.date}T12:00:00`,
     name: a.name,

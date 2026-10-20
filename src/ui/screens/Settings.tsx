@@ -410,12 +410,13 @@ function HistoryLoader() {
 /** Which build this is, and a button to look for a newer one now. */
 function UpdateCheck() {
   const [state, setState] = useState<'idle' | 'checking' | 'latest' | 'ready'>(updateReady() ? 'ready' : 'idle');
+  const [updating, setUpdating] = useState(false);
   const check = async () => { setState('checking'); setState((await checkForUpdate(true)) ? 'ready' : 'latest'); };
   return (
     <div class="row wrap" style="gap:8px 14px;margin-top:28px;align-items:center">
       <p class="faint small" style="margin:0">This version of {APP_NAME} was built {buildTime()}.</p>
       {state === 'ready'
-        ? <button class="btn primary sm" onClick={applyUpdate}>A newer version is ready: reload</button>
+        ? <button class="btn primary sm" disabled={updating} onClick={() => { setUpdating(true); void applyUpdate(); }}>{updating ? 'Updating…' : 'A newer version is ready: reload'}</button>
         : <button class="btn sm" disabled={state === 'checking'} onClick={check}>{state === 'checking' ? 'Checking…' : 'Check for updates'}</button>}
       {state === 'latest' && <span class="small muted">You have the latest version.</span>}
     </div>

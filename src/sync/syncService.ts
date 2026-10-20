@@ -1,10 +1,11 @@
 import { db, getSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
-import type { PlannedWorkout, Ride, Workout } from '../engine/types';
+import type { DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
+import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
 import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
 import type { IntervalsCredentials } from './intervals';
-import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityType } from './intervals';
+import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
 import { syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
@@ -51,37 +52,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // kind whatever the device said, scored for it, and relabelled in Intervals.icu
   // so its record there is right too (again on any later sync if it drifts).
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
-  const workouts = await db.workouts.toArray();
-  const workoutOf = (id: string) => workouts.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
-  const matches = pairRecordings(planned, rides, workoutOf);
-  for (const p of planned) {
-    const match = matches.get(p.id);
-    const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
-    if (match && kind !== 'ride' && match.sport !== kind) {
-      match.sport = kind;
-      match.seconds = durationFor(kind, match.movingSeconds, match.elapsedSeconds) || match.seconds;   // a ride-typed strength session counts its whole time
-      match.icuLoad = undefined;             // Intervals.icu scored it as the type the device gave; the app scores it as what it was
-      score(match);
-    }
-    if (match && kind !== 'ride' && ICU_TYPE_FOR_KIND[kind] && match.type !== ICU_TYPE_FOR_KIND[kind]) {
-      try {
-        const from = match.type;
-        await updateActivityType(c, match.id, ICU_TYPE_FOR_KIND[kind]);
-        match.type = ICU_TYPE_FOR_KIND[kind];
-        if (p.relabelled?.activityId !== match.id) { p.relabelled = { activityId: match.id, from }; await db.planned.update(p.id, { relabelled: p.relabelled }); }
-      } catch { /* next sync tries again */ }
-    }
-    if (match && (p.status !== 'completed' || p.activityId !== match.id)) {
-      await db.planned.update(p.id, { status: 'completed', activityId: match.id });
-    } else if (!match && p.status === 'completed' && p.activityId && !p.loggedSeconds) {
-      // It was marked done from a recording that no longer counts: too short, or
-      // deleted. Undo that. Sessions the rider logged by hand stay done.
-      await undoRelabel(c, p);
-      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: undefined });
-    } else if (!match && p.date < today() && p.status !== 'completed') {
-      await db.planned.update(p.id, { status: 'missed' });
-    }
-  }
+  await applyPairing(rides, planned, await workoutLookup(), c, profile, { markMissed: true });
   await db.rides.bulkPut(rides);
 
   // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
@@ -97,6 +68,91 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
   return { rides: rides.length, wellness: wellness.length, newIds };
+}
+
+/** The workout behind a calendar entry: the rider's and generated copies first, then the ride library. */
+async function workoutLookup(): Promise<(id: string) => Workout | undefined> {
+  const workouts = await db.workouts.toArray();
+  return (id: string) => workouts.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
+}
+
+/**
+ * Apply the matching rules to recordings and calendar entries, and carry out
+ * what follows from each match: the recording takes the planned kind (scored
+ * for it, relabelled in Intervals.icu when credentials are given), the session
+ * is marked done with a record of what was done (copied from the plan), a
+ * strength session the rider rated takes its load from that effort, and the
+ * record goes into the activity's description in Intervals.icu when that is
+ * empty or the app's own. A session marked done from a recording that no
+ * longer counts (too short, deleted, or one the rider said was a different
+ * workout) goes back to to-do. Sync runs it on fresh recordings; the app also
+ * runs it at launch on stored ones, so a rule change applies without a Sync.
+ * The caller saves `rides` afterwards.
+ */
+export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], workoutOf: (id: string) => Workout | undefined, c: IntervalsCredentials | null, profile: Profile | undefined | null, opts: { markMissed?: boolean } = {}): Promise<number> {
+  const matches = pairRecordings(planned, rides, workoutOf);
+  let changed = 0;
+  for (const p of planned) {
+    const match = matches.get(p.id);
+    const w = workoutOf(p.workoutId);
+    const kind = w?.kind ?? 'ride';
+    if (match && kind !== 'ride' && match.sport !== kind) {
+      match.sport = kind;
+      match.seconds = durationFor(kind, match.movingSeconds, match.elapsedSeconds) || match.seconds;   // a ride-typed strength session counts its whole time
+      match.icuLoad = undefined;             // Intervals.icu scored it as the type the device gave; the app scores it as what it was
+      scoreActivity(match, profile);
+    }
+    if (c && match && kind !== 'ride' && ICU_TYPE_FOR_KIND[kind] && match.type !== ICU_TYPE_FOR_KIND[kind]) {
+      try {
+        const from = match.type;
+        await updateActivityType(c, match.id, ICU_TYPE_FOR_KIND[kind]);
+        match.type = ICU_TYPE_FOR_KIND[kind];
+        if (p.relabelled?.activityId !== match.id) { p.relabelled = { activityId: match.id, from }; await db.planned.update(p.id, { relabelled: p.relabelled }); }
+      } catch { /* next sync tries again */ }
+    }
+    if (match) {
+      const fresh = p.status !== 'completed' || p.activityId !== match.id;
+      const done = !fresh && p.done ? p.done : (w ? buildDoneRecord(w, p.loggedSeconds ? Math.round(p.loggedSeconds / 60) : undefined) : undefined);
+      if (fresh) { await db.planned.update(p.id, { status: 'completed', activityId: match.id, done }); p.status = 'completed'; p.activityId = match.id; p.done = done; changed++; }
+      else if (!p.done && done) { await db.planned.update(p.id, { done }); p.done = done; }   // done before records existed
+      // Heart rate under-reads lifting: once the rider has rated the effort, that sets the load.
+      const fromEffort = w ? recordTss(w, match.seconds, p.rpe) : undefined;
+      if (fromEffort != null) match.tss = fromEffort;
+      if (c && w && done) await writeRecord(c, match, w.name, done, p.rpe, profile?.units);
+    } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds) {
+      // It was marked done from a recording that no longer counts. Undo that. Sessions the rider logged by hand stay done.
+      if (c) await undoRelabel(c, p);
+      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: c ? undefined : p.relabelled, done: undefined, rpe: undefined });
+      changed++;
+    } else if (opts.markMissed && p.date < today() && p.status !== 'completed' && p.status !== 'missed') {
+      await db.planned.update(p.id, { status: 'missed' });
+    }
+  }
+  return changed;
+}
+
+/** Write the record into the activity's description in Intervals.icu, only when that is empty or the app's own earlier text. */
+export async function writeRecord(c: IntervalsCredentials, ride: Ride, workoutName: string, rec: DoneRecord, rpe: number | undefined, units: 'imperial' | 'metric' | undefined): Promise<void> {
+  const text = recordText(workoutName, rec, rpe, units);
+  if (ride.description === text || !mayWriteDescription(ride.description)) return;
+  try { await updateActivityDescription(c, ride.id, text); ride.description = text; } catch { /* best effort: the record lives in the app */ }
+}
+
+/**
+ * Re-apply the matching rules at launch to what this device already has (the
+ * last two weeks), so a rule change or a deleted recording takes effect
+ * without waiting for a Sync. Returns how many sessions changed.
+ */
+export async function recheckMatches(): Promise<number> {
+  const oldest = addDays(today(), -14), newest = addDays(today(), 1);
+  const [rides, planned, profile] = await Promise.all([
+    db.rides.where('date').between(oldest, newest, true, true).toArray(),
+    db.planned.where('date').between(oldest, newest, true, true).toArray(),
+    db.profile.get('me'),
+  ]);
+  const changed = await applyPairing(rides, planned, await workoutLookup(), await credentials(), profile);
+  await db.rides.bulkPut(rides);
+  return changed;
 }
 
 /** The app's own training load for an activity (see the comment in syncAll). */
@@ -188,8 +244,13 @@ export async function unmatchRecording(plannedId: string): Promise<void> {
     status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned',
     activityId: undefined,
     relabelled: undefined,
+    done: undefined,
+    rpe: undefined,
     notActivityIds: [...(p.notActivityIds ?? []), p.activityId],
   });
+  // The recording keeps its own load again, not the one the rider's effort for this session gave it.
+  const r = await db.rides.get(p.activityId);
+  if (r) { const prof = await db.profile.get('me'); scoreActivity(r, prof); await db.rides.put(r); }
 }
 
 /** The planned length of a session in seconds, when the workout says. */

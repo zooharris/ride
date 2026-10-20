@@ -19,6 +19,7 @@ import { removePlanned } from '../planService';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { StepsTable } from '../StepsTable';
+import { lastDone, setsText, weightText } from '../../engine/record';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -35,7 +36,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
   const recording = plannedEntry?.status === 'completed' && plannedEntry.activityId ? data.rides.find((r) => r.id === plannedEntry.activityId) : undefined;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  const units = profile.units ?? 'imperial';
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={data.planned} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -86,14 +88,14 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {plannedEntry && plannedEntry.status === 'completed' && (
         <section class="section">
           <h2>Done</h2>
-          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} /></div>
+          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} units={units} history={data.planned} /></div>
         </section>
       )}
       {plannedEntry && plannedEntry.status !== 'completed' && (
         <section class="section">
           <h2>Rode it without a device?</h2>
           <p class="faint small" style="margin:4px 0 8px">Normally the ride arrives from Intervals.icu on the next Sync. Use this only when nothing recorded it.</p>
-          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} />
+          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} units={units} history={data.planned} />
         </section>
       )}
 
@@ -107,7 +109,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -160,6 +162,7 @@ function SessionScreen({ w, backHref, planned, recording, basis, maxHr, lthr, on
                   <span class="num small muted">{e.sets ? `${e.sets} × ` : ''}{e.reps ?? (e.holdSeconds ? `${e.holdSeconds} s${e.sets ? '' : ' hold'}` : '')}</span>
                 </div>
                 {e.load && <div class="small" style="margin-top:4px;color:var(--ink-2)">{e.load}</div>}
+                {w.kind === 'strength' && planned?.status !== 'completed' && (() => { const last = lastDone(e.name, history, planned?.date ?? today()); return last ? <div class="small" style="margin-top:4px;color:var(--accent)">Last time: {weightText(last)} · {setsText(last)} · {fmtDate(last.date)}</div> : null; })()}
                 <div class="small" style="margin-top:6px;line-height:1.45">{e.cue}</div>
                 {e.why && <div class="faint small" style="margin-top:4px;line-height:1.4">{e.why}</div>}
               </div>
@@ -184,7 +187,7 @@ function SessionScreen({ w, backHref, planned, recording, basis, maxHr, lthr, on
       {planned && (
         <section class="section">
           <h2>{planned.status === 'completed' ? 'Done' : 'Or log it by hand'}</h2>
-          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} recording={recording} /></div>
+          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} recording={recording} units={units} history={history} /></div>
         </section>
       )}
 

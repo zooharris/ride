@@ -1,12 +1,17 @@
 import type { AppData } from '../store';
-import { findWorkout } from '../store';
+import { findWorkout, notify } from '../store';
 import { clock } from '../../engine/workout';
 import { distance, elevation, fmtDate, weekStart } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
-import { credentials } from '../../sync/syncService';
+import { credentials, plannedSeconds, unmatchRecording } from '../../sync/syncService';
+import { undoHandLog } from '../../sync/records';
+import { PlannedList, WhatYouDid } from '../DoneRecord';
+import { StepsTable } from '../StepsTable';
+import { toast } from '../Toast';
+import { go } from '../router';
 import { fetchStreams } from '../../sync/intervals';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
@@ -140,29 +145,86 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  const items = activityNumbers(r, profile, tempF);
+  const items = activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined);
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];
-  const plannedSecs = w && !isRide ? (w.minutes ?? 0) * 60 : 0;
+  const plannedSecs = w ? (plannedSeconds(w) ?? 0) : 0;
+  const shortRec = !!plannedSecs && Math.max(r.seconds, r.elapsedSeconds ?? 0) < plannedSecs * 0.2;
+  const handLogged = !!p && p.manualActivityId === r.id;
+  const refused = !p && data.planned.find((x) => x.notActivityIds?.includes(r.id));
+  const refusedW = refused ? findWorkout(data.mine, refused.workoutId) : undefined;
+  const [busy, setBusy] = useState(false);
+  const differentWorkout = async () => {
+    if (!p || !w) return;
+    const past = p.date < today() ? ' (missed, as its day has passed)' : '';
+    if (!confirm(`Was this ${clock(r.seconds)} ${r.name} recording a different workout, not ${w.name}?\n\n${w.name} goes back to to-do${past}. The recording stays as a separate activity and still counts toward your training load. The app will not match it to this session again.`)) return;
+    setBusy(true);
+    await unmatchRecording(p.id);
+    notify();
+    toast({ ok: true, text: `${w.name} is back to to-do.` });
+    setBusy(false);
+  };
+  const undoLogged = async () => {
+    if (!p || !w) return;
+    if (!confirm(`Mark ${w.name} as not done?\n\nIts record here is removed, and the activity the app created for it in Intervals.icu is deleted. It goes back to to-do.`)) return;
+    setBusy(true);
+    await undoHandLog(p);
+    notify();
+    toast({ ok: true, text: `${w.name} is back to to-do.` });
+    go('today');
+  };
+  const hubActions = p && w && (
+    <div class="row wrap" style="gap:8px;margin-top:10px">
+      {handLogged
+        ? <button class="btn sm" disabled={busy} onClick={undoLogged}>Undo: not done yet</button>
+        : <button class="btn sm" disabled={busy} onClick={differentWorkout} title="This recording was something else; put the planned session back to to-do">This was a different workout</button>}
+    </div>
+  );
+  const planLink = p && w ? <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>{w.name}</a> : null;
+  // Nothing to chart for a few seconds of recording, or for a session logged by hand (no device made it).
+  const showRecording = !handLogged && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120;
   return (
     <div>
       <PageHead back={{ label: 'Activities', href: '#/rides' }} title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]} · ${r.type}` : ''}`} />
-      {w && !isRide && p?.status === 'completed' && (
-        <div class="panel" style="margin-top:14px;border-color:var(--good)">
-          <b style="color:var(--good)">Done</b> <span class="muted">against <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>{w.name}</a></span>
-          <p class="muted small" style="margin-top:4px">{clock(r.seconds)} recorded{plannedSecs ? ` against ${Math.round(plannedSecs / 60)} min planned` : ''}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}.</p>
+      {w && p && !c && (
+        <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
+          <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
+          <p class="muted small" style="margin-top:4px">{clock(r.seconds)} {handLogged ? 'logged' : 'recorded'}{plannedSecs ? ` against ${Math.round(plannedSecs / 60)} min planned` : ''}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}{r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}.</p>
+          {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({clock(r.seconds)} of {Math.round(plannedSecs / 60)} min). If it was something else, press This was a different workout.</p>}
+          {hubActions}
         </div>
       )}
-      {c && w && (
-        <div class="panel" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
-          <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p!.date}`}>{w.name}</a></span>
+      {c && w && p && (
+        <div class="panel hub" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
+          <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
           <p class="muted small" style="margin-top:4px">{c.reason}{analysis ? ` ${analysis.summary}` : ''}</p>
+          {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({clock(r.seconds)} of {clock(plannedSecs)}). If it was something else, press This was a different workout.</p>}
+          {hubActions}
         </div>
+      )}
+      {refused && <p class="muted small" style="margin-top:14px">Not matched to a planned session: you said it was a different workout from {refusedW?.name ?? 'the session'} on {fmtDate(refused.date)}.</p>}
+
+      {w && p && !isRide && w.kind !== 'ride' && (
+        <section class="section">
+          <h2>What you did</h2>
+          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={profile.units ?? 'imperial'} history={data.planned} /></div>
+        </section>
+      )}
+      {w && p && (
+        <section class="section">
+          <details class="planned-fold">
+            <summary><h2 style="display:inline">What was planned</h2></summary>
+            <div class="panel" style="margin-top:10px">
+              {w.kind === 'ride' ? <StepsTable blocks={w.blocks} basis={basis} profile={profile} /> : <PlannedList workout={w} />}
+              <p class="faint small" style="margin-top:8px">{w.purpose} <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>The session in full ›</a></p>
+            </div>
+          </details>
+        </section>
       )}
 
-      {streams === undefined && <section class="section" aria-busy="true"><div class="stack" style="gap:10px"><Skeleton h={12} w={160} /><Skeleton h={320} r={12} /><Skeleton h={140} r={12} /></div></section>}
-      {streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
-      {streams && samples.length > 1 && (
+      {showRecording && streams === undefined && <section class="section" aria-busy="true"><div class="stack" style="gap:10px"><Skeleton h={12} w={160} /><Skeleton h={320} r={12} /><Skeleton h={140} r={12} /></div></section>}
+      {showRecording && streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
+      {showRecording && streams && samples.length > 1 && (
         <>
           <section class="section">
             <h2>The recording</h2>
@@ -282,7 +344,7 @@ function pace(speedMs: number | undefined, profile: { units?: string }): string 
  * strength or mobility session gets its time, load and heart rate. Nothing
  * that only means something on a bike is shown for anything else.
  */
-function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, tempF?: string): Array<[string, string | number | undefined, string?]> {
+function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, tempF?: string, effort?: number): Array<[string, string | number | undefined, string?]> {
   const hr: Array<[string, string | number | undefined, string?]> = [
     ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, `Over the whole ${KIND_NOUN[r.sport]}`],
     ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
@@ -315,7 +377,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
   ];
   if (r.sport === 'strength' || r.sport === 'mobility') return [
     ['Time', clock(r.seconds), 'From start to finish of the recording, rests included'],
-    ['Training load (TSS)', r.tss, r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
+    ['Training load (TSS)', r.tss, r.sport === 'strength' && effort ? `From your effort rating (${effort}/10) and the time: heart rate under-reads lifting, so your rating sets the load.` : r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
     ...hr,
   ];
   return [

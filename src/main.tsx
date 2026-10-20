@@ -8,9 +8,9 @@ import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';
 // New versions are checked for on every launch, every 15 minutes while open, and whenever the app
 // comes back to the front. A new build
 // waits until the rider presses Reload on the banner, so old code never runs unannounced.
-const updateSW = registerSW({
+registerSW({
   immediate: true,
-  onNeedRefresh() { setUpdateReady(() => { updateSW(true); }); },
+  onNeedRefresh() { setUpdateReady(); },
   onRegisteredSW(_url, r) {
     if (!r) return;
     setRegistration(r);

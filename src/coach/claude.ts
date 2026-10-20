@@ -4,6 +4,7 @@
  * browser to Anthropic with the user's own key.
  */
 import type { Fitness, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
+import { exerciseLine } from '../engine/record';
 import type { Readiness } from '../engine/readiness';
 import { workoutStats } from '../engine/workout';
 
@@ -60,7 +61,10 @@ export function describeSession({ planned, workout, recorded }: TodaySession): s
   const done = recorded
     ? `, recorded duration ${durationWords(recorded.seconds)}${recorded.tss != null ? `, recorded training load ${recorded.tss} TSS` : ''}${recorded.averageHr ? `, average heart rate ${Math.round(recorded.averageHr)} bpm` : ''}`
     : planned.loggedSeconds ? `, logged duration ${durationWords(planned.loggedSeconds)}` : '';
-  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}`
+  const what = planned.status === 'completed' && planned.done?.exercises?.length
+    ? `; what was actually done: ${planned.done.exercises.map((e) => exerciseLine(e)).join('; ')}`
+    : planned.status === 'completed' && planned.done?.walk ? `; walked ${planned.done.walk.minutes} min${planned.done.walk.packKg ? ` with a ${Math.round(planned.done.walk.packKg * 2.2046)} lb pack` : ''}` : '';
+  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}${what}`
     : planned.status === 'sent' ? 'on the Garmin, not done yet'
     : planned.status === 'missed' ? 'marked missed'
     : 'not done yet';

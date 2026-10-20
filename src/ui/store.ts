@@ -6,7 +6,10 @@ import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
 import { setFirstDay } from './derived';
 import { onDeviceSync, schedulePush } from '../data/devicesync';
-import { credentials } from '../sync/syncService';
+import { credentials, recheckMatches } from '../sync/syncService';
+import { setLastWeightLookup } from '../sync/intervals';
+import { lastDone, weightText } from '../engine/record';
+import { today } from '../engine/load';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
@@ -33,6 +36,8 @@ export function trustedWellness(wellness: Wellness[], notes: DayNote[]): Wellnes
   return bad.size ? wellness.filter((w) => !bad.has(w.date)) : wellness;
 }
 
+let rechecked = false;
+
 export function useAppData(): AppData {
   const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], loaded: false });
   useEffect(() => {
@@ -47,10 +52,15 @@ export function useAppData(): AppData {
         db.dayNotes.toArray(),
       ]);
       setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
+      // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
+      setLastWeightLookup((name) => { const l = lastDone(name, planned, today()); return l ? weightText(l) : undefined; });
       if (alive) setData({ profile, planned, rides, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, loaded: true });
     };
     load();
     listeners.add(load);
+    // Once per launch: apply the matching rules to what this device already has, so a rule
+    // change, a deleted recording or a refused match shows without waiting for a Sync.
+    if (!rechecked) { rechecked = true; recheckMatches().then((n) => { if (n) notify(); }).catch(() => {}); }
     return () => { alive = false; listeners.delete(load); };
   }, []);
   return data;

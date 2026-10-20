@@ -99,3 +99,13 @@ export async function saveDayNote(date: string, note: { text?: string; badWellne
   else await db.dayNotes.put({ date, text, badWellness: note.badWellness || undefined });
   notify();
 }
+
+/**
+ * Where a calendar session opens. Once done with a recording behind it, the
+ * recording (what happened); otherwise the session as planned. A recording
+ * this device has not synced yet falls back to the session page.
+ */
+export function sessionHref(p: { status: string; activityId?: string }, workoutId: string, from: string, date: string, rides: Array<{ id: string }>): string {
+  if (p.status === 'completed' && p.activityId && rides.some((r) => r.id === p.activityId)) return `#/rides/${p.activityId}`;
+  return `#/workout/${workoutId}?from=${from}&date=${date}`;
+}

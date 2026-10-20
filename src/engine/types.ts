@@ -125,6 +125,8 @@ export interface PlannedWorkout {
   note?: string;
   /** Set when a plan put this on the calendar; hand-added sessions have none. */
   planId?: string;
+  /** The plan's name when it was put here, so a plan record lost to a sync can be rebuilt under its real name. */
+  planName?: string;
   /** The rider replaced or moved this plan session by hand; the re-check may suggest changes but never applies them unasked. */
   userEdited?: boolean;
   /** When a session was moved here, the date it came from. */

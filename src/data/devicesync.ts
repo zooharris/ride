@@ -2,6 +2,7 @@ import { APP_NAME } from '../appName';
 import { db, getSetting, setSetting, untracked, type Settings, type Tombstone } from './db';
 import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
 import type { DayNote, PlannedWorkout, Profile, Workout } from '../engine/types';
+import type { ActivePlan } from '../ui/planService';
 import { decodeSealed, encodeSealed, isSealed, makeLock, newDataKey, open, seal, unlockWithAnswer, unlockWithPassphrase, type LockEnvelope } from './notecrypto';
 
 /**
@@ -25,6 +26,8 @@ export interface SyncDoc {
   planned: PlannedWorkout[];
   /** Absent in notes written before day notes existed. */
   dayNotes?: DayNote[];
+  /** One record per plan. Absent in notes written before plans had their own table (they travelled as the `plans` setting). */
+  plans?: ActivePlan[];
   tombstones: Tombstone[];
   /** Present on schema-1 (backup-only) notes written by older builds. */
   sync?: unknown[];
@@ -76,6 +79,7 @@ export async function localDoc(opts: { withSecrets?: boolean } = {}): Promise<Sy
     workouts: await db.workouts.toArray(),
     planned: await db.planned.toArray(),
     dayNotes: await db.dayNotes.toArray(),
+    plans: await db.plans.toArray(),
     tombstones: (await db.tombstones.toArray()).filter((t) => t.at >= cutoff),
   };
 }
@@ -92,7 +96,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
   const remoteTomb = new Map((remote.tombstones ?? []).map((x) => [x.id, x.at]));
   const localTomb = new Map((await db.tombstones.toArray()).map((x) => [x.id, x.at]));
 
-  await untracked(() => db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.tombstones], async () => {
+  await untracked(() => db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.plans, db.tombstones], async () => {
     // Tombstones: union; a remote tombstone newer than a local record deletes it.
     for (const [id, at] of remoteTomb) {
       const have = localTomb.get(id);
@@ -131,6 +135,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
     await mergeTable<Workout>('workouts', db.workouts, remote.workouts ?? [], (w) => w.id);
     await mergeTable<PlannedWorkout>('planned', db.planned, remote.planned ?? [], (p) => p.id);
     await mergeTable<DayNote>('dayNotes', db.dayNotes, remote.dayNotes ?? [], (n) => n.date);
+    await mergeTable<ActivePlan>('plans', db.plans, remote.plans ?? [], (p) => p.id);
   }));
   return { applied, localNewer };
 }

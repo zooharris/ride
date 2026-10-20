@@ -3,7 +3,7 @@ import type { AppData } from '../store';
 import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, cancelPlan, defaultPlanName, getActivePlan, getPlans, markChecked, overlapping, replan, type ActivePlan } from '../planService';
+import { applyPlan, buildPlan, cancelPlan, defaultPlanName, getActivePlan, getPlans, markChecked, overlapping, renamePlan, replan, type ActivePlan } from '../planService';
 import { changeKey, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
@@ -44,6 +44,8 @@ export function Plan({ data }: { data: AppData }) {
   const [plans, setPlans] = useState<ActivePlan[]>([]);
   const [check, setCheck] = useState<Replan | null>(null);
   const [name, setName] = useState('');
+  // Until the rider types a name, each build fills one in that says what and when.
+  const [nameTouched, setNameTouched] = useState(false);
   const [startDate, setStartDate] = useState(today());
   const refreshPlans = () => getPlans().then((ps) => { setPlans(ps); getActivePlan().then(setActive); });
 
@@ -58,6 +60,10 @@ export function Plan({ data }: { data: AppData }) {
   async function build() {
     const p = await buildPlan(data, goal, av, masters, startDate);
     setPlan(p);
+    if (!nameTouched) {
+      const from = p.weeks[0]?.sessions[0]?.date ?? p.weeks[0]?.start ?? startDate;
+      setName(`${defaultPlanName(goal)}, ${fmtDate(from, { month: 'short', day: 'numeric' })} to ${fmtDate(p.goalDate, { month: 'short', day: 'numeric' })}`);
+    }
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
     setCurrentEquipment(av.equipment);
@@ -78,6 +84,13 @@ export function Plan({ data }: { data: AppData }) {
   async function recheck() {
     setBusy(true);
     try { setCheck(await replan(data)); await markChecked(); } finally { setBusy(false); }
+  }
+
+  async function rename(p: ActivePlan) {
+    const n = prompt('Name for this plan', p.name);
+    if (n == null || !n.trim() || n.trim() === p.name) return;
+    await renamePlan(p.id, n);
+    await refreshPlans();
   }
 
   async function cancel(p: ActivePlan) {
@@ -128,6 +141,7 @@ export function Plan({ data }: { data: AppData }) {
                     </div>
                     <div class="row" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
+                      <button class="btn sm quiet" onClick={() => rename(p)} disabled={busy}>Rename</button>
                       <a class="btn sm quiet" href={`#/print/${p.id}`}>Print</a>
                       {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
                     </div>
@@ -159,7 +173,7 @@ export function Plan({ data }: { data: AppData }) {
       <section class="section">
         <h2 style="margin-bottom:12px">{plans.length ? 'New plan' : 'Goal'}</h2>
         <div class="panel"><div class="form">
-          <div class="field"><label>Plan name</label><input value={name} placeholder={defaultPlanName(goal)} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
+          <div class="field"><label>Plan name</label><input value={name} placeholder={defaultPlanName(goal)} onInput={(e) => { setName((e.target as HTMLInputElement).value); setNameTouched(true); }} /></div>
           <div class="field"><label>Starts on</label><input type="date" value={startDate} min={today()} onInput={(e) => setStartDate((e.target as HTMLInputElement).value || today())} /></div>
           <div class="field"><label>What you are training for</label>
             <select value={goal.kind} onChange={(e) => {
@@ -261,14 +275,6 @@ export function Plan({ data }: { data: AppData }) {
           </section>
 
           <section class="section">
-            <h2 style="margin-bottom:12px">The plan's shape</h2>
-            <div class="panel">
-              <PlanTimeline weeks={plan.weeks} goalDate={plan.goalDate} event={goal.kind === 'event' ? (goal.name || 'Event') : undefined} />
-              <p class="faint small" style="margin-top:6px">{plan.weeks.length} weeks, one cell each, coloured by phase. Hover a week for its name and load.</p>
-            </div>
-          </section>
-
-          <section class="section">
             <h2 style="margin-bottom:12px">Fitness projection</h2>
             <div class="panel">
               <Projection series={plan.projection} required={plan.requiredCtl} taperStart={plan.weeks.find((w) => w.phase === 'taper')?.start} goalDate={plan.goalDate} />
@@ -279,7 +285,7 @@ export function Plan({ data }: { data: AppData }) {
             <h2 style="margin-bottom:12px">Weekly load</h2>
             <div class="panel">
               <PlanTimeline weeks={plan.weeks} goalDate={plan.goalDate} event={goal.kind === 'event' ? (goal.name || 'Event') : undefined} bars />
-              <p class="faint small" style="margin-top:6px">Planned training load (TSS) for each week. Load climbs through each block and drops in the recovery weeks, so fitness can catch up with the work.</p>
+              <p class="faint small" style="margin-top:6px">Planned training load (TSS) for each week, coloured by phase. Load climbs through each block and drops in the recovery weeks, so fitness can catch up with the work. Hover a week for its name and load.</p>
             </div>
           </section>
 

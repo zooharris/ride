@@ -10,7 +10,7 @@ import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readin
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
-import { notify, saveDayNote, trustedWellness } from '../store';
+import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
 import { dailyNote } from '../../coach/claude';
 import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
@@ -225,7 +225,8 @@ export function Today({ data }: { data: AppData }) {
             {plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
             {plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
             <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
-            <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>Details</a>
+            {plan.status === 'completed' && plan.activityId && data.rides.some((r) => r.id === plan.activityId) && <a class="btn primary" href={`#/rides/${plan.activityId}`}>See the recording</a>}
+            <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>{plan.status === 'completed' ? 'The plan' : 'Details'}</a>
             {plan.status !== 'completed' && <a class="icon-btn" style="margin-left:auto" href={`#/calendar?d=${date}&change=${plan.id}`} title="Replace, move or remove" aria-label="Replace, move or remove"><Icon.more /></a>}
           </div>
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
@@ -239,10 +240,10 @@ export function Today({ data }: { data: AppData }) {
           <h2>{workout ? 'Also today' : 'Today'}</h2>
           <div class="stack" style="margin-top:8px">
             {others.map(({ p, w }) => (
-              <a class={`cal-item ${p.status}`} key={p.id} href={`#/workout/${w!.id}?from=today&date=${date}`}>
+              <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, w!.id, 'today', date, data.rides)}>
                 <StatusMark status={statusOf(p.status)} />
                 <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? '' : ' · tap for the details and to log it'}</span></div>
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap for the details and to log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
               </a>
             ))}
@@ -307,7 +308,7 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
       <h2>Next up <span class="muted" style="font-weight:400">· {days === 1 ? 'tomorrow' : fmtDate(nextDate, { weekday: 'long' })}</span></h2>
       <div class="stack" style="margin-top:8px">
         {items.map(({ p, w }) => (
-          <a class={`cal-item ${p.status}`} key={p.id} href={`#/workout/${w!.id}?from=today&date=${nextDate}`}>
+          <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, w!.id, 'today', nextDate, data.rides)}>
             <StatusMark status={statusOf(p.status)} />
             {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
             <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS` : `${KIND_LABEL[w!.kind]}${w!.minutes ? ` · ${w!.minutes} min` : ''}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>

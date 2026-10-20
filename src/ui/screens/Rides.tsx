@@ -149,13 +149,13 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       <PageHead back={{ label: 'Activities', href: '#/rides' }} title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]} · ${r.type}` : ''}`} />
       {w && !isRide && p?.status === 'completed' && (
         <div class="panel" style="margin-top:14px;border-color:var(--good)">
-          <b style="color:var(--good)">Done</b> <span class="muted">against {w.name}</span>
+          <b style="color:var(--good)">Done</b> <span class="muted">against <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>{w.name}</a></span>
           <p class="muted small" style="margin-top:4px">{clock(r.seconds)} recorded{plannedSecs ? ` against ${Math.round(plannedSecs / 60)} min planned` : ''}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}.</p>
         </div>
       )}
       {c && w && (
         <div class="panel" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
-          <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {w.name}</span>
+          <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p!.date}`}>{w.name}</a></span>
           <p class="muted small" style="margin-top:4px">{c.reason}{analysis ? ` ${analysis.summary}` : ''}</p>
         </div>
       )}

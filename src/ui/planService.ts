@@ -17,6 +17,7 @@ import { findWorkout, notify } from './store';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
+  updatedAt?: string;
   id: string;
   name: string;
   goal: Goal;
@@ -36,36 +37,67 @@ export interface PlanWeekSummary { start: string; phase: PlanPhase; label: strin
 
 /** Every plan on the calendar, oldest first. Plans never overlap in time. */
 export async function getPlans(): Promise<ActivePlan[]> {
-  let plans = await getSetting<ActivePlan[] | null>('plans', null);
-  if (!plans) {
-    // One-time move from the single-plan setting. Written unstamped, and only
-    // when there is something to move: a fresh device that wrote an empty list
-    // here, stamped now, would overwrite the real plans on every other device
-    // at the next sync (the calendar keeps its sessions, but the plan is gone).
-    const old = await getSetting<ActivePlan | null>('activePlan', null);
-    plans = old && old.goal && old.availability?.equipment ? [{ ...old, name: old.name || defaultPlanName(old.goal) }] : [];
-    if (plans.length) {
-      const moved = plans;
-      await untracked(async () => { await setSetting('plans', moved); await setSetting('activePlan', null); });
-    }
-  }
-  const valid = plans.filter((p) => p.goal && p.availability?.equipment);
+  await migrateLegacyPlans();
+  const valid = (await db.plans.toArray()).filter((p) => p.goal && p.availability?.equipment);
   const recovered = await recoverPlans(valid);
   return [...valid, ...recovered].sort((a, b) => a.start.localeCompare(b.start));
 }
 
+/** Save one plan. Each plan is its own record, so a device can only add, change or remove a plan, never replace the whole set. */
+export async function putPlan(plan: ActivePlan): Promise<void> { await db.plans.put(plan); }
+
+/** Remove one plan; the deletion travels to the other devices. */
+export async function deletePlan(id: string): Promise<void> { await db.plans.delete(id); }
+
+/** Give a plan a new name, here and on its sessions (so a rebuilt plan keeps it). */
+export async function renamePlan(id: string, name: string): Promise<void> {
+  const n = name.trim();
+  const p = await db.plans.get(id);
+  if (!p || !n) return;
+  await putPlan({ ...p, name: n });
+  const sessions = await db.planned.filter((x) => x.planId === id).toArray();
+  for (const x of sessions) await db.planned.update(x.id, { planName: n });
+  notify();
+}
+
+/**
+ * Plans used to live in one list under the `plans` setting (and before that a
+ * single `activePlan`). Any entry there that the table lacks, and that was not
+ * deleted since, is copied in, unstamped, so a real record from another device
+ * always wins over it. The old setting is left alone: older builds still read it.
+ */
+async function migrateLegacyPlans(): Promise<void> {
+  const list = (await getSetting<ActivePlan[] | null>('plans', null)) ?? [];
+  const old = await getSetting<ActivePlan | null>('activePlan', null);
+  const legacy = [...list, ...(old && old.goal && old.availability?.equipment ? [{ ...old, name: old.name || defaultPlanName(old.goal) }] : [])];
+  if (!legacy.length) return;
+  const toCopy: ActivePlan[] = [];
+  for (const p of legacy) {
+    if (!p?.id || (await db.plans.get(p.id)) || (await db.tombstones.get(`plans:${p.id}`))) continue;
+    const { updatedAt: _u, ...rest } = p;
+    toCopy.push(rest as ActivePlan);
+  }
+  if (toCopy.length) await untracked(() => db.plans.bulkPut(toCopy));
+}
+
 /**
  * Sessions still to come that a plan put on the calendar, whose plan record is
- * missing (lost to the empty-list overwrite above in older builds). The plan
- * is rebuilt from the sessions themselves and the last plan request, and saved,
- * so the other devices get it back too. A cancelled plan leaves nothing to come,
- * so it is never brought back.
+ * missing. The plan is rebuilt from the sessions (their stored plan name, else
+ * the last plan request) and saved, so the other devices get it back too.
+ * Never before this device has finished a round of sync with the others (the
+ * record may simply not have arrived yet), and never for a plan that was
+ * deleted on purpose; a cancelled plan also leaves nothing to come.
  */
 async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
   const known = new Set(plans.map((p) => p.id));
   const t = today();
   const all = await db.planned.toArray();
-  const orphanIds = [...new Set(all.filter((p) => p.planId && !known.has(p.planId) && p.date >= t && p.status !== 'completed').map((p) => p.planId!))];
+  const candidates = [...new Set(all.filter((p) => p.planId && !known.has(p.planId) && p.date >= t && p.status !== 'completed').map((p) => p.planId!))];
+  if (!candidates.length) return [];
+  const synced = !!(await getSetting<{ last?: string } | null>('deviceSync', null))?.last;
+  if (!synced && (await credentials())) return [];
+  const orphanIds: string[] = [];
+  for (const id of candidates) if (!(await db.tombstones.get(`plans:${id}`))) orphanIds.push(id);
   if (!orphanIds.length) return [];
   const req = await getSetting<{ goal: Goal; availability: Availability; masters: boolean } | null>('planRequest', null);
   const out: ActivePlan[] = [];
@@ -85,13 +117,13 @@ async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
         byWeek.set(ws, { start: ws, phase, label, tss: 0 });
       }
     }
-    out.push({ id, name: defaultPlanName(goal), goal, availability, masters: req?.masters ?? true, start, goalDate, requiredCtl: 0, projection: [], appliedAt: new Date().toISOString(), lastCheck: t, weeks: [...byWeek.values()] });
+    const name = sessions.find((s) => s.planName)?.planName ?? defaultPlanName(goal);
+    const plan: ActivePlan = { id, name, goal, availability, masters: req?.masters ?? true, start, goalDate, requiredCtl: 0, projection: [], appliedAt: new Date().toISOString(), lastCheck: t, weeks: [...byWeek.values()] };
+    await putPlan(plan);
+    out.push(plan);
   }
-  await savePlans([...plans, ...out]);
   return out;
 }
-
-export async function savePlans(plans: ActivePlan[]): Promise<void> { await setSetting('plans', plans); }
 
 /** The plan that covers today, else the next one to start, else null. */
 export async function getActivePlan(): Promise<ActivePlan | null> {
@@ -173,13 +205,13 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     removed++;
   }
   await db.workouts.bulkPut(toAdd.map((x) => x.s.workout));
-  await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId })));
+  await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name })));
   added = toAdd.length;
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
   const active: ActivePlan = { id: planId, name, goal, availability, masters, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from, weeks };
-  await savePlans([...plans.filter((p) => p.id !== planId), active]);
+  await putPlan(active);
   notify();
   if (c) autoBackup(c, true);
   return { added, removed, kept };
@@ -271,7 +303,7 @@ export async function cancelPlan(data: AppData, planId?: string): Promise<{ remo
     if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* a stale event is harmless */ } }
     await db.planned.delete(p.id);
   }
-  await savePlans(plans.filter((p) => p.id !== target?.id));
+  if (target) await deletePlan(target.id);
   await pruneOrphanWorkouts();
   notify();
   return { removed: future.length };
@@ -292,8 +324,7 @@ export async function pruneOrphanWorkouts(): Promise<number> {
 export async function markChecked(): Promise<void> {
   const a = await getActivePlan();
   if (!a) return;
-  const plans = await getPlans();
-  await savePlans(plans.map((p) => (p.id === a.id ? { ...p, lastCheck: today() } : p)));
+  await putPlan({ ...a, lastCheck: today() });
 }
 
 

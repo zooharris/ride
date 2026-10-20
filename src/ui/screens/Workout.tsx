@@ -7,7 +7,7 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
 import { db } from '../../data/db';
 import { go } from '../router';
-import type { Basis, PlannedWorkout } from '../../engine/types';
+import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { sendWorkout } from '../../sync/intervals';
@@ -27,14 +27,15 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [showText, setShowText] = useState(false);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
-  const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : '#/library';
+  const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
   // The calendar entry this page is about: the one on the date in the link, else the nearest upcoming entry for
   // this workout or for a copy of it (a library session is copied when it is put on a date).
   const sameSession = (p: PlannedWorkout) => { if (p.workoutId === w.id) return true; const c = findWorkout(data.mine, p.workoutId); return !!c && c.source === 'generated' && c.kind === w.kind && c.name === w.name; };
   const plannedEntry = params.get('date')
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  const recording = plannedEntry?.status === 'completed' && plannedEntry.activityId ? data.rides.find((r) => r.id === plannedEntry.activityId) : undefined;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -82,6 +83,12 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
+      {plannedEntry && plannedEntry.status === 'completed' && (
+        <section class="section">
+          <h2>Done</h2>
+          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} /></div>
+        </section>
+      )}
       {plannedEntry && plannedEntry.status !== 'completed' && (
         <section class="section">
           <h2>Rode it without a device?</h2>
@@ -100,7 +107,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
+function SessionScreen({ w, backHref, planned, recording, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -161,12 +168,12 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: {
         </section>
       )}
 
-      {planned && w.kind !== 'ride' && (
+      {planned && w.kind !== 'ride' && planned.status !== 'completed' && (
         <section class="section">
           <h2>On the Garmin</h2>
-          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : planned.status === 'completed' ? 'Done.' : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
+          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
-          {w.kind !== 'walk' && planned.status !== 'completed' && (
+          {w.kind !== 'walk' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{sessionSteps(w).map((l) => /^\d+x$/.test(l) ? `${l.slice(0, -1)} sets of:` : l.replace(/^- /, '  ')).join('\n')}</pre>
               <p class="faint small">"Press lap" steps end when you press the lap button; the time after a set is only the estimate the plan uses. Rests and holds count down on the watch. Repeated sets appear as repeats.</p>
@@ -176,8 +183,8 @@ function SessionScreen({ w, backHref, planned, basis, maxHr, lthr, onRemove }: {
       )}
       {planned && (
         <section class="section">
-          <h2>{planned.status === 'completed' ? 'Logged' : 'Or log it by hand'}</h2>
-          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} /></div>
+          <h2>{planned.status === 'completed' ? 'Done' : 'Or log it by hand'}</h2>
+          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} recording={recording} /></div>
         </section>
       )}
 

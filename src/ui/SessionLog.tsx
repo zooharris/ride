@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
-import type { PlannedWorkout, Workout } from '../engine/types';
+import type { PlannedWorkout, Ride, Workout } from '../engine/types';
+import { clock } from '../engine/workout';
 import { loggedTss } from '../engine/sessions';
 import { db } from '../data/db';
 import { notify } from './store';
@@ -12,7 +13,7 @@ import { createManualActivity } from '../sync/intervals';
  * counts like everything else. If Intervals.icu cannot be reached the session
  * is still marked done here.
  */
-export function SessionLog({ planned, workout, defaultMinutes }: { planned: PlannedWorkout; workout: Workout; defaultMinutes: number }) {
+export function SessionLog({ planned, workout, defaultMinutes, recording }: { planned: PlannedWorkout; workout: Workout; defaultMinutes: number; recording?: Ride }) {
   const [rpe, setRpe] = useState<number>(workout.kind === 'strength' ? 7 : workout.kind === 'walk' ? 4 : 3);
   const [minutes, setMinutes] = useState(defaultMinutes);
   const [busy, setBusy] = useState(false);
@@ -40,7 +41,18 @@ export function SessionLog({ planned, workout, defaultMinutes }: { planned: Plan
   }
 
   if (planned.status === 'completed') {
-    return <div class="msg ok">Done{planned.rpe ? `, effort ${planned.rpe}/10` : ''}{planned.loggedSeconds ? `, ${Math.round(planned.loggedSeconds / 60)} min` : ''}.</div>;
+    if (recording) {
+      return (
+        <div class="msg ok row between wrap" style="gap:10px">
+          <span>Done · {clock(recording.seconds)} recorded{recording.tss != null ? ` · training load ${recording.tss} TSS` : ''}{recording.averageHr ? ` · average heart rate ${Math.round(recording.averageHr)} bpm` : ''}.</span>
+          <a class="btn sm" href={`#/rides/${recording.id}`}>See the recording ›</a>
+        </div>
+      );
+    }
+    if (planned.activityId) {
+      return <div class="msg ok">Done. The recording is in Intervals.icu; press Sync on Today to bring it to this device.</div>;
+    }
+    return <div class="msg ok">Done, logged by hand{planned.loggedSeconds ? ` · ${Math.round(planned.loggedSeconds / 60)} min` : ''}{planned.rpe ? ` · effort ${planned.rpe}/10` : ''}. No recording.</div>;
   }
   return (
     <div class="panel">

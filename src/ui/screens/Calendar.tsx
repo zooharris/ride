@@ -5,7 +5,7 @@ import { getSetting, setSetting } from '../../data/db';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
-import { allWorkouts, findWorkout, notify, scheduleWorkout } from '../store';
+import { allWorkouts, findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, workoutStats } from '../../engine/workout';
@@ -118,7 +118,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
                   return (
-                    <a class={`month-item ${p.status} k-${w.kind}`} key={p.id} href={`#/workout/${w.id}?from=calendar&date=${d}`} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
+                    <a class={`month-item ${p.status} k-${w.kind}`} key={p.id} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
                       <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <span class="sw" />}</span>
                       <span class="mi-name">{w.name}</span>
                     </a>
@@ -162,14 +162,14 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                         const st = statusOf(p.status);
                         return (
                           <div class={`cal-item ${p.status}`} key={p.id}>
-                            <a href={`#/workout/${w.id}?from=calendar&date=${d}`} class="row" style="flex:1;min-width:0;text-decoration:none">
+                            <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
                               <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
                             <StatusPill status={st} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
-                            {rec && <a class="btn sm quiet" href={`#/rides/${rec.id}`} title="Open the recording">Recording ›</a>}
+                            {rec && <a class="btn sm quiet" href={`#/workout/${w.id}?from=calendar&date=${d}`} title="The session as it was planned">Plan ›</a>}
                           </div>
                         );
                       })}

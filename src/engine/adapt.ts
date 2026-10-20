@@ -3,6 +3,7 @@ import type { Plan, PlannedSession } from './planner';
 import { scoreRide } from './compliance';
 import { addDays, today } from './load';
 import { hm } from './assessment';
+import { workoutStats } from './workout';
 
 /**
  * Adaptation is the planner run again from today, plus an honest account of
@@ -65,7 +66,32 @@ export function reviewLastWeek(planned: PlannedWorkout[], workouts: Map<string, 
   return { from, to: addDays(date, -1), planned: past.length, completed: completed.length, missed: missed.length, lines };
 }
 
-/** Compare the current calendar (from today) with a freshly generated plan. */
+/** A ride's name without its length ("Long Endurance 2:23" -> "Long Endurance"). */
+const baseName = (n: string) => n.replace(/\s+\d+(:\d\d)?\s*(min)?$/i, '').trim();
+
+function size(w: Workout): { minutes: number; tss: number } {
+  if (w.kind === 'ride' && w.blocks?.length) { const s = workoutStats(w.blocks); return { minutes: s.seconds / 60, tss: s.tss }; }
+  return { minutes: w.walk?.minutes ?? w.minutes ?? 0, tss: w.estimatedTss ?? 0 };
+}
+
+/**
+ * Whether a regenerated session is, for the rider, the same session: the same
+ * ride (same name apart from its length, same family) changed by less than
+ * 10 minutes and 10% in length and by less than 5 TSS and 10% in load. The
+ * re-check rebuilds the plan from each morning's data, which moves rides by a
+ * few minutes; offering those as changes is noise. Strength, mobility and walks
+ * count as changed whenever the session itself differs (their names say which).
+ */
+export function sameSession(before: Workout, after: Workout): boolean {
+  if (before.name === after.name) return true;
+  if (before.kind !== 'ride' || after.kind !== 'ride') return false;
+  if (before.family !== after.family || baseName(before.name) !== baseName(after.name)) return false;
+  const b = size(before), a = size(after);
+  const dMin = Math.abs(a.minutes - b.minutes), dTss = Math.abs(a.tss - b.tss);
+  return dMin < Math.max(10, b.minutes * 0.1) && dTss < Math.max(5, b.tss * 0.1);
+}
+
+/** Compare the current calendar (from today) with a freshly generated plan. Only changes that matter are listed. */
 export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workout>, plan: Plan, from = today()): Change[] {
   const future = current.filter((p) => p.date >= from && p.status !== 'completed');
   const key = (date: string, kind: string) => `${date}|${kind}`;
@@ -102,6 +128,7 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const bNames = b.map((w) => w.name);
     const aNames = a.map((s) => s.workout.name);
     if (bNames.join(',') === aNames.join(',')) continue;
+    if (b.length === a.length && b.every((w, i) => sameSession(w, a[i].workout))) continue;   // a few minutes either way is not a change
     const userEdited = edited.has(k) || undefined;
     const userAdded = added.has(k) || undefined;
     if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited, userAdded });

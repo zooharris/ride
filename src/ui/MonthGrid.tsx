@@ -31,7 +31,7 @@ export function MonthGrid({ month, render, onPrev, onNext, onToday, cellClass, w
               const date = addDays(ws, c);
               const inMonth = date.slice(0, 7) === month;
               return (
-                <div class={`month-cell${inMonth ? '' : ' out'}${date === t ? ' today' : ''}${cellClass ? ` ${cellClass(date)}` : ''}`} key={date}>
+                <div data-date={date} class={`month-cell${inMonth ? '' : ' out'}${date === t ? ' today' : ''}${cellClass ? ` ${cellClass(date)}` : ''}`} key={date}>
                   <div class="month-day">{Number(date.slice(8))}</div>
                   {render(date)}
                 </div>

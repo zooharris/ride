@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
 import { doneHistory, findWorkout, notify } from '../store';
 import { WorkoutProfile } from '../Profile';
@@ -16,6 +17,7 @@ import { sessionSteps } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
+import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { StepsTable } from '../StepsTable';
@@ -26,6 +28,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const w = findWorkout(data.mine, id);
   const [basis, setBasis] = useState<Basis>(w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
   const [showText, setShowText] = useState(false);
+  const [change, setChange] = useState<'menu' | 'replace' | null>(null);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
@@ -37,7 +40,11 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
   const recording = plannedEntry?.status === 'completed' && plannedEntry.activityId ? data.rides.find((r) => r.id === plannedEntry.activityId) : undefined;
   const units = profile.units ?? 'imperial';
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  // Move, replace or remove this session; the page follows a move to its new date.
+  const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
+    onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
+  const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm quiet" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm quiet" onClick={() => setChange('replace')}>Replace</button></>;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -77,7 +84,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         </label>
       </div>
       {plannedEntry && (
-        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}. <button class="btn sm quiet" style="margin-left:6px" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
       )}
 
       <section class="section">
@@ -103,13 +110,14 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
         {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(w, basis)}</pre>}
       </section>
+      {changeSheet}
     </div>
   );
 }
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, onRemove }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -133,7 +141,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
-      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{onRemove && <button class="btn sm quiet" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
+      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn sm quiet" onClick={onRemove}>Remove from the calendar</button>}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 
@@ -197,6 +205,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
       </div>
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}
+      {changeSheet}
     </div>
   );
 }

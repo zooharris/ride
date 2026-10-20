@@ -26,6 +26,8 @@ import type { DayNote } from '../../engine/types';
 import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
 import { Icon } from '../icons';
+import { ChangeSheet } from '../ChangeSheet';
+import type { PlannedWorkout } from '../../engine/types';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -57,6 +59,7 @@ export function Today({ data }: { data: AppData }) {
   useEffect(() => { getCoachReview().then(setReview); }, []);
   const [tourDone, setTourDone] = useState<boolean | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  const [changing, setChanging] = useState<PlannedWorkout | null>(null);
   const [range, setRange] = useState<RangeKey>('3m');
   useEffect(() => { getSetting<RangeKey>('fitnessRange', '3m').then(setRange); }, []);
   const pickRange = (k: RangeKey) => { setRange(k); setSetting('fitnessRange', k); };
@@ -229,7 +232,7 @@ export function Today({ data }: { data: AppData }) {
             <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
             {plan.status === 'completed' && plan.activityId && data.rides.some((r) => r.id === plan.activityId) && <a class="btn primary" href={`#/rides/${plan.activityId}`}>See the recording</a>}
             <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>{plan.status === 'completed' ? 'The plan' : 'Details'}</a>
-            {plan.status !== 'completed' && <a class="icon-btn" style="margin-left:auto" href={`#/calendar?d=${date}&change=${plan.id}`} title="Replace, move or remove" aria-label="Replace, move or remove"><Icon.more /></a>}
+            {plan.status !== 'completed' && <button class="icon-btn" style="margin-left:auto" onClick={() => setChanging(plan)} title="Move, replace or remove" aria-label="Move, replace or remove"><Icon.more /></button>}
           </div>
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>
@@ -242,18 +245,22 @@ export function Today({ data }: { data: AppData }) {
           <h2>{workout ? 'Also today' : 'Today'}</h2>
           <div class="stack" style="margin-top:8px">
             {others.map(({ p, w }) => (
-              <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, w!.id, 'today', date, data.rides)}>
+              <div class={`cal-item ${p.status}`} key={p.id}>
+              <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
                 <StatusMark status={statusOf(p.status)} />
                 <KindDot kind={w!.kind} big />
                 <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap for the details and to log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
               </a>
+              {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}
+              </div>
             ))}
           </div>
         </section>
       )}
 
       <NextUp data={data} date={date} />
+      {changing && <ChangeSheet data={data} planned={changing} onClose={() => setChanging(null)} />}
 
       <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />
       </div>

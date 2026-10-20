@@ -284,7 +284,6 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
   notify();
 }
 
-/** Move a planned session to another date. A session already on the Garmin comes off it and waits to be sent again. */
 /**
  * Take a session off the calendar, after the rider confirms. Anything sent to
  * Intervals.icu (and so the Garmin) comes off there too; a completed session's
@@ -308,11 +307,17 @@ export async function removePlanned(id: string, mine: Workout[]): Promise<boolea
   return true;
 }
 
+/**
+ * Move a planned session to another date. A session already on the Garmin
+ * comes off it and waits to be sent again; a missed one moved to today or
+ * later is to do again.
+ */
 export async function movePlanned(p: PlannedWorkout, date: string): Promise<void> {
   if (date === p.date) return;
   const c = await credentials();
   if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* harmless */ } }
-  await db.planned.put({ ...p, date, status: p.status === 'sent' ? 'planned' : p.status, icuEventId: undefined, userEdited: p.planId ? true : p.userEdited, movedFrom: p.movedFrom ?? p.date });
+  const status = p.status === 'sent' || (p.status === 'missed' && date >= today()) ? 'planned' : p.status;
+  await db.planned.put({ ...p, date, status, icuEventId: undefined, userEdited: p.planId ? true : p.userEdited, movedFrom: p.movedFrom ?? p.date });
   notify();
 }
 

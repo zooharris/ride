@@ -4,18 +4,19 @@ import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
-import { allWorkouts, findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
+import { findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
 import { db } from '../../data/db';
-import { FAMILY_LABEL } from '../../library/workouts';
 import type { PlannedWorkout, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
-import { getPlans, movePlanned, removePlanned, replacePlanned } from '../planService';
+import { getPlans, replacePlanned } from '../planService';
+import { ChangeSheet, WorkoutPicker, moveSession } from '../ChangeSheet';
+import { useDragMove } from '../useDragMove';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
 import { WeekBar } from '../Glance';
@@ -37,7 +38,8 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   const pickView = (v: 'list' | 'month') => setView(v);
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
-  const [moveDate, setMoveDate] = useState('');
+  // A month cell with more than one session to change: choose which first.
+  const [choosing, setChoosing] = useState<string | null>(null);
   // Recovery weeks of every plan, to shade them on the month view.
   const [recoveryWeeks, setRecoveryWeeks] = useState<Set<string>>(new Set());
   useEffect(() => { getPlans().then((ps) => setRecoveryWeeks(new Set(ps.flatMap((p) => (p.weeks ?? []).filter((w) => w.phase === 'recovery').map((w) => weekStart(w.start)))))); }, [data.planned.length]);
@@ -45,7 +47,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   useEffect(() => {
     if (!changeId) return;
     const p = data.planned.find((x) => x.id === changeId);
-    if (p && p.status !== 'completed') { setChanging(p); setMoveDate(p.date); }
+    if (p && p.status !== 'completed') setChanging(p);
     history.replaceState(null, '', `${location.pathname}#/calendar${focus ? `?d=${focus}` : ''}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeId]);
@@ -53,19 +55,14 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   const [busy, setBusy] = useState<string | null>(null);
   const days = Array.from({ length: 14 }, (_, i) => addDays(start, i));
 
-  const [pickKind, setPickKind] = useState<'ride' | 'strength' | 'mobility' | 'walk'>('ride');
+  // Drag a session to another day with the mouse (laptop); the ⋯ sheet does the same anywhere.
+  const dnd = useDragMove((id, date) => { const p = data.planned.find((x) => x.id === id); if (p) moveSession(data, p, date); });
+  const movable = (p: PlannedWorkout) => p.status !== 'completed';
   async function add(date: string, w: Workout) {
     if (picking?.replace) await replacePlanned(picking.replace, w, profile.basis);
     else await scheduleWorkout(w, date, profile.basis);
     setPicking(null);
   }
-  async function move() {
-    if (!changing || !moveDate) return;
-    await movePlanned(changing, moveDate);
-    setChanging(null);
-  }
-
-  async function remove(id: string) { await removePlanned(id, data.mine); }
 
   async function sendWeek(ws: string) {
     const c = await credentials();
@@ -106,19 +103,21 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
 
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
-          cellClass={(d) => (recoveryWeeks.has(weekStart(d)) ? 'recovery' : '')}
+          cellClass={(d) => `${recoveryWeeks.has(weekStart(d)) ? 'recovery' : ''} ${dnd.dropClass(d)}`}
           weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <><b class="num">{wk.doneTss}</b>{wk.plannedTss > 0 && <span class="faint"> of {wk.plannedTss}</span>}<span class="faint">TSS</span>{recoveryWeeks.has(ws) && <span class="mn-tag">recovery</span>}</> : null; }}
           render={(d) => {
             const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
             const rides = data.rides.filter((r) => r.date === d && !plans.some((p) => p.activityId === r.id));
+            const changeable = plans.filter(movable);
             return (
               <>
+                {changeable.length > 0 && <button class="month-more" title="Move, replace or remove" aria-label={`Move, replace or remove ${fmtDate(d)}'s session${changeable.length > 1 ? 's' : ''}`} onClick={() => (changeable.length === 1 ? setChanging(changeable[0]) : setChoosing(d))}><Icon.more size={14} /></button>}
                 {plans.map((p) => {
                   const w = findWorkout(data.mine, p.workoutId);
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
                   return (
-                    <a class={`month-item ${p.status} k-${w.kind}`} key={p.id} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
+                    <a class={`month-item ${p.status} k-${w.kind}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
                       <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <span class="sw" />}</span>
                       <span class="mi-name">{w.name}</span>
                     </a>
@@ -148,7 +147,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                 const rides = data.rides.filter((r) => r.date === d);
                 const isToday = d === today();
                 return (
-                  <div class={`cal-day${isToday ? ' today' : ''}`} key={d}>
+                  <div class={`cal-day${isToday ? ' today' : ''} ${dnd.dropClass(d)}`} key={d} data-date={d}>
                     <div class="d">{fmtDate(d, { weekday: 'short' })}<b>{Number(d.slice(8))}</b></div>
                     <div class="c">
                       {plans.map((p) => {
@@ -161,14 +160,14 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                         const plannedLine = w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''}`;
                         const st = statusOf(p.status);
                         return (
-                          <div class={`cal-item ${p.status}`} key={p.id}>
-                            <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} class="row" style="flex:1;min-width:0;text-decoration:none">
+                          <div class={`cal-item ${p.status}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})}>
+                            <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
                               <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
                             </a>
                             <StatusPill status={st} />
-                            {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Replace, move or remove" onClick={() => { setChanging(p); setMoveDate(p.date); }}>⋯</button>}
+                            {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Move, replace or remove" onClick={() => setChanging(p)}>⋯</button>}
                             {rec && <a class="btn sm quiet" href={`#/workout/${w.id}?from=calendar&date=${d}`} title="The session as it was planned">Plan ›</a>}
                           </div>
                         );
@@ -193,50 +192,22 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
 
       </>}
 
-      {changing && (() => {
-        const w = findWorkout(data.mine, changing.workoutId);
-        return (
-          <div class="modal-bg" onClick={() => setChanging(null)}>
-            <div class="modal" onClick={(e) => e.stopPropagation()} style="max-width:480px">
-              <div class="row between" style="margin-bottom:6px"><h2>{w?.name ?? 'This session'}</h2><button class="btn sm quiet" onClick={() => setChanging(null)}>Close</button></div>
-              <p class="muted small" style="margin:0 0 14px">{fmtDate(changing.date)}{changing.planId ? ' · from your plan' : ''}{changing.status === 'sent' ? ' · on your Garmin' : ''}</p>
-              <div class="stack">
-                <button class="btn" style="justify-content:flex-start" onClick={() => { setPicking({ date: changing.date, replace: changing }); setChanging(null); }}>Replace with another workout<span class="faint small" style="margin-left:auto">any kind</span></button>
-                <div class="panel" style="padding:10px 12px">
-                  <div class="small" style="margin-bottom:6px"><b>Move to another day</b></div>
-                  <div class="row wrap" style="gap:8px">
-                    <input type="date" value={moveDate} min={today()} onInput={(e) => setMoveDate((e.target as HTMLInputElement).value)} style="width:auto" />
-                    <button class="btn sm" onClick={move} disabled={!moveDate || moveDate === changing.date}>Move</button>
-                  </div>
-                </div>
-                <button class="btn quiet" style="justify-content:flex-start;color:var(--bad)" onClick={() => { const id = changing.id; setChanging(null); remove(id); }}>Remove from the calendar</button>
-              </div>
-              {changing.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Replacing or moving takes it off the Garmin; send the new one when you are ready.</p>}
-              {changing.planId && <p class="faint small" style="margin:8px 0 0">The plan keeps your change. The daily re-check may still suggest something for this day, which you can accept or ignore.</p>}
-            </div>
-          </div>
-        );
-      })()}
+      {changing && <ChangeSheet data={data} planned={changing} onClose={() => setChanging(null)} />}
 
-      {picking && (
-        <div class="modal-bg" onClick={() => setPicking(null)}>
-          <div class="modal" onClick={(e) => e.stopPropagation()}>
-            <div class="row between" style="margin-bottom:12px">
-              <h2>{picking.replace ? `Replace ${findWorkout(data.mine, picking.replace.workoutId)?.name ?? 'this session'}` : fmtDate(picking.date)}</h2>
-              <button class="btn sm quiet" onClick={() => setPicking(null)}>Close</button>
-            </div>
-            <div class="seg" style="margin-bottom:12px">
-              {(['ride', 'strength', 'mobility', 'walk'] as const).map((k) => <button key={k} class={pickKind === k ? 'on' : ''} onClick={() => setPickKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : KIND_LABEL[k]}</button>)}
-            </div>
-            <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">make a new workout</a>.</p>
+      {choosing && (
+        <div class="modal-bg" onClick={() => setChoosing(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-width:480px" role="dialog" aria-label={`Sessions on ${fmtDate(choosing)}`}>
+            <div class="row between" style="margin-bottom:12px"><h2>{fmtDate(choosing)}</h2><button class="btn sm quiet" onClick={() => setChoosing(null)}>Cancel</button></div>
+            <p class="muted small" style="margin:0 0 10px">Which session do you want to move, replace or remove?</p>
             <div class="stack">
-              {allWorkouts(data.mine).filter((w) => w.kind === pickKind && w.source !== 'generated').map((w) => {
-                const s = workoutStats(w.blocks);
-                const n = w.exercises?.length ?? 0;
+              {plannedOn(data.planned, choosing, (id) => findWorkout(data.mine, id)?.kind ?? 'ride').filter(movable).map((p) => {
+                const w = findWorkout(data.mine, p.workoutId);
+                if (!w) return null;
                 return (
-                  <button class="cal-item" key={w.id} onClick={() => add(picking.date, w)} style="cursor:pointer;text-align:left">
+                  <button class="cal-item" key={p.id} style="cursor:pointer;text-align:left" onClick={() => { setChoosing(null); setChanging(p); }}>
+                    <StatusMark status={statusOf(p.status)} />
                     {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                    <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : FAMILY_LABEL[w.family] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
+                    <div class="t"><b>{w.name}</b><span>{KIND_LABEL[w.kind]}</span></div>
                   </button>
                 );
               })}
@@ -244,6 +215,9 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
           </div>
         </div>
       )}
+
+      {picking && <WorkoutPicker data={data} title={picking.replace ? `Replace ${findWorkout(data.mine, picking.replace.workoutId)?.name ?? 'this session'}` : fmtDate(picking.date)} onPick={(w) => add(picking.date, w)} onClose={() => setPicking(null)} />}
+      {dnd.ghost}
     </div>
   );
 }

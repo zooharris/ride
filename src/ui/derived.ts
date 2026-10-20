@@ -58,3 +58,20 @@ export function elevation(m: number | undefined, profile: Profile): string {
   return profile.units === 'imperial' ? `${Math.round(m * 3.281)} ft` : `${Math.round(m)} m`;
 }
 
+
+/**
+ * The days offered as one-tap moves for a session on `current`: today, tomorrow
+ * and the days after, `n` in all, leaving out the day it is already on.
+ */
+export function quickMoveDays(current: string, n = 6, from = today()): string[] {
+  const out: string[] = [];
+  for (let i = 0; out.length < n && i < n + 1; i++) { const d = addDays(from, i); if (d !== current) out.push(d); }
+  return out;
+}
+
+/** A short label for a one-tap move: Today, Tomorrow, then "Thu 22". */
+export function quickMoveLabel(date: string, from = today()): string {
+  if (date === from) return 'Today';
+  if (date === addDays(from, 1)) return 'Tomorrow';
+  return `${DAY_SHORT[new Date(date + 'T00:00:00').getDay()]} ${Number(date.slice(8))}`;
+}

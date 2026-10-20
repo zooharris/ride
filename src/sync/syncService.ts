@@ -204,18 +204,21 @@ export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | 
 }
 
 /** The earliest day this device has activities or wellness for, or undefined before the first sync. */
-export async function historyCoverage(): Promise<{ from?: string; activities: number }> {
+export async function historyCoverage(): Promise<{ from?: string; wellnessFrom?: string; activities: number }> {
   const first = await db.rides.orderBy('date').first();
   const firstW = await db.wellness.orderBy('date').first();
-  const dates = [first?.date, firstW?.date].filter((d): d is string => !!d).sort();
-  return { from: dates[0], activities: await db.rides.count() };
+  // Activities and wellness are reported apart: wellness often reaches further back (a ring or watch
+  // worn before rides were recorded), and must not make the activity history look complete.
+  return { from: first?.date, wellnessFrom: firstW?.date, activities: await db.rides.count() };
 }
 
 /**
- * Pull older activities and wellness, back to `back`, in 60-day pieces so a
- * long history arrives steadily and a failure part-way keeps what came. Only
- * days before what this device already has are fetched, and an activity
- * already here is never overwritten (it may carry corrections made since).
+ * Pull activities and wellness from `back` to today, in 60-day pieces so a
+ * long history arrives steadily and a failure part-way keeps what came. The
+ * whole span is asked for every time, not only days before the earliest here:
+ * Intervals.icu may have gained older records since (a Garmin history import
+ * finishes in the background), filling gaps inside the span. An activity or
+ * wellness day already here is never overwritten (it may carry corrections).
  * The fitness history and the long Progress ranges use it at once; the power
  * curve reads the new rides the next time Progress opens.
  */
@@ -223,8 +226,7 @@ export async function loadHistory(back: string, onProgress: (done: number, total
   const c = await credentials();
   if (!c) throw new Error('Connect Intervals.icu in Settings first.');
   const profile = await db.profile.get('me');
-  const have = await historyCoverage();
-  const until = addDays(have.from ?? today(), -1);
+  const until = today();
   if (back > until) return { activities: 0, wellness: 0 };
   const pieces: Array<[string, string]> = [];
   for (let from = back; from <= until; from = addDays(from, 60)) {

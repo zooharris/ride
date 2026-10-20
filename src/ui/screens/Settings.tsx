@@ -368,19 +368,18 @@ function Appearance() {
  * power curve and a fitness number built on the full record.
  */
 function HistoryLoader() {
-  const [cov, setCov] = useState<{ from?: string; activities: number } | null>(null);
+  const [cov, setCov] = useState<{ from?: string; wellnessFrom?: string; activities: number } | null>(null);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [custom, setCustom] = useState('');
   const refresh = () => historyCoverage().then(setCov);
   useEffect(() => { refresh(); }, []);
   const t = today();
   async function load(back: string) {
-    if (cov?.from && back >= cov.from) { toast({ ok: true, text: `This device already has everything from ${fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}.` }); return; }
     setProg({ done: 0, total: 1 });
     try {
       const r = await loadHistory(back, (done, total) => setProg({ done, total }));
       notify();
-      toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness.` });
+      toast({ ok: true, text: r.activities || r.wellness ? `Loaded ${r.activities} more activities and ${r.wellness} more days of wellness.` : 'Nothing new: this device already has everything Intervals.icu holds for that span. If a Garmin history import is still running there, try again once it has finished.' });
     } catch (e) {
       toast({ ok: false, text: `Stopped part-way: ${(e as Error).message} What arrived is kept; try again to continue.` });
     } finally { setProg(null); refresh(); }
@@ -389,14 +388,14 @@ function HistoryLoader() {
   return (
     <section class="section">
       <h2>History</h2>
-      <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have.</p>
+      <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have, so it is safe to run again, for example after importing older history into Intervals.icu.</p>
       <div class="panel">
-        <p class="small" style="margin-bottom:10px">{cov?.from ? <>This device has <b>{cov.activities}</b> activities, back to <b>{fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>.</> : 'Nothing synced yet. Press Sync on Today first.'}</p>
+        <p class="small" style="margin-bottom:10px">{cov?.from ? <>This device has <b>{cov.activities}</b> activities, back to <b>{fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>{cov.wellnessFrom ? <>, and wellness (sleep, HRV, resting heart rate) back to <b>{fmtDate(cov.wellnessFrom, { month: 'long', day: 'numeric', year: 'numeric' })}</b></> : ''}.</> : 'Nothing synced yet. Press Sync on Today first.'}</p>
         <div class="row wrap" style="gap:8px">
           <button class="btn sm" disabled={busy || !cov?.from} onClick={() => load(addDays(t, -365))}>Back one year</button>
           <button class="btn sm" disabled={busy || !cov?.from} onClick={() => load(addDays(t, -730))}>Back two years</button>
           <span class="faint small">or from</span>
-          <input type="date" value={custom} max={cov?.from} onInput={(e) => setCustom((e.target as HTMLInputElement).value)} style="width:auto;min-height:32px;padding:4px 8px" aria-label="Load history from this date" />
+          <input type="date" value={custom} max={t} onInput={(e) => setCustom((e.target as HTMLInputElement).value)} style="width:auto;min-height:32px;padding:4px 8px" aria-label="Load history from this date" />
           <button class="btn sm" disabled={busy || !custom || !cov?.from} onClick={() => load(custom)}>Load</button>
         </div>
         {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}

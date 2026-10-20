@@ -51,6 +51,8 @@ export interface PlanRequest {
    * every phase as the weeks go by.
    */
   layout?: Array<{ start: string; phase: Phase }>;
+  /** What the rider has actually done this week up to today, planned or not, so the days left can respond to it. */
+  done?: Array<{ date: string; tss: number; seconds: number; intensity?: number }>;
 }
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
@@ -128,10 +130,10 @@ export function generatePlan(req: PlanRequest): Plan {
   const { seq, decisions } = fixed
     ? { seq: fixed.map((w) => w.phase), decisions: ['The weeks keep the phases the plan was made with; only the sessions are fitted again to your latest data.'] }
     : phaseSequence(n, d, a, goal, req.masters);
-  // Re-checking: weeks already begun are left as they are on the calendar (their days are done,
-  // missed or under way, and squeezing a week's load into the days left would pile it up); they
-  // still count for where each block stands. A new plan starting mid-week fills the days left.
-  const pastWeeks = fixed && req.notBefore ? seq.filter((_, i) => addDays(req.start, i * 7) < req.notBefore!).length : 0;
+  // Re-checking: weeks wholly past are history (they count for where each block stands but are
+  // not rebuilt). The week under way is re-fitted around what was actually done in it (below).
+  const pastWeeks = fixed && req.notBefore ? seq.filter((_, i) => addDays(req.start, i * 7 + 7) <= req.notBefore!).length : 0;
+  const currentIdx = fixed && req.notBefore ? pastWeeks : -1;
   // Standing commitments: a day pinned to rest carries nothing; a day pinned to strength,
   // a walk or mobility is kept clear of rides; a day pinned to a ride always gets one.
   const pinOf = (dw: number): SessionKind | 'rest' | undefined => (av.pins ?? []).find((p) => p.dow === dw)?.kind;
@@ -184,17 +186,12 @@ export function generatePlan(req: PlanRequest): Plan {
     phaseIdx = phase === lastPhase ? phaseIdx + 1 : 0;
     lastPhase = phase;
     const weekStart = addDays(req.start, i * 7);
-    if (i < pastWeeks) {
-      if (isLoading(phase)) {
-        loadingSeen++;
-        // The week under way is being ridden now: fitness is expected to climb through it as planned,
-        // so the weeks after it start from where it will end. Weeks wholly past are already in today's fitness.
-        if (req.notBefore && addDays(weekStart, 7) > req.notBefore) { ctl += ramp; lastLoading = Math.min(capTss, 7 * (ctl + 6 * ramp)) * loadScale; }
-      }
-      return;
-    }
+    if (i < pastWeeks) { if (isLoading(phase)) loadingSeen++; return; }
+    // The week under way, when re-checking: laid out as it was intended (so nothing moves for no
+    // reason), then the days left are fitted to what remains after what was actually done.
+    const refit = i === currentIdx && addDays(weekStart, 7) > req.notBefore! && weekStart < req.notBefore!;
     const isAway = (slot: number) => (req.away ?? []).some((r) => { const d = dateOfSlot(weekStart, slot); return d >= r.from && d <= r.to; });
-    const gone = (slot: number) => (req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false) || isAway(slot);
+    const gone = (slot: number) => (!refit && req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false) || isAway(slot);
     const awayDays = awayDaysInWeek(weekStart, req.away);
     const blockLen = blockLengths[i];
     const progress = blockLen > 1 ? phaseIdx / (blockLen - 1) : 1;
@@ -370,6 +367,7 @@ export function generatePlan(req: PlanRequest): Plan {
     if (i === 0) decisions.push('Mobility is attached to the long ride and to strength days: ten to twelve minutes while the muscles are warm, which is when stretching does the most and costs the least.');
 
     // Fit to the weekly target: shrink or grow the endurance minutes.
+    const goneDay = (slot: number) => refit && dateOfSlot(weekStart, slot) < req.notBefore!;
     const sessions = buildSessions(plan, weekStart);
     const extraTss = extra.reduce((s, x) => s + x.tss, 0);
     let total = sessions.reduce((s, x) => s + x.tss, 0) + extraTss;
@@ -386,7 +384,55 @@ export function generatePlan(req: PlanRequest): Plan {
       sessions.splice(0, sessions.length, ...re);
       total = sessions.reduce((s, x) => s + x.tss, 0) + extraTss;
     }
+
+    // The week under way, re-checked: start from the week exactly as intended, then respond to what was
+    // actually done. Load beyond what the days gone asked for comes off the days left (at most half of
+    // them), and the day after a big or hard day is an easy spin. Load not done is not added: a missed
+    // session is not crammed into the rest of the week. With everything done as planned, nothing changes.
+    if (refit) {
+      const doneSoFar = (req.done ?? []).filter((x) => x.date >= weekStart && x.date < addDays(weekStart, 7));
+      const doneTss = doneSoFar.reduce((s, x) => s + x.tss, 0);
+      const plannedGone = sessions.filter((x) => x.date < req.notBefore!).reduce((s, x) => s + x.tss, 0) + extra.filter((x) => x.date < req.notBefore!).reduce((s, x) => s + x.tss, 0);
+      const excess = Math.max(0, doneTss - plannedGone);
+      const big = doneSoFar.filter((x) => x.seconds >= 3 * 3600 || x.tss >= 150 || ((x.intensity ?? 0) >= 0.85 && x.seconds >= 2700)).map((x) => x.date).sort().pop();
+      if (big || excess > 0) {
+        if (big) {
+          const easyDay = addDays(big, 1);
+          for (const p of plan) {
+            if (dateOfSlot(weekStart, p.slot) !== easyDay || p.intent.type === 'recovery') continue;
+            p.intent = { ...p.intent, type: 'recovery', minutes: Math.min(45, p.intent.minutes), reason: `Easy: the day after a big day (${new Date(big + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long' })}). Spin the legs, nothing more.` };
+            hardDays.delete(p.slot);
+          }
+        }
+        const leftSoft = plan.filter((p) => (p.intent.type === 'endurance' || p.intent.type === 'long') && !goneDay(p.slot));
+        const leftTss = () => sessions.filter((x) => x.date >= req.notBefore!).reduce((s, x) => s + x.tss, 0) + extra.filter((x) => x.date >= req.notBefore!).reduce((s, x) => s + x.tss, 0);
+        let rebuilt = buildSessions(plan, weekStart);
+        sessions.splice(0, sessions.length, ...rebuilt);
+        const intendedLeft = leftTss();
+        const want = Math.max(intendedLeft * 0.5, intendedLeft - excess);
+        const planned = new Map(leftSoft.map((p) => [p, p.intent.minutes]));   // no ride is cut below half its planned length
+        for (let pass = 0; pass < 4 && leftSoft.length && excess > 0; pass++) {
+          const softTss = sessions.filter((x) => x.date >= req.notBefore! && (x.type === 'endurance' || x.type === 'long')).reduce((s, x) => s + x.tss, 0);
+          const other = leftTss() - softTss;
+          const ratio = (want - other) / Math.max(1, softTss);
+          if (ratio > 0.9) break;
+          for (const p of leftSoft) {
+            const floor = Math.max(p.intent.type === 'long' ? 60 : 30, Math.round((planned.get(p) ?? 0) * 0.5));
+            p.intent.minutes = Math.round(Math.max(floor, p.intent.minutes * Math.sqrt(Math.max(0.05, ratio))));
+          }
+          rebuilt = buildSessions(plan, weekStart);
+          sessions.splice(0, sessions.length, ...rebuilt);
+        }
+      }
+      total = sessions.reduce((s, x) => s + x.tss, 0) + extraTss;
+    }
     sessions.push(...extra);
+    if (refit) {
+      // Only the days left are planned; what was on the days gone is history.
+      const left = sessions.filter((x) => x.date >= req.notBefore!);
+      sessions.splice(0, sessions.length, ...left);
+      total = sessions.reduce((s, x) => s + x.tss, 0);
+    }
     sessions.sort((x, y) => x.date.localeCompare(y.date) || KIND_ORDER[x.kind] - KIND_ORDER[y.kind]);
     if (sessions.length === 0 && awayDays === 0) return;   // a first week already over; a week away stays, empty, so the timeline keeps its shape
     for (const s of sessions) if (s.type === 'long' && s.seconds > longestPlanned) longestPlanned = s.seconds;

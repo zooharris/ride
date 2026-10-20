@@ -119,9 +119,12 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     if (p.movedFrom) edited.add(key(p.movedFrom, w.kind));
     if (!p.planId) { edited.add(key(p.date, w.kind)); added.add(key(p.date, w.kind)); }
   }
+  // A date and kind already done is history: never suggested again.
+  const doneKeys = new Set(current.filter((p) => p.date >= from && p.status === 'completed').map((p) => { const w = workouts.get(p.workoutId); return w ? key(p.date, w.kind) : ''; }));
   const changes: Change[] = [];
   const keys = new Set([...before.keys(), ...after.keys()]);
   for (const k of [...keys].sort()) {
+    if (doneKeys.has(k)) continue;
     const [date, kind] = k.split('|');
     const b = before.get(k) ?? [];
     const a = after.get(k) ?? [];

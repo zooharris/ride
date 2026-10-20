@@ -158,7 +158,15 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
   // Re-planning a block already under way: keep its end date, so only the remaining weeks are regenerated.
   const g: Goal = goal.kind !== 'event' && endDate ? { ...goal, weeks: Math.max(1, Math.round((Date.parse(endDate) - Date.parse(start) + 864e5) / (7 * 864e5))) } : goal;
   // Re-checking a plan already under way: its own weeks and phases, from its first week; only the sessions are fitted again.
-  if (layout?.length) return generatePlan({ start: layout[0].start, notBefore: today(), goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout });
+  if (layout?.length) {
+    // What was actually done this week, so the days left respond to it: everything before today, and
+    // anything today that was not a planned session (a planned one done today is already in the plan).
+    const t = today(), wk = weekStart(t);
+    const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
+    const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
+      .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: r.intensityFactor }));
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done });
+  }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });
 }
 
@@ -307,8 +315,8 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
   const review = reviewLastWeek(mine, workouts, data.rides);
   const rejected = await rejectedSigs();
-  // The week under way stays as it is; the re-check adjusts from the next week the new plan covers.
-  const changes = diffPlan(mine, workouts, plan, plan.weeks[0]?.start ?? today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
+  // From today: days already gone are history (done or missed), the days left respond to them.
+  const changes = diffPlan(mine, workouts, plan, today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
   const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;

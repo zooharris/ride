@@ -142,7 +142,7 @@ export function Plan({ data }: { data: AppData }) {
                       <a class="plain-link" href={`#/plan/${p.id}`}><b>{p.name}</b></a> <span class="faint small">· {status}</span>
                       <div class="muted small">{p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })} · ` : `${GOAL_LABEL[p.goal.kind]} · `}{fmtDate(p.start, { month: 'short', day: 'numeric' })} to {fmtDate(p.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}{p.requiredCtl ? ` · goal wants fitness ${p.requiredCtl}` : ''}</div>
                     </div>
-                    <div class="row" style="gap:6px">
+                    <div class="row wrap" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
                       <a class="btn sm" href={`#/plan/${p.id}`}>Open</a>
                       <button class="btn sm quiet" onClick={() => rename(p)} disabled={busy}>Rename</button>
@@ -223,7 +223,7 @@ export function Plan({ data }: { data: AppData }) {
             <h2 style="margin-bottom:12px">Weekly load</h2>
             <div class="panel">
               <PlanTimeline weeks={plan.weeks} goalDate={plan.goalDate} event={goal.kind === 'event' ? (goal.name || 'Event') : undefined} bars />
-              <p class="faint small" style="margin-top:6px">Planned training load (TSS) for each week, coloured by phase. Load climbs through each block and drops in the recovery weeks, so fitness can catch up with the work. Hover a week for its name and load.</p>
+              <p class="faint small" style="margin-top:6px">Planned training load (TSS) for each week, coloured by phase. Load climbs through each block and drops in the recovery weeks, so fitness can catch up with the work. Tap or hover over a week for its name and load.</p>
             </div>
           </section>
 
@@ -311,7 +311,7 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
         bands={FORM_BANDS}
         readout={(i) => { const f = series[i]; return `${fmt(f.date)} · fitness ${Math.round(f.ctl)} · fatigue ${Math.round(f.atl)} · form ${f.tsb > 0 ? '+' : ''}${Math.round(f.tsb)}`; }}
       />
-      <p class="faint small" style="margin-top:8px">Starts at fitness {Math.round(first.ctl)} today; reaches {Math.round(ti > 0 ? series[ti].ctl : last.ctl)}{ti > 0 ? ' when the taper starts' : ` by ${fmt(goalDate)}`}, with form {last.tsb > 0 ? '+' : ''}{Math.round(last.tsb)} on {fmt(last.date)}. Hover the chart for any day.</p>
+      <p class="faint small" style="margin-top:8px">Starts at fitness {Math.round(first.ctl)} today; reaches {Math.round(ti > 0 ? series[ti].ctl : last.ctl)}{ti > 0 ? ' when the taper starts' : ` by ${fmt(goalDate)}`}, with form {last.tsb > 0 ? '+' : ''}{Math.round(last.tsb)} on {fmt(last.date)}. Tap or hover over the chart for any day.</p>
     </div>
   );
 }

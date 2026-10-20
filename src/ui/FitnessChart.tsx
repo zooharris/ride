@@ -46,10 +46,10 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
       series={[
         { name: 'fitness', color: 'var(--info)', values: histOnly((f) => f.ctl), width: 2.2, explain: '42-day weighted average of daily training load' },
         { name: 'fatigue', color: 'var(--z5)', values: histOnly((f) => f.atl), width: 1.3, explain: '7-day weighted average of daily training load' },
-        { name: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), dash: '2 3', width: 1.2, explain: 'fitness minus fatigue; negative while building, positive when fresh' },
+        { name: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), width: 1.2, explain: 'fitness minus fatigue; negative while building, positive when fresh' },
         ...(proj.length ? [
           { name: 'fitness, as planned', color: 'var(--info)', values: projOnly((f) => f.ctl), dash: '6 4', width: 1.8, explain: 'fitness if every session on the calendar is done as planned' },
-          { name: 'form, as planned', color: 'var(--ink-2)', values: projOnly((f) => f.tsb), dash: '1 3', width: 1.2, explain: 'form if every session on the calendar is done as planned' },
+          { name: 'form, as planned', color: 'var(--ink-3)', values: projOnly((f) => f.tsb), dash: '3 3', width: 1.4, explain: 'form if every session on the calendar is done as planned' },
         ] : []),
       ]}
       xLabels={all.map((f) => f.date)}

@@ -93,6 +93,12 @@ input, select, textarea {
 }
 input::placeholder { color: var(--ink-3); }
 input[type=number] { -moz-appearance: textfield; }
+/* iPhone Safari gives date fields a minimum width of their own; hold them to their box, left-aligned like the rest. */
+input[type=date] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; text-align: left; }
+input[type=date]::-webkit-date-and-time-value { text-align: left; }
+.field input[type=date] { display: block; width: 100%; }
+.chart-legend > span { white-space: nowrap; }
+.chart .chart-legend svg { display: inline-block; width: 22px; height: 8px; vertical-align: middle; }
 a { color: inherit; }
 h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 h1 { font-size: 28px; line-height: 32px; font-weight: 700; letter-spacing: -0.02em; }

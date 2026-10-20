@@ -111,7 +111,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
           <h2 style="margin-bottom:12px">Weekly load</h2>
           <div class="panel">
             <PlanTimeline weeks={weeks} goalDate={plan.goalDate} event={plan.goal.kind === 'event' ? (plan.goal.name || 'Event') : undefined} bars />
-            <p class="faint small" style="margin-top:6px">Planned training load for each week as it stands on your calendar now, coloured by phase. Hover a week for its name and load.</p>
+            <p class="faint small" style="margin-top:6px">Planned training load for each week as it stands on your calendar now, coloured by phase. Tap or hover over a week for its name and load.</p>
           </div>
         </section>
       )}

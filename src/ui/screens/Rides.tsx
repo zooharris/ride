@@ -88,7 +88,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                       <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
                       <div class="t">
                         <b>{r.name}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
-                        <span>{fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {clock(r.seconds)}{r.distanceM ? ` · ${distance(r.distanceM, profile)}` : ''}{mph(r.averageSpeedMs) && r.sport === 'ride' ? ` · ${mph(r.averageSpeedMs)}` : ''}</span>
+                        <span>{[fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' }), clock(r.seconds), r.distanceM ? distance(r.distanceM, profile) : '', r.sport === 'ride' ? mph(r.averageSpeedMs) : ''].filter(Boolean).map((s) => s.replace(/ /g, '\u00a0')).join(' · ')}</span>
                       </div>
                       {zones && zones.some((z) => z > 0) && <ZoneStrip seconds={zones} power={!!r.powerZoneSeconds?.length} />}
                       <div class="act-load">

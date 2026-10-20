@@ -33,7 +33,10 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   const H = height, padR = 10, padT = 12, padB = 22;
   let padL = 40;
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refLines.map((r) => r.value));
-  const lo = yMin ?? Math.min(0, ...all);
+  const lo0 = yMin ?? Math.min(0, ...all);
+  const hi00 = yMax ?? Math.max(...all);
+  // Room below the lowest value too, so a line never runs along the bottom edge under a label.
+  const lo = yMin ?? (lo0 < 0 ? lo0 - (hi00 - lo0) * 0.08 : lo0);
   const hi0 = yMax ?? Math.max(...all);
   const hi = hi0 === lo ? lo + 1 : hi0 + (hi0 - lo) * 0.08;
   const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
@@ -54,7 +57,7 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={yTitle}
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
         onMouseLeave={() => setHover(null)}>
-        {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end">{b.label}</text>}</g>; })}
+        {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">{b.label}</text>}</g>; })}
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{fmtStep(t, step)}</text></g>)}
         {xTicks.map(([i, t]) => <text key={i} x={x(i)} y={H - 6} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{t}</text>)}
         <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">{yTitle}</text>
@@ -66,8 +69,10 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
         {h != null && <line x1={x(h)} x2={x(h)} y1={padT} y2={H - padB} stroke="var(--accent)" />}
         {h != null && series.map((s) => s.values[h] == null ? null : <circle key={s.name} cx={x(h)} cy={y(s.values[h] as number)} r="3" fill={s.color} />)}
       </svg>
-      <div class="row wrap faint small" style="gap:14px;margin-top:4px">
-        {series.map((s) => <span key={s.name} title={s.explain}><span style={`color:${s.color}`}>{s.dots ? '•' : s.dash ? '- -' : '—'}</span> {s.name}</span>)}
+      <div class="row wrap faint small chart-legend" style="gap:4px 14px;margin-top:4px">
+        {series.map((s) => <span key={s.name} title={s.explain}>{s.dots
+          ? <span style={`color:${s.color}`}>•</span>
+          : <svg width="22" height="8" style="display:inline-block;vertical-align:middle;margin-right:5px" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" stroke={s.color} stroke-width={Math.max(1.6, s.width ?? 1.8)} stroke-dasharray={s.dash} /></svg>}{s.name}</span>)}
       </div>
       {h != null && (
         <div class="panel small" style="position:absolute;top:6px;right:6px;padding:6px 10px;pointer-events:none;max-width:70%">

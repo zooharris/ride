@@ -285,7 +285,7 @@ export function Today({ data }: { data: AppData }) {
           <FitnessTiles series={series} />
           <FitnessChart series={series} range={range} projection={projection} events={events} />
         </div>
-        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry fitness and form forward over what is on your calendar. Hover a band or a line for more.</p>
+        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry fitness and form forward over what is on your calendar. Tap or hover over a band or a line for more.</p>
       </section>
       </div>
       </div>
@@ -334,7 +334,7 @@ function DayNoteEditor({ date, note, hasWellness }: { date: string; note?: DayNo
     try { await saveDayNote(date, { text, badWellness: bad }); setOpen(false); } finally { setSaving(false); }
   }
   if (!open) {
-    if (!note?.text && !note?.badWellness) return <button class="btn sm quiet" style="margin-top:10px" onClick={() => setOpen(true)}>Add a note about today</button>;
+    if (!note?.text && !note?.badWellness) return <button class="btn sm quiet" style="margin-top:10px;padding-left:0;padding-right:0" onClick={() => setOpen(true)}>Add a note about today</button>;
     return (
       <div class="row between" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);gap:10px;align-items:flex-start">
         <div class="small"><span class="muted">Your note:</span> {note.text || <span class="faint">no text</span>}{note.badWellness ? <span class="faint"> · wellness set aside</span> : null}</div>

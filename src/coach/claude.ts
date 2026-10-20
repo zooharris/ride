@@ -138,6 +138,8 @@ export interface CoachReview {
   text: string;
   applyChanges: boolean;      // Claude's view on the planner's proposal
   reason: string;
+  /** Set when the coach's reply could not be read: why, for troubleshooting. The text is then empty and never shown. */
+  failed?: string;
 }
 
 /**
@@ -146,7 +148,7 @@ export interface CoachReview {
  * plan; the rider does, with one tap.
  */
 export async function reviewAfterSync(apiKey: string, ctx: ReviewContext): Promise<CoachReview> {
-  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Reply ONLY with JSON of the form {"text": string, "applyChanges": boolean, "reason": string}. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. Never describe who placed a session on the calendar or how it was recorded or synced. Durations are in minutes and training load is in TSS: two different numbers, never compare one with the other; when a new activity completed a planned session, judge it on its recorded duration against the planned duration. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
+  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Answer with the review tool. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. Never describe who placed a session on the calendar or how it was recorded or synced. Durations are in minutes and training load is in TSS: two different numbers, never compare one with the other; when a new activity completed a planned session, judge it on its recorded duration against the planned duration. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
 
 Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm. Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}
@@ -156,19 +158,39 @@ Last week:\n${ctx.lastWeek.map((n) => '- ' + n).join('\n') || '- nothing to repo
 The app's proposed plan changes:\n${ctx.proposedChanges.map((n) => '- ' + n).join('\n') || '- no changes proposed'}
 The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') || '- none'}`;
 
+  // The answer comes back through a tool with a fixed form, so there is no free text to pick JSON out of.
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model: MODEL, max_tokens: 600, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({
+      model: MODEL, max_tokens: 1200,
+      tools: [REVIEW_TOOL], tool_choice: { type: 'tool', name: REVIEW_TOOL.name },
+      messages: [{ role: 'user', content: prompt }],
+    }),
   });
   if (!res.ok) throw new Error(`Claude answered ${res.status}. Check the API key in Settings.`);
-  const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
-  const raw = data.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
-  const json = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
-  try {
-    const parsed = JSON.parse(json) as { text: string; applyChanges: boolean; reason: string };
-    return { date: ctx.date, text: parsed.text, applyChanges: !!parsed.applyChanges, reason: parsed.reason ?? '' };
-  } catch {
-    return { date: ctx.date, text: raw, applyChanges: false, reason: '' };
+  return readReview(ctx.date, await res.json());
+}
+
+const REVIEW_TOOL = {
+  name: 'review',
+  description: "The coach's review of the rider's newly synced activities.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      text: { type: 'string', description: '4 to 7 plain sentences to the rider.' },
+      applyChanges: { type: 'boolean', description: "Whether the app's proposed plan changes should be applied as they stand." },
+      reason: { type: 'string', description: 'One sentence on why.' },
+    },
+    required: ['text', 'applyChanges', 'reason'],
+  },
+};
+
+/** The review out of Claude's reply, or a failed review that says why, never raw text. */
+export function readReview(date: string, data: { content?: Array<{ type: string; input?: unknown; text?: string }>; stop_reason?: string }): CoachReview {
+  const use = data.content?.find((c) => c.type === 'tool_use')?.input as { text?: unknown; applyChanges?: unknown; reason?: unknown } | undefined;
+  if (use && typeof use.text === 'string' && use.text.trim()) {
+    return { date, text: use.text.trim(), applyChanges: use.applyChanges === true, reason: typeof use.reason === 'string' ? use.reason : '' };
   }
+  return { date, text: '', applyChanges: false, reason: '', failed: data.stop_reason === 'max_tokens' ? 'the reply was cut off before it finished' : use ? 'the reply was missing its text' : `no review in the reply (${data.stop_reason ?? 'unknown reason'})` };
 }

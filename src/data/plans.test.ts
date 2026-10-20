@@ -117,4 +117,10 @@ describe('suggestions and reviews', () => {
     await setSetting('coachReview', { date: addDays(today(), -1), text: 'Old.', applyChanges: false, reason: '' });
     expect(await getCoachReview()).toBeNull();
   });
+  it('a raw reply kept by an older build shows as a failed review', async () => {
+    await setSetting('coachReview', { date: today(), text: '{"text": "The one new activity is a 1:18 ride, with 0', applyChanges: false, reason: '' });
+    const r = await getCoachReview();
+    expect(r?.text).toBe('');
+    expect(r?.failed).toBeTruthy();
+  });
 });

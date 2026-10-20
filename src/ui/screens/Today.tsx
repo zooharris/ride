@@ -94,6 +94,25 @@ export function Today({ data }: { data: AppData }) {
     } finally { setChecking(false); }
   }
 
+  /** Everything as it is in storage now, for a coach request right after a sync. */
+  async function storedData(): Promise<AppData> {
+    const notes = await db.dayNotes.toArray();
+    return { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
+  }
+
+  const [retrying, setRetrying] = useState(false);
+  async function retryReview() {
+    setRetrying(true);
+    try {
+      const fresh = await storedData();
+      // Reviews saved by older builds do not list their activities; the last two days' stand in.
+      const ids = review?.ids?.length ? review.ids : fresh.rides.filter((r) => r.date >= addDays(date, -1)).map((r) => r.id);
+      const out = await coachReviewAfterSync(fresh, ids, true);
+      if (out) { setReview(await getCoachReview()); if (out.check) setCheck(out.check); }
+    } catch (e) { setMsg({ ok: false, text: `The coach review failed again: ${(e as Error).message}` }); }
+    finally { setRetrying(false); }
+  }
+
   async function rejectSuggested(changes: Change[]) {
     if (!check) return;
     await rejectChanges(changes);
@@ -133,9 +152,7 @@ export function Today({ data }: { data: AppData }) {
       if (r.newIds.length) {
         setBusy('review');
         try {
-          const notes = await db.dayNotes.toArray();
-          const fresh = { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
-          const out = await coachReviewAfterSync(fresh, r.newIds);
+          const out = await coachReviewAfterSync(await storedData(), r.newIds);
           if (out) { setReview(await getCoachReview()); if (out.check) setCheck(out.check); }
         } catch (e) { setMsg({ ok: false, text: `Synced, but the coach review failed: ${(e as Error).message}` }); }
       }
@@ -238,7 +255,7 @@ export function Today({ data }: { data: AppData }) {
 
       <NextUp data={data} date={date} />
 
-      <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} />
+      <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />
       </div>
       <div class="today-side">
       <section class="section">

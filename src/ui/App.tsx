@@ -22,6 +22,7 @@ import { PrintView } from './screens/Print';
 import { Icon } from './icons';
 import { Logo, Mark } from './Brand';
 import { Toaster } from './Toast';
+import { UpdateBanner } from './UpdateBanner';
 import { Skeleton } from './PageHead';
 
 const TABS = [
@@ -91,7 +92,7 @@ export function App() {
         <a href="#/help" class="help-link" aria-label="Help"><Icon.help size={20} /></a>
         <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>
       </header>
-      <main class="main">{screen}</main>
+      <main class="main"><UpdateBanner />{screen}</main>
       <Toaster />
     </div>
   );

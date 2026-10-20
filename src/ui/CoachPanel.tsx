@@ -13,7 +13,7 @@ const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined
  * written, so the panel never goes blank), the review of the last sync, and a
  * box for questions. Without a Claude key it says how to turn the coach on.
  */
-export function CoachPanel({ ctx, date, daySig, review, onDismissReview }: { ctx: CoachContext; date: string; daySig: string; review: SavedReview | null; onDismissReview: () => void }) {
+export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetryReview, retrying }: { ctx: CoachContext; date: string; daySig: string; review: SavedReview | null; onDismissReview: () => void; onRetryReview: () => void; retrying: boolean }) {
   const [key, setKey] = useState<string | null>(null);
   const [note, setNote] = useState<SavedNote | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -66,7 +66,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview }: { ctx
     setTurns((t) => [...t, asked]);
     setQuestion('');
     try {
-      const earlier = [note?.text, review?.text].filter((x): x is string => !!x);
+      const earlier = [note?.text, review && !review.failed ? review.text : undefined].filter((x): x is string => !!x);
       const answer = await askCoach(key, ctxRef.current, turns, q, earlier);
       const next = [...turns, asked, { role: 'coach' as const, text: answer, at: new Date().toISOString() }];
       setTurns(next);
@@ -104,8 +104,13 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview }: { ctx
 
         {review && (
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-            <div class="row between"><b class="small">Review of the activities synced at {time(review.at)}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
-            <p style="margin-top:6px;font-size:15px;line-height:1.6">{review.text}</p>
+            <div class="row between"><b class="small">{review.at ? `Review of the activities synced at ${time(review.at)}` : 'Review of the latest synced activities'}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
+            {review.failed ? (
+              <div class="row between wrap" style="gap:8px;margin-top:6px">
+                <span class="muted small">The coach's review couldn't be read ({review.failed}).</span>
+                <button class="btn sm" onClick={onRetryReview} disabled={retrying}>{retrying ? 'Asking again…' : 'Try again'}</button>
+              </div>
+            ) : <p style="margin-top:6px;font-size:15px;line-height:1.6">{review.text}</p>}
           </div>
         )}
 

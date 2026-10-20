@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityLine, describeSession, durationWords } from './claude';
+import { activityLine, describeSession, durationWords, readReview } from './claude';
 import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 
 const planned = (over: Partial<PlannedWorkout>): PlannedWorkout => ({ id: 'p', date: '2026-10-19', workoutId: 'w', basis: 'power', status: 'planned', ...over });
@@ -29,5 +29,20 @@ describe('the coach sees the whole calendar', () => {
     expect(line).toMatch(/recorded training load 16 TSS/);
     expect(activityLine(rec)).toMatch(/duration 30 min 39 s, training load 16 TSS/);
     expect(durationWords(3900)).toBe('1 h 05 min');
+  });
+});
+
+describe('reading the review', () => {
+  it('takes the three fields from the tool reply', () => {
+    const r = readReview('2026-10-19', { content: [{ type: 'tool_use', input: { text: 'Good walk.', applyChanges: true, reason: 'Small.' } }], stop_reason: 'tool_use' });
+    expect(r).toMatchObject({ text: 'Good walk.', applyChanges: true, reason: 'Small.' });
+    expect(r.failed).toBeUndefined();
+  });
+  it('a cut-off or empty reply is a failed review with a reason, never raw text', () => {
+    const cut = readReview('2026-10-19', { content: [{ type: 'text', text: '{"text": "The one new activity is a 1:18 ride, with 0' }], stop_reason: 'max_tokens' });
+    expect(cut.text).toBe('');
+    expect(cut.failed).toMatch(/cut off/);
+    const empty = readReview('2026-10-19', { content: [{ type: 'tool_use', input: {} }], stop_reason: 'tool_use' });
+    expect(empty.failed).toMatch(/missing its text/);
   });
 });

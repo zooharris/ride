@@ -333,8 +333,8 @@ export async function markChecked(): Promise<void> {
  * With the setting on and a key present, Claude reviews each batch of new
  * activities against the plan's own re-check. Nothing is applied here.
  */
-export async function coachReviewAfterSync(data: AppData, newIds: string[]): Promise<{ review: CoachReview; check: Replan | null } | null> {
-  const on = await getSetting<boolean>('coachAuto', false);
+export async function coachReviewAfterSync(data: AppData, newIds: string[], asked = false): Promise<{ review: CoachReview; check: Replan | null } | null> {
+  const on = asked || (await getSetting<boolean>('coachAuto', false));
   const key = await getSetting<string>('claudeKey', '');
   if (!on || !key || newIds.length === 0) return null;
   const profile = data.profile as Profile;
@@ -362,17 +362,20 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[]): Pro
     newActivities: fresh,
     riderNotes: recentNoteLines(data.dayNotes, today(), 14),
   });
-  await setSetting('coachReview', { ...review, at: new Date().toISOString() } as SavedReview);
+  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: newIds } as SavedReview);
   return { review, check };
 }
 
 /** The coach's review after a sync, kept until the rider dismisses it or a newer one replaces it. */
-export type SavedReview = CoachReview & { at?: string; dismissed?: boolean };
+export type SavedReview = CoachReview & { at?: string; dismissed?: boolean; ids?: string[] };
 
 /** Today's review, unless dismissed. */
 export async function getCoachReview(): Promise<SavedReview | null> {
   const r = await getSetting<SavedReview | null>('coachReview', null);
-  return r && r.date === today() && !r.dismissed ? r : null;
+  if (!r || r.date !== today() || r.dismissed) return null;
+  // Older builds kept an unreadable reply as raw text; show it as a failed review instead.
+  if (!r.failed && r.text.trim().startsWith('{')) return { ...r, text: '', failed: 'the reply could not be read' };
+  return r;
 }
 
 export async function dismissCoachReview(): Promise<void> {

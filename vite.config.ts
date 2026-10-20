@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [
     preact(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icon.svg', 'mark.svg', 'apple-touch-icon.png'],
       manifest: {
         name: APP_NAME,

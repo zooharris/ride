@@ -134,6 +134,10 @@ export interface PlannedWorkout {
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
   rpe?: number;
   loggedSeconds?: number;
+  /** Recordings the rider said were not this session ("Not this session"); never matched to it again. */
+  notActivityIds?: string[];
+  /** When the app relabelled the matched recording's type in Intervals.icu, what it was before, so an unmatch can put it back. */
+  relabelled?: { activityId: string; from: string };
 }
 
 /** A completed activity from the watch or computer (ride, walk, strength session), as stored locally after sync. */

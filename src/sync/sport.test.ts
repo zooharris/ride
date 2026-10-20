@@ -110,4 +110,12 @@ describe('pairing recordings to planned sessions', () => {
     const m = pairRecordings(planned, [short], () => ({ name: 'Leesburg', kind: 'ride', minutes: 120 }));
     expect(m.get('pr')?.id).toBe('r1');
   });
+  it('never re-pairs a recording the rider said was not the session, and takes a later one instead', async () => {
+    const { pairRecordings } = await import('./syncService');
+    const planned = [{ id: 'ps', date: '2026-10-20', workoutId: 'lift', basis: 'power' as const, status: 'sent' as const, icuEventId: 7, notActivityIds: ['extra'] }];
+    const rec = (id: string, seconds: number) => ({ id, name: 'Strength', type: 'WeightTraining', date: '2026-10-20', sport: 'strength', seconds, pairedEventId: 7 } as unknown as Ride);
+    const fn = () => ({ name: 'Strength A: legs and trunk', kind: 'strength' as const, minutes: 40 });
+    expect(pairRecordings(planned, [rec('extra', 1800)], fn).size).toBe(0);
+    expect(pairRecordings(planned, [rec('extra', 1800), rec('later', 2400)], fn).get('ps')?.id).toBe('later');
+  });
 });

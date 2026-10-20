@@ -4,7 +4,7 @@ import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
 import type { IntervalsCredentials } from './intervals';
-import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, testConnection, updateActivityType } from './intervals';
+import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityType } from './intervals';
 import { syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
@@ -64,14 +64,20 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
       score(match);
     }
     if (match && kind !== 'ride' && ICU_TYPE_FOR_KIND[kind] && match.type !== ICU_TYPE_FOR_KIND[kind]) {
-      try { await updateActivityType(c, match.id, ICU_TYPE_FOR_KIND[kind]); match.type = ICU_TYPE_FOR_KIND[kind]; } catch { /* next sync tries again */ }
+      try {
+        const from = match.type;
+        await updateActivityType(c, match.id, ICU_TYPE_FOR_KIND[kind]);
+        match.type = ICU_TYPE_FOR_KIND[kind];
+        if (p.relabelled?.activityId !== match.id) { p.relabelled = { activityId: match.id, from }; await db.planned.update(p.id, { relabelled: p.relabelled }); }
+      } catch { /* next sync tries again */ }
     }
     if (match && (p.status !== 'completed' || p.activityId !== match.id)) {
       await db.planned.update(p.id, { status: 'completed', activityId: match.id });
     } else if (!match && p.status === 'completed' && p.activityId && !p.loggedSeconds) {
       // It was marked done from a recording that no longer counts: too short, or
       // deleted. Undo that. Sessions the rider logged by hand stay done.
-      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined });
+      await undoRelabel(c, p);
+      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: undefined });
     } else if (!match && p.date < today() && p.status !== 'completed') {
       await db.planned.update(p.id, { status: 'missed' });
     }
@@ -155,6 +161,37 @@ export async function loadHistory(back: string, onProgress: (done: number, total
  * recording after the workout, whatever type it files it under). Then the same
  * day and kind for whatever is left. Each recording pairs once.
  */
+/** If the app relabelled a recording's type when it matched it, put the original type back. */
+async function undoRelabel(c: IntervalsCredentials, p: PlannedWorkout): Promise<void> {
+  const r = p.relabelled;
+  if (!r || r.activityId !== p.activityId) return;
+  try {
+    await updateActivityType(c, r.activityId, r.from);
+    const local = await db.rides.get(r.activityId);
+    if (local) await db.rides.update(r.activityId, { type: r.from, sport: sportOf(r.from, local.averageSpeedMs) });
+  } catch { /* the recording keeps the planned kind's label in Intervals.icu; harmless */ }
+}
+
+/**
+ * The rider says a matched recording was not this session (an extra workout the
+ * same day, with the planned one still to come). The session goes back to to-do
+ * (missed if its day has passed), the recording stays as an extra activity with
+ * its load, its original type is restored if the app had relabelled it, and it
+ * is never matched to this session again.
+ */
+export async function unmatchRecording(plannedId: string): Promise<void> {
+  const p = await db.planned.get(plannedId);
+  if (!p?.activityId) return;
+  const c = await credentials();
+  if (c) await undoRelabel(c, p);
+  await db.planned.update(p.id, {
+    status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned',
+    activityId: undefined,
+    relabelled: undefined,
+    notActivityIds: [...(p.notActivityIds ?? []), p.activityId],
+  });
+}
+
 /** The planned length of a session in seconds, when the workout says. */
 export function plannedSeconds(w: Partial<Pick<Workout, 'minutes' | 'walk' | 'blocks'>> | undefined): number | undefined {
   if (!w) return undefined;
@@ -183,7 +220,7 @@ export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workout
   const named = (r: Ride, w: { name: string; subtitle?: string }) => sameName(r.name, w.name) || (!!w.subtitle && sameName(r.name, `${w.name} · ${w.subtitle}`));
   const matches = new Map<string, Ride>();
   // Every pass, Intervals.icu's own pairing included, needs a believable recording.
-  const fits = (p: PlannedWorkout, r: Ride) => free(r) && plausibleFor(r, plannedSeconds(workoutOf(p.workoutId)));
+  const fits = (p: PlannedWorkout, r: Ride) => free(r) && !p.notActivityIds?.includes(r.id) && plausibleFor(r, plannedSeconds(workoutOf(p.workoutId)));
   for (const p of planned) {
     const w = workoutOf(p.workoutId);
     const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && fits(p, r))

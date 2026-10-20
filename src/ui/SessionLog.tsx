@@ -2,9 +2,10 @@ import { useState } from 'preact/hooks';
 import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 import { clock } from '../engine/workout';
 import { loggedTss } from '../engine/sessions';
+import { today } from '../engine/load';
 import { db } from '../data/db';
 import { notify } from './store';
-import { credentials } from '../sync/syncService';
+import { credentials, unmatchRecording } from '../sync/syncService';
 import { createManualActivity } from '../sync/intervals';
 
 /**
@@ -40,17 +41,26 @@ export function SessionLog({ planned, workout, defaultMinutes, recording }: { pl
     setBusy(false);
   }
 
+  const notThis = async () => {
+    const when = recording ? ` (${recording.name}, ${clock(recording.seconds)})` : '';
+    if (!confirm(`Was the recording${when} something else, not ${workout.name}?\n\n${workout.name} goes back to to-do${planned.date < today() ? ' (missed, as its day has passed)' : ''}. The recording stays as an extra activity and still counts toward your training load. The app will not match it to this session again.`)) return;
+    setBusy(true);
+    await unmatchRecording(planned.id);
+    notify();
+    setBusy(false);
+  };
+  const notThisButton = <button class="btn sm quiet" onClick={notThis} disabled={busy} title="The recording was an extra workout, not this session; put this session back to to-do">Not this session</button>;
   if (planned.status === 'completed') {
     if (recording) {
       return (
         <div class="msg ok row between wrap" style="gap:10px">
           <span>Done · {clock(recording.seconds)} recorded{recording.tss != null ? ` · training load ${recording.tss} TSS` : ''}{recording.averageHr ? ` · average heart rate ${Math.round(recording.averageHr)} bpm` : ''}.</span>
-          <a class="btn sm" href={`#/rides/${recording.id}`}>See the recording ›</a>
+          <span class="row" style="gap:6px">{notThisButton}<a class="btn sm" href={`#/rides/${recording.id}`}>See the recording ›</a></span>
         </div>
       );
     }
     if (planned.activityId) {
-      return <div class="msg ok">Done. The recording is in Intervals.icu; press Sync on Today to bring it to this device.</div>;
+      return <div class="msg ok row between wrap" style="gap:10px"><span>Done. The recording is in Intervals.icu; press Sync on Today to bring it to this device.</span>{notThisButton}</div>;
     }
     return <div class="msg ok">Done, logged by hand{planned.loggedSeconds ? ` · ${Math.round(planned.loggedSeconds / 60)} min` : ''}{planned.rpe ? ` · effort ${planned.rpe}/10` : ''}. No recording.</div>;
   }

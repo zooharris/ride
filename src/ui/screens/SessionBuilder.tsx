@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, getCurrentEquipment, notify } from '../store';
 import type { Equipment, Exercise, SessionKind, Workout } from '../../engine/types';
-import { EXERCISES, type Pattern } from '../../library/strength';
+import { EXERCISES, lightLoad, type Pattern } from '../../library/strength';
 import { MOBILITY, type Target } from '../../library/mobility';
 import { db } from '../../data/db';
 import { newId } from '../../engine/workout';
@@ -60,7 +60,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     go(then === 'date' ? 'calendar' : 'library');
   }
 
-  const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', hinge: 'Hinge', 'single-leg': 'Single leg', push: 'Push', pull: 'Pull', trunk: 'Trunk', hip: 'Hips and calves' };
+  const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', hinge: 'Hinge', 'single-leg': 'Single leg', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };
   const TARGET_LABEL: Record<Target, string> = { hips: 'Hips', hamstrings: 'Hamstrings', thoracic: 'Upper back', glutes: 'Glutes', quads: 'Quads', calves: 'Calves', 'neck-shoulders': 'Neck and shoulders', 'low-back': 'Lower back' };
 
   return (
@@ -97,8 +97,8 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
       {kind === 'strength' && (
         <section class="section">
           <div class="field"><label>Equipment to choose from</label>
-            <div class="chips">{([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight']] as Array<[Equipment, string]>).map(([q, l]) => <button key={q} class={`chip${equipment.includes(q) ? ' on' : ''}`} onClick={() => setEquipment(equipment.includes(q) ? equipment.filter((e) => e !== q) : [...equipment, q])}>{l}</button>)}</div></div>
-          <Picker onAdd={add} label="Add an exercise" items={pool.map((e) => ({ name: e.name, group: PATTERN_LABEL[e.pattern], make: () => ({ name: e.name, sets: 3, reps: e.unilateral ? '8–10 per side' : '8–10', load: e.loadable ? 'Leave 2 reps in reserve' : 'Bodyweight; slow and controlled', cue: e.cue, why: e.why, equipment: e.equipment }) }))} />
+            <div class="chips">{([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight'], ['barbell', 'Barbell'], ['pullup-bar', 'Pull-up bar'], ['dip-bars', 'Dip bars']] as Array<[Equipment, string]>).map(([q, l]) => <button key={q} class={`chip${equipment.includes(q) ? ' on' : ''}`} onClick={() => setEquipment(equipment.includes(q) ? equipment.filter((e) => e !== q) : [...equipment, q])}>{l}</button>)}</div></div>
+          <Picker onAdd={add} label="Add an exercise" items={pool.map((e) => ({ name: e.name, group: PATTERN_LABEL[e.pattern], make: () => ({ name: e.name, sets: 3, reps: /carry/i.test(e.name) ? undefined : `${e.reps ?? '8–10'}${e.unilateral ? ' per side' : ''}`, holdSeconds: /carry/i.test(e.name) ? 40 : undefined, load: e.loadable ? 'Leave 2 reps in reserve' : lightLoad(e), cue: e.cue, why: e.why, equipment: e.equipment }) }))} />
         </section>
       )}
       {kind === 'mobility' && (

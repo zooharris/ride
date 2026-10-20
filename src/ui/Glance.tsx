@@ -43,7 +43,9 @@ export function WeekStrip({ week }: { week: WeekSummary }) {
         <div class="ws-track" role="img" aria-label={`${week.doneTss} of ${week.plannedTss} planned training load done`}>
           <div class="ws-fill" style={`width:${pct}%`} />
         </div>
-        <p class="small muted"><b class="num" style="color:var(--ink)">{week.doneTss}</b> of {week.plannedTss} planned training load (TSS) · {week.sessionsDone} of {week.sessionsPlanned} planned sessions done · {hoursLabel(week.doneMinutes)} of {hoursLabel(week.plannedMinutes)}</p>
+        {week.sessionsPlanned > 0
+          ? <p class="small muted"><b class="num" style="color:var(--ink)">{week.doneTss}</b> of {week.plannedTss} planned training load (TSS) · {week.sessionsDone} of {week.sessionsPlanned} planned sessions done · {hoursLabel(week.doneMinutes)} of {hoursLabel(week.plannedMinutes)}</p>
+          : <p class="small muted">This week: <b class="num" style="color:var(--ink)">{week.doneTss}</b> training load (TSS) in {hoursLabel(week.doneMinutes)}. Nothing planned yet.</p>}
       </div>
     </section>
   );
@@ -110,6 +112,7 @@ export const BAND_COLOR: Record<Band, string> = { go: 'var(--good)', ease: 'var(
 /** The arc uses the brighter zone yellow for "easy" so it reads as a colour, not a brown, in the light theme. */
 const BAND_ARC: Record<Band, string> = { go: 'var(--good)', ease: 'var(--accent)', easy: 'var(--z4)', rest: 'var(--bad)' };
 export const BAND_WORD: Record<Band, string> = { go: 'Ready', ease: 'Ease off a little', easy: 'Keep it easy', rest: 'Rest' };
+const BAND_LINES: Record<Band, string[]> = { go: ['Ready'], ease: ['Ease off', 'a little'], easy: ['Keep it', 'easy'], rest: ['Rest'] };
 
 /** The readiness score as the brand's dial: a 270° gauge open at the bottom, filled to the score in the band's colour. */
 export function ReadinessDial({ score, band, size = 156 }: { score: number; band: Band; size?: number }) {
@@ -121,13 +124,17 @@ export function ReadinessDial({ score, band, size = 156 }: { score: number; band
   };
   const end = start + (sweep * Math.max(0, Math.min(100, score))) / 100;
   const ticks = [55, 75].map((v) => start + (sweep * v) / 100);
+  // The band word must fit inside the ring: anything longer than one short word goes on two lines.
+  const lines = BAND_LINES[band];
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`Readiness ${score} of 100: ${BAND_WORD[band]}`} style="display:block;flex:0 0 auto">
       <path d={arc(start, start + sweep)} fill="none" stroke="var(--bg-3)" stroke-width="9" stroke-linecap="round" />
       {score > 0 && <path d={arc(start, Math.max(start + 0.5, end))} fill="none" stroke={BAND_ARC[band]} stroke-width="9" stroke-linecap="round" class="dial-fill" />}
       {ticks.map((a) => { const t = (a * Math.PI) / 180; return <line key={a} x1={cx + 33 * Math.cos(t)} y1={cy + 33 * Math.sin(t)} x2={cx + 36 * Math.cos(t)} y2={cy + 36 * Math.sin(t)} stroke="var(--ink-3)" stroke-width="1" />; })}
-      <text x="50" y="53" text-anchor="middle" font-size="25" font-weight="700" fill="var(--ink)" style="letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{score}</text>
-      <text x="50" y="66" text-anchor="middle" font-size="7.2" font-weight="600" fill={BAND_COLOR[band]} style="text-transform:uppercase;letter-spacing:.06em">{BAND_WORD[band]}</text>
+      <text x="50" y={lines.length > 1 ? 50 : 53} text-anchor="middle" font-size="25" font-weight="700" fill="var(--ink)" style="letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{score}</text>
+      <text x="50" y={lines.length > 1 ? 61 : 66} text-anchor="middle" font-size="6.4" font-weight="600" fill={BAND_COLOR[band]} style="text-transform:uppercase;letter-spacing:.05em">
+        {lines.map((l, i) => <tspan key={i} x="50" dy={i ? 7.4 : 0}>{l}</tspan>)}
+      </text>
       <text x="50" y="92" text-anchor="middle" font-size="6" fill="var(--ink-3)">of 100</text>
     </svg>
   );

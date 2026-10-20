@@ -102,7 +102,7 @@ export function WeekFields({ av, setAv, masters, setMasters, profile }: { av: Av
         </div>
         <div class="field" style="margin-top:14px"><label>What you have</label>
           <div class="chips">
-            {([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight only'], ['trainer', 'Indoor trainer'], ['treadmill', 'Treadmill'], ['outdoor-walk', 'Somewhere to walk']] as Array<[Equipment, string]>).map(([q, l]) => (
+            {([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['barbell', 'Barbell'], ['pullup-bar', 'Pull-up bar'], ['dip-bars', 'Dip bars'], ['bodyweight', 'Bodyweight only'], ['trainer', 'Indoor trainer'], ['treadmill', 'Treadmill'], ['outdoor-walk', 'Somewhere to walk']] as Array<[Equipment, string]>).map(([q, l]) => (
               <button key={q} class={`chip${av.equipment.includes(q) ? ' on' : ''}`} onClick={() => toggleEquipment(q)}>{l}</button>
             ))}
           </div>

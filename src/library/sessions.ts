@@ -1,6 +1,6 @@
 import type { Equipment, Exercise, Workout } from '../engine/types';
 import { estimateSessionTss, generateMobility, generateStrength, generateWalk } from '../engine/sessions';
-import { exercisesFor, type Pattern } from './strength';
+import { exercisesFor, lightLoad, type Pattern } from './strength';
 import { MOBILITY } from './mobility';
 
 /**
@@ -32,12 +32,12 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   // Themed strength sessions
   const themed: Array<{ id: string; name: string; minutes: number; purpose: string; physiology?: string; patterns: Pattern[]; sets: number; reps: string; load: string; only?: Equipment[]; prefer?: string[]; effort: number }> = [
     { id: 'core-hips', effort: 4, name: 'Core and hips (20 min)', minutes: 20, purpose: 'A short trunk and hip session for any day; no fatigue to carry into tomorrow’s ride.', physiology: 'A stable pelvis and trunk let the legs deliver power without the upper body absorbing it.', patterns: ['trunk', 'hip', 'trunk', 'hip', 'trunk'], sets: 2, reps: '12–15', load: 'Bodyweight or light; quality over load', prefer: ['dead-bug', 'clamshell', 'side-plank', 'side-lying-leg-raise', 'bird-dog'] },
-    { id: 'posture', effort: 6, name: 'Upper body and posture (30 min)', minutes: 30, purpose: 'Push and pull for the shoulders, upper back and neck that hours on the hoods round forward.', patterns: ['pull', 'push', 'pull', 'push', 'trunk'], sets: 3, reps: '10–12', load: 'Moderate; strict form, full range' },
+    { id: 'posture', effort: 6, name: 'Upper body and posture (30 min)', minutes: 30, purpose: 'Push and pull for the shoulders, upper back and neck that hours on the hoods round forward.', patterns: ['pull', 'push', 'pull', 'push', 'carry'], sets: 3, reps: '10–12', load: 'Moderate; strict form, full range' },
     { id: 'single-leg', effort: 6, name: 'Single-leg strength (35 min)', minutes: 35, purpose: 'Every exercise on one leg at a time, the way the pedal stroke works; finds and fixes the weaker side.', physiology: 'One-sided strength and hip control; the difference between legs is often what limits a sprint or a standing climb.', patterns: ['single-leg', 'single-leg', 'hinge', 'hip', 'trunk'], sets: 3, reps: '8–10 per side', load: 'Moderate; the weaker side sets the weight' },
     { id: 'glutes-hams', effort: 6, name: 'Glutes and hamstrings (35 min)', minutes: 35, purpose: 'The posterior chain: what pulls the pedal through the bottom of the stroke and keeps the low back out of trouble.', patterns: ['hinge', 'hinge', 'single-leg', 'hip', 'trunk'], sets: 3, reps: '8–10', load: 'Moderate to heavy on the hinges' },
     { id: 'power', effort: 7, name: 'Legs: power (30 min)', minutes: 30, purpose: 'Fewer reps, moved fast: strength that turns into a sprint or a kick over a rise.', physiology: 'Rate of force development falls with age faster than strength itself; moving loads quickly keeps it.', patterns: ['hinge', 'squat', 'single-leg', 'trunk'], sets: 4, reps: '5', load: 'Moderate, moved as fast as control allows; long rests', prefer: ['db-swing', 'goblet-squat', 'step-up', 'hollow-hold'] },
     { id: 'anywhere', effort: 5, name: 'Bodyweight anywhere (25 min)', minutes: 25, purpose: 'No equipment: a hotel room or a living-room floor is enough.', patterns: ['squat', 'single-leg', 'hinge', 'push', 'trunk', 'hip'], sets: 3, reps: '12–15', load: 'Bodyweight; slow and controlled', only: ['bodyweight'] },
-    { id: 'express', effort: 6, name: 'Full body express (25 min)', minutes: 25, purpose: 'One of everything in under half an hour for a busy day.', patterns: ['squat', 'hinge', 'push', 'pull', 'trunk'], sets: 2, reps: '10', load: 'Moderate; keep moving between exercises' },
+    { id: 'express', effort: 6, name: 'Full body express (25 min)', minutes: 25, purpose: 'One of everything in under half an hour for a busy day.', patterns: ['squat', 'hinge', 'push', 'pull', 'carry', 'rotate'], sets: 2, reps: '10', load: 'Moderate; keep moving between exercises' },
   ];
   for (const t of themed) {
     const have = t.only ?? eq;
@@ -50,7 +50,7 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
       if (!pick) continue;
       used.add(pick.id);
       const isHold = /plank|dead bug|bird dog|pallof|wall sit|hollow|carry/i.test(pick.name);
-      exercises.push({ name: pick.name, sets: t.sets, reps: isHold ? undefined : pick.unilateral && !/per side/.test(t.reps) ? `${t.reps} per side` : t.reps, holdSeconds: isHold ? 40 : undefined, load: pick.loadable ? t.load : 'Bodyweight; slow and controlled', cue: pick.cue, why: pick.why, equipment: pick.equipment });
+      exercises.push({ name: pick.name, sets: t.sets, reps: isHold ? undefined : pick.unilateral && !/per side/.test(pick.reps ?? t.reps) ? `${pick.reps ?? t.reps} per side` : pick.reps ?? t.reps, holdSeconds: isHold ? 40 : undefined, load: pick.loadable ? t.load : lightLoad(pick), cue: pick.cue, why: pick.why, equipment: pick.equipment });
     }
     out.push({ id: `lib-str-${t.id}`, name: t.name, kind: 'strength', family: 'recovery', purpose: t.purpose, physiology: t.physiology, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises, effort: t.effort, estimatedTss: estimateSessionTss({ kind: 'strength', minutes: t.minutes, effort: t.effort }), minutes: t.minutes, source: 'library' });
   }

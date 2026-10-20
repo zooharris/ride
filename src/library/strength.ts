@@ -5,7 +5,7 @@ import type { Equipment, Exercise } from '../engine/types';
  * it and why it matters on the bike. Sessions are built from these by pattern,
  * so a rider with only bodyweight still gets a complete session.
  */
-export type Pattern = 'squat' | 'hinge' | 'single-leg' | 'push' | 'pull' | 'trunk' | 'hip';
+export type Pattern = 'squat' | 'hinge' | 'single-leg' | 'push' | 'pull' | 'carry' | 'rotate' | 'trunk' | 'hip';
 
 export interface ExerciseDef extends Omit<Exercise, 'sets' | 'reps' | 'load'> {
   id: string;
@@ -13,10 +13,12 @@ export interface ExerciseDef extends Omit<Exercise, 'sets' | 'reps' | 'load'> {
   /** Suitable for heavier, lower-rep work (needs load) or best kept light. */
   loadable: boolean;
   unilateral?: boolean;
+  /** Reps that suit this exercise whatever the session's scheme (e.g. pull-ups: as many clean reps as you have, up to 8). */
+  reps?: string;
 }
 
-const E = (id: string, pattern: Pattern, name: string, equipment: Equipment[], cue: string, why: string, loadable = true, unilateral = false): ExerciseDef =>
-  ({ id, pattern, name, equipment, cue, why, loadable, unilateral });
+const E = (id: string, pattern: Pattern, name: string, equipment: Equipment[], cue: string, why: string, loadable = true, unilateral = false, reps?: string): ExerciseDef =>
+  ({ id, pattern, name, equipment, cue, why, loadable, unilateral, ...(reps ? { reps } : {}) });
 
 export const EXERCISES: ExerciseDef[] = [
   // Squat
@@ -45,7 +47,7 @@ export const EXERCISES: ExerciseDef[] = [
   E('dead-bug', 'trunk', 'Dead bug', ['bodyweight'], 'On your back, arms up, knees over hips; lower one arm and the opposite leg slowly without the lower back lifting.', 'A trunk that transfers power without the pelvis rocking.', false),
   E('plank', 'trunk', 'Plank', ['bodyweight'], 'Forearms down, body in one line, glutes tight, breathe.', 'Front-of-body endurance for the riding position.', false),
   E('side-plank', 'trunk', 'Side plank', ['bodyweight'], 'Elbow under the shoulder, hips lifted and stacked, body straight; both sides.', 'Lateral trunk strength that keeps the hips level on each pedal stroke.', false, true),
-  E('pallof', 'trunk', 'Pallof press with band', ['band'], 'Band anchored to the side at chest height, press the hands straight out and resist the pull to rotate.', 'Anti-rotation strength; the trunk stays still while the legs work.', false, true),
+  E('pallof', 'rotate', 'Pallof press with band', ['band'], 'Band anchored to the side at chest height, press the hands straight out and resist the pull to rotate.', 'Anti-rotation strength; the trunk stays still while the legs work.', false, true),
   E('bird-dog', 'trunk', 'Bird dog', ['bodyweight'], 'On hands and knees, reach one arm and the opposite leg out long, hold, switch; no twist in the hips.', 'Back endurance and hip control.', false, true),
   // Hip
   E('clamshell', 'hip', 'Clamshell', ['bodyweight', 'band'], 'On your side, knees bent, feet together, lift the top knee without the pelvis rolling back.', 'Glute medius, which keeps the knee tracking straight over the pedal.', false, true),
@@ -62,11 +64,41 @@ export const EXERCISES: ExerciseDef[] = [
   E('band-row', 'pull', 'Band row', ['band'], 'Band anchored in front at chest height, row the hands to the ribs, squeeze the shoulder blades, slow return.', 'Upper-back strength with just a band.'),
   E('db-pullover', 'pull', 'Dumbbell pullover', ['dumbbells', 'bench'], 'Lying across the bench, one dumbbell held over the chest, lower it in an arc behind the head and pull it back.', 'Lats and chest opening; the breathing muscles get a stretch under load.'),
   // More trunk
-  E('farmer-carry', 'trunk', 'Farmer carry', ['dumbbells'], 'A heavy dumbbell in each hand, walk tall for the distance or time; no leaning.', 'Grip, trunk and posture under load; useful strength for the whole day, not just the bike.', true),
+  E('farmer-carry', 'carry', 'Farmer carry', ['dumbbells'], 'A heavy dumbbell in each hand, walk tall for the distance or time; no leaning.', 'Grip, trunk and posture under load; useful strength for the whole day, not just the bike.', true),
   E('hollow-hold', 'trunk', 'Hollow hold', ['bodyweight'], 'On your back, lower back pressed down, arms and legs held long and low, hold.', 'Deep front-trunk strength for an aero position that does not sag.', false),
-  E('suitcase-carry', 'trunk', 'Suitcase carry', ['dumbbells'], 'One heavy dumbbell in one hand, walk tall without leaning to either side; switch hands.', 'Lateral trunk strength; the hips stay level while one leg pushes.', true, true),
+  E('suitcase-carry', 'carry', 'Suitcase carry', ['dumbbells'], 'One heavy dumbbell in one hand, walk tall without leaning to either side; switch hands.', 'Lateral trunk strength; the hips stay level while one leg pushes.', true, true),
+  // Gym and home versions of the seven patterns (Oct 20, 2026). Gym versions need a barbell,
+  // a pull-up bar or dip bars; each has a home version with dumbbells, a bench or a band.
+  E('back-squat', 'squat', 'Back squat', ['barbell'], 'Bar across the upper back (not the neck), from a rack or safety stands; sit down to thighs level, knees over toes, heels down, drive up.', 'The heaviest leg loading there is: quads and glutes for power at the top of the stroke, and bone loading riding never gives.'),
+  E('walking-lunge', 'single-leg', 'Walking lunge', ['dumbbells', 'bodyweight'], 'A dumbbell in each hand, a long step forward, lower until the back knee nearly touches, front shin vertical, step through into the next.', 'Single-leg strength with balance and hip control, one leg at a time like the pedal stroke.', true, true),
+  E('db-deadlift', 'hinge', 'Dumbbell deadlift', ['dumbbells'], 'Dumbbells beside the feet, hips back, flat back; push the floor away and stand tall, then lower the same way.', 'Whole posterior chain from the floor: glutes, hamstrings and back that hold the riding position for hours.'),
+  E('bb-deadlift', 'hinge', 'Barbell deadlift', ['barbell'], 'Bar over the middle of the feet, shins close, flat back, hands just outside the knees; push the floor away, bar close to the legs, stand tall, lower with control.', 'The strongest hinge: posterior chain and grip under the heaviest load you can move safely.'),
+  E('bb-good-morning', 'hinge', 'Barbell good morning', ['barbell'], 'Light bar across the upper back, soft knees, push the hips back until the torso tips about 45 degrees with a flat back, then drive the hips forward.', 'Hamstrings and lower back in the bent-over position cycling holds; keep the weight light.'),
+  E('band-good-morning', 'hinge', 'Band good morning', ['band'], 'Band under both feet and over the upper back; push the hips back with a flat back until the torso tips about 45 degrees, stand back up.', 'The same hamstring and lower-back work as the barbell version with just a band.', false, false, '12–15'),
+  E('dip', 'push', 'Dip', ['dip-bars'], 'On two parallel bars, arms straight, shoulders down; bend the elbows straight back with a slight lean until the upper arms are level, press up.', 'Chest, shoulders and triceps that hold the upper body still over the bars.', false, false, '5–10'),
+  E('bench-dip', 'push', 'Bench dip', ['bench'], 'Hands on the bench edge behind you, fingers forward, knees bent; bend the elbows straight back to a right angle, shoulders down, press up.', 'Triceps and shoulder strength with only a bench; bend the knees more to make it easier.', false, false, '8–12'),
+  E('pull-up', 'pull', 'Pull-up', ['pullup-bar'], 'Hang with hands just wider than the shoulders, draw the shoulder blades down and pull until the chin clears the bar, lower slowly to a straight-arm hang.', 'Back and arm strength for climbing out of the saddle and a body that is not just legs.', false, false, '3–8'),
+  E('band-lat-pulldown', 'pull', 'Band lat pulldown', ['band'], 'Band anchored high (top of a door), kneeling tall; pull the elbows down and out until the hands are by the shoulders, return slowly.', 'The pull-up muscles with a band: lats and upper back.', false, false, '12–15'),
+  E('bb-row', 'pull', 'Barbell row', ['barbell'], 'Overhand grip just outside the knees, hinge to about 45 degrees with a flat back, row the bar to the lower ribs, lower slowly.', 'Heavy upper-back and posterior-chain work: posture on the bike and the hinge held under load.'),
+  E('band-face-pull', 'pull', 'Band face pull', ['band'], 'Band anchored at head height, pull the hands toward the face with elbows high and wide, thumbs back, squeeze the shoulder blades.', 'Rear shoulders and the rotator cuff: the antidote to hours on the hoods.', false, false, '12–15'),
+  E('overhead-carry', 'carry', 'Overhead carry', ['dumbbells'], 'Press one dumbbell overhead, arm straight beside the ear, ribs down; walk tall without leaning, then switch hands.', 'Shoulder stability and a trunk that stays upright under load.', true, true),
+  E('band-woodchop', 'rotate', 'Band woodchop', ['band'], 'Band anchored high to one side, both hands on it, feet wide; pull down and across to the opposite knee, turning the hips and chest, arms long; return slowly.', 'Rotational power from the hips through the trunk, controlled on the way back.', false, true, '10–12'),
+  E('russian-twist', 'rotate', 'Russian twist', ['dumbbells', 'bodyweight'], 'Sit with knees bent, heels down, lean back about 45 degrees with a straight back; turn the chest and dumbbell side to side, knees still.', 'Obliques and trunk rotation; the trunk turns while the hips stay put.', false, true, '10–12'),
 ];
 
+/** Carries and rotation borrow a trunk exercise when the rider has nothing for them (e.g. bodyweight only). */
+const GYM: Equipment[] = ['barbell', 'pullup-bar', 'dip-bars'];
+const FALLBACK: Partial<Record<Pattern, Pattern>> = { carry: 'trunk', rotate: 'trunk' };
+
 export function exercisesFor(pattern: Pattern, have: Equipment[]): ExerciseDef[] {
-  return EXERCISES.filter((e) => e.pattern === pattern && e.equipment.some((q) => have.includes(q)));
+  // When the rider has gym equipment, its exercises lead the rotation: a barbell should be used, not saved for week five.
+  const gym = (e: ExerciseDef) => (e.equipment.some((q) => GYM.includes(q)) ? 0 : 1);
+  const found = EXERCISES.filter((e) => e.pattern === pattern && e.equipment.some((q) => have.includes(q))).sort((x, y) => gym(x) - gym(y));
+  const fb = FALLBACK[pattern];
+  return found.length || !fb ? found : exercisesFor(fb, have);
+}
+
+/** Load advice for an exercise that is not loaded heavily: a band says so, the rest is bodyweight. */
+export function lightLoad(e: Pick<ExerciseDef, 'equipment'>): string {
+  return e.equipment.length === 1 && e.equipment[0] === 'band' ? 'Light to medium band; slow and controlled' : 'Bodyweight; slow and controlled';
 }

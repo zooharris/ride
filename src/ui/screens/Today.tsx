@@ -397,8 +397,8 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
     const d = v != null && prev != null ? Math.round(v) - Math.round(prev) : null;
     return (
       <div class="stat" title={help}>
-        <div class="v" style={`font-size:28px;line-height:32px;color:${color}`}>{v == null ? '–' : `${signed && v > 0 ? '+' : ''}${Math.round(v)}`}</div>
-        <div class="l">{label}{d != null && <span class="delta" style={`color:${d === 0 ? 'var(--ink-3)' : 'var(--ink-2)'}`}>{d > 0 ? '▲' : d < 0 ? '▼' : '·'} {Math.abs(d)} in 7 days</span>}</div>
+        <div class="v" style={`font-size:28px;line-height:32px;color:${color}`}>{v == null ? '–' : `${signed && v > 0 ? '+' : ''}${Math.round(v) < 0 ? '−' + Math.abs(Math.round(v)) : Math.round(v)}`}</div>
+        <div class="l">{label}{d != null && <span class="delta" style={`color:${d === 0 ? 'var(--ink-3)' : 'var(--ink-2)'}`}>{d === 0 ? 'no change in 7 days' : `${d > 0 ? '▲' : '▼'} ${Math.abs(d)} in 7 days`}</span>}</div>
       </div>
     );
   };
@@ -424,7 +424,7 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
     { name: 'HRV', vals: days.map((d) => w(d)?.hrv ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
     { name: 'Sleep', vals: days.map((d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }), fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
     { name: 'Resting HR', vals: days.map((d) => w(d)?.restingHr ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Resting HR'] },
-    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => `${v > 0 ? '+' : ''}${Math.round(v)}`, unit: '', help: READINESS_HELP.Form },
+    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => `${v > 0 ? '+' : Math.round(v) < 0 ? '−' : ''}${Math.abs(Math.round(v))}`, unit: '', help: READINESS_HELP.Form },
   ];
   return (
     <div class="rd-rows">
@@ -439,7 +439,7 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
             <span class="rd-name">{r.name}</span>
             <Sparkline values={r.vals} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} />
             <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}<span class="faint" style="font-weight:400">{todayV != null && r.unit ? ` ${r.unit}` : ''}</span></span>
-            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'no data' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? r.fmt(Math.abs(diff)) : Math.abs(Math.round(diff))} vs normal`}</span>
+            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? r.fmt(Math.abs(diff)) : Math.abs(Math.round(diff))} vs normal`}</span>
           </div>
         );
       })}

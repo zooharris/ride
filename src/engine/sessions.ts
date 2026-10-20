@@ -1,6 +1,6 @@
 import type { Equipment, Exercise, Workout } from './types';
 import { newId } from './workout';
-import { exercisesFor, type Pattern } from '../library/strength';
+import { exercisesFor, lightLoad, type Pattern } from '../library/strength';
 import { mobilityFor, type Target } from '../library/mobility';
 
 /**
@@ -26,8 +26,9 @@ const SCHEME: Record<StrengthLevel, { sets: number; reps: string; load: string; 
   light:      { sets: 2, reps: '10', load: 'Light and quick; this is maintenance, not a stimulus', trunkSets: 2, hold: 30 },
 };
 
-const PLAN_A: Pattern[] = ['squat', 'single-leg', 'hinge', 'hip', 'trunk', 'trunk'];
-const PLAN_B: Pattern[] = ['push', 'pull', 'single-leg', 'hinge', 'pull', 'trunk'];
+// Between them the two days cover all seven patterns: squat, lunge (single leg), hinge, push, pull, carry and rotate.
+const PLAN_A: Pattern[] = ['squat', 'single-leg', 'hinge', 'hip', 'rotate', 'trunk'];
+const PLAN_B: Pattern[] = ['push', 'pull', 'single-leg', 'hinge', 'pull', 'carry'];
 
 export function generateStrength(intent: StrengthIntent): Workout {
   const s = SCHEME[intent.level];
@@ -40,15 +41,17 @@ export function generateStrength(intent: StrengthIntent): Workout {
     const options = exercisesFor(p, have).filter((e) => !used.has(e.id));
     if (!options.length) continue;
     // rotate through the options week by week so the same pattern gets a different exercise
-    const pick = options[(intent.weekInBlock + (intent.variant === 'B' ? 1 : 0)) % options.length];
+    // a pattern both days share is offset on B so the two days differ; B-only patterns start at the top (a gym lift first)
+    const offset = intent.variant === 'B' && PLAN_A.includes(p) ? 1 : 0;
+    const pick = options[(intent.weekInBlock + offset) % options.length];
     used.add(pick.id);
     const isHold = /plank|dead bug|bird dog|pallof|wall sit|hollow|carry/i.test(pick.name);
     exercises.push({
       name: pick.name,
-      sets: p === 'trunk' || p === 'hip' ? s.trunkSets : s.sets,
-      reps: isHold ? undefined : pick.unilateral ? `${s.reps} per side` : s.reps,
+      sets: p === 'trunk' || p === 'hip' || p === 'rotate' || p === 'carry' ? s.trunkSets : s.sets,
+      reps: isHold ? undefined : pick.unilateral ? `${pick.reps ?? s.reps} per side` : pick.reps ?? s.reps,
       holdSeconds: isHold ? s.hold : undefined,
-      load: pick.loadable ? s.load : 'Bodyweight; slow and controlled',
+      load: pick.loadable ? s.load : lightLoad(pick),
       cue: pick.cue,
       why: pick.why,
       equipment: pick.equipment,

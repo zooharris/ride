@@ -67,7 +67,7 @@ export interface Exercise {
   equipment: Equipment[];
 }
 
-export type Equipment = 'bodyweight' | 'dumbbells' | 'bench' | 'band' | 'treadmill' | 'outdoor-walk' | 'trainer';
+export type Equipment = 'bodyweight' | 'dumbbells' | 'bench' | 'band' | 'barbell' | 'pullup-bar' | 'dip-bars' | 'treadmill' | 'outdoor-walk' | 'trainer';
 
 export interface WalkSpec {
   minutes: number;

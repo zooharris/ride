@@ -30,17 +30,18 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
  * the power zone it falls in, so a lap's effort reads without the numbers.
  * Without power, the bar is heart rate against threshold heart rate.
  */
-export function LapsTable({ intervals, ftp, lthr }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number }) {
+export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; heartRateOnly?: boolean }) {
   const rows = intervals.filter((iv) => iv.end > iv.start);
   if (!rows.length) return null;
-  const byW = rows.some((r) => r.avgWatts) && ftp > 0;
+  const byW = !heartRateOnly && rows.some((r) => r.avgWatts) && ftp > 0;
+  const showPower = !heartRateOnly && rows.some((r) => r.avgWatts);
   const ref = byW ? ftp : lthr || 1;
   const scaleTop = Math.max(ref * 1.25, ...rows.map((r) => (byW ? r.avgWatts ?? 0 : r.avgHr ?? 0)));
   const refPct = (ref / scaleTop) * 100;
   return (
     <>
       <table class="steps laps">
-        <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td><td class="r faint small">Avg power</td><td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
+        <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td>{showPower && <td class="r faint small">Avg power</td>}<td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
         {rows.map((r, i) => {
           const v = byW ? r.avgWatts ?? 0 : r.avgHr ?? 0;
           const zone = byW ? powerZone(v / ftp) : hrZone(v / ref);
@@ -50,7 +51,7 @@ export function LapsTable({ intervals, ftp, lthr }: { intervals: NonNullable<Str
               <td class="faint">{i + 1}</td>
               <td>{r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
               <td class="r num">{clock(Math.round(r.end - r.start))}</td>
-              <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>
+              {showPower && <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>}
               <td class="r num">{r.avgHr ? `${Math.round(r.avgHr)} bpm` : '–'}</td>
               <td class="lap-barcol" title={`${pctOfRef}% of ${byW ? 'FTP' : 'threshold heart rate'} · zone ${zone}`}>
                 <div class="lap-cell">

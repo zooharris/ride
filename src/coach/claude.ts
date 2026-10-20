@@ -13,6 +13,16 @@ const MODEL = 'claude-sonnet-5-5';
 export interface TodaySession {
   planned: PlannedWorkout;
   workout: Workout;
+  /** The recording paired with it, once done: its real duration and load are what the coach should speak to. */
+  recorded?: Ride;
+}
+
+/** A duration in words ("30 min 39 s", "1 h 05 min"), so it cannot be mistaken for any other number. */
+export function durationWords(seconds: number): string {
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `${h} h ${String(m).padStart(2, '0')} min`;
+  return sec ? `${m} min ${sec} s` : `${m} min`;
 }
 
 export interface CoachContext {
@@ -34,20 +44,23 @@ export interface CoachContext {
 const KIND_WORD: Record<Workout['kind'], string> = { ride: 'ride', strength: 'strength session', mobility: 'mobility session', walk: 'walk', other: 'session' };
 
 /** One line per session on the day, with what it is, how big it is, and whether it is done. */
-export function describeSession({ planned, workout }: TodaySession): string {
+export function describeSession({ planned, workout, recorded }: TodaySession): string {
   const parts: string[] = [`${workout.name} (${KIND_WORD[workout.kind]})`];
   if (workout.kind === 'ride') {
     const s = workoutStats(workout.blocks);
-    parts.push(`${Math.round(s.seconds / 60)} min, TSS ${s.tss}, IF ${s.intensityFactor.toFixed(2)}`);
+    parts.push(`planned duration ${durationWords(s.seconds)}, planned training load ${s.tss} TSS, IF ${s.intensityFactor.toFixed(2)}`);
   } else {
-    if (workout.minutes) parts.push(`${workout.minutes} min`);
-    if (workout.estimatedTss != null) parts.push(`about ${workout.estimatedTss} TSS`);
+    if (workout.minutes) parts.push(`planned duration ${workout.minutes} min`);
+    if (workout.estimatedTss != null) parts.push(`planned training load about ${workout.estimatedTss} TSS`);
     if (workout.kind === 'strength' && workout.effort) parts.push(`planned effort ${workout.effort}/10`);
     if (workout.kind === 'walk' && workout.walk) parts.push(workout.walk.hrLow > 0 ? `heart rate ${Math.round(workout.walk.hrLow * 100)}–${Math.round(workout.walk.hrHigh * 100)}% of max` : `no minimum heart rate, up to ${Math.round(workout.walk.hrHigh * 100)}% of max`);
     if (workout.exercises?.length) parts.push(`${workout.exercises.length} exercises: ${workout.exercises.slice(0, 6).map((e) => e.name).join(', ')}${workout.exercises.length > 6 ? '…' : ''}`);
   }
   if (workout.purpose) parts.push(workout.purpose);
-  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${planned.loggedSeconds ? `, ${Math.round(planned.loggedSeconds / 60)} min logged` : ''}`
+  const done = recorded
+    ? `, recorded duration ${durationWords(recorded.seconds)}${recorded.tss != null ? `, recorded training load ${recorded.tss} TSS` : ''}${recorded.averageHr ? `, average heart rate ${Math.round(recorded.averageHr)} bpm` : ''}`
+    : planned.loggedSeconds ? `, logged duration ${durationWords(planned.loggedSeconds)}` : '';
+  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}`
     : planned.status === 'sent' ? 'on the Garmin, not done yet'
     : planned.status === 'missed' ? 'marked missed'
     : 'not done yet';
@@ -56,10 +69,15 @@ export function describeSession({ planned, workout }: TodaySession): string {
   return parts.join('; ');
 }
 
+/** One activity for the coach, every number named, so a duration cannot be read as a load or the other way round. */
+export function activityLine(r: Ride): string {
+  return `${r.date}: ${r.name} (${r.sport}), duration ${durationWords(r.seconds)}, training load ${r.tss ?? '?'} TSS${r.normalizedPower ? `, normalized power ${r.normalizedPower} W` : ''}${r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}`;
+}
+
 export async function dailyNote(apiKey: string, ctx: CoachContext): Promise<string> {
-  const rides = ctx.recentRides.slice(0, 7).map((r) => `${r.date}: ${r.name} (${r.sport}), ${Math.round(r.seconds / 60)} min, TSS ${r.tss ?? '?'}${r.normalizedPower ? `, NP ${r.normalizedPower}W` : ''}${r.averageHr ? `, avg HR ${r.averageHr}` : ''}`).join('\n');
+  const rides = ctx.recentRides.slice(0, 7).map(activityLine).join('\n');
   const sessions = ctx.todaySessions.map((s) => '- ' + describeSession(s)).join('\n');
-  const prompt = `You are a cycling coach writing one short note for today to a masters road cyclist (over 50). Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar below is the rider's plan for today, whether the app's plan or the rider placed each session there; speak to every session listed, do not describe the day as empty when something is listed, and do not tell the rider to do a session that is marked already done.
+  const prompt = `You are a cycling coach writing one short note for today to a masters road cyclist (over 50). Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar below is the rider's plan for today, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one; speak to every session listed, do not describe the day as empty when something is listed, and do not tell the rider to do a session that is marked already done.
 
 Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm, trains ${ctx.profile.hoursPerWeek} h/week, basis ${ctx.profile.basis}.
 Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
@@ -113,7 +131,7 @@ export interface CoachReview {
  * plan; the rider does, with one tap.
  */
 export async function reviewAfterSync(apiKey: string, ctx: ReviewContext): Promise<CoachReview> {
-  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Reply ONLY with JSON of the form {"text": string, "applyChanges": boolean, "reason": string}. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
+  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Reply ONLY with JSON of the form {"text": string, "applyChanges": boolean, "reason": string}. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. Durations are in minutes and training load is in TSS: two different numbers, never compare one with the other; when a new activity completed a planned session, judge it on its recorded duration against the planned duration. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
 
 Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm. Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}

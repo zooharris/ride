@@ -1,7 +1,7 @@
-import { db, getSetting, setSetting } from '../data/db';
+import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
-import { reviewAfterSync, type CoachReview } from '../coach/claude';
-import { clock } from '../engine/workout';
+import { activityLine, durationWords, reviewAfterSync, type CoachReview } from '../coach/claude';
+import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { addDays, today } from '../engine/load';
@@ -38,13 +38,57 @@ export interface PlanWeekSummary { start: string; phase: PlanPhase; label: strin
 export async function getPlans(): Promise<ActivePlan[]> {
   let plans = await getSetting<ActivePlan[] | null>('plans', null);
   if (!plans) {
-    // One-time move from the single-plan setting.
+    // One-time move from the single-plan setting. Written unstamped, and only
+    // when there is something to move: a fresh device that wrote an empty list
+    // here, stamped now, would overwrite the real plans on every other device
+    // at the next sync (the calendar keeps its sessions, but the plan is gone).
     const old = await getSetting<ActivePlan | null>('activePlan', null);
     plans = old && old.goal && old.availability?.equipment ? [{ ...old, name: old.name || defaultPlanName(old.goal) }] : [];
-    await setSetting('plans', plans);
-    await setSetting('activePlan', null);
+    if (plans.length) {
+      const moved = plans;
+      await untracked(async () => { await setSetting('plans', moved); await setSetting('activePlan', null); });
+    }
   }
-  return plans.filter((p) => p.goal && p.availability?.equipment).sort((a, b) => a.start.localeCompare(b.start));
+  const valid = plans.filter((p) => p.goal && p.availability?.equipment);
+  const recovered = await recoverPlans(valid);
+  return [...valid, ...recovered].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Sessions still to come that a plan put on the calendar, whose plan record is
+ * missing (lost to the empty-list overwrite above in older builds). The plan
+ * is rebuilt from the sessions themselves and the last plan request, and saved,
+ * so the other devices get it back too. A cancelled plan leaves nothing to come,
+ * so it is never brought back.
+ */
+async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
+  const known = new Set(plans.map((p) => p.id));
+  const t = today();
+  const all = await db.planned.toArray();
+  const orphanIds = [...new Set(all.filter((p) => p.planId && !known.has(p.planId) && p.date >= t && p.status !== 'completed').map((p) => p.planId!))];
+  if (!orphanIds.length) return [];
+  const req = await getSetting<{ goal: Goal; availability: Availability; masters: boolean } | null>('planRequest', null);
+  const out: ActivePlan[] = [];
+  for (const id of orphanIds) {
+    const sessions = all.filter((p) => p.planId === id).sort((a, b) => a.date.localeCompare(b.date));
+    const start = sessions[0].date;
+    const last = sessions[sessions.length - 1].date;
+    const goal: Goal = req?.goal ?? { kind: 'general', weeks: Math.max(1, Math.round((Date.parse(last) - Date.parse(start)) / (7 * 864e5)) + 1) };
+    const availability: Availability = req?.availability?.equipment ? req.availability : { hours: [0, 0, 0, 0, 0, 0, 0], outdoor: [false, false, false, false, false, false, false], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
+    const goalDate = goal.kind === 'event' && goal.date > last ? goal.date : last;
+    const byWeek = new Map<string, PlanWeekSummary>();
+    for (const s of sessions) {
+      const ws = weekStart(s.date);
+      if (!byWeek.has(ws)) {
+        const label = s.note ?? '';
+        const phase = (['recovery', 'taper', 'peak', 'build', 'base'] as PlanPhase[]).find((ph) => label.toLowerCase().startsWith(ph)) ?? 'base';
+        byWeek.set(ws, { start: ws, phase, label, tss: 0 });
+      }
+    }
+    out.push({ id, name: defaultPlanName(goal), goal, availability, masters: req?.masters ?? true, start, goalDate, requiredCtl: 0, projection: [], appliedAt: new Date().toISOString(), lastCheck: t, weeks: [...byWeek.values()] });
+  }
+  await savePlans([...plans, ...out]);
+  return out;
 }
 
 export async function savePlans(plans: ActivePlan[]): Promise<void> { await setSetting('plans', plans); }
@@ -267,7 +311,15 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[]): Pro
   const active = await getActivePlan();
   const check = active ? await replan(data) : null;
   const series = fitnessFromRides(data.rides);
-  const fresh = data.rides.filter((r) => newIds.includes(r.id)).map((r) => `${r.date} ${r.name} (${r.sport}): ${clock(r.seconds)}, ${r.tss ?? '?'} TSS${r.normalizedPower ? `, NP ${r.normalizedPower} W` : ''}${r.averageHr ? `, avg HR ${Math.round(r.averageHr)}` : ''}${r.decoupling != null ? `, HR drift ${r.decoupling.toFixed(1)}%` : ''}`);
+  const fresh = data.rides.filter((r) => newIds.includes(r.id)).map((r) => `${activityLine(r)}${r.decoupling != null && r.sport === 'ride' ? `, heart-rate drift ${r.decoupling.toFixed(1)}%` : ''}${plannedFor(r)}`);
+  // What each new activity was meant to be, when it completed a session on the calendar.
+  function plannedFor(r: { id: string }): string {
+    const p = data.planned.find((x) => x.activityId === r.id);
+    const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
+    if (!w) return '';
+    const secs = w.kind === 'ride' ? workoutStats(w.blocks).seconds : (w.minutes ?? 0) * 60;
+    return `; completed the planned session "${w.name}"${secs ? ` (planned duration ${durationWords(secs)})` : ''}`;
+  }
   const goal = active ? (active.goal.kind === 'event' ? `${active.goal.name || 'event'} on ${active.goal.date} (${active.goal.eventType})` : active.goal.kind) : 'no active plan';
   const review = await reviewAfterSync(key, {
     profile, date: today(), fitness: fitnessOn(series, today()),

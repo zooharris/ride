@@ -140,25 +140,19 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  const items: Array<[string, string | number | undefined, string?]> = [
-    ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
-    ['Distance', distance(r.distanceM, profile)],
-    ['Total climbing', elevation(r.elevationM, profile)],
-    ['Training load (TSS)', r.tss, 'How much the ride cost you. An hour flat out at FTP is 100'],
-    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, 'What the ride felt like in steady watts; surges count more than coasting'],
-    ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
-    ['Intensity factor', r.intensityFactor?.toFixed(2), 'Normalized power over FTP. 0.70 is endurance, 1.00 is threshold'],
-    ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, 'Over the whole ride'],
-    ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
-    ['Average cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined, 'Over the whole ride, while pedalling'],
-    ['Efficiency factor', r.efficiencyFactor?.toFixed(2), 'Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving'],
-    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, 'How much HR rose for the same power in the second half. Under 5% on a long ride is a sign of good aerobic base'],
-    ['Average temperature', tempF],
-    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
-  ];
+  const items = activityNumbers(r, profile, tempF);
+  const isRide = r.sport === 'ride';
+  const noun = KIND_NOUN[r.sport];
+  const plannedSecs = w && !isRide ? (w.minutes ?? 0) * 60 : 0;
   return (
     <div>
       <PageHead back={{ label: 'Activities', href: '#/rides' }} title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]} · ${r.type}` : ''}`} />
+      {w && !isRide && p?.status === 'completed' && (
+        <div class="panel" style="margin-top:14px;border-color:var(--good)">
+          <b style="color:var(--good)">Done</b> <span class="muted">against {w.name}</span>
+          <p class="muted small" style="margin-top:4px">{clock(r.seconds)} recorded{plannedSecs ? ` against ${Math.round(plannedSecs / 60)} min planned` : ''}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}.</p>
+        </div>
+      )}
       {c && w && (
         <div class="panel" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {w.name}</span>
@@ -175,7 +169,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded bands are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
-              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} /></div>
+              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} /></div>
             </div>
           </section>
         </>
@@ -198,17 +192,17 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. Compared by laying the plan along elapsed time, so a long pause mid-ride shifts the windows; pressing lap on the computer keeps them aligned.</p>
         </section>
       )}
-      {(r.powerZoneSeconds?.length || r.hrZoneSeconds?.length) && (
+      {((isRide && r.powerZoneSeconds?.length) || r.hrZoneSeconds?.length) && (
         <section class="section">
           <h2>Time in zone</h2>
-          <p class="faint small" style="margin:4px 0 10px">How the ride's time was spread across your zones{r.powerZoneSeconds?.length && r.hrZoneSeconds?.length ? ', by power and by heart rate. Heart rate lags power, so short efforts show more in the power zones' : ''}.</p>
+          <p class="faint small" style="margin:4px 0 10px">How the {noun}'s time was spread across your {isRide ? 'zones' : 'heart-rate zones'}{isRide && r.powerZoneSeconds?.length && r.hrZoneSeconds?.length ? ', by power and by heart rate. Heart rate lags power, so short efforts show more in the power zones' : ''}.</p>
           <div class="panel zonepair">
-            {r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
+            {isRide && r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
             {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
           </div>
         </section>
       )}
-      {streams?.watts?.length ? (
+      {isRide && streams?.watts?.length ? (
         <section class="section">
           <h2>Power distribution</h2>
           <p class="faint small" style="margin:4px 0 10px">Minutes spent in each 25-watt band, coloured by zone. A steady endurance ride is one tall hump; intervals show two.</p>
@@ -217,9 +211,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       ) : null}
       {streams?.intervals?.length ? (
         <section class="section">
-          <h2>Laps and intervals</h2>
-          <p class="faint small" style="margin:4px 0 10px">The laps you pressed and the efforts Intervals.icu found, in order.</p>
-          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={profile.lthr} /></div>
+          <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
+          <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold as the watch split it, in order.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
+          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={profile.lthr} heartRateOnly={!isRide} /></div>
         </section>
       ) : null}
       <section class="section">
@@ -271,4 +265,64 @@ function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
       {seconds.map((s, i) => s > 0 ? <span key={i} style={`flex:${s};background:${ZONE_VAR[Math.min(i, 6)]}`} /> : null)}
     </span>
   );
+}
+
+const KIND_NOUN: Record<Ride['sport'], string> = { ride: 'ride', walk: 'walk', strength: 'session', mobility: 'session', other: 'activity' };
+
+/** Pace for a walk or run, as minutes per mile or kilometre. */
+function pace(speedMs: number | undefined, profile: { units?: string }): string | undefined {
+  if (!speedMs || speedMs <= 0) return undefined;
+  const secs = Math.round((profile.units === 'imperial' ? 1609.344 : 1000) / speedMs);
+  return `${clock(secs)} per ${profile.units === 'imperial' ? 'mile' : 'km'}`;
+}
+
+/**
+ * The numbers worth showing for the kind of activity it was. A ride gets
+ * power, cadence and intensity; a walk gets distance, pace and heart rate; a
+ * strength or mobility session gets its time, load and heart rate. Nothing
+ * that only means something on a bike is shown for anything else.
+ */
+function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, tempF?: string): Array<[string, string | number | undefined, string?]> {
+  const hr: Array<[string, string | number | undefined, string?]> = [
+    ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, `Over the whole ${KIND_NOUN[r.sport]}`],
+    ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
+  ];
+  if (r.sport === 'ride') return [
+    ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
+    ['Distance', distance(r.distanceM, profile)],
+    ['Total climbing', elevation(r.elevationM, profile)],
+    ['Training load (TSS)', r.tss, 'How much the ride cost you. An hour flat out at FTP is 100'],
+    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, 'What the ride felt like in steady watts; surges count more than coasting'],
+    ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
+    ['Intensity factor', r.intensityFactor?.toFixed(2), 'Normalized power over FTP. 0.70 is endurance, 1.00 is threshold'],
+    ...hr,
+    ['Average cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined, 'Over the whole ride, while pedalling'],
+    ['Efficiency factor', r.efficiencyFactor?.toFixed(2), 'Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving'],
+    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, 'How much HR rose for the same power in the second half. Under 5% on a long ride is a sign of good aerobic base'],
+    ['Average temperature', tempF],
+    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
+  ];
+  if (r.sport === 'walk') return [
+    ['Time', clock(r.seconds), 'Time on your feet, as the watch recorded it'],
+    ['Distance', distance(r.distanceM, profile)],
+    ['Average pace', pace(r.averageSpeedMs, profile)],
+    ['Total climbing', elevation(r.elevationM, profile)],
+    ['Training load (TSS)', r.tss, 'How much the walk cost you, from heart rate and time. An hour flat out at threshold is 100; an easy walk is a small fraction of that'],
+    ...hr,
+    ['Average temperature', tempF],
+  ];
+  if (r.sport === 'strength' || r.sport === 'mobility') return [
+    ['Time', clock(r.seconds), 'From start to finish of the recording, rests included'],
+    ['Training load (TSS)', r.tss, r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
+    ...hr,
+  ];
+  return [
+    ['Time', clock(r.seconds)],
+    ['Distance', distance(r.distanceM, profile)],
+    ['Average pace', pace(r.averageSpeedMs, profile)],
+    ['Total climbing', elevation(r.elevationM, profile)],
+    ['Training load (TSS)', r.tss, 'How much it cost you, from heart rate and time'],
+    ...hr,
+    ['Average temperature', tempF],
+  ];
 }

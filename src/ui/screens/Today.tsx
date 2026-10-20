@@ -43,7 +43,7 @@ export function Today({ data }: { data: AppData }) {
   const workout = ridePlan?.w;
   const stats = workout ? workoutStats(workout.blocks) : undefined;
   // What is on today's calendar, in one string: the coach note is remade when this changes.
-  const daySig = withW.map((x) => `${x.w!.id}:${x.p.status}`).join(',') + `|${todayNote?.text ?? ''}|${todayNote?.badWellness ? 'bad' : ''}`;
+  const daySig = 'v2|' + withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}`).join(',') + `|${todayNote?.text ?? ''}|${todayNote?.badWellness ? 'bad' : ''}`;
 
   const [busy, setBusy] = useState<string | null>(null);
   const setMsg = toast;
@@ -78,8 +78,9 @@ export function Today({ data }: { data: AppData }) {
       }
     })();
     return () => { alive = false; };
+    // Re-read on every data change: plans can arrive from another device without the calendar changing size.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.rides.length, data.planned.length]);
+  }, [data]);
 
   async function applyCheck(accepted: Set<string>) {
     if (!check || !active) return;
@@ -103,7 +104,7 @@ export function Today({ data }: { data: AppData }) {
       try {
         const text = await dailyNote(key, {
           profile, date, fitness: fit, readiness: ready,
-          todaySessions: withW.map((x) => ({ planned: x.p, workout: x.w! })),
+          todaySessions: withW.map((x) => ({ planned: x.p, workout: x.w!, recorded: x.p.activityId ? data.rides.find((r) => r.id === x.p.activityId) : undefined })),
           recentRides: data.rides, missedThisWeek: missedThisWeek(data.planned),
           riderNote: todayNote?.text, wellnessSetAside,
           recentNotes: recentNoteLines(data.dayNotes.filter((n) => n.date !== date), date, 90),

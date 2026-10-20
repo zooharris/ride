@@ -43,6 +43,13 @@ const req = (over: Partial<PlanRequest> = {}): PlanRequest => ({
 });
 
 describe('assessment', () => {
+  it('averages hours over the history actually synced, not a fixed four weeks', () => {
+    const t = '2026-10-19';
+    const ride = (date: string, h: number) => ({ id: date, date, startTime: date, name: 'r', type: 'Ride', sport: 'ride' as const, seconds: h * 3600, tss: h * 60 });
+    const a = assess({ today: t, profile, rides: [ride('2026-10-17', 2), ride('2026-10-18', 3)], wellness: [], planned: [] });
+    expect(a.weeklyHours.value).toBeGreaterThan(4);     // 5 h in 3 days is not 1.25 h a week
+    expect(a.weeklyHours.note).toMatch(/last 3 days/);
+  });
   it('reads fitness, hours, longest ride and decoupling from history', () => {
     const a = baseAssessment;
     expect(a.fitness.ctl).toBeGreaterThan(30);

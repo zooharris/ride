@@ -3,8 +3,8 @@ import type { AppData } from '../store';
 import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, cancelPlan, defaultPlanName, getActivePlan, getPlans, markChecked, overlapping, renamePlan, replan, type ActivePlan } from '../planService';
-import { changeKey, type Replan } from '../../engine/adapt';
+import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
+import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal, EventType } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
@@ -100,10 +100,19 @@ export function Plan({ data }: { data: AppData }) {
     try { await cancelPlan(data, p.id); setCheck(null); await refreshPlans(); } finally { setBusy(false); }
   }
 
-  async function applyCheck(accepted: Set<string>) {
+  async function acceptChanges(changes: Change[]) {
     if (!check || !active) return;
     setBusy(true);
-    try { await applyPlan(data, check.plan, active.goal, active.availability, active.masters, accepted, { planId: active.id }); setCheck(null); go('calendar'); } finally { setBusy(false); }
+    try {
+      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.map(changeKey)), { planId: active.id });
+      setCheck(await replan(await freshData(data)));
+    } finally { setBusy(false); }
+  }
+  async function rejectSuggested(changes: Change[]) {
+    if (!check) return;
+    await rejectChanges(changes);
+    const gone = new Set(changes.map(changeSig));
+    setCheck({ ...check, changes: check.changes.filter((c) => !gone.has(changeSig(c))) });
   }
 
   const DEFAULT_AV: Availability = { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
@@ -147,7 +156,7 @@ export function Plan({ data }: { data: AppData }) {
                     </div>
                   </div>
                   {p.weeks && p.weeks.length > 0 && <div style="margin-top:12px"><PlanTimeline weeks={p.weeks} goalDate={p.goalDate} event={p.goal.kind === 'event' ? (p.goal.name || 'Event') : undefined} /></div>}
-                  {isActive && check && <ReplanView check={check} onApply={applyCheck} busy={busy} />}
+                  {isActive && check && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={busy} />}
                 </div>
               );
             })}
@@ -390,41 +399,47 @@ export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolea
 const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer', weight: 'Lose weight', general: 'General fitness' };
 export const GOAL_LABEL_FULL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer comfortably', weight: 'Lose weight', general: 'General fitness' };
 
-export function ReplanView({ check, onApply, busy }: { check: Replan; onApply: (accepted: Set<string>) => void; busy: boolean }) {
+/**
+ * The plan re-check's suggestions, one row each with Accept and Reject. An
+ * accepted change goes on the calendar; a rejected one disappears and is not
+ * offered again. Why the re-check suggests them, and how last week went, sit
+ * above the list.
+ */
+export function ReplanView({ check, onAccept, onReject, busy, coachSays }: { check: Replan; onAccept: (changes: Change[]) => void; onReject: (changes: Change[]) => void; busy: boolean; coachSays?: string }) {
   const r = check.review;
-  // Each change is a tick box. Changes to sessions the plan made are on by default; changes to anything the rider edited are off.
-  const [accepted, setAccepted] = useState<Set<string>>(() => new Set(check.changes.filter((c) => !c.userEdited).map(changeKey)));
-  useEffect(() => { setAccepted(new Set(check.changes.filter((c) => !c.userEdited).map(changeKey))); }, [check]);
-  const toggle = (k: string) => setAccepted((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const edited = check.changes.filter((c) => c.userEdited).length;
-  // Four changes show at first; Show all lists every one, so nothing is applied that cannot be seen.
   const [all, setAll] = useState(false);
-  const shown = all ? check.changes : check.changes.slice(0, 4);
+  const shown = all ? check.changes : check.changes.slice(0, 6);
+  const line = (c: Change) => c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>;
   return (
     <div style="margin-top:12px">
-      <div class="small"><b>Last week:</b> {r.completed} of {r.planned} done{r.missed ? `, ${r.missed} missed` : ''}.</div>
-      {r.lines.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
-      <div class="hr" />
-      <div class="small"><b>What the re-check says</b></div>
+      {(r.planned > 0 || r.lines.length > 0) && <>
+        <div class="small"><b>Last week:</b> {r.completed} of {r.planned} done{r.missed ? `, ${r.missed} missed` : ''}.</div>
+        {r.lines.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
+        <div class="hr" />
+      </>}
+      <div class="small"><b>Why the re-check suggests changes</b></div>
       {check.summary.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
-      {check.changes.length > 0 && (
-        <div class="stack" style="margin-top:10px;gap:4px">
-          {shown.map((c, i) => {
-            const k = changeKey(c);
-            return (
-              <label class="small row" key={i} style="gap:8px;align-items:flex-start;cursor:pointer">
-                <input type="checkbox" checked={accepted.has(k)} onChange={() => toggle(k)} style="margin-top:3px" />
-                <span><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}; a suggestion only</span>}</span>
-              </label>
-            );
-          })}
-          {check.changes.length > 4 && <button class="btn sm quiet" style="align-self:flex-start;margin-left:-10px" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${check.changes.length} changes (${accepted.size} ticked)`}</button>}
-          {edited > 0 && <div class="faint small" style="margin-top:4px">Untick anything you want left as it is. Suggestions for sessions you changed or added yourself start unticked.</div>}
+      {coachSays && <div class="small" style="margin-top:8px"><b>The coach:</b> <span class="muted">{coachSays}</span></div>}
+      {check.changes.length > 0 ? (
+        <div class="stack" style="margin-top:12px;gap:6px">
+          {shown.map((c) => (
+            <div class="row between wrap small" key={changeKey(c) + (c.before ?? '') + (c.after ?? '')} style="gap:8px;padding:6px 0;border-top:1px solid var(--line)">
+              <span style="flex:1;min-width:200px"><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {line(c)}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}</span>}</span>
+              <span class="row" style="gap:6px">
+                <button class="btn sm" onClick={() => onAccept([c])} disabled={busy}>Accept</button>
+                <button class="btn sm quiet" onClick={() => onReject([c])} disabled={busy}>Reject</button>
+              </span>
+            </div>
+          ))}
+          {check.changes.length > 6 && <button class="btn sm quiet" style="align-self:flex-start;margin-left:-10px" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${check.changes.length} changes`}</button>}
+          {check.changes.length > 1 && (
+            <div class="row" style="gap:8px;margin-top:6px">
+              <button class="btn primary sm" onClick={() => onAccept(check.changes)} disabled={busy}>Accept all {check.changes.length}</button>
+              <button class="btn sm quiet" onClick={() => onReject(check.changes)} disabled={busy}>Reject all</button>
+            </div>
+          )}
         </div>
-      )}
-      <div class="row" style="margin-top:12px">
-        {check.changes.length > 0 ? <button class="btn primary sm" onClick={() => onApply(accepted)} disabled={busy || accepted.size === 0}>Apply {accepted.size === check.changes.length ? 'these changes' : accepted.size === 1 ? '1 change' : `${accepted.size} changes`}</button> : <span class="muted small">Nothing to change.</span>}
-      </div>
+      ) : <div class="muted small" style="margin-top:8px">Nothing to change.</div>}
     </div>
   );
 }

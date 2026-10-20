@@ -2,7 +2,8 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, setSetting } from './db';
 import { localDoc, mergeRemote, type SyncDoc } from './devicesync';
-import { deletePlan, getActivePlan, getPlans, putPlan, renamePlan, type ActivePlan } from '../ui/planService';
+import { changeSig, deletePlan, dismissCoachReview, getActivePlan, getCoachReview, getPlans, putPlan, rejectChanges, renamePlan, type ActivePlan } from '../ui/planService';
+import { getSetting } from './db';
 import { addDays, today } from '../engine/load';
 
 (globalThis as { navigator?: unknown }).navigator ??= { userAgent: 'test' };
@@ -94,5 +95,26 @@ describe('rebuilding a plan whose record is missing', () => {
   it('a cancelled plan, with nothing left to come, is not brought back', async () => {
     await db.planned.put(session('a', addDays(today(), -3), 'p1', { status: 'completed' }));
     expect(await getActivePlan()).toBeNull();
+  });
+});
+
+describe('suggestions and reviews', () => {
+  it('a rejected suggestion is remembered until its day has passed; another suggestion for the day is not', async () => {
+    const tomorrow = { date: addDays(today(), 1), kind: 'ride', before: 'Endurance 90', after: 'Endurance 91', note: 'changed' };
+    const past = { date: addDays(today(), -2), kind: 'ride', before: 'A', after: 'B', note: 'changed' };
+    await rejectChanges([tomorrow, past]);
+    await rejectChanges([]);                              // prunes the past one
+    const kept = await getSetting<string[]>('replanRejected', []);
+    expect(kept).toContain(changeSig(tomorrow));
+    expect(kept).not.toContain(changeSig(past));
+    expect(changeSig({ ...tomorrow, after: 'Endurance 120' })).not.toBe(changeSig(tomorrow));
+  });
+  it("today's coach review is kept until dismissed", async () => {
+    await setSetting('coachReview', { date: today(), text: 'Good walk.', applyChanges: false, reason: '', at: new Date().toISOString() });
+    expect((await getCoachReview())?.text).toBe('Good walk.');
+    await dismissCoachReview();
+    expect(await getCoachReview()).toBeNull();
+    await setSetting('coachReview', { date: addDays(today(), -1), text: 'Old.', applyChanges: false, reason: '' });
+    expect(await getCoachReview()).toBeNull();
   });
 });

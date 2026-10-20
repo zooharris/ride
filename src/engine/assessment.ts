@@ -61,10 +61,17 @@ export function assess(inp: AssessmentInput): Assessment {
     : none(0, 'Not enough ride history yet to see how fast your fitness has been climbing.');
 
   // Hours and load, last four weeks.
+  // Averaged over the weeks the synced history actually covers: two days of
+  // history divided by four weeks would read as a quarter of the real volume.
   const last4 = rides.filter((r) => r.date >= addDays(today, -28));
-  const hours = last4.reduce((s, r) => s + r.seconds, 0) / 3600 / 4;
-  const weeklyHours = ev(round1(hours), last4.length, 8, last4.length ? `About ${round1(hours)} hours a week over the last four weeks.` : 'No rides in the last four weeks.');
-  const weeklyTss = ev(Math.round(last4.reduce((s, r) => s + (r.tss ?? 0), 0) / 4), last4.length, 8, `About ${Math.round(last4.reduce((s, r) => s + (r.tss ?? 0), 0) / 4)} TSS a week lately.`);
+  const oldest = rides.reduce((m, r) => (r.date < m ? r.date : m), today);
+  const coveredDays = Math.min(28, Math.max(1, Math.round((Date.parse(today) - Date.parse(oldest)) / 864e5) + 1));
+  const weeks = Math.max(1, coveredDays / 7);
+  const span = coveredDays >= 28 ? 'over the last four weeks' : `over the last ${coveredDays} days (all the history synced so far)`;
+  const hours = last4.reduce((s, r) => s + r.seconds, 0) / 3600 / weeks;
+  const weeklyHours = ev(round1(hours), last4.length, 8, last4.length ? `About ${round1(hours)} hours a week ${span}.` : 'No rides in the last four weeks.');
+  const tssWeek = Math.round(last4.reduce((s, r) => s + (r.tss ?? 0), 0) / weeks);
+  const weeklyTss = ev(tssWeek, last4.length, 8, `About ${tssWeek} TSS a week ${span}.`);
 
   // Longest ride, last eight weeks.
   const last8 = rides.filter((r) => r.date >= addDays(today, -56));

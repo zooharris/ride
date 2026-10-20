@@ -1,0 +1,131 @@
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { askCoach, dailyNote, type ChatTurn, type CoachContext } from '../coach/claude';
+import { getSetting, setSetting } from '../data/db';
+import type { SavedReview } from './planService';
+
+interface SavedNote { date: string; text: string; sig?: string; at?: string }
+interface SavedChat { date: string; turns: ChatTurn[] }
+
+const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '');
+
+/**
+ * The coach, always in one place. The day's note (kept while a newer one is
+ * written, so the panel never goes blank), the review of the last sync, and a
+ * box for questions. Without a Claude key it says how to turn the coach on.
+ */
+export function CoachPanel({ ctx, date, daySig, review, onDismissReview }: { ctx: CoachContext; date: string; daySig: string; review: SavedReview | null; onDismissReview: () => void }) {
+  const [key, setKey] = useState<string | null>(null);
+  const [note, setNote] = useState<SavedNote | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  // The latest picture of the day, whenever a request goes out.
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+
+  async function refresh(apiKey: string) {
+    setUpdating(true);
+    try {
+      const text = await dailyNote(apiKey, ctxRef.current);
+      const saved: SavedNote = { date, text, sig: daySig, at: new Date().toISOString() };
+      await setSetting('coachNote', saved);
+      setNote(saved);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setUpdating(false); }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const k = await getSetting<string>('claudeKey', '');
+      if (!alive) return;
+      setKey(k);
+      const chat = await getSetting<SavedChat | null>('coachChat', null);
+      if (alive) setTurns(chat?.date === date ? chat.turns : []);
+      if (!k) return;
+      const cached = await getSetting<SavedNote | null>('coachNote', null);
+      if (cached?.date === date && cached.text) {
+        if (alive) setNote(cached);
+        if ((cached.sig ?? '') === daySig) return;      // still current
+      }
+      if (alive) await refresh(k);                       // the old note stays on screen until this returns
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, daySig]);
+
+  async function ask() {
+    const q = question.trim();
+    if (!q || !key) return;
+    setAsking(true);
+    const asked: ChatTurn = { role: 'rider', text: q, at: new Date().toISOString() };
+    setTurns((t) => [...t, asked]);
+    setQuestion('');
+    try {
+      const earlier = [note?.text, review?.text].filter((x): x is string => !!x);
+      const answer = await askCoach(key, ctxRef.current, turns, q, earlier);
+      const next = [...turns, asked, { role: 'coach' as const, text: answer, at: new Date().toISOString() }];
+      setTurns(next);
+      await setSetting('coachChat', { date, turns: next } as SavedChat);
+    } catch (e) {
+      const next = [...turns, asked, { role: 'coach' as const, text: `No answer: ${(e as Error).message}` }];
+      setTurns(next);
+    } finally { setAsking(false); }
+  }
+
+  if (key === null) return null;
+  if (!key) {
+    return (
+      <section class="section">
+        <h2>Coach</h2>
+        <p class="muted small" style="margin-top:6px">Add a Claude API key in <a href="#/settings">Settings</a> for a daily note from the coach, a review after each sync, and answers to your questions.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section class="section">
+      <div class="row between">
+        <h2>Coach</h2>
+        <button class="btn sm quiet" onClick={() => refresh(key)} disabled={updating}>{updating ? 'Writing…' : 'Fresh note'}</button>
+      </div>
+      <div class="panel" style="margin-top:8px;padding:14px 16px">
+        {note ? (
+          <>
+            <p style="font-size:15px;line-height:1.6;margin:0">{note.text}</p>
+            <p class="faint small" style="margin-top:6px">{updating ? 'Updating for the latest changes…' : `Written at ${time(note.at)}${note.sig !== daySig ? '; the day has changed since' : ''}.`}</p>
+          </>
+        ) : updating ? <p class="muted small" style="margin:0">The coach is writing today's note…</p> : null}
+        {error && <p class="msg err small" style="margin-top:8px">Coach note unavailable: {error}</p>}
+
+        {review && (
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+            <div class="row between"><b class="small">Review of the activities synced at {time(review.at)}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
+            <p style="margin-top:6px;font-size:15px;line-height:1.6">{review.text}</p>
+          </div>
+        )}
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+          {turns.length > 0 && (
+            <div class="stack" style="gap:8px;margin-bottom:10px">
+              {turns.map((t, i) => (
+                <div key={i} class="small" style={`line-height:1.55;${t.role === 'rider' ? 'color:var(--ink-2)' : ''}`}>
+                  <b>{t.role === 'rider' ? 'You' : 'Coach'}:</b> {t.text}
+                </div>
+              ))}
+            </div>
+          )}
+          <form class="row" style="gap:8px" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+            <input style="flex:1" value={question} placeholder="Ask the coach a question" onInput={(e) => setQuestion((e.target as HTMLInputElement).value)} disabled={asking} aria-label="Question for the coach" />
+            <button class="btn sm" type="submit" disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
+          </form>
+          <p class="faint small" style="margin-top:6px">The coach answers from today's numbers, calendar and your notes. It cannot change the plan; suggested changes appear with the plan above.</p>
+        </div>
+      </div>
+    </section>
+  );
+}

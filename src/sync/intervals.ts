@@ -142,6 +142,18 @@ export function sportOf(type: string, averageSpeedMs?: number): SessionKind {
   return 'other';   // runs, swims, rows, anything else: counted toward load, never planned
 }
 
+/**
+ * The duration the app counts for an activity. Moving time suits a ride (stops
+ * at lights are not training). For a walk, strength or mobility session the
+ * watch decides "moving" from wrist motion and GPS: on a treadmill with the arm
+ * still, or standing at the bench, most of the session reads as stopped. The
+ * whole session is the work, so those count elapsed time.
+ */
+export function durationFor(kind: SessionKind, moving?: number, elapsed?: number): number {
+  if (kind === 'ride' || kind === 'other') return moving || elapsed || 0;
+  return elapsed || moving || 0;
+}
+
 /** Every activity Intervals.icu holds for the window, whatever recorded it. */
 export async function fetchRides(c: IntervalsCredentials, oldest: string, newest: string): Promise<Ride[]> {
   const list = await call<IcuActivity[]>(c, `/athlete/${c.athleteId}/activities?oldest=${oldest}&newest=${newest}`);
@@ -149,14 +161,17 @@ export async function fetchRides(c: IntervalsCredentials, oldest: string, newest
 }
 
 function toRide(a: IcuActivity): Ride {
+  const sport = sportOf(a.type ?? 'Ride', a.average_speed);
   return {
     id: String(a.id),
     date: a.start_date_local.slice(0, 10),
     startTime: a.start_date_local,
     name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
-    sport: sportOf(a.type ?? 'Ride', a.average_speed),
-    seconds: a.moving_time ?? a.elapsed_time ?? 0,
+    sport,
+    seconds: durationFor(sport, a.moving_time, a.elapsed_time),
+    movingSeconds: a.moving_time,
+    elapsedSeconds: a.elapsed_time,
     distanceM: a.distance,
     elevationM: a.total_elevation_gain,
     icuLoad: a.icu_training_load,

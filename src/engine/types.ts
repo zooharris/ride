@@ -144,7 +144,9 @@ export interface Ride {
   name: string;
   type: string;             // Intervals.icu activity type: Ride, VirtualRide, Walk, Hike, WeightTraining, Yoga, ...
   sport: SessionKind;       // what the app treats it as
-  seconds: number;          // moving time
+  seconds: number;          // the duration the app uses: moving time for rides (and runs), elapsed time for walks, strength and mobility
+  movingSeconds?: number;   // as the device judged it; a watch on a still arm (treadmill, phone in hand) under-counts it
+  elapsedSeconds?: number;  // start to finish
   distanceM?: number;
   elevationM?: number;
   tss?: number;             // as computed by the engine

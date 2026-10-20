@@ -289,6 +289,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
   ];
   if (r.sport === 'ride') return [
     ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
+    ['Elapsed time', r.elapsedSeconds && r.elapsedSeconds - r.seconds >= 60 ? clock(r.elapsedSeconds) : undefined, 'Start to finish, stops included'],
     ['Distance', distance(r.distanceM, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],
     ['Training load (TSS)', r.tss, 'How much the ride cost you. An hour flat out at FTP is 100'],
@@ -303,7 +304,8 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
   ];
   if (r.sport === 'walk') return [
-    ['Time', clock(r.seconds), 'Time on your feet, as the watch recorded it'],
+    ['Time', clock(r.seconds), 'Start to finish. A watch on a still arm (a treadmill, a phone in hand) can think you stopped, so its "moving time" is not used for walks'],
+    ['Moving time, as the watch judged it', r.movingSeconds && r.seconds - r.movingSeconds >= 120 ? clock(r.movingSeconds) : undefined, 'Shown only when it differs; not used for anything'],
     ['Distance', distance(r.distanceM, profile)],
     ['Average pace', pace(r.averageSpeedMs, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],

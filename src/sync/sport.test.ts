@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sessionSteps, sportOf } from './intervals';
+import { durationFor, sessionSteps, sportOf } from './intervals';
 import { readyMadeSessions } from '../library/sessions';
 import type { Ride } from '../engine/types';
 
@@ -17,6 +17,18 @@ describe('activity types from Intervals.icu', () => {
     expect(sportOf('VirtualRun', 1.7)).toBe('walk');
     expect(sportOf('Run', 3.0)).toBe('other');          // 10.8 km/h
     expect(sportOf('Run')).toBe('other');               // no speed known
+  });
+});
+
+describe('the duration the app counts', () => {
+  it('a treadmill walk the watch thought was half standing still counts its whole time', () => {
+    expect(durationFor('walk', 985, 1839)).toBe(1839);
+    expect(durationFor('strength', 600, 2400)).toBe(2400);
+    expect(durationFor('mobility', undefined, 900)).toBe(900);
+  });
+  it('a ride counts moving time, stops excluded', () => {
+    expect(durationFor('ride', 3600, 4200)).toBe(3600);
+    expect(durationFor('ride', undefined, 4200)).toBe(4200);
   });
 });
 

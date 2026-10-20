@@ -65,7 +65,7 @@ export function describeSession({ planned, workout, recorded }: TodaySession): s
     : planned.status === 'missed' ? 'marked missed'
     : 'not done yet';
   parts.push(status);
-  if (!planned.planId) parts.push('added by the rider, not by the plan');
+  if (!planned.planId) parts.push('(background only, never mention it: placed on the calendar by the rider)');
   return parts.join('; ');
 }
 
@@ -74,34 +74,49 @@ export function activityLine(r: Ride): string {
   return `${r.date}: ${r.name} (${r.sport}), duration ${durationWords(r.seconds)}, training load ${r.tss ?? '?'} TSS${r.normalizedPower ? `, normalized power ${r.normalizedPower} W` : ''}${r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}`;
 }
 
-export async function dailyNote(apiKey: string, ctx: CoachContext): Promise<string> {
+/** The day as the coach sees it: athlete, readiness, notes, calendar, recent activities. Shared by the daily note and questions. */
+export function dayFacts(ctx: CoachContext): string {
   const rides = ctx.recentRides.slice(0, 7).map(activityLine).join('\n');
   const sessions = ctx.todaySessions.map((s) => '- ' + describeSession(s)).join('\n');
-  const prompt = `You are a cycling coach writing one short note for today to a masters road cyclist (over 50). Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar below is the rider's plan for today, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one; speak to every session listed, do not describe the day as empty when something is listed, and do not tell the rider to do a session that is marked already done.
-
-Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm, trains ${ctx.profile.hoursPerWeek} h/week, basis ${ctx.profile.basis}.
+  return `Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm, trains ${ctx.profile.hoursPerWeek} h/week, basis ${ctx.profile.basis}.
 Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 Readiness ${ctx.wellnessSetAside ? `not scored from wellness today: the rider set today's HRV, sleep and resting heart rate aside as wrong (${ctx.readiness.score}/100 from form alone)` : `${ctx.readiness.score}/100 (${ctx.readiness.band}); drivers: ${ctx.readiness.drivers.map((d) => `${d.name} ${d.value} (${d.effect})`).join('; ')}`}.
 The rider's own note for today: ${ctx.riderNote ? `"${ctx.riderNote}"` : 'none'}.${ctx.recentNotes?.length ? `\nThe rider's notes from recent days:\n${ctx.recentNotes.map((n) => '- ' + n).join('\n')}` : ''}
 On the calendar today:\n${sessions || '- nothing; a rest day unless the rider chooses otherwise'}
 Missed sessions this week: ${ctx.missedThisWeek}.
 Last activities:\n${rides || 'none synced yet'}`;
+}
 
+const NOTE_RULES = `Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar below is the rider's plan for today, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one; speak to every session listed, do not describe the day as empty when something is listed, and do not tell the rider to do a session that is marked already done. Never describe who placed a session on the calendar or how it was recorded or synced; notes in brackets are background for you, not things to say.`;
+
+async function callClaude(apiKey: string, body: Record<string, unknown>): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: MODEL, ...body }),
   });
   if (!res.ok) throw new Error(`Claude answered ${res.status}. Check the API key in Settings.`);
   const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
   return data.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
 }
 
+export async function dailyNote(apiKey: string, ctx: CoachContext): Promise<string> {
+  const prompt = `You are a cycling coach writing one short note for today to a masters road cyclist (over 50). Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. ${NOTE_RULES}\n\n${dayFacts(ctx)}`;
+  return callClaude(apiKey, { max_tokens: 300, messages: [{ role: 'user', content: prompt }] });
+}
+
+export interface ChatTurn { role: 'rider' | 'coach'; text: string; at?: string }
+
+/**
+ * A question from the rider, answered with the same picture of the day the
+ * daily note uses, plus what the coach already said today. Answers only: the
+ * plan changes through the suggested-changes review, never from here.
+ */
+export async function askCoach(apiKey: string, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = []): Promise<string> {
+  const system = `You are the rider's cycling coach, answering their questions about their training. The rider is a masters road cyclist (over 50). Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's suggested changes. ${NOTE_RULES}\n\n${dayFacts(ctx)}${earlier.length ? `\n\nWhat you have already told the rider today:\n${earlier.map((e) => '- ' + e).join('\n')}` : ''}`;
+  const history = turns.slice(-8).map((t) => ({ role: t.role === 'rider' ? 'user' : 'assistant', content: t.text }));
+  return callClaude(apiKey, { max_tokens: 400, system, messages: [...history, { role: 'user', content: question }] });
+}
 
 export interface ReviewContext {
   profile: Profile;
@@ -131,7 +146,7 @@ export interface CoachReview {
  * plan; the rider does, with one tap.
  */
 export async function reviewAfterSync(apiKey: string, ctx: ReviewContext): Promise<CoachReview> {
-  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Reply ONLY with JSON of the form {"text": string, "applyChanges": boolean, "reason": string}. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. Durations are in minutes and training load is in TSS: two different numbers, never compare one with the other; when a new activity completed a planned session, judge it on its recorded duration against the planned duration. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
+  const prompt = `You are a cycling coach reviewing a masters rider's new training data. Reply ONLY with JSON of the form {"text": string, "applyChanges": boolean, "reason": string}. "text" is 4 to 7 plain sentences to the rider: what the new activities show, what matters, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is whether the app's proposed plan changes below should be applied as they stand; "reason" is one sentence on why. Do not invent numbers. Never describe who placed a session on the calendar or how it was recorded or synced. Durations are in minutes and training load is in TSS: two different numbers, never compare one with the other; when a new activity completed a planned session, judge it on its recorded duration against the planned duration. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. If the same cause recurs across notes (wine, travel, poor sleep), say so, briefly.
 
 Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm. Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}

@@ -3,7 +3,7 @@ import { addDays, hrTss, rideTss, today } from '../engine/load';
 import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import type { IntervalsCredentials } from './intervals';
-import { fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, testConnection, updateActivityType } from './intervals';
+import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, testConnection, updateActivityType } from './intervals';
 import { syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
@@ -58,6 +58,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
     const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
     if (match && kind !== 'ride' && match.sport !== kind) {
       match.sport = kind;
+      match.seconds = durationFor(kind, match.movingSeconds, match.elapsedSeconds) || match.seconds;   // a ride-typed strength session counts its whole time
       match.icuLoad = undefined;             // Intervals.icu scored it as the type the device gave; the app scores it as what it was
       score(match);
     }

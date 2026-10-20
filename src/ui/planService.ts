@@ -2,7 +2,7 @@ import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
 import { activityLine, durationWords, reviewAfterSync, type CoachReview } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
-import { diffPlan, reviewLastWeek, summarize, type Replan } from '../engine/adapt';
+import { diffPlan, reviewLastWeek, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { addDays, today } from '../engine/load';
 import { generatePlan, type Availability, type Plan, type Phase as PlanPhase } from '../engine/planner';
@@ -280,7 +280,8 @@ export async function replan(data: AppData): Promise<Replan | null> {
   for (const p of data.planned) { const w = findWorkout(data.mine, p.workoutId); if (w) workouts.set(w.id, w); }
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
   const review = reviewLastWeek(mine, workouts, data.rides);
-  const changes = diffPlan(mine, workouts, plan).filter((c) => c.date <= active.goalDate);
+  const rejected = await rejectedSigs();
+  const changes = diffPlan(mine, workouts, plan).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
   const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;
@@ -361,8 +362,37 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[]): Pro
     newActivities: fresh,
     riderNotes: recentNoteLines(data.dayNotes, today(), 14),
   });
-  await setSetting('coachReview', review);
+  await setSetting('coachReview', { ...review, at: new Date().toISOString() } as SavedReview);
   return { review, check };
+}
+
+/** The coach's review after a sync, kept until the rider dismisses it or a newer one replaces it. */
+export type SavedReview = CoachReview & { at?: string; dismissed?: boolean };
+
+/** Today's review, unless dismissed. */
+export async function getCoachReview(): Promise<SavedReview | null> {
+  const r = await getSetting<SavedReview | null>('coachReview', null);
+  return r && r.date === today() && !r.dismissed ? r : null;
+}
+
+export async function dismissCoachReview(): Promise<void> {
+  const r = await getSetting<SavedReview | null>('coachReview', null);
+  if (r) await setSetting('coachReview', { ...r, dismissed: true });
+}
+
+/** One suggested change, exactly: the same swap on the same day is the same suggestion. */
+export const changeSig = (c: Change) => `${c.date}|${c.kind}|${c.before ?? ''}>${c.after ?? ''}`;
+
+/** Suggestions the rider turned down; each is forgotten once its day has passed. */
+async function rejectedSigs(): Promise<Set<string>> {
+  const t = today();
+  return new Set((await getSetting<string[]>('replanRejected', [])).filter((s) => s.slice(0, 10) >= t));
+}
+
+/** Turn suggestions down: they disappear and are not offered again. A different suggestion for the same day still can be. */
+export async function rejectChanges(changes: Change[]): Promise<void> {
+  const keep = [...(await rejectedSigs())];
+  await setSetting('replanRejected', [...new Set([...keep, ...changes.map(changeSig)])]);
 }
 
 /** The rider's day notes from the last `days` days, newest first, one line each, for the coach. */
@@ -372,4 +402,10 @@ export function recentNoteLines(notes: { date: string; text?: string; badWellnes
     .filter((n) => n.date >= from && n.date <= date && (n.text || n.badWellness))
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((n) => `${n.date}: ${[n.text, n.badWellness ? 'wellness for this day set aside as wrong' : ''].filter(Boolean).join(' — ')}`);
+}
+
+/** The calendar as it is now in storage, for a re-check right after the plan changed (the screen's copy updates a moment later). */
+export async function freshData(data: AppData): Promise<AppData> {
+  const [planned, mine] = await Promise.all([db.planned.toArray(), db.workouts.toArray()]);
+  return { ...data, planned, mine };
 }

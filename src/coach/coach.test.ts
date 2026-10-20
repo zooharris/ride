@@ -11,14 +11,14 @@ describe('the coach sees the whole calendar', () => {
     expect(line).toMatch(/Full body express \(strength session\)/);
     expect(line).toMatch(/30 min/);
     expect(line).toMatch(/Goblet squat/);
-    expect(line).toMatch(/added by the rider/);
+    expect(line).toMatch(/placed on the calendar by the rider/);
     expect(line).toMatch(/not done yet/);
   });
   it('says when a session is already done so the coach does not prescribe it again', () => {
     const line = describeSession({ planned: planned({ status: 'completed', rpe: 7, loggedSeconds: 1500, planId: 'plan' }), workout: strength });
     expect(line).toMatch(/ALREADY DONE/);
     expect(line).toMatch(/felt 7\/10/);
-    expect(line).not.toMatch(/added by the rider/);
+    expect(line).not.toMatch(/placed on the calendar by the rider/);
   });
   it('gives a done session its recorded duration, named, so it cannot be confused with the training load', () => {
     const walk = { ...strength, name: 'Recovery walk', kind: 'walk', minutes: 30, estimatedTss: 12, exercises: undefined, walk: { hrLow: 0, hrHigh: 0.7 } } as Workout;

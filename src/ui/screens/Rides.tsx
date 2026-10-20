@@ -19,7 +19,6 @@ import { ActivityCharts, resample } from '../ActivityCharts';
 import { RouteMap } from '../RouteMap';
 import { KIND_COLOR, KIND_LABEL, KindDot } from './Plan';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
-import { getSetting, setSetting } from '../../data/db';
 import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
 import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
@@ -50,8 +49,8 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   const profile = data.profile!;
   const [view, setView] = useState<'list' | 'month'>('list');
   const [month, setMonth] = useState(monthOf(today()));
-  useEffect(() => { getSetting<'list' | 'month'>('ridesView', 'list').then(setView); }, []);
-  const pickView = (v: 'list' | 'month') => { setView(v); setSetting('ridesView', v); };
+  // Activities always opens as the list (the rider's preference); the switch changes it for this visit only.
+  const pickView = (v: 'list' | 'month') => setView(v);
   return (
     <div>
       <PageHead eyebrow={`${data.rides.length} synced`} title="Activities">

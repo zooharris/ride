@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
-import { getSetting, setSetting } from '../../data/db';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
@@ -29,12 +28,13 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   const profile = data.profile!;
   const focus = params?.get('d') ?? undefined;
   const [start, setStart] = useState(weekStart(focus && /^\d{4}-\d{2}-\d{2}$/.test(focus) ? focus : today()));
-  const [view, setView] = useState<'list' | 'month'>('list');
+  // The calendar always opens as the month (the rider's preference); a link to one day opens the list at that day.
+  const [view, setView] = useState<'list' | 'month'>(focus ? 'list' : 'month');
   const [month, setMonth] = useState(monthOf(today()));
   // Opened from Today's week strip or its ⋯ button: show that week as a list, and open the change sheet if asked.
-  useEffect(() => { if (focus) { setView('list'); return; } getSetting<'list' | 'month'>('calendarView', 'list').then(setView); }, [focus]);
+  useEffect(() => { setView(focus ? 'list' : 'month'); }, [focus]);
   useEffect(() => { if (focus) setStart(weekStart(focus)); }, [focus]);
-  const pickView = (v: 'list' | 'month') => { setView(v); setSetting('calendarView', v); };
+  const pickView = (v: 'list' | 'month') => setView(v);
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
   const [moveDate, setMoveDate] = useState('');

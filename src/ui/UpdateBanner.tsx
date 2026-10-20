@@ -7,7 +7,7 @@ export function UpdateBanner() {
   useEffect(() => onUpdateReady(() => setReady(true)), []);
   if (!ready) return null;
   return (
-    <div class="panel accent row between wrap" role="status" style="gap:10px;margin-bottom:14px;padding:10px 14px">
+    <div class="panel accent row between wrap update-banner" role="status">
       <span class="small"><b>A new version of the app is ready.</b> <span class="muted">Reload to use it before you sync.</span></span>
       <button class="btn primary sm" onClick={applyUpdate}>Reload</button>
     </div>

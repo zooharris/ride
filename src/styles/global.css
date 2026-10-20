@@ -383,6 +383,8 @@ a.eyebrow:hover, button.eyebrow:hover { color: var(--accent); }
 .ph-title { min-width: 0; }
 .ph-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 @media (min-width: 900px) {
+  /* the page header is pulled up 36px to sit flush at the top; the update banner above it leaves room for that */
+  .main .update-banner { margin-bottom: 50px; }
   .page-head { position: sticky; top: 0; z-index: 6; margin: -36px -40px 24px; padding: 28px 40px 14px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid transparent; }
 }
 
@@ -665,3 +667,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 /* A link that reads as text until hovered (plan names on cards). */
 .plain-link { color: inherit; text-decoration: none; }
 .plain-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* "A new version is ready": above the sticky page header, never covered by it */
+.update-banner { position: relative; z-index: 7; gap: 10px; margin-bottom: 14px; padding: 10px 14px; }

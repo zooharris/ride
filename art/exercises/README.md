@@ -13,3 +13,7 @@ goblet squat, reverse lunge, step-up onto bench, lateral lunge, single-leg
 calf raise, farmer carry.
 
 The prompt that makes the rest is `chatgpt_prompt.txt`.
+
+Batch 3 onward from Google Gemini (Oct 20, 2026), same style and figures:
+dumbbell bench press, push-up (made as one combined image and split here).
+ChatGPT's batch 3/4 attempts were rejected (drawn with code, broken anatomy).

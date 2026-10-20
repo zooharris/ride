@@ -65,3 +65,27 @@ export async function undoHandLog(p: PlannedWorkout): Promise<{ deletedRemote: b
   });
   return { deletedRemote };
 }
+
+/**
+ * Delete a recorded activity (an accidental recording, a duplicate): from
+ * Intervals.icu first, then from this device with its cached recording. A
+ * planned session it had completed goes back to to-do (missed if its day has
+ * passed); one logged by hand is undone the same way. If Intervals.icu cannot
+ * be reached nothing is deleted, since the activity would come back on the
+ * next Sync. The caller confirms.
+ */
+export async function deleteRecording(rideId: string): Promise<void> {
+  const c = await credentials();
+  if (c) await deleteActivity(c, rideId);   // throws, with the reason, if Intervals.icu refuses
+  const planned = (await db.planned.toArray()).filter((p) => p.activityId === rideId || p.manualActivityId === rideId);
+  for (const p of planned) {
+    if (p.manualActivityId === rideId) { await undoHandLog({ ...p, manualActivityId: undefined }); continue; }
+    await db.planned.update(p.id, {
+      status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned',
+      activityId: undefined, relabelled: undefined, done: undefined, rpe: undefined,
+    });
+  }
+  await db.rides.delete(rideId);
+  await db.streams.delete(rideId);
+  await db.powerCurves.delete(rideId);
+}

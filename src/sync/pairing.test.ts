@@ -48,4 +48,19 @@ describe('matching rules at launch, with no network', () => {
     await recheckMatches();
     expect((await db.rides.get('lifted'))?.tss).toBeGreaterThan(30);
   });
+  it('deletes a recording: the session it completed goes back to to-do, a hand-logged one is undone', async () => {
+    const { deleteRecording } = await import('./records');
+    await db.planned.bulkPut([
+      { id: 'q1', date: today(), workoutId: lift.id, basis: 'power', status: 'completed', activityId: 'oops', icuEventId: 3, rpe: 6, done: { exercises: [] } },
+      { id: 'q2', date: today(), workoutId: lift.id, basis: 'power', status: 'completed', activityId: 'man', manualActivityId: 'man', loggedSeconds: 1200 },
+    ]);
+    await db.rides.bulkPut([rec('oops', 1800), rec('man', 1200)]);
+    await deleteRecording('oops');
+    await deleteRecording('man');
+    expect(await db.rides.count()).toBe(0);
+    expect(await db.planned.get('q1')).toMatchObject({ status: 'sent' });
+    expect((await db.planned.get('q1'))?.done).toBeUndefined();
+    expect(await db.planned.get('q2')).toMatchObject({ status: 'planned' });
+    expect((await db.planned.get('q2'))?.loggedSeconds).toBeUndefined();
+  });
 });

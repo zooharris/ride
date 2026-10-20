@@ -7,7 +7,7 @@ import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials, plannedSeconds, unmatchRecording } from '../../sync/syncService';
-import { undoHandLog } from '../../sync/records';
+import { deleteRecording, undoHandLog } from '../../sync/records';
 import { PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
@@ -180,6 +180,20 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         : <button class="btn sm" disabled={busy} onClick={differentWorkout} title="This recording was something else; put the planned session back to to-do">This was a different workout</button>}
     </div>
   );
+  const deleteIt = async () => {
+    const also = p && w ? `\n\n${w.name} goes back to to-do${p.date < today() ? ' (missed, as its day has passed)' : ''}.` : '';
+    if (!confirm(`Delete ${r.name} (${fmtDate(r.date)}, ${clock(r.seconds)})?\n\nIt is deleted from Intervals.icu and from this app, and cannot be brought back here.${also}`)) return;
+    setBusy(true);
+    try {
+      await deleteRecording(r.id);
+      notify();
+      toast({ ok: true, text: `Deleted ${r.name}.` });
+      go('rides');
+    } catch (e) {
+      toast({ ok: false, text: `Not deleted: ${(e as Error).message}` });
+      setBusy(false);
+    }
+  };
   const planLink = p && w ? <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>{w.name}</a> : null;
   // Nothing to chart for a few seconds of recording, or for a session logged by hand (no device made it).
   const showRecording = !handLogged && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120;
@@ -288,6 +302,10 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             </tr>
           ))}
         </table>
+      </section>
+      <section class="section">
+        <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
+        <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It is deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
       </section>
     </div>
   );

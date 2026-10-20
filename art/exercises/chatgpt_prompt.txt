@@ -1,12 +1,13 @@
 I need a set of exercise instruction illustrations for my fitness app. I have attached two reference images (a man doing a dumbbell Romanian deadlift, and a woman doing a wall sit). Every image you make must match their style and characters exactly.
 
 HOW WE WILL WORK
-- There are 54 images, split into 6 batches (Batch 2 to Batch 7; I already have Batch 1). Each batch has 10 images or fewer.
-- Make one batch at a time, one image at a time, in the order listed.
+- This file replaces my earlier instructions. I already have Batches 1 and 2. There are 62 images still to make, split into 13 batches of 5 (the last one smaller), starting at Batch 3.
+- Make one batch at a time, one image at a time, in the order listed. Make only the exercises in this file, exactly as described: do not add, swap or rename any.
+- Every exercise is its own separate image file. Never combine several exercises into one sheet.
 - When a batch is finished, check every image in it against its description (see CHECK BEFORE DELIVERING) and remake any that fail.
 - Then put that batch's images into ONE zip file named VeloIQ_batch_N.zip (N = the batch number), each image named exactly with the file name given below, and give me a download link for the zip.
 - Then STOP and wait. When I reply "proceed", start the next batch. If I ask for changes to an image, remake just that image and give me a new zip for that batch.
-- Start now with Batch 2.
+- Start now with Batch 3.
 
 STYLE (the same for every image)
 - Landscape, 1448 x 1086 pixels, PNG, plain white background with a soft grey floor shadow under the figure. Do not make the images smaller.
@@ -26,6 +27,10 @@ EQUIPMENT
 - Bench: black flat exercise bench, as in my earlier images.
 - Resistance band: a green flat resistance band.
 - Low step: a plain grey low box or step.
+- Barbell: a silver bar with round black plates, gripped properly with the whole hand.
+- Pull-up bar: a plain black bar fixed in a doorway or on a wall.
+- Dip bars: two black parallel bars on a stand, at about hip height.
+- Cable machine: a plain grey gym cable machine with a black handle, rope or bar attachment as described.
 
 FORM RULES (the most important part)
 - Show correct, safe form exactly as each panel describes.
@@ -41,86 +46,8 @@ CHECK BEFORE DELIVERING (for each image)
 - Are the knees, back and feet as described? Are all four panels different (unless a hold)?
 Remake any image that fails, then zip the batch.
 
-
 =====================================================
-BATCH 2 (10 images). The first four replace images I already have that had mistakes.
-=====================================================
-
-1. File: bodyweight_squat.png | Title: Bodyweight squat | WOMAN | three-quarter side view, facing right
-   Hands clasped at the chest throughout.
-   Panel 1 "Stand tall": feet hip-width apart, standing straight.
-   Panel 2 "Sit hips back": hips pushed back, knees bent about halfway, chest up.
-   Panel 3 "Thighs level": thighs parallel to the floor, knees over the toes (not splayed out to the sides), heels flat, back flat, chest up. Small blue tension marks at the thighs.
-   Panel 4 "Stand back up": rising halfway, blue arrow pointing up.
-   (My earlier version showed the thighs splayed out flat to the sides in panel 3. That is wrong.)
-
-2. File: dumbbell_front_squat.png | Title: Dumbbell front squat | MAN | three-quarter side view, facing right
-   One dumbbell in each hand, each resting on the front of its own shoulder, ends pointing forward, elbows high. Two separate dumbbells, not one long bar.
-   Panel 1 "Stand tall": feet shoulder-width, dumbbells on the shoulders.
-   Panel 2 "Sit hips back": knees bent halfway, torso upright, elbows high.
-   Panel 3 "Thighs level": thighs parallel to the floor, knees over the toes (not splayed out to the sides), heels flat, torso upright, elbows high.
-   Panel 4 "Drive up": rising, blue arrow pointing up.
-
-3. File: hip_thrust_on_bench.png | Title: Hip thrust on bench | WOMAN | side view, facing right
-   Shoulder blades rest on the edge of the bench throughout. One dumbbell lies across the hips, held in place with both hands.
-   Panel 1 "Set up": sitting on the floor, upper back against the bench edge, knees bent, feet flat.
-   Panel 2 "Hips just off floor": hips lifted slightly, ready to drive.
-   Panel 3 "Drive hips up": hips rising, blue arrow pointing up.
-   Panel 4 "Top position": knees, hips and shoulders in one straight line parallel to the floor, shins vertical, chin tucked, shoulder blades still on the bench. Small blue tension marks at the glutes.
-   (My earlier version showed her sitting on the bench in panel 4. That is wrong.)
-
-4. File: bulgarian_split_squat.png | Title: Bulgarian split squat | WOMAN | side view, facing right
-   A dumbbell in each hand, arms straight at the sides, throughout.
-   Panel 1 "Stand in front of bench": standing tall about one big stride in front of the bench, both feet on the floor.
-   Panel 2 "Rear foot on bench": the top of the rear foot resting on the bench behind her, standing tall.
-   Panel 3 "Lower down": front thigh almost parallel to the floor, rear knee lowering toward the floor, torso upright, front knee over the front foot. Blue arrow pointing down.
-   Panel 4 "Drive back up": pushing up through the front heel, blue arrow pointing up.
-
-5. File: goblet_squat.png | Title: Goblet squat | MAN | three-quarter side view, facing right
-   One dumbbell held upright against the chest, both hands cupping the top end, elbows pointing down.
-   Panel 1 "Stand tall": feet shoulder-width.
-   Panel 2 "Sit hips back": knees bent halfway, chest up.
-   Panel 3 "Thighs level": thighs parallel to the floor, elbows just inside the knees, knees over the toes, heels flat, chest up.
-   Panel 4 "Drive up": rising, blue arrow pointing up.
-
-6. File: reverse_lunge.png | Title: Reverse lunge | WOMAN | side view, facing right
-   A dumbbell in each hand at the sides.
-   Panel 1 "Stand tall": feet together.
-   Panel 2 "Step back": one foot steps straight back and lands on the ball of the foot.
-   Panel 3 "Lower down": back knee just above the floor, front thigh parallel to the floor, front shin vertical, torso upright. Blue arrow pointing down.
-   Panel 4 "Push back to stand": driving through the front heel to bring the feet together, blue arrow pointing up.
-
-7. File: step_up_onto_bench.png | Title: Step-up onto bench | MAN | side view, facing right
-   A dumbbell in each hand at the sides.
-   Panel 1 "Foot on bench": the whole lead foot flat on the bench, the other foot on the floor.
-   Panel 2 "Drive up": pushing up through the lead foot, torso slightly forward, back foot leaving the floor. Blue arrow pointing up.
-   Panel 3 "Stand tall": standing upright on the bench, both feet on it.
-   Panel 4 "Step down slowly": the back foot lowering to the floor first, with control. Blue arrow pointing down.
-
-8. File: lateral_lunge.png | Title: Lateral lunge | WOMAN | front view
-   Hands clasped at the chest.
-   Panel 1 "Stand tall": feet together.
-   Panel 2 "Step wide": one foot steps out wide to the side, feet about twice shoulder-width, toes forward.
-   Panel 3 "Sit into the hip": the stepping knee bends over its toes, hips pushed back, the other leg straight with its foot flat, chest up.
-   Panel 4 "Push back to stand": pushing back to feet together, blue arrow showing the direction.
-
-9. File: single_leg_calf_raise.png | Title: Single-leg calf raise | MAN | side view, facing right
-   Standing on one foot on the edge of a low step, the other foot hooked behind the ankle, one hand lightly on a wall for balance.
-   Panel 1 "Stand on one foot": ball of the foot on the step edge, heel level.
-   Panel 2 "Lower the heel": heel dropped below the step edge.
-   Panel 3 "Rise high": up on the ball of the foot, heel high. Blue arrow pointing up.
-   Panel 4 "Lower slowly": heel coming back down, blue arrow pointing down.
-
-10. File: farmer_carry.png | Title: Farmer carry | WOMAN | side view, facing right
-   A heavy dumbbell in each hand.
-   Panel 1 "Pick up": squatting down with a flat back, gripping both dumbbells beside the feet.
-   Panel 2 "Stand tall": shoulders back, arms straight at the sides.
-   Panel 3 "Walk tall": mid-stride, upright, no leaning, short steps. Blue arrow pointing forward.
-   Panel 4 "Set down": squatting down with a flat back to place them on the floor.
-
-
-=====================================================
-BATCH 3 (10 images)
+BATCH 3 (5 images)
 =====================================================
 
 1. File: dumbbell_bench_press.png | Title: Dumbbell bench press | MAN | side view, head to the left
@@ -156,43 +83,46 @@ BATCH 3 (10 images)
    Panel 3 "Top": dumbbell beside the lower ribs, elbow above the back, back still flat. Small blue tension marks at the upper back.
    Panel 4 "Lower slowly": arm straightening, blue arrow pointing down.
 
-6. File: bent_over_dumbbell_row.png | Title: Bent-over dumbbell row | WOMAN | side view, facing right
+=====================================================
+BATCH 4 (5 images)
+=====================================================
+
+1. File: bent_over_dumbbell_row.png | Title: Bent-over dumbbell row | WOMAN | side view, facing right
    Panel 1 "Hinge forward": dumbbell in each hand, knees slightly bent, torso leaning forward about 45 degrees with a flat back, arms hanging straight.
    Panel 2 "Pull": elbows driving back. Blue arrow pointing up.
    Panel 3 "Squeeze": dumbbells at the lower ribs, shoulder blades squeezed together, back flat. Small blue tension marks at the upper back.
    Panel 4 "Lower slowly": arms straightening, blue arrow pointing down.
 
-7. File: dumbbell_reverse_fly.png | Title: Dumbbell reverse fly | MAN | three-quarter front view
+2. File: dumbbell_reverse_fly.png | Title: Dumbbell reverse fly | MAN | three-quarter front view
    Hinged forward with a flat back, knees slightly bent, a light dumbbell in each hand, elbows slightly bent throughout.
    Panel 1 "Hinge forward": arms hanging below the shoulders.
    Panel 2 "Raise out to the sides": arms sweeping out to the sides. Blue arrows pointing out.
    Panel 3 "Arms level with shoulders": arms out wide at shoulder height, shoulder blades squeezed. Small blue tension marks at the upper back.
    Panel 4 "Lower slowly": arms returning down, blue arrows pointing down.
 
-8. File: dumbbell_pullover.png | Title: Dumbbell pullover | WOMAN | side view
+3. File: dumbbell_pullover.png | Title: Dumbbell pullover | WOMAN | side view
    Lying across the bench: only the upper back and shoulders rest on the bench, feet flat on the floor, hips level with the knees. One dumbbell held over the chest with both hands cupping one end.
    Panel 1 "Dumbbell over chest": arms nearly straight above the chest.
    Panel 2 "Lower behind head": the dumbbell moving back in an arc, elbows slightly bent. Blue curved arrow.
    Panel 3 "Stretch": dumbbell behind the head, arms beside the ears, hips staying level.
    Panel 4 "Pull back over chest": the dumbbell returning over the chest, blue curved arrow.
 
-9. File: band_pull_apart.png | Title: Band pull-apart | MAN | front view
+4. File: band_pull_apart.png | Title: Band pull-apart | MAN | front view
    Standing, holding a green band in both hands, arms straight at shoulder height.
    Panel 1 "Arms forward": hands shoulder-width apart, band slightly taut.
    Panel 2 "Pull apart": arms moving out to the sides, band stretching. Blue arrows pointing out.
    Panel 3 "Band to chest": arms out wide in a T, band touching the chest, shoulder blades squeezed.
    Panel 4 "Return slowly": arms coming back to the front.
 
-10. File: band_row.png | Title: Band row | WOMAN | side view, facing left toward the anchor
+5. File: band_row.png | Title: Band row | WOMAN | side view, facing left toward the anchor
    Standing tall, a green band anchored in front of her at chest height (looped round a sturdy post), one end in each hand.
    Panel 1 "Arms forward": arms straight toward the anchor, band taut, knees soft.
    Panel 2 "Row": elbows pulling back. Blue arrow pointing back.
    Panel 3 "Squeeze": hands at the lower ribs, shoulder blades squeezed together, torso upright. Small blue tension marks at the upper back.
    Panel 4 "Return slowly": arms straightening toward the anchor.
 
-
 =====================================================
-BATCH 4 (10 images)
+BATCH 5 (5 images)
 =====================================================
 
 1. File: dead_bug.png | Title: Dead bug | MAN | side view, head to the left
@@ -227,43 +157,46 @@ BATCH 4 (10 images)
    Panel 3 "Long and level": the arm and the opposite leg straight and level with the back, hips level, no twist. Small blue tension marks at the lower back.
    Panel 4 "Return and switch": back to hands and knees.
 
-6. File: hollow_hold.png | Title: Hollow hold | WOMAN | side view, head to the left
+=====================================================
+BATCH 6 (5 images)
+=====================================================
+
+1. File: hollow_hold.png | Title: Hollow hold | WOMAN | side view, head to the left
    Lying on the back.
    Panel 1 "Lie flat": arms by the sides, legs straight.
    Panel 2 "Press lower back down": lower back flat on the floor, knees bent, arms reaching toward the feet.
    Panel 3 "Arms and legs long and low": arms overhead and legs straight, both held a little off the floor, lower back still flat. Small blue tension marks at the stomach.
    Panel 4 "Hold": the same position, with a small blue clock symbol.
 
-7. File: suitcase_carry.png | Title: Suitcase carry | MAN | front view
+2. File: suitcase_carry.png | Title: Suitcase carry | MAN | front view
    Panel 1 "Pick up one dumbbell": squatting with a flat back, gripping one heavy dumbbell beside one foot.
    Panel 2 "Stand tall": standing upright, the dumbbell at one side, shoulders level.
    Panel 3 "Walk without leaning": mid-stride, upright, shoulders level, no leaning to either side. Blue arrow pointing forward.
    Panel 4 "Switch hands": setting it down to carry it in the other hand.
 
-8. File: clamshell.png | Title: Clamshell | WOMAN | front view, lying on her side
+3. File: clamshell.png | Title: Clamshell | WOMAN | front view, lying on her side
    Lying on her side, head resting on the lower arm, hips and knees bent, feet together, a green band just above the knees.
    Panel 1 "Lie on your side": knees together.
    Panel 2 "Lift the top knee": the top knee opening up, feet staying together. Blue curved arrow.
    Panel 3 "Open wide": top knee as high as it goes without the pelvis rolling back. Small blue tension marks at the outer hip.
    Panel 4 "Lower slowly": knee closing.
 
-9. File: side_lying_leg_raise.png | Title: Side-lying leg raise | MAN | front view, lying on his side
+4. File: side_lying_leg_raise.png | Title: Side-lying leg raise | MAN | front view, lying on his side
    Lying on his side in a straight line, head on the lower arm, lower leg slightly bent for balance.
    Panel 1 "Lie in a line": top leg straight, resting on the lower leg.
    Panel 2 "Lift the top leg": top leg rising, toes pointing forward. Blue arrow pointing up.
    Panel 3 "About 45 degrees": top leg raised about 45 degrees, hips stacked. Small blue tension marks at the outer hip.
    Panel 4 "Lower slowly": blue arrow pointing down.
 
-10. File: band_monster_walk.png | Title: Band monster walk | WOMAN | front view
+5. File: band_monster_walk.png | Title: Band monster walk | WOMAN | front view
    A green band just above the knees, feet hip-width.
    Panel 1 "Quarter squat": knees slightly bent, hips back, chest up, band taut.
    Panel 2 "Step to the side": one foot stepping out sideways. Blue arrow pointing sideways.
    Panel 3 "Follow with the other foot": the other foot following, keeping the band taut, knees not caving in.
    Panel 4 "Keep stepping": continuing sideways in the quarter squat.
 
-
 =====================================================
-BATCH 5 (10 images). Stretches.
+BATCH 7 (5 images)
 =====================================================
 
 1. File: couch_stretch.png | Title: Couch stretch | MAN | side view, facing right
@@ -300,42 +233,45 @@ BATCH 5 (10 images). Stretches.
    Panel 3 "Gentle stretch": leg straight and raised as far as is comfortable, hips flat on the floor. Small blue tension marks at the back of the thigh.
    Panel 4 "Hold, then switch": the same position, with a small blue clock symbol.
 
-6. File: standing_hamstring_stretch.png | Title: Standing hamstring stretch | WOMAN | side view, facing right
+=====================================================
+BATCH 8 (5 images)
+=====================================================
+
+1. File: standing_hamstring_stretch.png | Title: Standing hamstring stretch | WOMAN | side view, facing right
    Panel 1 "Heel on a low step": one heel resting on a low step in front, leg straight, standing tall.
    Panel 2 "Hands on hips": standing tall, back flat.
    Panel 3 "Hinge from the hips": torso leaning forward from the hips with a flat back. Small blue tension marks at the back of the raised thigh.
    Panel 4 "Hold, then switch": the same position, with a small blue clock symbol.
 
-7. File: open_book.png | Title: Open book | MAN | view from above his head, lying on his side
+2. File: open_book.png | Title: Open book | MAN | view from above his head, lying on his side
    Lying on his side, hips and knees bent at right angles, arms straight in front at shoulder height, palms together.
    Panel 1 "Arms stacked": top arm resting on the lower arm.
    Panel 2 "Open the top arm": top arm sweeping up and over, eyes following the hand. Blue curved arrow.
    Panel 3 "Open across": top arm reaching toward the floor on the other side, knees staying together on the floor. Small blue tension marks at the upper back.
    Panel 4 "Close slowly": the arm returning to the start.
 
-8. File: thoracic_extension.png | Title: Thoracic extension | WOMAN | side view, head to the left
+3. File: thoracic_extension.png | Title: Thoracic extension | WOMAN | side view, head to the left
    Lying on the back with a foam roller across the middle of the back, knees bent, feet flat, hands behind the head, elbows forward.
    Panel 1 "Roller under mid-back": hips on the floor.
    Panel 2 "Hands behind head": supporting the head, elbows pointing forward.
    Panel 3 "Extend over the roller": upper back arching gently back over the roller, hips staying down. Small blue tension marks at the upper back.
    Panel 4 "Move up and repeat": the roller placed a little higher on the back.
 
-9. File: cat_cow.png | Title: Cat-cow | MAN | side view, facing right
+4. File: cat_cow.png | Title: Cat-cow | MAN | side view, facing right
    On hands and knees, hands under the shoulders, knees under the hips.
    Panel 1 "Hands and knees": back flat.
    Panel 2 "Cow": belly sinking, chest forward, looking slightly up.
    Panel 3 "Cat": back rounded up toward the ceiling, chin tucked.
    Panel 4 "Repeat with the breath": back to flat.
 
-10. File: childs_pose.png | Title: Child's pose | WOMAN | side view, facing right
+5. File: childs_pose.png | Title: Child's pose | WOMAN | side view, facing right
    Panel 1 "Kneel, knees wide": kneeling, knees wide, big toes together.
    Panel 2 "Sit back": hips moving back toward the heels.
    Panel 3 "Arms long": arms stretched forward on the floor, forehead down, hips on or near the heels. Small blue tension marks along the back.
    Panel 4 "Breathe and hold": the same position, with a small blue clock symbol.
 
-
 =====================================================
-BATCH 6 (10 images). Stretches.
+BATCH 9 (5 images)
 =====================================================
 
 1. File: standing_quad_stretch.png | Title: Standing quad stretch | MAN | side view, facing right
@@ -370,43 +306,46 @@ BATCH 6 (10 images). Stretches.
    Panel 3 "Arms overhead": arms high, elbows and wrists still touching the wall.
    Panel 4 "Slide back down": arms returning to goalposts, blue arrows pointing down.
 
-6. File: 90_90_hip_switch.png | Title: 90/90 hip switch | WOMAN | three-quarter front view
+=====================================================
+BATCH 10 (5 images)
+=====================================================
+
+1. File: 90_90_hip_switch.png | Title: 90/90 hip switch | WOMAN | three-quarter front view
    Sitting on the floor, torso tall.
    Panel 1 "Both knees at right angles": one leg bent in front, the other bent out to the side, both knees at right angles.
    Panel 2 "Rotate the knees": both knees rotating to the other side. Blue curved arrow.
    Panel 3 "Switch sides": the legs now in the mirror position, sitting tall.
    Panel 4 "Keep switching slowly": rotating back, blue curved arrow.
 
-7. File: frog_stretch.png | Title: Frog stretch | MAN | three-quarter rear view
+2. File: frog_stretch.png | Title: Frog stretch | MAN | three-quarter rear view
    Panel 1 "Hands and knees": on hands and knees.
    Panel 2 "Knees wide": knees sliding wide apart, feet turned out, shins in line with the knees.
    Panel 3 "Sit back": hips moving back toward the heels, forearms on the floor. Small blue tension marks at the inner thighs.
    Panel 4 "Breathe and hold": the same position, with a small blue clock symbol.
 
-8. File: lying_glute_and_outer_hip_stretch.png | Title: Lying glute and outer-hip stretch | WOMAN | view from above, lying on her back
+3. File: lying_glute_and_outer_hip_stretch.png | Title: Lying glute and outer-hip stretch | WOMAN | view from above, lying on her back
    Lying on the back, arms out to the sides.
    Panel 1 "Lie on your back": knees bent, feet flat.
    Panel 2 "Cross one leg over": one leg crossed over the other.
    Panel 3 "Knees fall to the side": both knees falling toward the side of the top leg, shoulders staying on the floor. Small blue tension marks at the outer hip.
    Panel 4 "Hold, then switch": the same position, with a small blue clock symbol.
 
-9. File: knee_to_chest.png | Title: Knee to chest | MAN | side view, head to the left
+4. File: knee_to_chest.png | Title: Knee to chest | MAN | side view, head to the left
    Lying on the back.
    Panel 1 "Lie on your back": legs straight.
    Panel 2 "Bend one knee": one knee bending up.
    Panel 3 "Hug it to the chest": hands around the knee pulling it to the chest, the other leg long on the floor. Small blue tension marks at the lower back.
    Panel 4 "Hold, then switch": the same position, with a small blue clock symbol.
 
-10. File: seated_spinal_twist.png | Title: Seated spinal twist | WOMAN | three-quarter front view
+5. File: seated_spinal_twist.png | Title: Seated spinal twist | WOMAN | three-quarter front view
    Sitting on the floor, torso tall.
    Panel 1 "Sit tall": legs straight in front.
    Panel 2 "Cross one knee over": one knee bent with its foot placed outside the other knee.
    Panel 3 "Turn toward the knee": chest turning toward the bent knee, opposite elbow outside that knee, other hand on the floor behind. Small blue tension marks along the spine.
    Panel 4 "Hold, then switch": the same position, with a small blue clock symbol.
 
-
 =====================================================
-BATCH 7 (4 images). Stretches.
+BATCH 11 (5 images) (the last of my original list, then the first new exercises)
 =====================================================
 
 1. File: downward_dog_with_pedalling_heels.png | Title: Downward dog with pedalling heels | MAN | side view, facing right
@@ -435,4 +374,146 @@ BATCH 7 (4 images). Stretches.
    Panel 3 "Chin tuck": head drawn straight back, chin level (not tipping down), as if making a double chin. Blue arrow pointing back.
    Panel 4 "Repeat slowly": back to sitting tall.
 
-That is everything. Start with Batch 2 now.
+5. File: back_squat.png | Title: Back squat | WOMAN | three-quarter side view, facing right
+   A barbell with black plates resting across the upper back (on the shoulder muscles, not the neck), hands gripping it just outside the shoulders.
+   Panel 1 "Stand tall": feet shoulder-width.
+   Panel 2 "Sit hips back": knees bent halfway, chest up, bar staying over the middle of the feet.
+   Panel 3 "Thighs level": thighs parallel to the floor, knees over the toes (not splayed out to the sides), heels flat, back flat. Small blue tension marks at the thighs.
+   Panel 4 "Drive up": rising, blue arrow pointing up.
+
+=====================================================
+BATCH 12 (5 images) (new exercises)
+=====================================================
+
+1. File: walking_lunge.png | Title: Walking lunge | WOMAN | side view, facing right
+   A dumbbell in each hand at the sides.
+   Panel 1 "Stand tall": feet together.
+   Panel 2 "Step forward": a long step forward, front heel landing first.
+   Panel 3 "Lower down": back knee just above the floor, front shin vertical, front thigh parallel to the floor, torso upright. Blue arrow pointing down.
+   Panel 4 "Step through": the back foot swinging forward into the next step. Blue arrow pointing forward.
+
+2. File: dumbbell_deadlift.png | Title: Dumbbell deadlift | WOMAN | side view, facing right
+   Two dumbbells on the floor beside the feet.
+   Panel 1 "Set up": hips back, knees bent, back flat, gripping both dumbbells on the floor.
+   Panel 2 "Push the floor away": standing up, dumbbells close to the legs, back flat. Blue arrow pointing up.
+   Panel 3 "Stand tall": hips fully straight, shoulders back, not leaning back.
+   Panel 4 "Lower with control": hips back, back flat, dumbbells returning to the floor. Blue arrow pointing down.
+
+3. File: barbell_deadlift.png | Title: Barbell deadlift | MAN | side view, facing right
+   A barbell with black plates on the floor over the middle of the feet.
+   Panel 1 "Set up": shins close to the bar, hips back, back flat, hands gripping the bar just outside the knees, arms straight.
+   Panel 2 "Push the floor away": the bar rising close to the shins, back flat. Blue arrow pointing up.
+   Panel 3 "Stand tall": hips locked out, shoulders back, not leaning back.
+   Panel 4 "Lower with control": hips back, bar sliding down the thighs to the floor. Blue arrow pointing down.
+
+4. File: barbell_good_morning.png | Title: Barbell good morning | WOMAN | side view, facing right
+   A light barbell resting across the upper back, hands gripping it just outside the shoulders.
+   Panel 1 "Stand tall": feet hip-width, knees soft.
+   Panel 2 "Hinge forward": hips pushing back, back flat. Blue curved arrow.
+   Panel 3 "Back flat, torso tipped": torso tipped forward about 45 degrees, back flat (not rounded), knees slightly bent. Small blue tension marks at the back of the thighs.
+   Panel 4 "Stand back up": hips driving forward, blue arrow pointing up.
+
+5. File: band_good_morning.png | Title: Band good morning | MAN | side view, facing right
+   A green band under both feet and looped over the upper back behind the shoulders, hands holding the band at the shoulders.
+   Panel 1 "Stand tall": feet hip-width, band taut.
+   Panel 2 "Hinge forward": hips pushing back, back flat. Blue curved arrow.
+   Panel 3 "Back flat, torso tipped": torso tipped forward about 45 degrees, back flat (not rounded), knees slightly bent. Small blue tension marks at the back of the thighs.
+   Panel 4 "Stand back up": hips driving forward, blue arrow pointing up.
+
+=====================================================
+BATCH 13 (5 images) (new exercises)
+=====================================================
+
+1. File: dip.png | Title: Dip | WOMAN | three-quarter side view
+   Between two parallel dip bars, hands on the bars, knees bent and feet crossed behind, feet off the floor.
+   Panel 1 "Top position": arms straight, shoulders down away from the ears.
+   Panel 2 "Lower down": elbows bending straight back, slight forward lean. Blue arrow pointing down.
+   Panel 3 "Bottom": upper arms about parallel to the floor, shoulders not shrugged.
+   Panel 4 "Press up": arms straightening, blue arrow pointing up.
+
+2. File: bench_dip.png | Title: Bench dip | MAN | side view, facing right
+   Hands on the edge of the bench behind him, fingers pointing forward, knees bent, heels on the floor.
+   Panel 1 "Arms straight": hips just in front of the bench edge.
+   Panel 2 "Lower": elbows bending straight back. Blue arrow pointing down.
+   Panel 3 "Elbows at right angles": hips close to the bench, shoulders down, chest up.
+   Panel 4 "Press up": arms straightening, blue arrow pointing up.
+
+3. File: pull_up.png | Title: Pull-up | WOMAN | three-quarter front view
+   Hanging from a pull-up bar fixed in a doorway or on a wall, hands just wider than the shoulders, palms facing away.
+   Panel 1 "Hang": arms straight, feet off the floor.
+   Panel 2 "Pull": shoulder blades drawing down, elbows driving down. Blue arrow pointing up.
+   Panel 3 "Chin over the bar": chin above the bar, chest toward the bar.
+   Panel 4 "Lower slowly": back to a straight-arm hang, blue arrow pointing down.
+
+4. File: lat_pulldown.png | Title: Lat pulldown | MAN | three-quarter front view
+   Seated at a cable lat pulldown machine, thighs under the pad, hands on a wide bar.
+   Panel 1 "Arms up, wide grip": arms straight overhead, sitting tall.
+   Panel 2 "Pull down": elbows driving down, chest up. Blue arrow pointing down.
+   Panel 3 "Bar to upper chest": bar at the top of the chest, shoulder blades squeezed down and back, torso only slightly leaning back. Small blue tension marks at the sides of the upper back.
+   Panel 4 "Return slowly": arms rising back up.
+
+5. File: band_lat_pulldown.png | Title: Band lat pulldown | WOMAN | front view
+   Kneeling tall, a green band anchored high above her (at the top of a door), one end in each hand.
+   Panel 1 "Arms up": arms straight overhead, band taut.
+   Panel 2 "Pull the elbows down": elbows driving down and out. Blue arrows pointing down.
+   Panel 3 "Hands by the shoulders": elbows at the sides, shoulder blades down. Small blue tension marks at the sides of the upper back.
+   Panel 4 "Return slowly": arms rising back up.
+
+=====================================================
+BATCH 14 (5 images) (new exercises)
+=====================================================
+
+1. File: barbell_row.png | Title: Barbell row | MAN | side view, facing right
+   Holding a barbell with an overhand grip, hands just outside the knees.
+   Panel 1 "Hinge forward": knees slightly bent, torso leaning forward about 45 degrees, back flat, arms hanging straight.
+   Panel 2 "Pull": elbows driving back. Blue arrow pointing up.
+   Panel 3 "Bar to the lower ribs": shoulder blades squeezed together, back still flat. Small blue tension marks at the upper back.
+   Panel 4 "Lower slowly": arms straightening, blue arrow pointing down.
+
+2. File: cable_face_pull.png | Title: Cable face pull | WOMAN | side view, facing left toward the machine
+   Standing at a cable machine with a rope attachment set at head height.
+   Panel 1 "Arms forward": arms straight toward the machine, holding the rope ends, thumbs pointing back.
+   Panel 2 "Pull to the face": elbows high and wide. Blue arrow pointing back.
+   Panel 3 "Hands beside the ears": upper arms level with the shoulders, shoulder blades squeezed. Small blue tension marks at the back of the shoulders.
+   Panel 4 "Return slowly": arms straightening toward the machine.
+
+3. File: band_face_pull.png | Title: Band face pull | MAN | side view, facing left toward the anchor
+   A green band anchored at head height (round a sturdy post), one end in each hand.
+   Panel 1 "Arms forward": arms straight toward the anchor, band taut.
+   Panel 2 "Pull to the face": elbows high and wide. Blue arrow pointing back.
+   Panel 3 "Hands beside the ears": upper arms level with the shoulders, shoulder blades squeezed. Small blue tension marks at the back of the shoulders.
+   Panel 4 "Return slowly": arms straightening toward the anchor.
+
+4. File: cable_woodchop.png | Title: Cable woodchop | WOMAN | front view
+   Standing side-on to a cable machine with the handle set high, both hands on the handle, feet wider than shoulders.
+   Panel 1 "Hands high to one side": arms long, reaching up toward the machine.
+   Panel 2 "Pull down and across": torso turning, the back foot pivoting, arms staying long. Blue curved arrow.
+   Panel 3 "Finish low on the other side": hands beside the opposite knee, hips and chest turned. Small blue tension marks at the side of the waist.
+   Panel 4 "Return slowly": back up to the start.
+
+5. File: band_woodchop.png | Title: Band woodchop | MAN | front view
+   A green band anchored high to one side (at the top of a door), both hands holding the free end, feet wider than shoulders.
+   Panel 1 "Hands high to one side": arms long, reaching up toward the anchor.
+   Panel 2 "Pull down and across": torso turning, the back foot pivoting, arms staying long. Blue curved arrow.
+   Panel 3 "Finish low on the other side": hands beside the opposite knee, hips and chest turned. Small blue tension marks at the side of the waist.
+   Panel 4 "Return slowly": back up to the start.
+
+=====================================================
+BATCH 15 (2 images) (new exercises)
+=====================================================
+
+1. File: overhead_carry.png | Title: Overhead carry | WOMAN | side view, facing right
+   One dumbbell.
+   Panel 1 "Press it up": pressing the dumbbell overhead with one arm. Blue arrow pointing up.
+   Panel 2 "Arm locked overhead": arm straight, biceps beside the ear, ribs down, not leaning.
+   Panel 3 "Walk tall": mid-stride, the arm still straight overhead. Blue arrow pointing forward.
+   Panel 4 "Lower and switch hands": bringing the dumbbell down to the shoulder.
+
+2. File: russian_twist.png | Title: Russian twist | MAN | three-quarter front view
+   Sitting on the floor, knees bent, heels on the floor, holding one dumbbell at the chest with both hands.
+   Panel 1 "Lean back, back straight": torso leaning back about 45 degrees, back straight (not rounded), chest up.
+   Panel 2 "Turn to one side": chest and dumbbell turning to one side. Blue curved arrow.
+   Panel 3 "Turn to the other side": turning across to the other side, knees staying still. Small blue tension marks at the side of the waist.
+   Panel 4 "Keep turning, chest up": back to the middle, ready to repeat.
+
+That is everything. Start with Batch 3 now.

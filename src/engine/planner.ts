@@ -52,7 +52,7 @@ export interface PlanRequest {
    */
   layout?: Array<{ start: string; phase: Phase }>;
   /** What the rider has actually done this week up to today, planned or not, so the days left can respond to it. */
-  done?: Array<{ date: string; tss: number; seconds: number; intensity?: number }>;
+  done?: Array<{ date: string; tss: number; seconds: number; intensity?: number; kind?: SessionKind }>;
 }
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
@@ -189,7 +189,7 @@ export function generatePlan(req: PlanRequest): Plan {
     if (i < pastWeeks) { if (isLoading(phase)) loadingSeen++; return; }
     // The week under way, when re-checking: laid out as it was intended (so nothing moves for no
     // reason), then the days left are fitted to what remains after what was actually done.
-    const refit = i === currentIdx && addDays(weekStart, 7) > req.notBefore! && weekStart < req.notBefore!;
+    const refit = i === currentIdx && addDays(weekStart, 7) > req.notBefore! && weekStart <= req.notBefore!;
     const isAway = (slot: number) => (req.away ?? []).some((r) => { const d = dateOfSlot(weekStart, slot); return d >= r.from && d <= r.to; });
     const gone = (slot: number) => (!refit && req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false) || isAway(slot);
     const awayDays = awayDaysInWeek(weekStart, req.away);
@@ -393,8 +393,22 @@ export function generatePlan(req: PlanRequest): Plan {
       const doneSoFar = (req.done ?? []).filter((x) => x.date >= weekStart && x.date < addDays(weekStart, 7));
       const doneTss = doneSoFar.reduce((s, x) => s + x.tss, 0);
       const plannedGone = sessions.filter((x) => x.date < req.notBefore!).reduce((s, x) => s + x.tss, 0) + extra.filter((x) => x.date < req.notBefore!).reduce((s, x) => s + x.tss, 0);
-      const excess = Math.max(0, doneTss - plannedGone);
-      const big = doneSoFar.filter((x) => x.seconds >= 3 * 3600 || x.tss >= 150 || ((x.intensity ?? 0) >= 0.85 && x.seconds >= 2700)).map((x) => x.date).sort().pop();
+      // A little over the estimates (an effort-rated lift, a ride run long) is normal and changes nothing.
+      const excess = Math.max(0, doneTss - plannedGone - Math.max(25, 0.15 * targetTss));
+      // A big day is judged against what that day planned, never by a fixed size: a planned long ride
+      // done as planned is not a reason to ease the next day (the plan already placed the days around it).
+      // Big means well over the day's plan (60 TSS or half as much again, and 120 in all), or a long
+      // ride (2.5 hours) on a day that had no ride planned.
+      const plannedOn = (date: string) => sessions.filter((x) => x.date === date).reduce((s, x) => s + x.tss, 0) + extra.filter((x) => x.date === date).reduce((s, x) => s + x.tss, 0);
+      const rideOnDay = (date: string) => sessions.some((x) => x.date === date && x.kind === 'ride');
+      const days = [...new Set(doneSoFar.map((x) => x.date))];
+      const big = days.filter((date) => {
+        const items = doneSoFar.filter((x) => x.date === date);
+        const done = items.reduce((s, x) => s + x.tss, 0), planned = plannedOn(date);
+        const over = done >= 120 && (done - planned >= 60 || (planned > 0 && done >= 1.5 * planned));
+        const unplannedLong = !rideOnDay(date) && items.some((x) => (x.kind ?? 'ride') === 'ride' && x.seconds >= 2.5 * 3600);
+        return over || unplannedLong;
+      }).sort().pop();
       if (big || excess > 0) {
         if (big) {
           const easyDay = addDays(big, 1);

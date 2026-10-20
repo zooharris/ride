@@ -369,3 +369,39 @@ describe('re-checking a plan keeps its layout', () => {
     expect(differ).toBe(0);   // same evidence: the same sessions
   });
 });
+
+describe('the week under way responds to what was done, judged against the plan', () => {
+  const weight = { kind: 'weight' as const, weeks: 12 };
+  const original = generatePlan(req({ goal: weight }));
+  const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+  const wk = original.weeks[1];                          // a full week of the plan
+  const refit = (notBefore: string, done: Array<{ date: string; tss: number; seconds: number; kind?: 'ride' }>) =>
+    generatePlan(req({ goal: weight, start: layout[0].start, notBefore, layout, done })).weeks[0];
+  const rides = (ss: typeof wk.sessions, from: string) => ss.filter((x) => x.kind === 'ride' && x.date >= from).map((x) => `${x.date} ${x.workout.name}`);
+
+  it('a planned long ride done as planned does not ease the next day', () => {
+    const long = wk.sessions.find((x) => x.type === 'long')!;
+    const next = addDays(long.date, 1);
+    if (next >= addDays(wk.start, 7)) return;            // long ride on the last day: nothing after it this week
+    const done = wk.sessions.filter((x) => x.date <= long.date).map((x) => ({ date: x.date, tss: x.tss, seconds: x.seconds, kind: x.kind as 'ride' }));
+    const doneLight = done.map((x) => (x.date === long.date ? { ...x, tss: Math.min(x.tss, 60), seconds: Math.min(x.seconds, 3600) } : x));
+    // the next day is the same as if the long ride had been short: the planned long ride did not trigger "big day"
+    expect(rides(refit(next, done).sessions, next).filter((r) => r.startsWith(next))).toEqual(rides(refit(next, doneLight).sessions, next).filter((r) => r.startsWith(next)));
+    expect(refit(next, done).sessions.filter((x) => x.date === next && x.kind === 'ride').every((x) => x.type !== 'recovery' || wk.sessions.some((y) => y.date === next && y.type === 'recovery'))).toBe(true);
+  });
+  it('everything done a little over the estimates changes nothing', () => {
+    const wed = addDays(wk.start, 2);
+    const asPlanned = wk.sessions.filter((x) => x.date < wed).map((x) => ({ date: x.date, tss: x.tss, seconds: x.seconds, kind: x.kind as 'ride' }));
+    const over = asPlanned.map((x) => ({ ...x, tss: Math.round(x.tss * 1.2) }));
+    // compared with the same week re-fitted with everything done exactly as planned (same fitness either way)
+    expect(rides(refit(wed, over).sessions, wed)).toEqual(rides(refit(wed, asPlanned).sessions, wed));
+  });
+  it('a big unplanned Monday ride eases Tuesday the same day', () => {
+    const mon = wk.start, tue = addDays(mon, 1);
+    const after = refit(mon, [{ date: mon, tss: 260, seconds: 5 * 3600, kind: 'ride' }]).sessions;
+    const tueRide = after.find((x) => x.kind === 'ride' && x.date === tue);
+    if (tueRide) expect(tueRide.type).toBe('recovery');
+    const sum = (xs: typeof after) => xs.filter((x) => x.kind === 'ride' && x.date > mon).reduce((s, x) => s + x.tss, 0);
+    expect(sum(after)).toBeLessThan(sum(wk.sessions));
+  });
+});

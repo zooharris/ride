@@ -74,10 +74,16 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
     await db.profile.put(strip(data.profile as never));
     await db.settings.bulkPut((data.settings as never[]).map(strip));
     if (keptSecrets.length) await untracked(() => db.settings.bulkPut(keptSecrets));
-    await db.workouts.bulkPut((data.workouts as never[]).map(strip));
-    await db.planned.bulkPut((data.planned as never[]).map(strip));
+    // Plans, sessions and workouts are marked as restored: that is the one thing that brings back a
+    // record deleted after the backup was made (deletions are otherwise final across devices).
+    const restoredAt = new Date().toISOString();
+    const restore = <R extends { updatedAt?: string }>(r: R): R => ({ ...strip(r), restoredAt });
+    const ids = (rows: unknown[] | undefined, table: string) => (rows ?? []).map((r) => `${table}:${(r as { id: string }).id}`);
+    await db.tombstones.bulkDelete([...ids(data.workouts, 'workouts'), ...ids(data.planned, 'planned'), ...ids(data.plans, 'plans')]);
+    await db.workouts.bulkPut((data.workouts as never[]).map(restore));
+    await db.planned.bulkPut((data.planned as never[]).map(restore));
     if (data.dayNotes) await db.dayNotes.bulkPut((data.dayNotes as never[]).map(strip));
-    if (data.plans) await db.plans.bulkPut((data.plans as never[]).map(strip));
+    if (data.plans) await db.plans.bulkPut((data.plans as never[]).map(restore));
     if (data.activityEdits) await db.activityEdits.bulkPut((data.activityEdits as never[]).map(strip));
     if (data.sync) await db.sync.bulkPut(data.sync as never[]);
   });

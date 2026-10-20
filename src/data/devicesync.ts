@@ -119,7 +119,10 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
         const key = keyOf(r);
         remoteKeys.add(key);
         const tomb = localTomb.get(`${name}:${key}`);
-        if (tomb && (FOREVER.has(name) || t(tomb) >= t(r.updatedAt))) { if (FOREVER.has(name)) localNewer = true; continue; }   // deleted here
+        // A record restored from a backup after it was deleted comes back; nothing else does.
+        const restoredAfter = (row: R, at: string) => t((row as { restoredAt?: string }).restoredAt) > t(at);
+        if (tomb && FOREVER.has(name) && restoredAfter(r, tomb)) { await db.tombstones.delete(`${name}:${key}`); localTomb.delete(`${name}:${key}`); }
+        else if (tomb && (FOREVER.has(name) || t(tomb) >= t(r.updatedAt))) { if (FOREVER.has(name)) localNewer = true; continue; }   // deleted here
         const mine = await table.get(key);
         if (!mine) { await table.put(r); applied++; continue; }
         if (t(r.updatedAt) > t(mine.updatedAt)) { await table.put(r); applied++; }
@@ -130,7 +133,8 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
         const key = keyOf(mine);
         if (remoteKeys.has(key)) continue;
         const tomb = remoteTomb.get(`${name}:${key}`);
-        if (tomb && (FOREVER.has(name) || t(tomb) >= t(mine.updatedAt))) { await table.delete(key); applied++; }
+        const restored = t((mine as { restoredAt?: string }).restoredAt) > t(tomb);
+        if (tomb && !restored && (FOREVER.has(name) || t(tomb) >= t(mine.updatedAt))) { await table.delete(key); applied++; }
         else localNewer = true;                                      // made here, not yet in the note
       }
     };

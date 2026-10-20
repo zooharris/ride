@@ -132,3 +132,51 @@ describe('suggestions and reviews', () => {
     expect(r?.failed).toBeTruthy();
   });
 });
+
+describe('deleted plans stay deleted, unless restored from a backup', () => {
+  it('a ghost plan overlapping the plan that owns the calendar is removed, leaving a tombstone', async () => {
+    await putPlan(plan('real'));
+    await putPlan(plan('ghost', { start: addDays(today(), -3) }));
+    await db.planned.put(session('s1', today(), 'real'));
+    expect((await getPlans()).map((p) => p.id)).toEqual(['real']);
+    expect(await db.plans.get('ghost')).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await db.tombstones.toArray()).map((t) => t.id)).toContain('plans:ghost');
+  });
+
+  it('when two plans cover today, the one with sessions is the plan in force', async () => {
+    await db.plans.bulkPut([plan('a'), plan('b')]);
+    await db.planned.bulkPut([session('s1', today(), 'b'), session('s2', addDays(today(), 1), 'b')]);
+    expect((await getActivePlan())?.id).toBe('b');
+  });
+
+  it('a plan restored from a backup survives the old deletion still in the note', async () => {
+    const { makeBackup, restoreBackup } = await import('./backup');
+    await db.profile.put({ id: 'me', units: 'imperial' } as never);
+    await putPlan(plan('kept'));
+    const backup = JSON.stringify(await makeBackup());
+    await deletePlan('kept');
+    await new Promise((r) => setTimeout(r, 20));
+    const oldTomb = (await db.tombstones.toArray()).find((t) => t.id === 'plans:kept')!;
+    await new Promise((r) => setTimeout(r, 5));
+    await restoreBackup(backup);
+    expect(await db.plans.get('kept')).toBeTruthy();
+    expect(await db.tombstones.get('plans:kept')).toBeUndefined();
+    // another device's note still carries the deletion
+    await mergeRemote(doc({ plans: [], tombstones: [oldTomb] }));
+    expect(await db.plans.get('kept')).toBeTruthy();
+  });
+
+  it('a device that deleted the plan takes it back when the restored copy arrives', async () => {
+    await putPlan(plan('back'));
+    await deletePlan('back');
+    await new Promise((r) => setTimeout(r, 20));
+    await mergeRemote(doc({ plans: [{ ...plan('back'), updatedAt: '2000-01-01T00:00:00Z', restoredAt: '2099-01-01T00:00:00Z' } as never] }));
+    expect(await db.plans.get('back')).toBeTruthy();
+    // without the restore mark, the deletion is final
+    await deletePlan('back');
+    await new Promise((r) => setTimeout(r, 20));
+    await mergeRemote(doc({ plans: [{ ...plan('back'), updatedAt: '2099-01-01T00:00:00Z' } as never] }));
+    expect(await db.plans.get('back')).toBeUndefined();
+  });
+});

@@ -182,7 +182,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const t = today(), wk = weekStart(t);
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
-      .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: r.intensityFactor }));
+      .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: r.intensityFactor, kind: r.sport }));
     return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done });
   }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });

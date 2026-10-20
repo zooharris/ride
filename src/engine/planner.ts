@@ -21,9 +21,20 @@ export interface Availability {
   pins: Array<{ dow: number; kind: SessionKind | 'rest' }>;  // standing commitments the plan must honour
 }
 
+/** Days away (travel, a busy week), inclusive. Nothing is planned on them. */
+export interface AwayRange { from: string; to: string; note?: string }
+
+/** How many of a week's seven days fall inside the away ranges. */
+export function awayDaysInWeek(weekStart: string, away: AwayRange[] = []): number {
+  let n = 0;
+  for (let k = 0; k < 7; k++) { const d = addDays(weekStart, k); if (away.some((r) => d >= r.from && d <= r.to)) n++; }
+  return n;
+}
+
 export interface PlanRequest {
   start: string;          // a Monday; the plan's weeks line up with the calendar
   notBefore?: string;     // days before this are already gone (today, when the plan starts mid-week)
+  away?: AwayRange[];     // dates the rider is away: nothing is placed on them
   goal: Goal;
   availability: Availability;
   basis: Basis;
@@ -155,7 +166,9 @@ export function generatePlan(req: PlanRequest): Plan {
     phaseIdx = phase === lastPhase ? phaseIdx + 1 : 0;
     lastPhase = phase;
     const weekStart = addDays(req.start, i * 7);
-    const gone = (slot: number) => req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false;
+    const isAway = (slot: number) => (req.away ?? []).some((r) => { const d = dateOfSlot(weekStart, slot); return d >= r.from && d <= r.to; });
+    const gone = (slot: number) => (req.notBefore ? dateOfSlot(weekStart, slot) < req.notBefore : false) || isAway(slot);
+    const awayDays = awayDaysInWeek(weekStart, req.away);
     const blockLen = blockLengths[i];
     const progress = blockLen > 1 ? phaseIdx / (blockLen - 1) : 1;
     const loadingProgress = loadingWeeks > 1 ? loadingSeen / (loadingWeeks - 1) : 1;
@@ -163,9 +176,13 @@ export function generatePlan(req: PlanRequest): Plan {
     const daysThisWeek = daysWithTime.filter((d) => !gone(d));
     const slotsThisWeek = slotsAll.filter((d) => !gone(d));
 
-    // Weekly load target.
+    // Weekly load target. A week mostly away is kept light rather than crammed into the days left.
     let targetTss: number;
-    if (phase === 'recovery') targetTss = lastLoading * 0.6;
+    const mostlyAway = awayDays >= 5 || (awayDays > 0 && daysWithTime.filter((d) => !isAway(d)).length <= 2);
+    if (mostlyAway && phase !== 'recovery' && phase !== 'taper') {
+      targetTss = lastLoading * 0.6;
+      decisions.push(`Week of ${new Date(weekStart + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} is mostly away (${awayDays} of 7 days): kept light, and the block picks up again after it.`);
+    } else if (phase === 'recovery') targetTss = lastLoading * 0.6;
     else if (phase === 'taper') targetTss = lastLoading * (phaseIdx === 0 && seq.filter((p) => p === 'taper').length === 2 ? 0.55 : 0.45);
     else { ctl += ramp; targetTss = Math.min(capTss, 7 * (ctl + 6 * ramp)) * loadScale; lastLoading = targetTss; loadingSeen++; }
 
@@ -344,13 +361,13 @@ export function generatePlan(req: PlanRequest): Plan {
     }
     sessions.push(...extra);
     sessions.sort((x, y) => x.date.localeCompare(y.date) || KIND_ORDER[x.kind] - KIND_ORDER[y.kind]);
-    if (sessions.length === 0) return;
+    if (sessions.length === 0 && awayDays === 0) return;   // a first week already over; a week away stays, empty, so the timeline keeps its shape
     for (const s of sessions) if (s.type === 'long' && s.seconds > longestPlanned) longestPlanned = s.seconds;
 
     weeks.push({
       index: i + 1, start: weekStart, phase, label: weekLabel(phase, seq, i), targetTss: Math.round(targetTss), tss: Math.round(total),
       hours: Math.round(sessions.reduce((s, x) => s + x.seconds, 0) / 360) / 10, sessions,
-      note: PHASE_NOTE[phase],
+      note: awayDays >= 7 ? 'Away all week: nothing planned.' : mostlyAway ? `Away ${awayDays} of 7 days: a light week.` : PHASE_NOTE[phase],
     });
   });
 

@@ -16,6 +16,7 @@ import { SessionBuilder } from './screens/SessionBuilder';
 import { BuildChooser } from './screens/BuildChooser';
 import { findWorkout } from './store';
 import { Plan } from './screens/Plan';
+import { PlanPage } from './screens/PlanPage';
 import { Progress } from './screens/Progress';
 import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
@@ -68,7 +69,7 @@ export function App() {
         : <Builder key={key} data={data} id={id} copyId={copyId} />;
       break;
     }
-    case 'plan': screen = <Plan data={data} />; break;
+    case 'plan': screen = id ? <PlanPage data={data} id={id} editing={route.parts[2] === 'edit'} /> : <Plan data={data} />; break;
     case 'progress': screen = <Progress data={data} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;

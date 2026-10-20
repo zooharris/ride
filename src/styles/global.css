@@ -652,3 +652,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
   .p-table tr { page-break-inside: avoid; break-inside: avoid; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* A link that reads as text until hovered (plan names on cards). */
+.plain-link { color: inherit; text-decoration: none; }
+.plain-link:hover { text-decoration: underline; text-underline-offset: 3px; }

@@ -136,6 +136,18 @@ describe('planner', () => {
     const plan = generatePlan(req({ assessment: a }));
     expect(plan.weeks[0].sessions.filter((s) => s.type === 'long')).toHaveLength(1);
   });
+  it('places nothing on days away, and keeps a mostly-away week light', () => {
+    const base = generatePlan(req());
+    const w3 = base.weeks[2], w5 = base.weeks[4];
+    const plan = generatePlan(req({ away: [
+      { from: w3.start, to: addDays(w3.start, 6) },                 // the whole third week
+      { from: addDays(w5.start, 1), to: addDays(w5.start, 5) },      // five days of the fifth
+    ] }));
+    expect(plan.weeks[2].sessions).toHaveLength(0);
+    for (const s of plan.weeks[4].sessions) expect(s.date < addDays(w5.start, 1) || s.date > addDays(w5.start, 5)).toBe(true);
+    if (w5.phase !== 'recovery' && w5.phase !== 'taper') expect(plan.weeks[4].tss).toBeLessThan(w5.tss);
+    expect(plan.decisions.some((d) => /mostly away/.test(d))).toBe(true);
+  });
   it('uses only available days and keeps within the slot hours', () => {
     const plan = generatePlan(req());
     for (const w of plan.weeks) for (const s of w.sessions) {

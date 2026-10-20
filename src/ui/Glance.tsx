@@ -191,7 +191,7 @@ export function PlanTimeline({ weeks, goalDate, event, bars = false, height }: {
       </div>
       {h != null && (
         <div class="panel small" style="position:absolute;top:0;right:0;padding:6px 10px;pointer-events:none;max-width:75%">
-          <b>Week of {fmtDate(weeks[h].start, { month: 'short', day: 'numeric' })}</b> · {PHASE_WORD[weeks[h].phase]}{weeks[h].label && weeks[h].label !== PHASE_WORD[weeks[h].phase] ? ` (${weeks[h].label})` : ''} · {weeks[h].tss} TSS planned
+          <b>Week of {fmtDate(weeks[h].start, { month: 'short', day: 'numeric' })}</b> · {weeks[h].label || PHASE_WORD[weeks[h].phase]} · {weeks[h].tss} TSS planned
         </div>
       )}
     </div>

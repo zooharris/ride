@@ -78,6 +78,14 @@ describe('rebuilding a plan whose record is missing', () => {
     expect((await getPlans()).length).toBe(1);           // saved, not rebuilt twice
   });
 
+  it("adds up each rebuilt week's planned load from its sessions", async () => {
+    await db.workouts.put({ id: 'gw', name: 'Walk', kind: 'walk', family: 'recovery', purpose: '', phases: [], bases: ['hr'], setting: 'any', blocks: [], minutes: 30, estimatedTss: 15, source: 'generated' } as never);
+    await db.planned.bulkPut([session('a', addDays(today(), 1), 'p1', { workoutId: 'gw', note: 'Base 1' }), session('b', addDays(today(), 2), 'p1', { workoutId: 'gw', note: 'Base 1' })]);
+    const p = await getActivePlan();
+    const total = (p?.weeks ?? []).reduce((s, w) => s + w.tss, 0);
+    expect(total).toBe(30);
+  });
+
   it('waits until this device has synced with the others when it is connected', async () => {
     await setSetting('intervals', { athleteId: 'i1', apiKey: 'k' });
     await db.planned.put(session('b', addDays(today(), 4), 'p1'));

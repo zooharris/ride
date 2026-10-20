@@ -200,7 +200,7 @@ export function Today({ data }: { data: AppData }) {
       {active && (
         <section class="panel" style="margin-bottom:14px;padding:12px 16px">
           <div class="row between">
-            <div class="small"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null}</div>
+            <a class="small plain-link" href={`#/plan/${active.id}`} title="Open the plan"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null} <span class="faint">›</span></a>
           </div>
           {check && check.changes.length > 0 && (
             <div class="row between wrap" style="gap:8px;margin-top:8px">

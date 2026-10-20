@@ -6,26 +6,23 @@ import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../eng
 import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
 import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
-import type { Goal, EventType } from '../../engine/goals';
+import type { Goal } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
 import { addDays, today } from '../../engine/load';
 import { clock } from '../../engine/workout';
 import { getSetting, setSetting } from '../../data/db';
-import { dayOrder, fmtDate } from '../derived';
+import { fmtDate } from '../derived';
 import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
-import type { Equipment, Fitness, SessionKind } from '../../engine/types';
+import type { Fitness, SessionKind } from '../../engine/types';
 import { KIND_ICON } from '../icons';
 import { FORM_BANDS, LineChart } from '../LineChart';
 import { PageHead } from '../PageHead';
 import { PlanTimeline } from '../Glance';
+import { AwayFields, GoalFields, WeekFields } from '../PlanForm';
+import type { AwayRange } from '../../engine/planner';
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const EVENT_TYPES: Array<[EventType, string]> = [
-  ['century', 'Century or long endurance ride'], ['gran-fondo', 'Gran fondo or hard sportive'], ['climbing', 'Climbing event'],
-  ['time-trial', 'Time trial'], ['group-ride', 'Fast group ride or race'], ['multi-day', 'Multi-day tour'], ['other', 'Something else'],
-];
 
 interface Saved { goal: Goal; availability: Availability; masters: boolean }
 
@@ -47,6 +44,7 @@ export function Plan({ data }: { data: AppData }) {
   // Until the rider types a name, each build fills one in that says what and when.
   const [nameTouched, setNameTouched] = useState(false);
   const [startDate, setStartDate] = useState(today());
+  const [away, setAway] = useState<AwayRange[]>([]);
   const refreshPlans = () => getPlans().then((ps) => { setPlans(ps); getActivePlan().then(setActive); });
 
   useEffect(() => {
@@ -58,7 +56,7 @@ export function Plan({ data }: { data: AppData }) {
   const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }), [data.rides, data.wellness, data.planned, curve, profile]);
 
   async function build() {
-    const p = await buildPlan(data, goal, av, masters, startDate);
+    const p = await buildPlan(data, goal, av, masters, startDate, undefined, away);
     setPlan(p);
     if (!nameTouched) {
       const from = p.weeks[0]?.sessions[0]?.date ?? p.weeks[0]?.start ?? startDate;
@@ -76,7 +74,7 @@ export function Plan({ data }: { data: AppData }) {
     if (!plan || clash) return;
     setBusy(true);
     try {
-      await applyPlan(data, plan, goal, av, masters, undefined, { name: name.trim() || defaultPlanName(goal) });
+      await applyPlan(data, plan, goal, av, masters, undefined, { name: name.trim() || defaultPlanName(goal), away });
       go('calendar');
     } finally { setBusy(false); }
   }
@@ -123,11 +121,7 @@ export function Plan({ data }: { data: AppData }) {
     else { setGoal(DEFAULT_GOAL); setAv(DEFAULT_AV); setMasters(profile.masters); }
     setPlan(null);
   }
-  const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
-  const toggleEquipment = (q: Equipment) => setAv({ ...av, equipment: av.equipment.includes(q) ? av.equipment.filter((e) => e !== q) : [...av.equipment, q] });
-  const setPin = (dow: number, kind: SessionKind | 'rest' | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])] });
   const totalHours = av.hours.reduce((s, h) => s + (h || 0), 0);
-  const imperial = profile.units === 'imperial';
 
   return (
     <div>
@@ -145,11 +139,12 @@ export function Plan({ data }: { data: AppData }) {
                 <div class={`panel${isActive ? ' accent' : ''}`} key={p.id}>
                   <div class="row between wrap" style="gap:8px">
                     <div>
-                      <b>{p.name}</b> <span class="faint small">· {status}</span>
+                      <a class="plain-link" href={`#/plan/${p.id}`}><b>{p.name}</b></a> <span class="faint small">· {status}</span>
                       <div class="muted small">{p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })} · ` : `${GOAL_LABEL[p.goal.kind]} · `}{fmtDate(p.start, { month: 'short', day: 'numeric' })} to {fmtDate(p.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}{p.requiredCtl ? ` · goal wants fitness ${p.requiredCtl}` : ''}</div>
                     </div>
                     <div class="row" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
+                      <a class="btn sm" href={`#/plan/${p.id}`}>Open</a>
                       <button class="btn sm quiet" onClick={() => rename(p)} disabled={busy}>Rename</button>
                       <a class="btn sm quiet" href={`#/print/${p.id}`}>Print</a>
                       {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
@@ -184,45 +179,7 @@ export function Plan({ data }: { data: AppData }) {
         <div class="panel"><div class="form">
           <div class="field"><label>Plan name</label><input value={name} placeholder={defaultPlanName(goal)} onInput={(e) => { setName((e.target as HTMLInputElement).value); setNameTouched(true); }} /></div>
           <div class="field"><label>Starts on</label><input type="date" value={startDate} min={today()} onInput={(e) => setStartDate((e.target as HTMLInputElement).value || today())} /></div>
-          <div class="field"><label>What you are training for</label>
-            <select value={goal.kind} onChange={(e) => {
-              const k = (e.target as HTMLSelectElement).value as Goal['kind'];
-              setGoal(k === 'event' ? { kind: 'event', date: addDays(today(), 84), name: '', eventType: 'century', priority: 'A' }
-                : k === 'ftp' ? { kind: 'ftp', weeks: 12, targetWatts: Math.round(profile.ftp * 1.06) }
-                : k === 'endurance' ? { kind: 'endurance', weeks: 12, targetHours: 4 }
-                : { kind: k, weeks: 12 } as Goal);
-            }}>
-              <option value="event">An event on a date</option>
-              <option value="ftp">Raise FTP</option>
-              <option value="vo2max">Raise VO2max</option>
-              <option value="endurance">Ride longer comfortably</option>
-              <option value="weight">Lose weight</option>
-              <option value="general">General fitness</option>
-            </select>
-          </div>
-          {goal.kind === 'event' && (
-            <>
-              <div class="field"><label>Event name</label><input value={goal.name} placeholder="Seagull Century" onInput={(e) => setGoal({ ...goal, name: (e.target as HTMLInputElement).value })} /></div>
-              <div class="field"><label>Date</label><input type="date" min={addDays(today(), 28)} value={goal.date} onInput={(e) => setGoal({ ...goal, date: (e.target as HTMLInputElement).value })} /></div>
-              <div class="field"><label>Kind of event</label>
-                <select value={goal.eventType} onChange={(e) => setGoal({ ...goal, eventType: (e.target as HTMLSelectElement).value as EventType })}>{EVENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-              <div class="field"><label>Distance ({imperial ? 'miles' : 'km'})</label>
-                <input type="number" value={goal.distanceKm != null ? Math.round(imperial ? goal.distanceKm / 1.609 : goal.distanceKm) : ''} placeholder={imperial ? '100' : '160'} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); setGoal({ ...goal, distanceKm: v ? (imperial ? v * 1.609 : v) : undefined }); }} /></div>
-              <div class="field"><label>Climbing ({imperial ? 'feet' : 'metres'})</label>
-                <input type="number" value={goal.climbingM != null ? Math.round(imperial ? goal.climbingM * 3.281 : goal.climbingM) : ''} placeholder="optional" onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); setGoal({ ...goal, climbingM: v ? (imperial ? v / 3.281 : v) : undefined }); }} /></div>
-              <div class="field"><label>Priority</label>
-                <div class="seg">{(['A', 'B', 'C'] as const).map((p) => <button key={p} class={goal.priority === p ? 'on' : ''} onClick={() => setGoal({ ...goal, priority: p })}>{p}</button>)}</div></div>
-            </>
-          )}
-          {goal.kind !== 'event' && (
-            <div class="field"><label>Weeks</label><input type="number" min="4" max="24" value={goal.weeks} onInput={(e) => setGoal({ ...goal, weeks: Number((e.target as HTMLInputElement).value) || 8 })} /></div>
-          )}
-          {goal.kind === 'ftp' && (
-            <div class="field"><label>Target FTP (watts, now {profile.ftp})</label><input type="number" value={goal.targetWatts} onInput={(e) => setGoal({ ...goal, targetWatts: Number((e.target as HTMLInputElement).value) || profile.ftp })} /></div>
-          )}
-          {goal.kind === 'endurance' && (
-            <div class="field"><label>Ride this long comfortably (hours)</label><input type="number" step="0.5" value={goal.targetHours} onInput={(e) => setGoal({ ...goal, targetHours: Number((e.target as HTMLInputElement).value) || 3 })} /></div>
-          )}
+          <GoalFields goal={goal} setGoal={setGoal} profile={profile} />
         </div></div>
       </section>
 
@@ -230,42 +187,14 @@ export function Plan({ data }: { data: AppData }) {
         <h2>Your week</h2>
         <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, mobility or rest for every other day. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
         <div class="panel">
-        <div class="week-table">
-          <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>
-          {dayOrder().map((i) => {
-            const d = DAYS[i];
-            const where: 'out' | 'in' | 'none' = av.noBike?.[i] ? 'none' : av.outdoor[i] ? 'out' : 'in';
-            const setWhere = (w: 'out' | 'in' | 'none') => setAv({ ...av, outdoor: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'out' : !!av.outdoor[k])), noBike: [0, 1, 2, 3, 4, 5, 6].map((k) => (k === i ? w === 'none' : !!av.noBike?.[k])) });
-            const pin = (av.pins ?? []).find((p) => p.dow === i)?.kind ?? '';
-            return (
-              <div class="week-row" key={d}>
-                <span class="small"><b>{d}</b></span>
-                <input type="number" min="0" max="12" step="0.25" value={av.hours[i] || ''} placeholder="0" inputMode="decimal" onInput={(e) => setHours(i, Number((e.target as HTMLInputElement).value) || 0)} style="padding:8px 6px;text-align:center" aria-label={`Hours on ${d}`} />
-                <div class="seg">
-                  <button class={where === 'out' ? 'on' : ''} onClick={() => setWhere('out')} title="Rides on this day are shaped for outdoors">Outdoors</button>
-                  <button class={where === 'in' ? 'on' : ''} onClick={() => setWhere('in')} title="Rides on this day are shaped for the trainer">Indoors</button>
-                  <button class={where === 'none' ? 'on' : ''} onClick={() => setWhere('none')} title="No ride this day; strength, a walk or mobility can still be placed">No bike</button>
-                </div>
-                <select value={pin} onChange={(e) => setPin(i, (e.target as HTMLSelectElement).value as SessionKind | 'rest' | '')} style="min-height:36px;padding:4px 8px" aria-label={`Commitment on ${d}`}>
-                  <option value="">App decides</option><option value="ride">Always a ride</option><option value="strength">Always strength</option><option value="walk">Always a walk</option><option value="mobility">Always mobility</option><option value="rest">Always rest</option>
-                </select>
-              </div>
-            );
-          })}
+        <WeekFields av={av} setAv={setAv} masters={masters} setMasters={setMasters} profile={profile} />
         </div>
-        <div class="field" style="margin-top:14px"><label>What you have</label>
-          <div class="chips">
-            {([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight only'], ['trainer', 'Indoor trainer'], ['treadmill', 'Treadmill'], ['outdoor-walk', 'Somewhere to walk']] as Array<[Equipment, string]>).map(([q, l]) => (
-              <button key={q} class={`chip${av.equipment.includes(q) ? ' on' : ''}`} onClick={() => toggleEquipment(q)}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div class="row wrap" style="margin-top:14px;gap:18px">
-          <div class="field"><label>Recovery rhythm</label>
-            <div class="seg"><button class={masters ? 'on' : ''} onClick={() => setMasters(true)}>Masters (more recovery)</button><button class={!masters ? 'on' : ''} onClick={() => setMasters(false)}>Standard</button></div></div>
-          <span class="faint small" style="align-self:flex-end;padding-bottom:10px">Targets in {profile.basis === 'power' ? 'power' : 'heart rate'} (change in Settings).</span>
-        </div>
-        </div>
+      </section>
+
+      <section class="section">
+        <h2>Time away</h2>
+        <p class="faint small" style="margin:4px 0 10px">Travel or a busy stretch you already know about. Nothing is planned on those days; a week mostly away is kept light. You can add or change these later from the plan's page.</p>
+        <div class="panel"><AwayFields away={away} setAway={setAway} /></div>
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">

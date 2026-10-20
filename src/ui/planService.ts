@@ -5,7 +5,7 @@ import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { addDays, today } from '../engine/load';
-import { generatePlan, type Availability, type Plan, type Phase as PlanPhase } from '../engine/planner';
+import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase } from '../engine/planner';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
@@ -29,6 +29,8 @@ export interface ActivePlan {
   projection: Fitness[];
   appliedAt: string;
   lastCheck?: string;
+  /** Days the rider is away; the plan places nothing on them, and a week mostly away is kept light. */
+  away?: AwayRange[];
   /** The plan's weeks as built (phase and planned load), for the timeline and the calendar's recovery-week shading. Plans applied before this was kept have none. */
   weeks?: PlanWeekSummary[];
 }
@@ -99,6 +101,8 @@ async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
   const orphanIds: string[] = [];
   for (const id of candidates) if (!(await db.tombstones.get(`plans:${id}`))) orphanIds.push(id);
   if (!orphanIds.length) return [];
+  const workouts = await db.workouts.toArray();
+  const sessionTss = (workoutId: string) => { const w = findWorkout(workouts, workoutId); return w ? plannedTss(w) : 0; };
   const req = await getSetting<{ goal: Goal; availability: Availability; masters: boolean } | null>('planRequest', null);
   const out: ActivePlan[] = [];
   for (const id of orphanIds) {
@@ -116,6 +120,7 @@ async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
         const phase = (['recovery', 'taper', 'peak', 'build', 'base'] as PlanPhase[]).find((ph) => label.toLowerCase().startsWith(ph)) ?? 'base';
         byWeek.set(ws, { start: ws, phase, label, tss: 0 });
       }
+      byWeek.get(ws)!.tss += sessionTss(s.workoutId);
     }
     const name = sessions.find((s) => s.planName)?.planName ?? defaultPlanName(goal);
     const plan: ActivePlan = { id, name, goal, availability, masters: req?.masters ?? true, start, goalDate, requiredCtl: 0, projection: [], appliedAt: new Date().toISOString(), lastCheck: t, weeks: [...byWeek.values()] };
@@ -142,7 +147,7 @@ export function overlapping(plans: ActivePlan[], start: string, end: string, exc
   return plans.find((p) => p.id !== exceptId && p.start <= end && p.goalDate >= start);
 }
 
-export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string): Promise<Plan> {
+export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[]): Promise<Plan> {
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
@@ -152,7 +157,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
   const start = weekStart(notBefore);
   // Re-planning a block already under way: keep its end date, so only the remaining weeks are regenerated.
   const g: Goal = goal.kind !== 'event' && endDate ? { ...goal, weeks: Math.max(1, Math.round((Date.parse(endDate) - Date.parse(start) + 864e5) / (7 * 864e5))) } : goal;
-  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh });
+  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });
 }
 
 /**
@@ -160,7 +165,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
  * plan keeps (same date, kind and name) are left alone, so a ride already on
  * the Garmin is not deleted and re-sent for nothing.
  */
-export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>, opts: { name?: string; planId?: string } = {}): Promise<{ added: number; removed: number; kept: number }> {
+export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>, opts: { name?: string; planId?: string; away?: AwayRange[] } = {}): Promise<{ added: number; removed: number; kept: number }> {
   const from = today();
   const profile = data.profile as Profile;
   const plans = await getPlans();
@@ -210,7 +215,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
-  const active: ActivePlan = { id: planId, name, goal, availability, masters, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from, weeks };
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from, weeks };
   await putPlan(active);
   notify();
   if (c) autoBackup(c, true);
@@ -275,7 +280,7 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const active = await getActivePlan();
   if (!active) return null;
   if (active.goal.kind === 'event' && active.goal.date <= today()) return null;
-  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate);
+  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away);
   const workouts = new Map(data.mine.map((w) => [w.id, w]));
   for (const p of data.planned) { const w = findWorkout(data.mine, p.workoutId); if (w) workouts.set(w.id, w); }
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
@@ -411,4 +416,9 @@ export function recentNoteLines(notes: { date: string; text?: string; badWellnes
 export async function freshData(data: AppData): Promise<AppData> {
   const [planned, mine] = await Promise.all([db.planned.toArray(), db.workouts.toArray()]);
   return { ...data, planned, mine };
+}
+
+/** The planned load of one workout: a ride from its steps, anything else from its estimate. */
+export function plannedTss(w: Workout): number {
+  return w.kind === 'ride' ? workoutStats(w.blocks).tss : w.estimatedTss ?? 0;
 }

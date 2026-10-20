@@ -107,13 +107,19 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
     }
     for (const [id, at] of localTomb) if (!remoteTomb.has(id) || remoteTomb.get(id)! < at) localNewer = true;
 
+    // Plans, calendar entries and workouts have ids that are never reused: once deleted, an id stays
+    // deleted, whatever a device that had not heard of the deletion later wrote to its copy (an old
+    // build re-checking a plan it still had brought a deleted plan back, 20 Oct 2026). Settings,
+    // day notes and the like are keyed by names and dates that can be written again, so there the
+    // newest change still wins.
+    const FOREVER = new Set(['plans', 'planned', 'workouts']);
     const mergeTable = async <R extends { updatedAt?: string }>(name: string, table: { get: (k: string) => Promise<R | undefined>; put: (r: R) => Promise<unknown>; delete: (k: string) => Promise<void>; toArray: () => Promise<R[]> }, remoteRows: R[], keyOf: (r: R) => string, local: (r: R) => boolean = () => true) => {
       const remoteKeys = new Set<string>();
       for (const r of remoteRows) {
         const key = keyOf(r);
         remoteKeys.add(key);
         const tomb = localTomb.get(`${name}:${key}`);
-        if (tomb && t(tomb) >= t(r.updatedAt)) continue;           // deleted here after the remote wrote it
+        if (tomb && (FOREVER.has(name) || t(tomb) >= t(r.updatedAt))) { if (FOREVER.has(name)) localNewer = true; continue; }   // deleted here
         const mine = await table.get(key);
         if (!mine) { await table.put(r); applied++; continue; }
         if (t(r.updatedAt) > t(mine.updatedAt)) { await table.put(r); applied++; }
@@ -124,7 +130,7 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
         const key = keyOf(mine);
         if (remoteKeys.has(key)) continue;
         const tomb = remoteTomb.get(`${name}:${key}`);
-        if (tomb && t(tomb) >= t(mine.updatedAt)) { await table.delete(key); applied++; }
+        if (tomb && (FOREVER.has(name) || t(tomb) >= t(mine.updatedAt))) { await table.delete(key); applied++; }
         else localNewer = true;                                      // made here, not yet in the note
       }
     };

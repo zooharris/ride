@@ -40,9 +40,23 @@ export interface PlanWeekSummary { start: string; phase: PlanPhase; label: strin
 /** Every plan on the calendar, oldest first. Plans never overlap in time. */
 export async function getPlans(): Promise<ActivePlan[]> {
   await migrateLegacyPlans();
-  const valid = (await db.plans.toArray()).filter((p) => p.goal && p.availability?.equipment);
+  const valid = await dropGhostPlans((await db.plans.toArray()).filter((p) => p.goal && p.availability?.equipment));
   const recovered = await recoverPlans(valid);
   return [...valid, ...recovered].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Plans never overlap. A plan that overlaps another and has nothing at all on
+ * the calendar is a ghost (a deleted plan brought back by an older device) and
+ * is removed; the removal travels to the other devices.
+ */
+async function dropGhostPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
+  if (plans.length < 2) return plans;
+  const owners = new Set((await db.planned.toArray()).map((p) => p.planId).filter(Boolean));
+  const overlaps = (a: ActivePlan, b: ActivePlan) => a.id !== b.id && a.start <= b.goalDate && b.start <= a.goalDate;
+  const ghosts = plans.filter((p) => !owners.has(p.id) && plans.some((q) => overlaps(p, q) && owners.has(q.id)));
+  for (const g of ghosts) await db.plans.delete(g.id);
+  return plans.filter((p) => !ghosts.includes(p));
 }
 
 /** Save one plan. Each plan is its own record, so a device can only add, change or remove a plan, never replace the whole set. */
@@ -134,7 +148,11 @@ async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
 export async function getActivePlan(): Promise<ActivePlan | null> {
   const plans = await getPlans();
   const t = today();
-  return plans.find((p) => p.start <= t && p.goalDate >= t) ?? plans.find((p) => p.start > t) ?? null;
+  // Should two ever cover today, the one with sessions on the calendar is the plan in force.
+  const counts = new Map<string, number>();
+  for (const p of await db.planned.toArray()) if (p.planId) counts.set(p.planId, (counts.get(p.planId) ?? 0) + 1);
+  const covering = plans.filter((p) => p.start <= t && p.goalDate >= t).sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
+  return covering[0] ?? plans.find((p) => p.start > t) ?? null;
 }
 
 export function defaultPlanName(goal: Goal): string {
@@ -360,7 +378,9 @@ export async function pruneOrphanWorkouts(): Promise<number> {
 export async function markChecked(): Promise<void> {
   const a = await getActivePlan();
   if (!a) return;
-  await putPlan({ ...a, lastCheck: today() });
+  // Bookkeeping, not an edit: it must not make this device's copy of the plan look newer than a
+  // change (or a deletion) made on another device.
+  await untracked(() => db.plans.put({ ...a, lastCheck: today() }));
 }
 
 

@@ -112,4 +112,10 @@ describe('secrets stay on the device', () => {
     expect(((await db.settings.get('intervals'))?.value as { apiKey: string }).apiKey).toBe('secret');
     expect((await db.settings.get('claudeKey'))?.value).toBe('sk-secret');
   });
+  it('a deleted plan stays deleted, even when another device later wrote to its copy', async () => {
+    const plan = { id: 'ghost', name: 'Old block', goal: { kind: 'weight', weeks: 12 }, availability: { equipment: ['bodyweight'] }, start: '2026-10-20', goalDate: '2027-01-09', updatedAt: '2026-10-20T20:00:00Z' };
+    await db.tombstones.put({ id: 'plans:ghost', at: '2026-10-20T15:00:00Z' });          // deleted here this afternoon
+    await mergeRemote(doc({ plans: [plan as never] }));                                 // an older phone re-checked its copy tonight
+    expect(await db.plans.get('ghost')).toBeUndefined();
+  });
 });

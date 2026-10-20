@@ -10,6 +10,7 @@ import { zoneTable } from '../../engine/zones';
 import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
+import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
@@ -233,7 +234,7 @@ export function Settings({ data }: { data: AppData }) {
       </section>
 
       <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · phase 1 · all data stays on this device</p>
-      <p class="faint small" style="margin-top:28px">{APP_NAME} build {__BUILD__}. The app updates itself when a new build is published; if a change you were told about is missing, close every tab of the app and open it again.</p>
+      <UpdateCheck />
     </div>
   );
 }
@@ -403,5 +404,20 @@ function HistoryLoader() {
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. Its Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
       </div>
     </section>
+  );
+}
+
+/** Which build this is, and a button to look for a newer one now. */
+function UpdateCheck() {
+  const [state, setState] = useState<'idle' | 'checking' | 'latest' | 'ready'>(updateReady() ? 'ready' : 'idle');
+  const check = async () => { setState('checking'); setState((await checkForUpdate(true)) ? 'ready' : 'latest'); };
+  return (
+    <div class="row wrap" style="gap:8px 14px;margin-top:28px;align-items:center">
+      <p class="faint small" style="margin:0">This version of {APP_NAME} was built {buildTime()}.</p>
+      {state === 'ready'
+        ? <button class="btn primary sm" onClick={applyUpdate}>A newer version is ready: reload</button>
+        : <button class="btn sm" disabled={state === 'checking'} onClick={check}>{state === 'checking' ? 'Checking…' : 'Check for updates'}</button>}
+      {state === 'latest' && <span class="small muted">You have the latest version.</span>}
+    </div>
   );
 }

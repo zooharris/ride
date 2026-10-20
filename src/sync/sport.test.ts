@@ -96,4 +96,18 @@ describe('pairing recordings to planned sessions', () => {
     const m = pairRecordings(planned, rides, () => ({ name: 'Full body express', kind: 'strength' }));
     expect(m.get('ps')?.id).toBe('x');
   });
+  it('does not take an accidental 25-second recording for a 40-minute session', async () => {
+    const { pairRecordings } = await import('./syncService');
+    const planned = [{ id: 'ps', date: '2026-10-20', workoutId: 'lift', basis: 'power' as const, status: 'sent' as const, icuEventId: 41 }];
+    const blip = { id: 'c', name: 'Cardio', type: 'Workout', date: '2026-10-20', sport: 'strength', seconds: 25, elapsedSeconds: 25, pairedEventId: 41 } as unknown as Ride;
+    const m = pairRecordings(planned, [blip], () => ({ name: 'Strength A: legs and trunk', kind: 'strength', minutes: 40 }));
+    expect(m.size).toBe(0);
+  });
+  it('still counts a ride cut short (35 minutes of two hours) as the planned ride', async () => {
+    const { pairRecordings } = await import('./syncService');
+    const planned = [{ id: 'pr', date: '2026-10-20', workoutId: 'r', basis: 'power' as const, status: 'sent' as const }];
+    const short = { id: 'r1', name: 'Morning ride', type: 'Ride', date: '2026-10-20', sport: 'ride', seconds: 2100 } as unknown as Ride;
+    const m = pairRecordings(planned, [short], () => ({ name: 'Leesburg', kind: 'ride', minutes: 120 }));
+    expect(m.get('pr')?.id).toBe('r1');
+  });
 });

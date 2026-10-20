@@ -2,6 +2,7 @@ import { db, getSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
 import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
+import { workoutStats } from '../engine/workout';
 import type { IntervalsCredentials } from './intervals';
 import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, testConnection, updateActivityType } from './intervals';
 import { syncDevices } from '../data/devicesync';
@@ -67,6 +68,10 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
     }
     if (match && (p.status !== 'completed' || p.activityId !== match.id)) {
       await db.planned.update(p.id, { status: 'completed', activityId: match.id });
+    } else if (!match && p.status === 'completed' && p.activityId && !p.loggedSeconds) {
+      // It was marked done from a recording that no longer counts: too short, or
+      // deleted. Undo that. Sessions the rider logged by hand stay done.
+      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined });
     } else if (!match && p.date < today() && p.status !== 'completed') {
       await db.planned.update(p.id, { status: 'missed' });
     }
@@ -150,22 +155,45 @@ export async function loadHistory(back: string, onProgress: (done: number, total
  * recording after the workout, whatever type it files it under). Then the same
  * day and kind for whatever is left. Each recording pairs once.
  */
-export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workoutOf: (id: string) => Pick<Workout, 'name' | 'subtitle' | 'kind'> | undefined): Map<string, Ride> {
+/** The planned length of a session in seconds, when the workout says. */
+export function plannedSeconds(w: Partial<Pick<Workout, 'minutes' | 'walk' | 'blocks'>> | undefined): number | undefined {
+  if (!w) return undefined;
+  const min = w.walk?.minutes ?? w.minutes;
+  if (min) return min * 60;
+  const s = w.blocks?.length ? workoutStats(w.blocks).seconds : 0;
+  return s || undefined;
+}
+
+/**
+ * Whether a recording is believable as a planned session: at least five minutes,
+ * and at least a fifth of the planned time. A watch button pressed by accident
+ * (a 25-second "Cardio" on the same day as a 40-minute strength session) is not
+ * the session; a ride cut short at half an hour of two hours still is, as a
+ * partial one.
+ */
+export function plausibleFor(r: Ride, planned: number | undefined): boolean {
+  const secs = Math.max(r.seconds ?? 0, r.elapsedSeconds ?? 0);
+  return secs >= 300 && (!planned || secs >= planned * 0.2);
+}
+
+export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workoutOf: (id: string) => (Pick<Workout, 'name' | 'subtitle' | 'kind'> & Partial<Pick<Workout, 'minutes' | 'walk' | 'blocks'>>) | undefined): Map<string, Ride> {
   const taken = new Set<string>();
   const free = (r: Ride) => !taken.has(r.id);
   const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   const named = (r: Ride, w: { name: string; subtitle?: string }) => sameName(r.name, w.name) || (!!w.subtitle && sameName(r.name, `${w.name} · ${w.subtitle}`));
   const matches = new Map<string, Ride>();
+  // Every pass, Intervals.icu's own pairing included, needs a believable recording.
+  const fits = (p: PlannedWorkout, r: Ride) => free(r) && plausibleFor(r, plannedSeconds(workoutOf(p.workoutId)));
   for (const p of planned) {
     const w = workoutOf(p.workoutId);
-    const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && free(r))
-      ?? (w ? rides.find((r) => r.date === p.date && free(r) && named(r, w)) : undefined);
+    const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && fits(p, r))
+      ?? (w ? rides.find((r) => r.date === p.date && fits(p, r) && named(r, w)) : undefined);
     if (m) { taken.add(m.id); matches.set(p.id, m); }
   }
   for (const p of planned) {
     if (matches.has(p.id)) continue;
     const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
-    const m = rides.find((r) => r.date === p.date && r.sport === kind && free(r));
+    const m = rides.find((r) => r.date === p.date && r.sport === kind && fits(p, r));
     if (m) { taken.add(m.id); matches.set(p.id, m); }
   }
   return matches;

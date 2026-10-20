@@ -416,6 +416,12 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
  * weeks as a line, and the difference from the two-week normal, coloured by
  * whether that difference helps.
  */
+/** A sleep difference in hours, shown as minutes under an hour ("37 min"), else hours and minutes ("1h05"). */
+function sleepDiff(h: number): string {
+  const m = Math.round(h * 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+}
+
 function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: Array<{ name: string; value: string; effect: 'up' | 'down' | 'flat' }> }) {
   const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
   const w = (d: string) => data.wellness.find((x) => x.date === d);
@@ -428,18 +434,21 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
   ];
   return (
     <div class="rd-rows">
+      <div class="rd-row rd-head caption" aria-hidden="true"><span /><span class="rd-spark" /><span class="rd-val">Today</span><span class="rd-delta">vs normal</span></div>
       {rows.map((r) => {
         const todayV = r.vals[14];
         const base = r.name === 'Form' ? null : mean(r.vals.slice(0, 14));
         const eff = drivers.find((d) => d.name === r.name)?.effect ?? 'flat';
         const color = eff === 'up' ? 'var(--good)' : eff === 'down' ? 'var(--bad)' : 'var(--ink-2)';
-        const diff = todayV != null && base != null ? todayV - base : null;
+        const raw = todayV != null && base != null ? todayV - base : null;
+        // round before choosing the sign, so a difference under half a unit reads ±0, not −0
+        const diff = raw == null ? null : r.name === 'Sleep' ? Math.round(raw * 60) / 60 : Math.round(raw);
         return (
           <div class="rd-row" key={r.name} title={r.help}>
             <span class="rd-name">{r.name}</span>
-            <Sparkline values={r.vals} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} />
-            <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}<span class="faint" style="font-weight:400">{todayV != null && r.unit ? ` ${r.unit}` : ''}</span></span>
-            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? r.fmt(Math.abs(diff)) : Math.abs(Math.round(diff))} vs normal`}</span>
+            <span class="rd-spark"><Sparkline values={r.vals} width={56} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} /></span>
+            <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}{todayV != null && r.unit ? <span class="rd-unit">{r.unit}</span> : null}</span>
+            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}</span>
           </div>
         );
       })}

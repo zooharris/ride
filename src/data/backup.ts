@@ -60,7 +60,7 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
   const strip = <R extends { updatedAt?: string }>(r: R): R => { const { updatedAt: _u, ...rest } = r; return rest as R; };
   const incomingKeys = new Set((data.settings as Array<{ key: string }>).map((s) => s.key));
   const keptSecrets = (await db.settings.toArray()).filter((s) => SECRET_SETTINGS.has(s.key) && !incomingKeys.has(s.key));
-  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.plans, db.sync, db.tombstones], async () => {
+  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.plans, db.activityEdits, db.sync, db.tombstones], async () => {
     await untracked(async () => {
       await db.profile.clear();
       await db.settings.clear();
@@ -68,6 +68,7 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
       await db.planned.clear();
       await db.dayNotes.clear();
       await db.plans.clear();
+      await db.activityEdits.clear();
       await db.sync.clear();
     });
     await db.profile.put(strip(data.profile as never));
@@ -77,6 +78,7 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
     await db.planned.bulkPut((data.planned as never[]).map(strip));
     if (data.dayNotes) await db.dayNotes.bulkPut((data.dayNotes as never[]).map(strip));
     if (data.plans) await db.plans.bulkPut((data.plans as never[]).map(strip));
+    if (data.activityEdits) await db.activityEdits.bulkPut((data.activityEdits as never[]).map(strip));
     if (data.sync) await db.sync.bulkPut(data.sync as never[]);
   });
   return { workouts: data.workouts.length, planned: data.planned.length };

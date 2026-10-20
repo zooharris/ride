@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { db, getSetting, loadProfile } from '../data/db';
-import type { DayNote, Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
+import type { ActivityEdit, DayNote, Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
@@ -27,7 +27,17 @@ export interface AppData {
   wellnessAll: Wellness[];
   dayNotes: DayNote[];
   mine: Workout[];
+  /** The rider's edits to recorded activities. */
+  edits: ActivityEdit[];
   loaded: boolean;
+}
+
+/**
+ * Every record of what was done, for "last time": the calendar's done sessions and
+ * the records the rider gave unplanned activities, in one list of calendar-like entries.
+ */
+export function doneHistory(planned: PlannedWorkout[], edits: ActivityEdit[]): PlannedWorkout[] {
+  return [...planned, ...edits.filter((e) => e.done).map((e): PlannedWorkout => ({ id: `edit:${e.id}`, date: e.date, workoutId: '', basis: 'power', status: 'completed', done: e.done }))];
 }
 
 /** Wellness with the days the rider marked as wrong taken out. The flag lives on the morning's date. */
@@ -39,22 +49,24 @@ export function trustedWellness(wellness: Wellness[], notes: DayNote[]): Wellnes
 let rechecked = false;
 
 export function useAppData(): AppData {
-  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], loaded: false });
+  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], edits: [], loaded: false });
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [profile, planned, rides, wellnessAll, mine, dayNotes] = await Promise.all([
+      const [profile, planned, rides, wellnessAll, mine, dayNotes, edits] = await Promise.all([
         loadProfile(),
         db.planned.toArray(),
         db.rides.orderBy('date').reverse().toArray(),
         db.wellness.orderBy('date').toArray(),
         db.workouts.toArray(),
         db.dayNotes.toArray(),
+        db.activityEdits.toArray(),
       ]);
       setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
       // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
-      setLastWeightLookup((name) => { const l = lastDone(name, planned, today()); return l ? weightText(l) : undefined; });
-      if (alive) setData({ profile, planned, rides, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, loaded: true });
+      const history = doneHistory(planned, edits);
+      setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });
+      if (alive) setData({ profile, planned, rides, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, edits, loaded: true });
     };
     load();
     listeners.add(load);

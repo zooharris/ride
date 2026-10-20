@@ -370,6 +370,11 @@ export async function updateActivityType(c: IntervalsCredentials, activityId: st
   await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ type }) });
 }
 
+/** Rename an activity. */
+export async function updateActivityName(c: IntervalsCredentials, activityId: string, name: string): Promise<void> {
+  await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ name }) });
+}
+
 /** Write the app's record of what was done into an activity's description (callers check it is empty or the app's own). */
 export async function updateActivityDescription(c: IntervalsCredentials, activityId: string, description: string): Promise<void> {
   await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ description }) });

@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { findWorkout, notify } from '../store';
+import { doneHistory, findWorkout, notify } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { clock, newId, renderIntervalsText, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
@@ -37,7 +37,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
   const recording = plannedEntry?.status === 'completed' && plannedEntry.activityId ? data.rides.find((r) => r.id === plannedEntry.activityId) : undefined;
   const units = profile.units ?? 'imperial';
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={data.planned} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -88,14 +88,14 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {plannedEntry && plannedEntry.status === 'completed' && (
         <section class="section">
           <h2>Done</h2>
-          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} units={units} history={data.planned} /></div>
+          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} units={units} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {plannedEntry && plannedEntry.status !== 'completed' && (
         <section class="section">
           <h2>Rode it without a device?</h2>
           <p class="faint small" style="margin:4px 0 8px">Normally the ride arrives from Intervals.icu on the next Sync. Use this only when nothing recorded it.</p>
-          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} units={units} history={data.planned} />
+          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} units={units} history={doneHistory(data.planned, data.edits)} />
         </section>
       )}
 

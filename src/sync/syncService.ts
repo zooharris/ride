@@ -1,6 +1,6 @@
 import { db, getSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
-import type { DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
+import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
 import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
@@ -54,8 +54,11 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // paired to a planned walk, strength or mobility session is treated as that
   // kind whatever the device said, scored for it, and relabelled in Intervals.icu
   // so its record there is right too (again on any later sync if it drifts).
+  const edits = await db.activityEdits.toArray();
+  applyKindEdits(rides, edits, profile);
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
   await applyPairing(rides, planned, await workoutLookup(), c, profile, { markMissed: true });
+  applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
 
   // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
@@ -125,7 +128,7 @@ export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], wor
     } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds) {
       // It was marked done from a recording that no longer counts. Undo that. Sessions the rider logged by hand stay done.
       if (c) await undoRelabel(c, p);
-      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: c ? undefined : p.relabelled, done: undefined, rpe: undefined });
+      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: c ? undefined : p.relabelled, done: undefined, rpe: undefined, matchedByHand: undefined });
       changed++;
     } else if (opts.markMissed && p.date < today() && p.status !== 'completed' && p.status !== 'missed') {
       await db.planned.update(p.id, { status: 'missed' });
@@ -153,9 +156,42 @@ export async function recheckMatches(): Promise<number> {
     db.planned.where('date').between(oldest, newest, true, true).toArray(),
     db.profile.get('me'),
   ]);
+  const edits = await db.activityEdits.toArray();
+  applyKindEdits(rides, edits, profile);
   const changed = await applyPairing(rides, planned, await workoutLookup(), await credentials(), profile);
+  applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
   return changed;
+}
+
+/** The rider's correction of what an activity was: it takes that kind, its duration rule and its scoring. */
+export function applyKindEdits(rides: Ride[], edits: ActivityEdit[], profile: Profile | undefined | null): void {
+  for (const r of rides) {
+    const e = edits.find((x) => x.id === r.id);
+    if (!e?.kind || e.kind === r.sport) continue;
+    r.sport = e.kind;
+    r.seconds = durationFor(e.kind, r.movingSeconds, r.elapsedSeconds) || r.seconds;
+    r.icuLoad = undefined;
+    scoreActivity(r, profile);
+  }
+}
+
+/**
+ * Load the rider decided: an unplanned strength session they rated takes its
+ * load from that effort; an activity left out of training load counts 0, with
+ * what it would have been kept to show.
+ */
+export function applyLoadEdits(rides: Ride[], edits: ActivityEdit[], planned: PlannedWorkout[]): void {
+  for (const r of rides) {
+    const e = edits.find((x) => x.id === r.id);
+    const matched = planned.some((p) => p.activityId === r.id && p.status === 'completed');
+    if (e?.rpe && !matched && r.sport === 'strength') {
+      const t = recordTss({ kind: 'strength' }, r.seconds, e.rpe);
+      if (t != null) r.tss = t;
+    }
+    if (e?.excluded) { r.uncountedTss = r.tss ?? 0; r.tss = 0; }
+    else r.uncountedTss = undefined;
+  }
 }
 
 /** The app's own training load for an activity (see the comment in syncAll). */
@@ -203,6 +239,9 @@ export async function loadHistory(back: string, onProgress: (done: number, total
     const existing = new Set((await db.rides.where('date').between(from, to, true, true).primaryKeys()) as string[]);
     const fresh = rides.filter((r) => !existing.has(r.id));
     fresh.forEach((r) => scoreActivity(r, profile));
+    const edits = await db.activityEdits.toArray();
+    applyKindEdits(fresh, edits, profile);
+    applyLoadEdits(fresh, edits, await db.planned.toArray());
     await db.rides.bulkPut(fresh);
     const wellness = await fetchWellness(c, from, to);
     const haveW = new Set((await db.wellness.where('date').between(from, to, true, true).primaryKeys()) as string[]);
@@ -249,6 +288,7 @@ export async function unmatchRecording(plannedId: string): Promise<void> {
     relabelled: undefined,
     done: undefined,
     rpe: undefined,
+    matchedByHand: undefined,
     notActivityIds: [...(p.notActivityIds ?? []), p.activityId],
   });
   // The recording keeps its own load again, not the one the rider's effort for this session gave it.
@@ -285,7 +325,14 @@ export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workout
   const matches = new Map<string, Ride>();
   // Every pass, Intervals.icu's own pairing included, needs a believable recording.
   const fits = (p: PlannedWorkout, r: Ride) => free(r) && !p.notActivityIds?.includes(r.id) && plausibleFor(r, plannedSeconds(workoutOf(p.workoutId)));
+  // Matches the rider made by hand stand first, whatever the day, name or length.
   for (const p of planned) {
+    if (!p.matchedByHand || !p.activityId) continue;
+    const m = rides.find((r) => r.id === p.activityId && free(r));
+    if (m) { taken.add(m.id); matches.set(p.id, m); }
+  }
+  for (const p of planned) {
+    if (matches.has(p.id)) continue;
     const w = workoutOf(p.workoutId);
     const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && fits(p, r))
       ?? (w ? rides.find((r) => r.date === p.date && fits(p, r) && named(r, w)) : undefined);

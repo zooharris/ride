@@ -63,4 +63,32 @@ describe('matching rules at launch, with no network', () => {
     expect(await db.planned.get('q2')).toMatchObject({ status: 'planned' });
     expect((await db.planned.get('q2'))?.loggedSeconds).toBeUndefined();
   });
+  it('keeps a hand match whatever the rules say, and the rider can undo it', async () => {
+    const { recheckMatches, unmatchRecording } = await import('./syncService');
+    const { matchByHand } = await import('./records');
+    // done a day late and only 4 minutes long: the rules would never match it
+    await db.planned.put({ id: 'h1', date: addDays(today(), -1), workoutId: lift.id, basis: 'power', status: 'missed' });
+    await db.rides.put(rec('late', 240));
+    await matchByHand((await db.planned.get('h1'))!, lift, (await db.rides.get('late'))!);
+    await recheckMatches();
+    expect(await db.planned.get('h1')).toMatchObject({ status: 'completed', activityId: 'late', matchedByHand: true });
+    expect((await db.planned.get('h1'))?.done?.exercises?.[0].name).toBe('Goblet squat');
+    await unmatchRecording('h1');
+    await recheckMatches();
+    expect((await db.planned.get('h1'))?.status).toBe('missed');
+  });
+  it('applies the rider\u2019s kind, effort and leave-out edits to an unplanned activity', async () => {
+    const { setActivityKind, setExcluded, saveActivityEffort } = await import('./records');
+    await db.rides.put({ ...rec('walky', 2700), type: 'Run', sport: 'other', averageSpeedMs: 2.5, averageHr: 100 });
+    await setActivityKind((await db.rides.get('walky'))!, 'walk');
+    expect((await db.rides.get('walky'))?.sport).toBe('walk');
+    await db.rides.put({ ...rec('lift2', 1800), tss: 4 });
+    await saveActivityEffort((await db.rides.get('lift2'))!, 8);
+    const rated = (await db.rides.get('lift2'))!.tss!;
+    expect(rated).toBeGreaterThan(30);
+    await setExcluded((await db.rides.get('lift2'))!, true);
+    expect(await db.rides.get('lift2')).toMatchObject({ tss: 0, uncountedTss: rated });
+    await setExcluded((await db.rides.get('lift2'))!, false);
+    expect((await db.rides.get('lift2'))?.tss).toBe(rated);
+  });
 });

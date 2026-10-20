@@ -142,6 +142,8 @@ export interface PlannedWorkout {
   relabelled?: { activityId: string; from: string };
   /** What was actually done, captured from the plan when the session became done and editable by the rider. */
   done?: DoneRecord;
+  /** The rider matched the recording to this session by hand; the automatic rules never undo it. */
+  matchedByHand?: boolean;
 }
 
 /** One exercise as done: the plan's by default, then whatever the rider corrects. */
@@ -159,6 +161,24 @@ export interface DoneExercise {
   cue?: string;
   why?: string;
   equipment?: Equipment[];
+}
+
+/**
+ * The rider's own edits to a recorded activity, kept by the app (activities
+ * themselves are re-downloaded from Intervals.icu on every Sync, so edits live
+ * here and are applied each time). Synced across devices with the calendar.
+ */
+export interface ActivityEdit {
+  updatedAt?: string;
+  id: string;               // the activity's Intervals.icu id
+  date: string;             // the activity's date, so "last time" can order unplanned records
+  /** What it really was, when the device's type was wrong. */
+  kind?: SessionKind;
+  /** Left out of training load: fitness, fatigue and the plan's view of the week. */
+  excluded?: boolean;
+  /** What was done, for an activity no planned session covers. */
+  done?: DoneRecord;
+  rpe?: number;
 }
 
 /** The record of a done strength, mobility or walk session. Rides have none: the device's data is the record. */
@@ -199,6 +219,8 @@ export interface Ride {
   ftpAtRide?: number;
   eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one
   pairedEventId?: number;
+  /** Left out of training load by the rider: `tss` is 0 and this is what it would have been. */
+  uncountedTss?: number;
   /** The activity's description in Intervals.icu (the app writes its record there when it is empty). */
   description?: string;
 }

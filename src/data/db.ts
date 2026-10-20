@@ -1,6 +1,6 @@
 import type { ActivePlan } from '../ui/planService';
 import Dexie, { type Table } from 'dexie';
-import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
+import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout, ActivityEdit } from '../engine/types';
 
 export interface Settings {
   key: string;
@@ -64,6 +64,7 @@ class RideDb extends Dexie {
   dayNotes!: Table<DayNote, string>;
   powerCurves!: Table<PowerCurve, string>;
   plans!: Table<ActivePlan, string>;
+  activityEdits!: Table<ActivityEdit, string>;
 
   constructor() {
     super('ride');
@@ -82,6 +83,8 @@ class RideDb extends Dexie {
     this.version(5).stores({ powerCurves: 'id, date' });
     // One record per plan, so devices merge plans one by one instead of one list overwriting another.
     this.version(6).stores({ plans: 'id' });
+    // The rider's edits to recorded activities (kind, left out of load, what was done, effort).
+    this.version(7).stores({ activityEdits: 'id, date' });
   }
 }
 
@@ -99,7 +102,7 @@ export async function untracked<T>(fn: () => Promise<T>): Promise<T> {
   tracking = false;
   try { return await fn(); } finally { tracking = was; }
 }
-const TRACKED = ['profile', 'settings', 'workouts', 'planned', 'dayNotes', 'plans'] as const;
+const TRACKED = ['profile', 'settings', 'workouts', 'planned', 'dayNotes', 'plans', 'activityEdits'] as const;
 for (const name of TRACKED) {
   const table = db.table(name);
   table.hook('creating', function (_pk, obj: { updatedAt?: string }) { if (tracking) obj.updatedAt = new Date().toISOString(); });

@@ -1,5 +1,5 @@
 import type { AppData } from '../store';
-import { findWorkout, notify } from '../store';
+import { doneHistory, findWorkout, notify } from '../store';
 import { clock } from '../../engine/workout';
 import { distance, elevation, fmtDate, weekStart } from '../derived';
 import { scoreRide } from '../../engine/compliance';
@@ -7,8 +7,9 @@ import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials, plannedSeconds, unmatchRecording } from '../../sync/syncService';
-import { deleteRecording, undoHandLog } from '../../sync/records';
-import { PlannedList, WhatYouDid } from '../DoneRecord';
+import { deleteRecording, matchByHand, renameActivity, setActivityKind, setExcluded, undoHandLog } from '../../sync/records';
+import type { PlannedWorkout, SessionKind } from '../../engine/types';
+import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go } from '../router';
@@ -218,10 +219,17 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       )}
       {refused && <p class="muted small" style="margin-top:14px">Not matched to a planned session: you said it was a different workout from {refusedW?.name ?? 'the session'} on {fmtDate(refused.date)}.</p>}
 
+      {!p && <MatchByHand ride={r} data={data} />}
+      {!p && (r.sport === 'strength' || r.sport === 'mobility' || r.sport === 'walk') && (
+        <section class="section">
+          <h2>What you did</h2>
+          <div style="margin-top:8px"><ActivityWhatYouDid ride={r} edit={data.edits.find((e) => e.id === r.id)} units={profile.units ?? 'imperial'} history={doneHistory(data.planned, data.edits)} /></div>
+        </section>
+      )}
       {w && p && !isRide && w.kind !== 'ride' && (
         <section class="section">
           <h2>What you did</h2>
-          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={profile.units ?? 'imperial'} history={data.planned} /></div>
+          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={profile.units ?? 'imperial'} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {w && p && (
@@ -303,6 +311,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
+      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It is deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
@@ -395,7 +404,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
   ];
   if (r.sport === 'strength' || r.sport === 'mobility') return [
     ['Time', clock(r.seconds), 'From start to finish of the recording, rests included'],
-    ['Training load (TSS)', r.tss, r.sport === 'strength' && effort ? `From your effort rating (${effort}/10) and the time: heart rate under-reads lifting, so your rating sets the load.` : r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
+    ['Training load (TSS)', r.tss, r.uncountedTss != null ? `Left out of training load at your request; it would be ${r.uncountedTss}.` : r.sport === 'strength' && effort ? `From your effort rating (${effort}/10) and the time: heart rate under-reads lifting, so your rating sets the load.` : r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
     ...hr,
   ];
   return [
@@ -407,4 +416,90 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ...hr,
     ['Average temperature', tempF],
   ];
+}
+
+const KIND_CHOICES: Array<[SessionKind, string]> = [['ride', 'Ride'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walk'], ['other', 'Other (run, swim, anything else)']];
+
+/**
+ * Match an unmatched recording to a planned session by hand: one done a day
+ * early or late, or one the watch named in a way the rules do not recognise.
+ * Offers the sessions within a week either side that are not done, nearest
+ * first, the same kind first.
+ */
+function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
+  const [pick, setPick] = useState('');
+  const [busy, setBusy] = useState(false);
+  const dist = (p: PlannedWorkout) => Math.abs(Date.parse(p.date) - Date.parse(r.date)) / 864e5;
+  const options = data.planned
+    .filter((p) => p.status !== 'completed' && dist(p) <= 7)
+    .map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) }))
+    .filter((x): x is { p: PlannedWorkout; w: NonNullable<typeof x.w> } => !!x.w)
+    .sort((a, b) => (a.w.kind === r.sport ? 0 : 1) - (b.w.kind === r.sport ? 0 : 1) || dist(a.p) - dist(b.p));
+  if (!options.length) return null;
+  const chosen = options.find((x) => x.p.id === pick);
+  const go2 = async () => {
+    if (!chosen) return;
+    const kindNote = chosen.w.kind !== r.sport ? ` It will count as ${KIND_LABEL[chosen.w.kind].toLowerCase()}.` : '';
+    if (!confirm(`Match this ${clock(r.seconds)} ${r.name} recording to ${chosen.w.name} (${fmtDate(chosen.p.date)})?\n\nThat session is marked done with it.${kindNote} You can undo it with This was a different workout.`)) return;
+    setBusy(true);
+    try { await matchByHand(chosen.p, chosen.w, r); notify(); toast({ ok: true, text: `Matched to ${chosen.w.name}.` }); }
+    catch (e) { toast({ ok: false, text: `Not matched: ${(e as Error).message}` }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section class="section">
+      <h2>Was this a planned session?</h2>
+      <p class="faint small" style="margin:4px 0 10px">If this was one of your planned sessions, done on another day or under another name, match it here and the session is marked done with this recording.</p>
+      <div class="row wrap" style="gap:8px;align-items:flex-end">
+        <div class="field" style="flex:1;min-width:220px">
+          <label>Planned session</label>
+          <select value={pick} onChange={(e) => setPick((e.target as HTMLSelectElement).value)}>
+            <option value="">Choose a session…</option>
+            {options.map(({ p, w }) => <option key={p.id} value={p.id}>{fmtDate(p.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {w.name} ({KIND_LABEL[w.kind].toLowerCase()})</option>)}
+          </select>
+        </div>
+        <button class="btn" disabled={!chosen || busy} onClick={go2}>{busy ? 'Matching…' : 'Match'}</button>
+      </div>
+    </section>
+  );
+}
+
+/** The activity's name, what it was (when the device got it wrong), and whether it counts toward training load. */
+function AboutActivity({ ride: r, matched, excluded, kindEdited }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind }) {
+  const [name, setName] = useState(r.name);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setName(r.name), [r.name]);
+  const run = async (what: () => Promise<void>, ok: string) => {
+    setBusy(true);
+    try { await what(); notify(); toast({ ok: true, text: ok }); }
+    catch (e) { toast({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
+    finally { setBusy(false); }
+  };
+  const recorded = r.type;
+  return (
+    <section class="section">
+      <h2>About this activity</h2>
+      <div class="panel stack" style="gap:16px;margin-top:8px">
+        <div class="row wrap" style="gap:8px;align-items:flex-end">
+          <div class="field" style="flex:1;min-width:200px"><label>Name</label><input value={name} maxLength={80} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
+          <button class="btn" disabled={busy || !name.trim() || name.trim() === r.name} onClick={() => run(() => renameActivity(r, name), 'Renamed.')}>Rename</button>
+          {name !== r.name && <button class="btn quiet" disabled={busy} onClick={() => setName(r.name)}>Cancel</button>}
+        </div>
+        {!matched && (
+          <div class="field">
+            <label>What it was</label>
+            <select value={kindEdited ?? ''} disabled={busy} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as SessionKind | ''; void run(() => setActivityKind(r, v || undefined), v ? `Counted as ${KIND_CHOICES.find(([k]) => k === v)![1].toLowerCase()}.` : 'Back to what the device recorded.'); }}>
+              <option value="">As recorded ({KIND_LABEL[r.sport].toLowerCase()}, type {recorded})</option>
+              {KIND_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+            <span class="faint small">Correct it when the device filed it wrongly (a treadmill walk as a run, say). The training load is worked out again for that kind, and the type in Intervals.icu is corrected too.</span>
+          </div>
+        )}
+        <label class="row" style="gap:10px;align-items:flex-start;cursor:pointer">
+          <input type="checkbox" style="width:18px;height:18px;margin-top:2px;accent-color:var(--accent)" checked={excluded} disabled={busy} onChange={(e) => { const v = (e.target as HTMLInputElement).checked; void run(() => setExcluded(r, v), v ? 'Left out of training load.' : 'Counted toward training load again.'); }} />
+          <span><b style="font-weight:600">Leave out of training load</b><br /><span class="faint small">{excluded ? `Counts 0 toward fitness, fatigue and your week (it would be ${r.uncountedTss ?? 0} TSS). It stays in your history.` : 'For something that happened but should not count, like carrying the bike or a walk to the shop. It stays in your history and counts 0 toward fitness, fatigue and your week.'}</span></span>
+        </label>
+      </div>
+    </section>
+  );
 }

@@ -1,30 +1,35 @@
 import { useState } from 'preact/hooks';
-import type { DoneExercise, DoneRecord, PlannedWorkout, Workout } from '../engine/types';
+import type { ActivityEdit, DoneExercise, DoneRecord, PlannedWorkout, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, exerciseIdFor, isHold, lastDone, setsText, unitOf, weightText } from '../engine/record';
 import { EXERCISES, type Pattern } from '../library/strength';
 import { MOBILITY } from '../library/mobility';
 import { getCurrentEquipment, notify } from './store';
-import { saveEffort, saveRecord } from '../sync/records';
+import { saveActivityEffort, saveActivityRecord, saveEffort, saveRecord } from '../sync/records';
 import { fmtDate } from './derived';
 import { toast } from './Toast';
 
 const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', 'single-leg': 'Lunge and single leg', hinge: 'Hinge', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };
 const LB_PER_KG = 2.2046;
 
+type Kind = Workout['kind'];
+
 /**
- * "What you did": the record of a done strength, mobility or walk session.
- * As planned until the rider corrects it; Edit opens the editor in place. The
- * effort rating sits beneath it (for strength it sets the training load).
+ * "What you did": the record of a done strength, mobility or walk session, or
+ * of an unplanned activity. As planned (or empty) until the rider corrects it;
+ * Edit opens the editor in place. The effort rating sits beneath it (for
+ * strength it sets the training load).
  */
-export function WhatYouDid({ planned, workout, units, history }: { planned: PlannedWorkout; workout: Workout; units: 'imperial' | 'metric'; history: PlannedWorkout[] }) {
+export function RecordPanel({ rec, rpe, kind, date, units, history, plannedRec, onSave, onEffort, unplanned }: {
+  rec: DoneRecord; rpe?: number; kind: Kind; date: string; units: 'imperial' | 'metric'; history: PlannedWorkout[];
+  plannedRec?: DoneRecord; onSave: (rec: DoneRecord) => Promise<void>; onEffort: (n: number) => Promise<void>; unplanned?: boolean;
+}) {
   const [editing, setEditing] = useState(false);
-  const rec = planned.done ?? buildDoneRecord(workout, planned.loggedSeconds ? Math.round(planned.loggedSeconds / 60) : undefined);
-  if (!rec) return null;
   const unit = unitOf(units);
+  const empty = !rec.walk && !(rec.exercises ?? []).length;
   return (
     <div class="stack" style="gap:12px">
       {editing
-        ? <DoneEditor planned={planned} workout={workout} rec={rec} units={units} history={history} onClose={() => setEditing(false)} />
+        ? <DoneEditor rec={rec} kind={kind} date={date} units={units} history={history} plannedRec={plannedRec} onSave={onSave} onClose={() => setEditing(false)} />
         : (
           <div class="panel">
             {rec.walk && (
@@ -39,31 +44,45 @@ export function WhatYouDid({ planned, workout, units, history }: { planned: Plan
                 <span class="num">{e.skipped ? 'skipped' : [setsText(e), weightText(e, unit)].filter(Boolean).join(' · ')}</span>
               </div>
             ))}
-            {!rec.walk && !(rec.exercises ?? []).length && <p class="muted small">Nothing recorded yet.</p>}
+            {empty && <p class="muted small" style="margin:0">{unplanned ? `No planned session covers this, so nothing is recorded yet. Add what you did: ${kind === 'mobility' ? 'the stretches and holds' : 'the exercises, sets, reps and weights'}.` : 'Nothing recorded yet.'}</p>}
             <div class="row between wrap" style="gap:8px;margin-top:10px">
-              <span class="faint small">{rec.editedAt ? `Edited ${fmtDate(rec.editedAt.slice(0, 10))}.` : 'As planned. Edit it if you changed anything: an exercise, the sets, reps or weight.'}</span>
-              <button class="btn sm" onClick={() => setEditing(true)}>Edit</button>
+              <span class="faint small">{rec.editedAt ? `Edited ${fmtDate(rec.editedAt.slice(0, 10))}.` : empty ? '' : 'As planned. Edit it if you changed anything: an exercise, the sets, reps or weight.'}</span>
+              <button class="btn sm" onClick={() => setEditing(true)}>{empty ? 'Add what you did' : 'Edit'}</button>
             </div>
           </div>
         )}
-      <Effort planned={planned} workout={workout} fallback={rec} />
+      <Effort rpe={rpe} kind={kind} onEffort={onEffort} />
     </div>
   );
 }
 
-function Effort({ planned, workout, fallback }: { planned: PlannedWorkout; workout: Workout; fallback: DoneRecord }) {
+/** The record of a planned session that is done. */
+export function WhatYouDid({ planned, workout, units, history }: { planned: PlannedWorkout; workout: Workout; units: 'imperial' | 'metric'; history: PlannedWorkout[] }) {
+  const plannedRec = buildDoneRecord(workout, planned.loggedSeconds ? Math.round(planned.loggedSeconds / 60) : undefined);
+  const rec = planned.done ?? plannedRec;
+  if (!rec) return null;
+  return <RecordPanel rec={rec} rpe={planned.rpe} kind={workout.kind} date={planned.date} units={units} history={history} plannedRec={plannedRec}
+    onSave={async (r) => { await saveRecord(planned, workout, r); notify(); }}
+    onEffort={async (n) => { await saveEffort(planned, workout, n, rec); notify(); }} />;
+}
+
+/** The record of an activity no planned session covers (strength, mobility or a walk). */
+export function ActivityWhatYouDid({ ride, edit, units, history }: { ride: Ride; edit?: ActivityEdit; units: 'imperial' | 'metric'; history: PlannedWorkout[] }) {
+  const kind = ride.sport as Kind;
+  const rec: DoneRecord = edit?.done ?? (kind === 'walk' ? { walk: { minutes: Math.round(ride.seconds / 60) } } : { exercises: [] });
+  return <RecordPanel rec={rec} rpe={edit?.rpe} kind={kind} date={ride.date} units={units} history={history} unplanned
+    onSave={async (r) => { await saveActivityRecord(ride, r); notify(); }}
+    onEffort={async (n) => { await saveActivityEffort(ride, n); notify(); }} />;
+}
+
+function Effort({ rpe, kind, onEffort }: { rpe?: number; kind: Kind; onEffort: (n: number) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const pick = async (n: number) => {
-    setBusy(true);
-    await saveEffort(planned, workout, n, fallback);
-    notify();
-    setBusy(false);
-  };
+  const pick = async (n: number) => { setBusy(true); try { await onEffort(n); } finally { setBusy(false); } };
   return (
     <div class="field">
       <label>How hard was it, 1 easy to 10 all-out</label>
-      <div class="effort-chips">{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} disabled={busy} class={`chip${planned.rpe === n ? ' on' : ''}`} onClick={() => pick(n)}>{n}</button>)}</div>
-      <span class="faint small">{workout.kind === 'strength' ? 'Sets the training load for this session: heart rate under-reads lifting.' : 'For your records and the coach.'}</span>
+      <div class="effort-chips">{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} disabled={busy} class={`chip${rpe === n ? ' on' : ''}`} onClick={() => pick(n)}>{n}</button>)}</div>
+      <span class="faint small">{kind === 'strength' ? 'Sets the training load for this session: heart rate under-reads lifting.' : 'For your records and the coach.'}</span>
     </div>
   );
 }
@@ -85,18 +104,18 @@ function fromLibrary(id: string): Partial<DoneExercise> | undefined {
 }
 
 /** Edit what was done: exercise (from the app's list), sets, reps, weight, hold, skipped; walks: minutes and pack. */
-export function DoneEditor({ planned, workout, rec, units, history, onClose }: { planned: PlannedWorkout; workout: Workout; rec: DoneRecord; units: 'imperial' | 'metric'; history: PlannedWorkout[]; onClose: () => void }) {
+export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave, onClose }: { rec: DoneRecord; kind: Kind; date: string; units: 'imperial' | 'metric'; history: PlannedWorkout[]; plannedRec?: DoneRecord; onSave: (rec: DoneRecord) => Promise<void>; onClose: () => void }) {
   const unit = unitOf(units);
   const clone = (r: DoneRecord): DoneRecord => JSON.parse(JSON.stringify(r));
   const [draft, setDraft] = useState<DoneRecord>(clone(rec));
   const [busy, setBusy] = useState(false);
-  const groups = choices(workout.kind);
+  const groups = choices(kind);
   const set = (i: number, patch: Partial<DoneExercise>) => setDraft({ ...draft, exercises: (draft.exercises ?? []).map((e, j) => (j === i ? { ...e, ...patch } : e)) });
   const remove = (i: number) => setDraft({ ...draft, exercises: (draft.exercises ?? []).filter((_, j) => j !== i) });
   const add = () => {
     const first = groups[0]?.items[0];
     const lib = first ? fromLibrary(first.id) : undefined;
-    setDraft({ ...draft, exercises: [...(draft.exercises ?? []), { name: lib?.name ?? 'Exercise', ...lib, sets: workout.kind === 'mobility' ? 1 : 3, reps: workout.kind === 'mobility' ? undefined : '10' }] });
+    setDraft({ ...draft, exercises: [...(draft.exercises ?? []), { name: lib?.name ?? 'Exercise', ...lib, sets: kind === 'mobility' ? 1 : 3, reps: kind === 'mobility' ? undefined : '10' }] });
   };
   const num = (v: string): number | undefined => { const n = parseFloat(v); return isFinite(n) && n >= 0 ? n : undefined; };
   const save = async () => {
@@ -105,11 +124,10 @@ export function DoneEditor({ planned, workout, rec, units, history, onClose }: {
       ...draft,
       exercises: draft.exercises?.map((e) => ({ ...e, unit: e.weight != null ? (e.unit ?? unit) : undefined, exerciseId: e.exerciseId ?? exerciseIdFor(e.name) })),
     };
-    try { await saveRecord(planned, workout, clean); notify(); toast({ ok: true, text: 'Saved what you did.' }); onClose(); }
+    try { await onSave(clean); toast({ ok: true, text: 'Saved what you did.' }); onClose(); }
     catch (e) { toast({ ok: false, text: `Could not save: ${(e as Error).message}` }); }
     finally { setBusy(false); }
   };
-  const plannedRec = buildDoneRecord(workout, planned.loggedSeconds ? Math.round(planned.loggedSeconds / 60) : undefined);
   return (
     <div class="panel done-editor">
       {draft.walk && (
@@ -119,7 +137,7 @@ export function DoneEditor({ planned, workout, rec, units, history, onClose }: {
         </div>
       )}
       {(draft.exercises ?? []).map((e, i) => {
-        const last = workout.kind === 'strength' ? lastDone(e.name, history, planned.date) : undefined;
+        const last = kind === 'strength' ? lastDone(e.name, history, date) : undefined;
         const hold = isHold(e);
         const key = e.exerciseId ?? exerciseIdFor(e.name) ?? `name:${e.name}`;
         const inList = groups.some((g) => g.items.some((x) => x.id === key));
@@ -127,7 +145,7 @@ export function DoneEditor({ planned, workout, rec, units, history, onClose }: {
           <div class={`done-edit${e.skipped ? ' skipped' : ''}`} key={i}>
             <div class="row" style="gap:8px;align-items:flex-end">
               <div class="field" style="flex:1;min-width:0">
-                <label>{workout.kind === 'mobility' ? 'Stretch' : 'Exercise'}</label>
+                <label>{kind === 'mobility' ? 'Stretch' : 'Exercise'}</label>
                 <select value={key} onChange={(ev) => { const v = (ev.target as HTMLSelectElement).value; const lib = fromLibrary(v); if (lib) set(i, { ...lib, holdSeconds: lib.holdSeconds ?? e.holdSeconds }); }}>
                   {!inList && <option value={key}>{e.name}</option>}
                   {groups.map((g) => <optgroup key={g.group} label={g.group}>{g.items.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</optgroup>)}
@@ -140,7 +158,7 @@ export function DoneEditor({ planned, workout, rec, units, history, onClose }: {
               {hold
                 ? <div class="field"><label>Hold (seconds)</label><input type="number" min="1" value={e.holdSeconds ?? ''} onInput={(ev) => set(i, { holdSeconds: num((ev.target as HTMLInputElement).value) })} /></div>
                 : <div class="field"><label>Reps</label><input value={e.reps ?? ''} placeholder="10" onInput={(ev) => set(i, { reps: (ev.target as HTMLInputElement).value || undefined })} /></div>}
-              {workout.kind === 'strength' && (!hold || e.weight != null) && (
+              {kind === 'strength' && (!hold || e.weight != null) && (
                 <div class="field"><label>Weight ({unit})</label><input type="number" min="0" step="0.5" value={e.weight ?? ''} placeholder={last ? `last ${last.weight}` : 'none'} onInput={(ev) => set(i, { weight: num((ev.target as HTMLInputElement).value), unit })} /></div>
               )}
               <label class="done-skip"><input type="checkbox" checked={!!e.skipped} onChange={(ev) => set(i, { skipped: (ev.target as HTMLInputElement).checked || undefined })} /> Skipped</label>

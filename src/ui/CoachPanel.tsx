@@ -71,10 +71,10 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
       const answer = await askCoach(key, ctxRef.current, turns, q, earlier);
       const next = [...turns, asked, { role: 'coach' as const, text: answer, at: new Date().toISOString() }];
       setTurns(next);
-      await setSetting('coachChat', { date, turns: next } as SavedChat);
+      // Only answered turns are kept: a question that failed, and its error, stay on screen until reload.
+      await setSetting('coachChat', { date, turns: next.filter((t, i) => !t.error && !(t.role === 'rider' && next[i + 1]?.error)) } as SavedChat);
     } catch (e) {
-      const next = [...turns, asked, { role: 'coach' as const, text: `No answer: ${(e as Error).message}` }];
-      setTurns(next);
+      setTurns([...turns, asked, { role: 'coach' as const, text: (e as Error).message, error: true as const }]);
     } finally { setAsking(false); }
   }
 
@@ -118,11 +118,13 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
           {turns.length > 0 && (
             <div class="stack" style="gap:8px;margin-bottom:10px">
-              {turns.map((t, i) => (
-                <div key={i} class="small" style={`line-height:1.55;${t.role === 'rider' ? 'color:var(--ink-2)' : ''}`}>
-                  <b>{t.role === 'rider' ? 'You' : 'Coach'}:</b> {t.text}
-                </div>
-              ))}
+              {turns.map((t, i) => t.error
+                ? <div key={i} class="msg err small">No answer: {t.text}</div>
+                : (
+                  <div key={i} class="small" style={`line-height:1.55;${t.role === 'rider' ? 'color:var(--ink-2)' : ''}`}>
+                    <b>{t.role === 'rider' ? 'You' : 'Coach'}:</b> {t.text}
+                  </div>
+                ))}
             </div>
           )}
           <form class="row" style="gap:8px" onSubmit={(e) => { e.preventDefault(); ask(); }}>

@@ -52,7 +52,8 @@ export function Settings({ data }: { data: AppData }) {
     await saveProfile(p);
     await setSetting('claudeKey', claudeKey.trim());
     await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
-    await setSetting('coachNote', null);
+    // The day's note is rewritten only when something the coach reads changed.
+    if (coachFieldsChanged(data.profile!, p) || claudeKey.trim() !== savedKey) await setSetting('coachNote', null);
     setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim());
     notify();
     const before = data.profile!;
@@ -421,4 +422,10 @@ function UpdateCheck() {
       {state === 'latest' && <span class="small muted">You have the latest version.</span>}
     </div>
   );
+}
+
+/** Profile fields the coach is told about: a change to any of them means the day's note is out of date. */
+export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'ftp', 'lthr', 'hoursPerWeek', 'basis'] as const;
+export function coachFieldsChanged(before: Profile, after: Profile): boolean {
+  return COACH_FIELDS.some((k) => before[k] !== after[k]);
 }

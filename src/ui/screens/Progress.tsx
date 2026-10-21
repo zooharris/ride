@@ -426,7 +426,7 @@ function chartFacts(on: OverlayKey[], from: string, to: string, series: Fitness[
     ae('drift', 'Heart-rate drift', '%', (p) => p.drift);
   }
   const sessions = [...rides].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60).map((r) => `${r.date} · ${r.sport} · ${Math.round(r.seconds / 60)} · ${r.tss ?? '?'}`);
-  return { from, to, lines, sessions };
+  return { profile: data.profile!, date: to, from, to, lines, sessions };
 }
 
 interface ChartAnswer { q: string; a: string; at: string }

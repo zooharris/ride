@@ -35,7 +35,7 @@ describe('the coach sees the whole calendar', () => {
 describe('reading the review', () => {
   it('takes the three fields from the tool reply', () => {
     const r = readReview('2026-10-19', { content: [{ type: 'tool_use', input: { text: 'Good walk.', applyChanges: true, reason: 'Small.' } }], stop_reason: 'tool_use' });
-    expect(r).toMatchObject({ text: 'Good walk.', applyChanges: true, reason: 'Small.' });
+    expect(r).toMatchObject({ text: 'Good walk.', applyChanges: 'all', skip: [], reason: 'Small.' });  // an old yes reads as all
     expect(r.failed).toBeUndefined();
   });
   it('a cut-off or empty reply is a failed review with a reason, never raw text', () => {
@@ -47,7 +47,7 @@ describe('reading the review', () => {
   });
   it('reads the review from its JSON form', () => {
     const r = readReview('2026-10-20', { content: [{ type: 'text', text: '{"text":"Steady week.","applyChanges":false,"reason":"Too early."}' }], stop_reason: 'end_turn' });
-    expect(r).toMatchObject({ text: 'Steady week.', applyChanges: false, reason: 'Too early.' });
+    expect(r).toMatchObject({ text: 'Steady week.', applyChanges: 'none', skip: [], reason: 'Too early.' });  // an old no reads as none
   });
 });
 

@@ -347,7 +347,9 @@ export const GOAL_LABEL_FULL: Record<string, string> = { ftp: 'Raise FTP', vo2ma
  * offered again. Why the re-check suggests them, and how last week went, sit
  * above the list.
  */
-export function ReplanView({ check, onAccept, onReject, busy, coachSays }: { check: Replan; onAccept: (changes: Change[]) => void; onReject: (changes: Change[]) => void; busy: boolean; coachSays?: string }) {
+export function ReplanView({ check, onAccept, onReject, busy, coachSays, coachVerdict, coachSkip = [] }: { check: Replan; onAccept: (changes: Change[]) => void; onReject: (changes: Change[]) => void; busy: boolean; coachSays?: string; coachVerdict?: 'all' | 'some' | 'none'; coachSkip?: string[] }) {
+  // The coach's view of each change, beside it: skip when it said none, or some and named this date.
+  const coachOn = (c: Change) => !coachVerdict ? null : coachVerdict === 'none' || (coachVerdict === 'some' && coachSkip.includes(c.date)) ? 'skip' : 'apply';
   const r = check.review;
   const [all, setAll] = useState(false);
   const shown = all ? check.changes : check.changes.slice(0, 6);
@@ -366,7 +368,7 @@ export function ReplanView({ check, onAccept, onReject, busy, coachSays }: { che
         <div class="stack" style="margin-top:12px;gap:6px">
           {shown.map((c) => (
             <div class="row between wrap small" key={changeKey(c) + (c.before ?? '') + (c.after ?? '')} style="gap:8px;padding:6px 0;border-top:1px solid var(--line)">
-              <span style="flex:1;min-width:200px"><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {line(c)}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}</span>}</span>
+              <span style="flex:1;min-width:200px"><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {line(c)}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}</span>}{coachOn(c) && <span class="faint"> · coach: {coachOn(c)}</span>}</span>
               <span class="row" style="gap:6px">
                 <button class="btn sm" onClick={() => onAccept([c])} disabled={busy}>Accept</button>
                 <button class="btn sm quiet" onClick={() => onReject([c])} disabled={busy}>Reject</button>

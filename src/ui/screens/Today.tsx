@@ -11,7 +11,7 @@ import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
-import { durationWords, type CoachContext } from '../../coach/claude';
+import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { CoachPanel } from '../CoachPanel';
 import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
@@ -20,9 +20,10 @@ import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
 import { StatusPill, statusOf } from '../StatusMark';
-import { applyPlan, changeSig, coachReviewAfterSync, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, type ActivePlan, type SavedReview } from '../planService';
+import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, type ActivePlan, type SavedReview } from '../planService';
 import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
+import type { ReadinessDriver } from '../../engine/readiness';
 import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
 import { Icon } from '../icons';
@@ -47,12 +48,18 @@ export function Today({ data }: { data: AppData }) {
   const stats = workout ? workoutStats(workout.blocks) : undefined;
   // What is on today's calendar, in one string: the coach note is remade when this changes.
   const recOf = (p: { activityId?: string }) => (p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined);
-  const daySig = 'v3|' + withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`).join(',') + `|${todayNote?.text ?? ''}|${todayNote?.badWellness ? 'bad' : ''}`;
+  const daySig = noteSignature({
+    sessions: withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`),
+    noteText: todayNote?.text, badWellness: todayNote?.badWellness,
+    wellnessToday: data.wellness.some((w) => w.date === date), band: ready.band,
+  });
 
   const [busy, setBusy] = useState<string | null>(null);
   const setMsg = toast;
   const [connected, setConnected] = useState<boolean | null>(null);
   const [active, setActive] = useState<ActivePlan | null>(null);
+  // The coach is told about the plan, so it waits until the plan has been read (a note written before would say "no plan").
+  const [planRead, setPlanRead] = useState(false);
   const [check, setCheck] = useState<Replan | null>(null);
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<SavedReview | null>(null);
@@ -76,7 +83,7 @@ export function Today({ data }: { data: AppData }) {
     (async () => {
       const a = await getActivePlan();
       if (!alive) return;
-      setActive(a);
+      setActive(a); setPlanRead(true);
       if (a && a.start <= date && data.rides.length) {
         const r = await replan(data);
         if (alive) setCheck(r);
@@ -131,6 +138,7 @@ export function Today({ data }: { data: AppData }) {
     recentRides: data.rides, missedThisWeek: missedThisWeek(data.planned),
     riderNote: todayNote?.text, wellnessSetAside,
     recentNotes: recentNoteLines(data.dayNotes.filter((n) => n.date !== date), date, 90),
+    plan: coachPlan(active, date), tomorrow: tomorrowLines(data, date), recentWeeks: recentWeeks(data, date),
   };
 
   async function send() {
@@ -209,11 +217,11 @@ export function Today({ data }: { data: AppData }) {
           </div>
           {check && check.changes.length > 0 && (
             <div class="row between wrap" style="gap:8px;margin-top:8px">
-              <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">to your plan{review && review.text ? (review.applyChanges ? '; the coach recommends them' : '; the coach suggests leaving the plan as it is') : ''}.</span></span>
+              <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">to your plan{review && review.text ? (review.applyChanges === 'all' ? '; the coach recommends them' : review.applyChanges === 'some' ? '; the coach recommends most of them' : '; the coach suggests leaving the plan as it is') : ''}.</span></span>
               <button class="btn sm" aria-expanded={showSuggestions} onClick={() => setShowSuggestions(!showSuggestions)}>{showSuggestions ? 'Hide' : 'Review'}</button>
             </div>
           )}
-          {check && check.changes.length > 0 && showSuggestions && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} coachSays={review?.reason || undefined} />}
+          {check && check.changes.length > 0 && showSuggestions && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} coachSays={review?.reason || undefined} coachVerdict={review && !review.failed ? review.applyChanges : undefined} coachSkip={review?.skip} />}
         </section>
       )}
 
@@ -263,7 +271,7 @@ export function Today({ data }: { data: AppData }) {
       <NextUp data={data} date={date} />
       {changing && <ChangeSheet data={data} planned={changing} onClose={() => setChanging(null)} />}
 
-      <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />
+      {planRead && <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />}
       </div>
       <div class="today-side">
       <section class="section">
@@ -431,7 +439,7 @@ const RD_LINK: Record<string, string> = {
   Form: '#/progress?on=fitness,fatigue,form&r=6w',
 };
 
-function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: Array<{ name: string; value: string; effect: 'up' | 'down' | 'flat' }> }) {
+function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: ReadinessDriver[] }) {
   const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
   const w = (d: string) => data.wellness.find((x) => x.date === d);
   const mean = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };

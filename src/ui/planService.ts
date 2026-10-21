@@ -1,17 +1,18 @@
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
-import { activityLine, durationWords, reviewAfterSync, type CoachReview } from '../coach/claude';
+import { activityLine, describeSession, durationWords, readVerdict, reviewAfterSync, type CoachPlan, type CoachReview } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
 import { addDays, rideIntensity, today } from '../engine/load';
 import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase } from '../engine/planner';
+import { weeklyLoad } from '../engine/progress';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { deleteEvent } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
-import { fitnessFromRides, fitnessOn, fmtDate, weekStart } from './derived';
+import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './derived';
 import type { AppData } from './store';
 import { findWorkout, notify } from './store';
 
@@ -441,18 +442,64 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[], aske
     const secs = w.kind === 'ride' ? workoutStats(w.blocks).seconds : (w.minutes ?? 0) * 60;
     return `; completed the planned session "${w.name}"${secs ? ` (planned duration ${durationWords(secs)})` : ''}`;
   }
-  const goal = active ? (active.goal.kind === 'event' ? `${active.goal.name || 'event'} on ${active.goal.date} (${active.goal.eventType})` : active.goal.kind) : 'no active plan';
+  const goal = active ? goalWords(active.goal) : 'no active plan';
   const review = await reviewAfterSync(key, {
     profile, date: today(), fitness: fitnessOn(series, today()),
     assessmentNotes: assessment.summary, goal,
     verdict: check?.plan.verdict ?? 'n/a', advice: check?.plan.advice ?? '',
     lastWeek: check?.review.lines ?? [],
-    proposedChanges: check ? [...check.summary, ...check.changes.map((c) => `${c.date}: ${c.note} ${c.before ?? ''}${c.before && c.after ? ' → ' : ''}${c.after ?? ''}`)] : [],
+    proposedChanges: check ? [...check.summary, ...check.changes.map(changeWords)] : [],
     newActivities: fresh,
     riderNotes: recentNoteLines(data.dayNotes, today(), 14),
+    plan: coachPlan(active, today()),
+    tomorrow: tomorrowLines(data, today()),
   });
   await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: newIds } as SavedReview);
   return { review, check };
+}
+
+const EVENT_WORDS: Record<string, string> = { century: 'a century', 'gran-fondo': 'a gran fondo', climbing: 'a climbing event', 'time-trial': 'a time trial', 'group-ride': 'a group ride', 'multi-day': 'a multi-day event', other: 'an event' };
+
+/** The plan's goal in words, for the coach. */
+export function goalWords(goal: Goal): string {
+  switch (goal.kind) {
+    case 'event': return `${goal.name || 'an event'} on ${goal.date} (${EVENT_WORDS[goal.eventType] ?? 'an event'}${goal.distanceKm ? `, ${Math.round(goal.distanceKm)} km` : ''})`;
+    case 'ftp': return `raise FTP to ${goal.targetWatts} W in ${goal.weeks} weeks`;
+    case 'vo2max': return `raise VO2max over ${goal.weeks} weeks`;
+    case 'endurance': return `ride ${goal.targetHours} h comfortably within ${goal.weeks} weeks`;
+    case 'weight': return `lose weight${goal.targetKg ? ` to ${goal.targetKg} kg` : ''} over ${goal.weeks} weeks`;
+    default: return `general fitness over ${goal.weeks} weeks`;
+  }
+}
+
+/** The plan in the coach's head: its name, goal, this week's phase and the days left. */
+export function coachPlan(active: ActivePlan | null, date: string): CoachPlan | undefined {
+  if (!active || date > active.goalDate) return undefined;
+  const weeks = [...(active.weeks ?? [])].sort((a, b) => a.start.localeCompare(b.start));
+  const week = weeks.filter((w) => w.start <= date).pop();
+  const days = Math.round((new Date(active.goalDate + 'T00:00:00').getTime() - new Date(date + 'T00:00:00').getTime()) / 86_400_000);
+  return {
+    name: active.name, goal: goalWords(active.goal),
+    phase: week?.label, recoveryWeek: week?.phase === 'recovery',
+    daysToGo: Math.max(0, days), eventName: active.goal.kind === 'event' ? active.goal.name || undefined : undefined,
+  };
+}
+
+/** Tomorrow's sessions, one line each: what they are, not whether they are done. */
+export function tomorrowLines(data: AppData, date: string): string[] {
+  const next = addDays(date, 1);
+  return plannedOn(data.planned, next).map((p) => { const w = findWorkout(data.mine, p.workoutId); return w ? describeSession({ planned: p, workout: w }, false).replace(/\.$/, '') : undefined; }).filter((x): x is string => !!x);
+}
+
+/** Total training load of each of the last four weeks, oldest first (this week so far last). */
+export function recentWeeks(data: AppData, date: string): number[] {
+  return weeklyLoad(data.rides, addDays(weekStart(date), -21), date, (d) => weekStart(d)).slice(-4).map((w) => w.total);
+}
+
+/** A proposed change in words for the coach: "2026-10-23: add Oatlands", never "added  → Oatlands". */
+export function changeWords(c: Change): string {
+  const what = c.note === 'added' ? `add ${c.after}` : c.note === 'removed' ? `remove ${c.before}` : `replace ${c.before} with ${c.after}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
+  return `${c.date}: ${what}${c.userEdited || c.userAdded ? ' [the rider changed this day by hand; offered, not pre-selected]' : ''}`;
 }
 
 /** The coach's review after a sync, kept until the rider dismisses it or a newer one replaces it. */
@@ -463,8 +510,9 @@ export async function getCoachReview(): Promise<SavedReview | null> {
   const r = await getSetting<SavedReview | null>('coachReview', null);
   if (!r || r.date !== today() || r.dismissed) return null;
   // Older builds kept an unreadable reply as raw text; show it as a failed review instead.
-  if (!r.failed && r.text.trim().startsWith('{')) return { ...r, text: '', failed: 'the reply could not be read' };
-  return r;
+  if (!r.failed && r.text.trim().startsWith('{')) return { ...r, text: '', failed: 'the reply could not be read', ...readVerdict(r) };
+  // A review saved before 21 Oct 2026 said yes or no for all the changes; read it as all or none.
+  return { ...r, ...readVerdict(r) };
 }
 
 export async function dismissCoachReview(): Promise<void> {

@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout } from '../store';
 import { PageHead } from '../PageHead';
-import { FitnessChart, RangePicker, RANGE_DAYS, type RangeKey } from '../FitnessChart';
+import { CHART_CAPTION, DEFAULT_OVERLAYS, FitnessChart, OVERLAYS, RangePicker, RANGE_DAYS, type OverlayData, type OverlayKey, type RangeKey } from '../FitnessChart';
+import { OverlayChips, parseOverlays } from '../OverlayChips';
+import { askAboutChart, type ChartContext } from '../../coach/claude';
+import { DAY_KIND_PHRASE, dayKind, morningsAfter, type MorningRow } from '../../engine/mornings';
+import type { Fitness } from '../../engine/types';
 import { LineChart } from '../LineChart';
 import { BarChart } from '../BarChart';
 import { db, getSetting, setSetting, type PowerCurve } from '../../data/db';
@@ -29,12 +33,27 @@ const short = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefi
  * already synced; the range at the top applies to all of them and is
  * remembered.
  */
-export function Progress({ data }: { data: AppData }) {
+const RANGE_KEYS: RangeKey[] = ['6w', '3m', '6m', '1y', 'all'];
+
+export function Progress({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;
   const t = today();
-  const [range, setRange] = useState<RangeKey>('3m');
-  useEffect(() => { getSetting<RangeKey>('progressRange', '3m').then(setRange); }, []);
-  const pick = (k: RangeKey) => { setRange(k); setSetting('progressRange', k); };
+  // The chips and the range live in the URL (so Today can open this page with HRV on, and Back returns),
+  // and are remembered on this device; the URL wins when it carries them.
+  const urlOn = parseOverlays(params?.get('on'));
+  const urlRange = RANGE_KEYS.find((k) => k === params?.get('r'));
+  const [range, setRange] = useState<RangeKey>(urlRange ?? '3m');
+  const [on, setOn] = useState<OverlayKey[]>(urlOn ?? DEFAULT_OVERLAYS);
+  useEffect(() => {
+    if (!urlRange) getSetting<RangeKey>('progressRange', '3m').then(setRange);
+    if (!urlOn) getSetting<string>('progressOverlays', '').then((v) => { const k = parseOverlays(v); if (k) setOn(k); });
+    // Opened with chips in the link (a readiness row, a fitness tile): bring the chart into view, after the shell's scroll to the top.
+    if (urlOn) { const id = setTimeout(() => document.getElementById('fitness-card')?.scrollIntoView({ block: 'start' }), 80); return () => clearTimeout(id); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const writeUrl = (o: OverlayKey[], r: RangeKey) => history.replaceState(null, '', `${location.pathname}#/progress?on=${o.join(',')}&r=${r}`);
+  const pick = (k: RangeKey) => { setRange(k); setSetting('progressRange', k); writeUrl(on, k); };
+  const pickOn = (o: OverlayKey[]) => { setOn(o); setSetting('progressOverlays', o.join(',')); writeUrl(o, range); };
   const [active, setActive] = useState<ActivePlan | null>(null);
   useEffect(() => { getActivePlan().then(setActive); }, [data.planned.length]);
 
@@ -47,6 +66,8 @@ export function Progress({ data }: { data: AppData }) {
   const projection = last && projEnd ? projectFitness(last, data.planned, data.mine, projEnd > addDays(t, 180) ? addDays(t, 180) : projEnd) : [];
   const events = active && active.goal.kind === 'event' ? [{ date: active.goalDate, label: 'event' }] : [];
   const imperial = profile.units === 'imperial';
+  const overlayData: OverlayData = { rides: data.rides, wellness: data.wellness, planned: data.planned, mine: data.mine, lthr: profile.lthr, imperial };
+  const available = useMemo(() => overlayAvailability(data, from, t), [data, from, t]);
 
   if (!data.rides.length) {
     return (
@@ -67,9 +88,16 @@ export function Progress({ data }: { data: AppData }) {
         <p class="small muted" style="margin:-8px 0 8px">Your synced history starts {fmtDate(earliest, { month: 'long', day: 'numeric', year: 'numeric' })}, so the charts start there. <a href="#/settings" style="color:var(--accent)">Load older history in Settings</a>.</p>
       )}
 
-      <Card title="Fitness, fatigue and form" explain="Fitness is the 42-day weighted average of daily training load, fatigue the 7-day average, form the difference. Form mirrors fatigue because fitness moves slowly: a hard week pushes it down, a rest week lets it climb. Dashed lines carry all three forward over what is on your calendar, every session done as planned.">
-        <FitnessChart series={series} range={range} projection={projection} events={events} height={190} />
-      </Card>
+      <section class="section pcard" id="fitness-card">
+        <div class="row between wrap" style="gap:8px;margin-bottom:6px"><h2>Fitness, fatigue and form</h2></div>
+        <p class="small muted" style="margin:0 0 12px;max-width:72ch">Fitness is the 42-day weighted average of daily training load, fatigue the 7-day average, form the difference. Form mirrors fatigue because fitness moves slowly: a hard week pushes it down, a rest week lets it climb. Turn on anything below to lay it over the same days.</p>
+        <div class="panel">
+          <FitnessChart series={series} range={range} projection={projection} events={events} height={210} on={on.filter((k) => available[k])} data={overlayData} />
+          <p class="faint small" style="margin:6px 0 0">{CHART_CAPTION}</p>
+          <OverlayChips on={on} available={available} onChange={pickOn} />
+        </div>
+        <ChartCoach on={on.filter((k) => available[k])} range={range} from={from} to={t} series={series} data={data} />
+      </section>
 
       <WeeklyLoadCard data={data} from={from} to={t} />
 
@@ -81,6 +109,8 @@ export function Progress({ data }: { data: AppData }) {
       <AerobicCard data={data} rides={inRange} />
 
       <WellnessCard data={data} from={from} to={t} />
+
+      <MorningAfterCard data={data} from={from} to={t} />
 
       <ConsistencyCard rides={data.rides} />
 
@@ -330,6 +360,154 @@ function WeightCard({ data, from, to, imperial }: { data: AppData; from: string;
       <LineChart series={[{ name: 'W/kg', color: 'var(--accent)', values: wkg, width: 2 }]}
         xLabels={dates} xTick={tick} yTitle="W/kg" height={110} yMin={Math.min(...wkg.filter((v): v is number => v != null)) - 0.2}
         readout={(i) => `${short(dates[i])} · FTP ${ftp[i].ftp} W · ${wkg[i] ?? '–'} W/kg`} />
+    </Card>
+  );
+}
+
+/** Which overlays have at least three days of data in the range; fitness, fatigue and form always do. */
+function overlayAvailability(data: AppData, from: string, to: string): Record<OverlayKey, boolean> {
+  const rides = data.rides.filter((r) => r.date >= from && r.date <= to);
+  const well = data.wellness.filter((w) => w.date >= from && w.date <= to);
+  const days = (get: (w: AppData['wellness'][number]) => number | undefined) => well.filter((w) => (get(w) ?? 0) > 0).length;
+  const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
+  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr);
+  return {
+    fitness: true, fatigue: true, form: true,
+    load: new Set(rides.filter((r) => (r.tss ?? 0) > 0).map((r) => r.date)).size >= 3,
+    hrv: days((w) => w.hrv) >= 3, sleep: days((w) => w.sleepSeconds) >= 3, restinghr: days((w) => w.restingHr) >= 3, weight: days((w) => w.weightKg) >= 3,
+    efficiency: pts.filter((p) => p.ef != null).length >= 3, drift: pts.filter((p) => p.drift != null).length >= 3,
+  };
+}
+
+/** What the chart shows, in words, for the coach: one line per visible series, and the sessions in the range. */
+function chartFacts(on: OverlayKey[], from: string, to: string, series: Fitness[], data: AppData): ChartContext {
+  const lthr = data.profile?.lthr ?? 0;
+  const imperial = data.profile?.units === 'imperial';
+  const ridesOn = new Map<string, Ride[]>();
+  for (const r of data.rides) { const l = ridesOn.get(r.date) ?? []; l.push(r); ridesOn.set(r.date, l); }
+  const after = (d: string) => DAY_KIND_PHRASE[dayKind(ridesOn.get(addDays(d, -1)) ?? [], lthr)];
+  const lines: string[] = [];
+  const inRange = series.filter((f) => f.date >= from && f.date <= to);
+  const fst = inRange[0], lst = inRange[inRange.length - 1];
+  const fit = (label: string, get: (f: Fitness) => number) => { if (fst && lst) lines.push(`${label} (training load points): ${Math.round(get(fst))} on ${fst.date}, ${Math.round(get(lst))} today (${lst.date})`); };
+  if (on.includes('fitness')) fit('Fitness', (f) => f.ctl);
+  if (on.includes('fatigue')) fit('Fatigue', (f) => f.atl);
+  if (on.includes('form')) fit('Form', (f) => f.tsb);
+  const rides = data.rides.filter((r) => r.date >= from && r.date <= to);
+  if (on.includes('load') && rides.length) {
+    const load = dailyLoad(rides);
+    const big = [...load.entries()].sort((a, b) => b[1].tss - a[1].tss)[0];
+    lines.push(`Daily load (TSS): ${Math.round(rides.reduce((a, r) => a + (r.tss ?? 0), 0))} over the range; biggest day ${Math.round(big[1].tss)} on ${big[0]} (${big[1].names.join(', ')})`);
+  }
+  const wellness = data.wellness.filter((w) => w.date >= from && w.date <= to);
+  const wl = (key: OverlayKey, label: string, unit: string, get: (w: AppData['wellness'][number]) => number | undefined, fmt: (v: number) => string) => {
+    if (!on.includes(key)) return;
+    const pts = wellness.map((w) => ({ d: w.date, v: get(w) })).filter((p): p is { d: string; v: number } => p.v != null && p.v > 0);
+    if (!pts.length) return;
+    const avg = rollingDays(pts.map((p) => p.d), pts.map((p) => p.v), 7);
+    const lo = pts.reduce((m, p) => (p.v < m.v ? p : m)), hi = pts.reduce((m, p) => (p.v > m.v ? p : m));
+    lines.push(`${label} (${unit}): 7-day average from ${fmt(avg[0] ?? pts[0].v)} to ${fmt(avg[avg.length - 1] ?? pts[pts.length - 1].v)}; lowest ${fmt(lo.v)} on ${lo.d} (${after(lo.d)}); highest ${fmt(hi.v)} on ${hi.d} (${after(hi.d)})`);
+  };
+  wl('hrv', 'HRV', 'ms', (w) => w.hrv, (v) => `${Math.round(v)}`);
+  wl('sleep', 'Sleep', 'hours', (w) => (w.sleepSeconds ? w.sleepSeconds / 3600 : undefined), (v) => v.toFixed(1));
+  wl('restinghr', 'Resting heart rate', 'bpm', (w) => w.restingHr, (v) => `${Math.round(v)}`);
+  wl('weight', 'Weight', imperial ? 'lb' : 'kg', (w) => (w.weightKg ? (imperial ? w.weightKg * 2.20462 : w.weightKg) : undefined), (v) => v.toFixed(1));
+  if (on.includes('efficiency') || on.includes('drift')) {
+    const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
+    const pts = aerobicPoints(rides, isEndurance, lthr);
+    const ae = (key: OverlayKey, label: string, unit: string, get: (p: typeof pts[number]) => number | undefined) => {
+      if (!on.includes(key)) return;
+      const ps = pts.map((p) => ({ d: p.date, v: get(p) })).filter((p): p is { d: string; v: number } => p.v != null);
+      if (!ps.length) return;
+      const lo = ps.reduce((m, p) => (p.v < m.v ? p : m)), hi = ps.reduce((m, p) => (p.v > m.v ? p : m));
+      lines.push(`${label} (${unit}, steady rides of an hour or more): first ${ps[0].v.toFixed(2)} on ${ps[0].d}, last ${ps[ps.length - 1].v.toFixed(2)} on ${ps[ps.length - 1].d}; lowest ${lo.v.toFixed(2)} on ${lo.d}; highest ${hi.v.toFixed(2)} on ${hi.d}; ${ps.length} rides`);
+    };
+    ae('efficiency', 'Efficiency factor', 'watts per heartbeat', (p) => p.ef);
+    ae('drift', 'Heart-rate drift', '%', (p) => p.drift);
+  }
+  const sessions = [...rides].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60).map((r) => `${r.date} · ${r.sport} · ${Math.round(r.seconds / 60)} · ${r.tss ?? '?'}`);
+  return { from, to, lines, sessions };
+}
+
+interface ChartAnswer { q: string; a: string; at: string }
+
+/**
+ * "Ask the coach about this chart": shown only with a Claude key. The coach is
+ * sent the lines on screen over this range, with the sessions. The last
+ * question and answer for each set of lines and range are kept on this device.
+ */
+function ChartCoach({ on, range, from, to, series, data }: { on: OverlayKey[]; range: RangeKey; from: string; to: string; series: Fitness[]; data: AppData }) {
+  const [key, setKey] = useState('');
+  const [question, setQuestion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState<ChartAnswer | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const id = `${on.join(',')}|${range}`;
+  useEffect(() => { getSetting<string>('claudeKey', '').then(setKey); }, []);
+  useEffect(() => { setError(null); getSetting<Record<string, ChartAnswer>>('chartChat', {}).then((m) => setAnswer(m[id] ?? null)); }, [id]);
+  if (!key) return null;
+  async function ask() {
+    const q = question.trim();
+    if (!q) return;
+    setBusy(true); setError(null);
+    try {
+      const a = await askAboutChart(key, chartFacts(on, from, to, series, data), q);
+      const saved: ChartAnswer = { q, a, at: new Date().toISOString() };
+      const all = await getSetting<Record<string, ChartAnswer>>('chartChat', {});
+      await setSetting('chartChat', { ...all, [id]: saved });
+      setAnswer(saved); setQuestion('');
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  const names = OVERLAYS.filter((o) => on.includes(o.key)).map((o) => o.label.toLowerCase()).join(', ');
+  return (
+    <div style="margin-top:12px">
+      <div class="row" style="gap:8px">
+        <input value={question} aria-label="Ask the coach about this chart" placeholder="Ask the coach about this chart, e.g. does my HRV recover in time for the long ride?" onInput={(e) => setQuestion((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Enter') void ask(); }} style="flex:1;min-width:0" disabled={busy} />
+        <button class="btn primary" onClick={ask} disabled={busy || !question.trim()}>{busy ? 'Asking…' : 'Ask'}</button>
+      </div>
+      <p class="faint small" style="margin:6px 0 0">The coach is sent the lines on screen over this range, with your sessions. It answers here, under the chart.</p>
+      {error && <p class="small" style="margin-top:10px;color:var(--bad)">No answer: {error}</p>}
+      {answer && !error && (
+        <div class="panel small" style="margin-top:10px;line-height:1.55">
+          <div class="faint" style="margin-bottom:4px">About {names} · {answer.q}</div>
+          <div><b>Coach:</b> {answer.a}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const KIND_ROW: Record<MorningRow['kind'], string> = { hard: 'After a hard ride', long: 'After a long ride', strength: 'After strength', rest: 'After a rest day' };
+
+/** HRV, resting heart rate and sleep the morning after each kind of day, against the rider's normal for the range. */
+function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to: string }) {
+  const rows = morningsAfter(data.rides, data.wellness, from, to, data.profile?.lthr ?? 0);
+  const any = data.wellness.some((w) => w.date >= from && w.date <= to);
+  // Rounded to what is shown before the sign and colour are chosen, so a difference that prints as 0 reads ±0.
+  const cell = (v: number | undefined, n: number, better: (v: number) => boolean, fmt: (v: number) => string, digits = 1) => {
+    if (v == null || n === 0) return <td class="r faint">–</td>;
+    const thin = n < 6;
+    const r = Math.round(v * 10 ** digits) / 10 ** digits;
+    const colour = thin ? 'var(--ink-3)' : r === 0 ? 'var(--ink-2)' : better(r) ? 'var(--good)' : 'var(--bad)';
+    return <td class="r num" style={`color:${colour}`} title={thin ? `thin evidence: ${n} mornings` : undefined}>{r > 0 ? '+' : r < 0 ? '−' : '±'}{fmt(Math.abs(r))}</td>;
+  };
+  return (
+    <Card title="The morning after" explain="What HRV, resting heart rate and sleep look like on the mornings after each kind of day, against your normal for this range. The planner uses the same evidence when it spaces hard days.">
+      {!any ? <div class="empty small">Draws once Intervals.icu has morning readings for this range.</div> : (
+        <table class="steps">
+          <tr><td class="faint small">Day before</td><td class="r faint small">HRV</td><td class="r faint small">Resting HR</td><td class="r faint small">Sleep</td></tr>
+          {rows.map((r) => (
+            <tr key={r.kind}>
+              <td>{KIND_ROW[r.kind]} <span class="faint small">· {r.n} morning{r.n === 1 ? '' : 's'}</span></td>
+              {cell(r.hrv, r.n, (v) => v > 0, (v) => `${v.toFixed(1)} ms`)}
+              {cell(r.restingHr, r.n, (v) => v < 0, (v) => `${v.toFixed(1)} bpm`)}
+              {cell(r.sleepSeconds != null ? r.sleepSeconds / 60 : undefined, r.n, (v) => v > 0, (v) => `${Math.round(v)} min`, 0)}
+            </tr>
+          ))}
+        </table>
+      )}
+      <p class="faint small" style="margin-top:8px">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent); a long ride is 2½ hours or more; a rest day has nothing recorded.</p>
     </Card>
   );
 }

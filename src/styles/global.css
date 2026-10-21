@@ -223,9 +223,10 @@ p { margin: 0; }
    The day row is display: contents, so its two cells draw one outline between them. */
 .cal-day .d { scroll-margin-top: 16px; }
 @media (min-width: 900px) { .cal-day .d { scroll-margin-top: 104px; } }
-.cal-day .d, .cal-day .c { transition: box-shadow .6s ease, background-color .6s ease; }
-.cal-day.focused .d { box-shadow: inset 2px 0 0 var(--today), inset 0 2px 0 var(--today), inset 0 -2px 0 var(--today); background: color-mix(in srgb, var(--today) 7%, transparent); }
-.cal-day.focused .c { box-shadow: inset -2px 0 0 var(--today), inset 0 2px 0 var(--today), inset 0 -2px 0 var(--today); background: color-mix(in srgb, var(--today) 7%, transparent); }
+/* A soft rounded tint behind the whole day, with a short orange bar beside the date; no outline lines. */
+.cal-day .d, .cal-day .c { transition: box-shadow .6s ease, background-color .6s ease, padding .6s ease; }
+.cal-day.focused .d { background: color-mix(in srgb, var(--today) 7%, transparent); border-radius: var(--radius) 0 0 var(--radius); box-shadow: inset 3px 0 0 var(--today); padding-left: 8px; }
+.cal-day.focused .c { background: color-mix(in srgb, var(--today) 7%, transparent); border-radius: 0 var(--radius) var(--radius) 0; padding-right: 8px; }
 @media (prefers-reduced-motion: reduce) { .cal-day .d, .cal-day .c { transition: none; } }
 .cal-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-s); background: var(--bg-2); border: 1px solid var(--line); text-decoration: none; }
 .cal-item .profile { width: 54px; flex: 0 0 54px; }
@@ -723,3 +724,29 @@ body.dragging-session, body.dragging-session * { cursor: grabbing !important; us
 .month-cell.drop-ok, .cal-day.drop-ok { outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-2)); }
 .month-cell.drop-no, .cal-day.drop-no { outline: 2px dashed var(--line-2); outline-offset: -2px; }
 .drag-ghost { position: fixed; z-index: 40; pointer-events: none; padding: 4px 8px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--accent); box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Chips under the fitness chart (Progress): on is filled in the line's colour, off outlined, greyed when there is no data. */
+.ochips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; margin-top: 8px; border-top: 1px solid var(--line); }
+.ochip { height: 34px; padding: 0 13px 0 11px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.ochip:hover:not(:disabled) { border-color: var(--c); }
+.ochip.on { background: var(--c); border-color: transparent; color: var(--on-color); }
+.ochip:disabled { cursor: default; color: var(--ink-3); opacity: .6; }
+.ochip-sw { width: 14px; height: 3px; border-radius: 2px; background: var(--c); }
+.ochip-sw.bars { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+.ochip.on .ochip-sw { background: var(--on-color); }
+.ochip.on .ochip-sw.bars { background: repeating-linear-gradient(90deg, var(--on-color) 0 4px, transparent 4px 7px); }
+.ochip-sw.dotted { background: repeating-linear-gradient(90deg, var(--c) 0 2px, transparent 2px 5px); }
+.ochip.on .ochip-sw.dotted { background: repeating-linear-gradient(90deg, var(--on-color) 0 2px, transparent 2px 5px); }
+.ochip-none { font-size: 11px; }
+@media (max-width: 599px) { .ochip { height: 40px; } }
+#fitness-card { scroll-margin-top: 16px; }
+@media (min-width: 900px) { #fitness-card { scroll-margin-top: 104px; } }
+
+/* Today: readiness rows, the dial and the fitness tiles open Progress with that metric on the chart. */
+a.rd-row { color: inherit; text-decoration: none; margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: var(--radius-s); min-height: 44px; box-sizing: border-box; }
+a.rd-row:hover, a.rd-row:focus-visible { background: var(--bg-3); }
+.rd-go { color: var(--ink-3); }
+.rd-dial-link { display: inline-flex; border-radius: 50%; text-decoration: none; color: inherit; }
+.rd-dial-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a.stat-link { color: inherit; text-decoration: none; border-radius: var(--radius-s); min-height: 44px; display: block; }
+a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }

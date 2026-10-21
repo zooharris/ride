@@ -149,6 +149,30 @@ export async function askCoach(apiKey: string, ctx: CoachContext, turns: ChatTur
   return callClaude(apiKey, { max_tokens: 2000, system, messages: [...history, { role: 'user', content: question }] });
 }
 
+/** What is on the Progress chart, for a question about it: the range, one line per visible series, and the sessions in the range. */
+export interface ChartContext {
+  from: string;
+  to: string;
+  lines: string[];
+  sessions: string[];
+}
+
+/**
+ * A question about the Progress chart. The questions prompt, with the facts of
+ * the day replaced by what the chart shows: each visible line's first, last,
+ * lowest and highest with dates (and what kind of day came before a morning
+ * reading), and the sessions in the range. Answers only; never changes the plan.
+ */
+export async function askAboutChart(apiKey: string, ctx: ChartContext, question: string): Promise<string> {
+  const system = `You are the rider's cycling coach, answering their questions about their training. The rider is a masters road cyclist (over 50). Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's suggested changes. ${NOTE_RULES}
+
+The rider is looking at a chart of ${ctx.from} to ${ctx.to}. What it shows:
+${ctx.lines.map((l) => '- ' + l).join('\n')}
+Sessions in that range, newest first (date · kind · minutes · training load):
+${ctx.sessions.length ? ctx.sessions.map((l) => '- ' + l).join('\n') : '- none'}`;
+  return callClaude(apiKey, { max_tokens: 1500, system, messages: [{ role: 'user', content: question }] });
+}
+
 export interface ReviewContext {
   profile: Profile;
   date: string;

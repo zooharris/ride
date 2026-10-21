@@ -1,8 +1,23 @@
 import { useState } from 'preact/hooks';
 import { useWidth } from './useWidth';
 
-/** A series; null leaves a gap (a projection that starts where the history ends, say). */
-export interface ChartSeries { name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string; dots?: boolean }
+/**
+ * A series; null leaves a gap (a projection that starts where the history ends, say).
+ * `scale: 'own'` draws it on its own scale, fitted to the chart's height and kept out of
+ * the shared axis, ticks and bands (a line in other units, read through the readout);
+ * `ownFloor` pins the bottom of that scale (0 for sleep, so a steady night does not fill
+ * the chart). `kind: 'bars'` draws a bar per day from the bottom of the plot, on its own
+ * scale; bars from index `projectedFrom` on are dotted outlines (planned, not done).
+ * `unit` and `format` shape its number in the readout; series sharing a `group` show
+ * once there (the history and its projection meet at today).
+ */
+export interface ChartSeries {
+  name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string; dots?: boolean;
+  scale?: 'shared' | 'own'; ownFloor?: number; kind?: 'line' | 'bars'; projectedFrom?: number;
+  unit?: string; format?: (v: number) => string; group?: string; connectGaps?: boolean; opacity?: number; hideInLegend?: boolean;
+  /** Own-scale series with the same key share one scale (a metric's daily dots and its 7-day line). */
+  scaleKey?: string;
+}
 export interface ChartMarker { index: number; label: string; color?: string }
 export interface ChartRefLine { value: number; label: string; color?: string }
 export interface ChartBand { from: number; to: number; label: string; color: string; explain?: string }
@@ -13,7 +28,7 @@ export interface ChartBand { from: number; to: number; label: string; color: str
  * readout naming every series. Small on purpose: everything in the app that
  * draws a line over time uses it so the charts read the same way.
  */
-export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], bands = [], height = 170, readout, yMin, yMax }: {
+export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], bands = [], height = 170, readout, suffix, fmtX, yMin, yMax }: {
   series: ChartSeries[];
   xLabels: string[];                 // one per x position (dates as YYYY-MM-DD)
   xTick?: (label: string, i: number) => string | null;   // what to print under the axis; null for nothing
@@ -22,7 +37,9 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   markers?: ChartMarker[];
   bands?: ChartBand[];           // shaded horizontal bands with a label at the right edge
   height?: number;
-  readout?: (i: number) => string;   // the hover text; defaults to series values
+  readout?: (i: number) => string;   // the hover text; defaults to every series' value with its unit
+  suffix?: (i: number) => string;    // appended to the default readout (the day's session, say)
+  fmtX?: (label: string) => string;  // how the default readout names the day
   yMin?: number;
   yMax?: number;
 }) {
@@ -32,7 +49,9 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   if (n < 2) return <div class="empty small">Not enough data to draw.</div>;
   const H = height, padR = 10, padT = 12, padB = 22;
   let padL = 40;
-  const all = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refLines.map((r) => r.value));
+  const shared = series.filter((s) => (s.scale ?? 'shared') === 'shared' && s.kind !== 'bars');
+  const all = shared.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refLines.map((r) => r.value));
+  if (!all.length) all.push(0, 1);
   const lo0 = yMin ?? Math.min(0, ...all);
   const hi00 = yMax ?? Math.max(...all);
   // Room below the lowest value too, so a line never runs along the bottom edge under a label.
@@ -41,7 +60,19 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   const hi = hi0 === lo ? lo + 1 : hi0 + (hi0 - lo) * 0.08;
   const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-  const path = (vals: Array<number | null>) => { let pen = false; return vals.map((v, i) => { if (v == null) { pen = false; return ''; } const c = `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; pen = true; return c; }).join(' '); };
+  // A series on its own scale: its own range over the values it has, 8% headroom each way.
+  const yOf = (s: ChartSeries): ((v: number) => number) => {
+    if ((s.scale ?? 'shared') === 'shared' && s.kind !== 'bars') return y;
+    const vs = (s.scaleKey ? series.filter((o) => o.scaleKey === s.scaleKey) : [s]).flatMap((o) => o.values.filter((v): v is number => v != null));
+    if (s.kind === 'bars') { const mx = Math.max(1, ...vs); const base = H - padB, top = (H - padT - padB) * 0.35; return (v: number) => base - (v / mx) * top; }
+    let a = s.ownFloor ?? Math.min(...vs), b = Math.max(...vs);
+    if (!isFinite(a) || !isFinite(b)) { a = 0; b = 1; }
+    if (b === a) { a -= 1; b += 1; }
+    const pad = (b - a) * 0.08; a = s.ownFloor ?? a - pad; b += pad;
+    return (v: number) => padT + (1 - (v - a) / (b - a)) * (H - padT - padB);
+  };
+  const path = (vals: Array<number | null>, yy = y, connect = false) => { let pen = false; return vals.map((v, i) => { if (v == null) { if (!connect) pen = false; return ''; } const c = `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${yy(v).toFixed(1)}`; pen = true; return c; }).join(' '); };
+  const barW = Math.max(1.5, Math.min(5, ((W - padL - padR) / Math.max(1, n - 1)) * 0.7));
   // y ticks: 4 round steps
   const step = niceStep((hi - lo) / 4);
   const ticks: number[] = [];
@@ -63,24 +94,43 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
         <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">{yTitle}</text>
         {refLines.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.value)} y2={y(r.value)} stroke={r.color ?? 'var(--accent)'} stroke-dasharray="4 4" /><text x={W - padR - 2} y={y(r.value) < padT + 12 ? y(r.value) + 11 : y(r.value) - 3} fill={r.color ?? 'var(--accent)'} font-size="10" text-anchor="end">{r.label}</text></g>)}
         {markers.map((m) => <g key={m.label}><line x1={x(m.index)} x2={x(m.index)} y1={padT} y2={H - padB} stroke={m.color ?? 'var(--line-2)'} stroke-dasharray="2 3" /><text x={x(m.index) + 3} y={padT + 2} fill={m.color ?? 'var(--ink-3)'} font-size="10">{m.label}</text></g>)}
-        {series.map((s) => s.dots
-          ? <g key={s.name}>{s.values.map((v, i) => v == null ? null : <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={s.color} fill-opacity="0.55" />)}</g>
-          : <path key={s.name} d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width ?? 1.8} stroke-dasharray={s.dash} />)}
+        {series.map((s) => { const yy = yOf(s); return s.kind === 'bars'
+          ? <g key={s.name}>{s.values.map((v, i) => { if (v == null || v <= 0) return null; const top = yy(v), proj = s.projectedFrom != null && i >= s.projectedFrom; return <rect key={i} x={x(i) - barW / 2} y={top} width={barW} height={Math.max(0.5, H - padB - top)} rx="1" fill={proj ? 'none' : s.color} fill-opacity={proj ? undefined : 0.16} stroke={proj ? s.color : undefined} stroke-opacity={proj ? 0.4 : undefined} stroke-dasharray={proj ? '2 2' : undefined} />; })}</g>
+          : s.dots
+          ? <g key={s.name}>{s.values.map((v, i) => v == null ? null : <circle key={i} cx={x(i)} cy={yy(v)} r="2.2" fill={s.color} fill-opacity={s.opacity ?? 0.55} />)}</g>
+          : <path key={s.name} d={path(s.values, yy, s.connectGaps)} fill="none" stroke={s.color} stroke-width={s.width ?? 1.8} stroke-dasharray={s.dash} stroke-opacity={s.opacity} />; })}
         {h != null && <line x1={x(h)} x2={x(h)} y1={padT} y2={H - padB} stroke="var(--accent)" />}
-        {h != null && series.map((s) => s.values[h] == null ? null : <circle key={s.name} cx={x(h)} cy={y(s.values[h] as number)} r="3" fill={s.color} />)}
+        {h != null && series.map((s) => s.values[h] == null || s.kind === 'bars' ? null : <circle key={s.name} cx={x(h)} cy={yOf(s)(s.values[h] as number)} r="3" fill={s.color} />)}
       </svg>
       <div class="row wrap faint small chart-legend" style="gap:4px 14px;margin-top:4px">
-        {series.map((s) => <span key={s.name} title={s.explain}>{s.dots
+        {series.filter((s) => !s.hideInLegend).map((s) => <span key={s.name} title={s.explain}>{s.kind === 'bars'
+          ? <span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color};opacity:.35;vertical-align:middle;margin-right:5px`} />
+          : s.dots
           ? <span style={`color:${s.color}`}>•</span>
           : <svg width="22" height="8" style="display:inline-block;vertical-align:middle;margin-right:5px" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" stroke={s.color} stroke-width={Math.max(1.6, s.width ?? 1.8)} stroke-dasharray={s.dash} /></svg>}{s.name}</span>)}
       </div>
       {h != null && (
         <div class="panel small" style="position:absolute;top:6px;right:6px;padding:6px 10px;pointer-events:none;max-width:70%">
-          {readout ? readout(h) : <><b>{xLabels[h]}</b>{series.filter((s) => s.values[h] != null).map((s) => ` · ${s.name} ${fmtTick(s.values[h] as number)}`)}</>}
+          {readout ? readout(h) : <><b>{fmtX ? fmtX(xLabels[h]) : xLabels[h]}</b>{readoutParts(series, h).map((t) => ` · ${t}`)}{suffix ? suffix(h) : ''}</>}
         </div>
       )}
     </div>
   );
+}
+
+/** Every series' value at one position, named and with its unit; a group (history and its projection) shows once. */
+export function readoutParts(series: ChartSeries[], i: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of series) {
+    const v = s.values[i];
+    if (v == null) continue;
+    const key = s.group ?? s.name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(`${s.group ?? s.name} ${s.format ? s.format(v) : fmtTick(v)}${s.unit ? ` ${s.unit}` : ''}`);
+  }
+  return out;
 }
 
 function niceStep(raw: number): number {

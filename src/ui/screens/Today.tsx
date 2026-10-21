@@ -13,7 +13,7 @@ import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
 import { durationWords, type CoachContext } from '../../coach/claude';
 import { CoachPanel } from '../CoachPanel';
-import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
+import { CHART_CAPTION, FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
@@ -270,7 +270,7 @@ export function Today({ data }: { data: AppData }) {
         <h2 style="margin-bottom:12px">Readiness</h2>
         <div class="panel readiness">
           <div class="rd-top">
-            <ReadinessDial score={ready.score} band={ready.band} />
+            <a href="#/progress?on=hrv,restinghr,sleep&r=6w" class="rd-dial-link" aria-label="HRV, resting heart rate and sleep over time"><ReadinessDial score={ready.score} band={ready.band} /></a>
             <p class="rd-advice">{bandText}.</p>
           </div>
           <ReadinessRows data={data} date={date} series={series} drivers={ready.drivers} />
@@ -293,7 +293,7 @@ export function Today({ data }: { data: AppData }) {
           <FitnessTiles series={series} />
           <FitnessChart series={series} range={range} projection={projection} events={events} />
         </div>
-        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry all three forward over what is on your calendar, every session done as planned; form is the mirror of fatigue because fitness moves slowly. Tap or hover over a band or a line for more.</p>
+        <p class="faint small" style="margin-top:8px">{CHART_CAPTION} Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry all three forward over what is on your calendar, every session done as planned; form is the mirror of fatigue because fitness moves slowly. Tap or hover over a band or a line for more.</p>
       </section>
       </div>
       </div>
@@ -397,10 +397,10 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
   const tile = (label: string, v: number | undefined, prev: number | undefined, color: string, help: string, signed = false) => {
     const d = v != null && prev != null ? Math.round(v) - Math.round(prev) : null;
     return (
-      <div class="stat" title={help}>
+      <a class="stat stat-link" href="#/progress?on=fitness,fatigue,form" title={help} aria-label={`${label} over time`}>
         <div class="v" style={`font-size:28px;line-height:32px;color:${color}`}>{v == null ? '–' : `${signed && v > 0 ? '+' : ''}${Math.round(v) < 0 ? '−' + Math.abs(Math.round(v)) : Math.round(v)}`}</div>
         <div class="l">{label}{d != null && <span class="delta" style={`color:${d === 0 ? 'var(--ink-3)' : 'var(--ink-2)'}`}>{d === 0 ? 'no change in 7 days' : `${d > 0 ? '▲' : '▼'} ${Math.abs(d)} in 7 days`}</span>}</div>
-      </div>
+      </a>
     );
   };
   return (
@@ -422,6 +422,14 @@ function sleepDiff(h: number): string {
   const m = Math.round(h * 60);
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 }
+
+/** Each readiness row opens Progress with that metric on the fitness chart, over six weeks. */
+const RD_LINK: Record<string, string> = {
+  HRV: '#/progress?on=hrv,fatigue,load&r=6w',
+  Sleep: '#/progress?on=sleep,fatigue,load&r=6w',
+  'Resting HR': '#/progress?on=restinghr,fatigue,load&r=6w',
+  Form: '#/progress?on=fitness,fatigue,form&r=6w',
+};
 
 function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: Array<{ name: string; value: string; effect: 'up' | 'down' | 'flat' }> }) {
   const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
@@ -447,12 +455,12 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
         // round before choosing the sign, so a difference under half a unit reads ±0, not −0
         const diff = raw == null ? null : r.name === 'Sleep' ? Math.round(raw * 60) / 60 : Math.round(raw);
         return (
-          <div class="rd-row" key={r.name} title={r.help}>
+          <a class="rd-row" key={r.name} title={r.help} href={RD_LINK[r.name]} aria-label={`${r.name} over time`}>
             <span class="rd-name">{r.name}</span>
             <span class="rd-spark"><Sparkline values={r.vals} width={56} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} /></span>
             <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}{todayV != null && r.unit ? <span class="rd-unit">{r.unit}</span> : null}</span>
-            <span class="rd-delta small" style={`color:${color}`}>{diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}</span>
-          </div>
+            <span class="rd-delta small" style={`color:${color}`}>{diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}<span class="rd-go" aria-hidden="true"> ›</span></span>
+          </a>
         );
       })}
     </div>

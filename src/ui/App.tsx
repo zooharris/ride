@@ -78,7 +78,7 @@ export function App() {
       break;
     }
     case 'plan': screen = id ? <PlanPage data={data} id={id} editing={route.parts[2] === 'edit'} /> : <Plan data={data} />; break;
-    case 'progress': screen = <Progress data={data} />; break;
+    case 'progress': screen = <Progress data={data} params={route.params} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     case 'help': screen = <Help params={route.params} />; break;

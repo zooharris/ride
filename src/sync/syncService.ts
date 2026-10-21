@@ -57,9 +57,10 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   const edits = await db.activityEdits.toArray();
   applyKindEdits(rides, edits, profile);
   const planned = await db.planned.where('date').between(oldest, newest, true, true).toArray();
-  await applyPairing(rides, planned, await workoutLookup(), c, profile, { markMissed: true });
+  await applyPairing(rides, planned, await workoutLookup(), c, profile, { markMissed: true, gone: new Set(gone) });
   applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
+  await markMissedAll();
 
   // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
   try {
@@ -98,9 +99,15 @@ async function workoutLookup(): Promise<(id: string) => Workout | undefined> {
  * runs it at launch on stored ones, so a rule change applies without a Sync.
  * The caller saves `rides` afterwards.
  */
-export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], workoutOf: (id: string) => Workout | undefined, c: IntervalsCredentials | null, profile: Profile | undefined | null, opts: { markMissed?: boolean } = {}): Promise<number> {
+export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], workoutOf: (id: string) => Workout | undefined, c: IntervalsCredentials | null, profile: Profile | undefined | null, opts: { markMissed?: boolean; gone?: Set<string> } = {}): Promise<number> {
   const matches = pairRecordings(planned, rides, workoutOf);
   let changed = 0;
+  const here = new Set(rides.map((r) => r.id));
+  // A done session comes undone only when its recording is known to be gone (deleted in
+  // Intervals.icu), or is here and no longer fits it. A recording this device simply does not
+  // hold (synced on another device, or older than the window) says nothing, and a match the
+  // rider made by hand stands until the recording itself is gone.
+  const undoable = (p: PlannedWorkout) => !!p.activityId && (opts.gone?.has(p.activityId) || (!p.matchedByHand && here.has(p.activityId)));
   for (const p of planned) {
     const match = matches.get(p.id);
     const w = workoutOf(p.workoutId);
@@ -120,16 +127,19 @@ export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], wor
       } catch { /* next sync tries again */ }
     }
     if (match) {
-      const fresh = p.status !== 'completed' || p.activityId !== match.id;
+      // The activity the app itself created for a hand-logged session is not a new recording: the record the rider gave stays.
+      const own = p.manualActivityId === match.id;
+      const fresh = !own && (p.status !== 'completed' || p.activityId !== match.id);
       const done = !fresh && p.done ? p.done : (w ? buildDoneRecord(w, p.loggedSeconds ? Math.round(p.loggedSeconds / 60) : undefined) : undefined);
       if (fresh) { await db.planned.update(p.id, { status: 'completed', activityId: match.id, done }); p.status = 'completed'; p.activityId = match.id; p.done = done; changed++; }
+      else if (own && p.activityId !== match.id) { await db.planned.update(p.id, { activityId: match.id, done }); p.activityId = match.id; p.done = done; }
       else if (!p.done && done) { await db.planned.update(p.id, { done }); p.done = done; }   // done before records existed
       // Heart rate under-reads lifting: once the rider has rated the effort, that sets the load.
       const fromEffort = w ? recordTss(w, match.seconds, p.rpe) : undefined;
       if (fromEffort != null) match.tss = fromEffort;
       if (c && w && done) await writeRecord(c, match, w.name, done, p.rpe, profile?.units);
-    } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds) {
-      // It was marked done from a recording that no longer counts. Undo that. Sessions the rider logged by hand stay done.
+    } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds && undoable(p)) {
+      // It was marked done from a recording that is gone or no longer counts. Undo that. Sessions the rider logged by hand stay done.
       if (c) await undoRelabel(c, p);
       await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: c ? undefined : p.relabelled, done: undefined, rpe: undefined, matchedByHand: undefined });
       changed++;
@@ -171,8 +181,17 @@ export async function rescoreAllOnce(): Promise<boolean> {
   return true;
 }
 
+/** Every session dated before today and still to do is missed, however long ago (a fortnight without a sync must not leave them pending forever). */
+export async function markMissedAll(): Promise<number> {
+  const t = today();
+  const stale = (await db.planned.where('date').below(t).toArray()).filter((p) => p.status === 'planned' || p.status === 'sent');
+  for (const p of stale) await db.planned.update(p.id, { status: 'missed' });
+  return stale.length;
+}
+
 export async function recheckMatches(): Promise<number> {
   await rescoreAllOnce();
+  await markMissedAll();
   const oldest = addDays(today(), -14), newest = addDays(today(), 1);
   const [rides, planned, profile] = await Promise.all([
     db.rides.where('date').between(oldest, newest, true, true).toArray(),
@@ -464,11 +483,27 @@ export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workout
       ?? (w ? rides.find((r) => r.date === p.date && fits(p, r) && named(r, w)) : undefined);
     if (m) { taken.add(m.id); matches.set(p.id, m); }
   }
-  for (const p of planned) {
+  // Same day and kind, the closest in length first: with two rides planned and two recorded, the
+  // long one completes the long ride. A ride-typed recording that carries the name of a strength or
+  // mobility session planned that day (sent to the Garmin as a ride, its name cut short on the
+  // watch) is that session, never the day's ride.
+  const nameOfOther = (r: Ride) => planned.some((q) => { const w = workoutOf(q.workoutId); return w && w.kind !== 'ride' && q.date === r.date && looksNamedAfter(r.name, w.name); });
+  const closeness = (p: PlannedWorkout, r: Ride) => { const want = plannedSeconds(workoutOf(p.workoutId)); return want ? Math.abs(Math.max(r.seconds, r.elapsedSeconds ?? 0) - want) / want : 0; };
+  const byLength = [...planned].sort((a, b) => (plannedSeconds(workoutOf(b.workoutId)) ?? 0) - (plannedSeconds(workoutOf(a.workoutId)) ?? 0));
+  for (const p of byLength) {
     if (matches.has(p.id)) continue;
     const kind = workoutOf(p.workoutId)?.kind ?? 'ride';
-    const m = rides.find((r) => r.date === p.date && r.sport === kind && fits(p, r));
+    const candidates = rides.filter((r) => r.date === p.date && r.sport === kind && fits(p, r) && !(kind === 'ride' && nameOfOther(r)));
+    const m = candidates.sort((a, b) => closeness(p, a) - closeness(p, b))[0];
     if (m) { taken.add(m.id); matches.set(p.id, m); }
   }
   return matches;
+}
+
+/** Does a recording's name look like a session's, allowing for a watch that cuts names short? */
+export function looksNamedAfter(recording: string, session: string): boolean {
+  const a = recording.trim().toLowerCase(), b = session.trim().toLowerCase();
+  if (!a || !b) return false;
+  const head = b.slice(0, Math.min(12, b.length));
+  return a === b || (a.length >= 8 && (b.startsWith(a) || a.startsWith(head)));
 }

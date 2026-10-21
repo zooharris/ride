@@ -10,6 +10,7 @@ import { estimateSessionTss } from '../../engine/sessions';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { go } from '../router';
+import { deleteWorkoutEverywhere } from '../planService';
 import { KIND_LABEL } from './Plan';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
@@ -141,7 +142,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
         <button class="btn" onClick={() => save('date')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0) || (kind === 'walk' && hrHigh <= hrLow)}>Save and put on {date === today() ? 'today' : fmtDate(date)}</button>
         <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date to put it on" />
         <a class="btn quiet" href="#/library">Cancel</a>
-        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}?`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
+        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
       </div>
     </div>
   );

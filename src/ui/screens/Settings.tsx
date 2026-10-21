@@ -95,6 +95,7 @@ export function Settings({ data }: { data: AppData }) {
   }
 
   async function disconnect() {
+    if (!confirm('Disconnect Intervals.icu?\n\nThe athlete ID and API key are removed from this device and syncing stops until you connect again. Your activities, calendar and plans stay as they are here.')) return;
     await setSetting('intervals', null);
     await db.sync.clear();
     setCreds({ athleteId: '', apiKey: '' });

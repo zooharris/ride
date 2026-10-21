@@ -93,6 +93,25 @@ const t = (s?: string) => (s ? Date.parse(s) : 0);
  * Merge a remote document into this device. Returns how many records changed
  * here and whether anything here is newer than, or missing from, the remote.
  */
+/**
+ * A calendar entry's completion is a fact (a recording was paired, or the rider
+ * logged it); "missed", "sent" and "planned" are states a device works out for
+ * itself, so a device that marked a session missed before it heard that another
+ * device had completed it must not win on its newer stamp. The completion wins
+ * unless the other side is an explicit undo by the rider: the recording refused
+ * ("This was a different workout", which lists it in notActivityIds) or a
+ * hand-logged completion taken back (undoneAt), and that undo is the newer change.
+ */
+export function completionWins(mine: PlannedWorkout, remote: PlannedWorkout): 'mine' | 'remote' | undefined {
+  const done = (p: PlannedWorkout) => p.status === 'completed';
+  if (done(mine) === done(remote)) return undefined;
+  const [winner, other] = done(mine) ? [mine, remote] : [remote, mine];
+  const refused = !!winner.activityId && !!other.notActivityIds?.includes(winner.activityId);
+  const undone = !!other.undoneAt && t(other.undoneAt) > t(winner.updatedAt);
+  if ((refused || undone) && t(other.updatedAt) > t(winner.updatedAt)) return winner === mine ? 'remote' : 'mine';
+  return winner === mine ? 'mine' : 'remote';
+}
+
 export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; localNewer: boolean }> {
   let applied = 0;
   let localNewer = false;
@@ -125,8 +144,9 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
         else if (tomb && (FOREVER.has(name) || t(tomb) >= t(r.updatedAt))) { if (FOREVER.has(name)) localNewer = true; continue; }   // deleted here
         const mine = await table.get(key);
         if (!mine) { await table.put(r); applied++; continue; }
-        if (t(r.updatedAt) > t(mine.updatedAt)) { await table.put(r); applied++; }
-        else if (t(mine.updatedAt) > t(r.updatedAt)) localNewer = true;
+        const verdict = name === 'planned' ? completionWins(mine as unknown as PlannedWorkout, r as unknown as PlannedWorkout) : undefined;
+        if (verdict === 'remote' || (verdict == null && t(r.updatedAt) > t(mine.updatedAt))) { await table.put(r); applied++; }
+        else if (verdict === 'mine' || t(mine.updatedAt) > t(r.updatedAt)) localNewer = true;
         else if (JSON.stringify(mine) !== JSON.stringify(r)) localNewer = true;   // both unstamped (older builds) and different: this device's copy goes up
       }
       for (const mine of (await table.toArray()).filter(local)) {

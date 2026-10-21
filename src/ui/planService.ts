@@ -301,6 +301,24 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
  * recording stays, only the calendar entry goes. Returns false if the rider
  * said no.
  */
+/**
+ * Delete one of the rider's own workouts: it comes off every calendar day it is
+ * on, and each of those that was sent to the Garmin comes off Intervals.icu
+ * too. Done sessions keep their recording; only the calendar entry goes. Asks first.
+ */
+export async function deleteWorkoutEverywhere(w: Pick<Workout, 'id' | 'name'>): Promise<boolean> {
+  const entries = await db.planned.where('workoutId').equals(w.id).toArray();
+  const sent = entries.filter((p) => p.icuEventId && p.status !== 'completed');
+  const where = entries.length ? ` It comes off ${entries.length === 1 ? 'the calendar day it is on' : `the ${entries.length} calendar days it is on`}${sent.length ? `, and off Intervals.icu and your Garmin for the ${sent.length === 1 ? 'one' : sent.length} not yet done` : ''}.` : '';
+  if (!confirm(`Delete ${w.name}?${where}`)) return false;
+  const c = sent.length ? await credentials() : null;
+  for (const p of sent) if (c) { try { await deleteEvent(c, p.icuEventId!); } catch { /* a stale event in Intervals.icu is harmless */ } }
+  await db.planned.bulkDelete(entries.map((p) => p.id));
+  await db.workouts.delete(w.id);
+  notify();
+  return true;
+}
+
 export async function removePlanned(id: string, mine: Workout[]): Promise<boolean> {
   const p = await db.planned.get(id);
   if (!p) return false;

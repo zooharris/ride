@@ -144,6 +144,8 @@ export interface PlannedWorkout {
   done?: DoneRecord;
   /** The rider matched the recording to this session by hand; the automatic rules never undo it. */
   matchedByHand?: boolean;
+  /** When the rider undid a hand-logged completion: an explicit choice that outranks a completion another device still holds. */
+  undoneAt?: string;
 }
 
 /** One exercise as done: the plan's by default, then whatever the rider corrects. */

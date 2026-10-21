@@ -62,6 +62,7 @@ export async function undoHandLog(p: PlannedWorkout): Promise<{ deletedRemote: b
     manualActivityId: undefined,
     rpe: undefined,
     done: undefined,
+    undoneAt: new Date().toISOString(),
   });
   return { deletedRemote };
 }

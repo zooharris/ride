@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
-import { localDoc, mergeRemote, type SyncDoc } from './devicesync';
+import { completionWins, localDoc, mergeRemote, type SyncDoc } from './devicesync';
 
 // A minimal browser surface for the module under test.
 (globalThis as { navigator?: unknown }).navigator ??= { userAgent: 'test' };
@@ -61,8 +61,8 @@ describe('sync across devices', () => {
   });
 
   it('two unstamped copies (older builds) are kept as a union', async () => {
-    await db.transaction('rw', db.planned, async () => { await db.planned.put({ ...planned('legacy', '2026-11-01'), updatedAt: undefined }); });
-    await db.planned.update('legacy', { updatedAt: undefined });
+    const { untracked } = await import('./db');
+    await untracked(async () => { await db.planned.put({ ...planned('legacy', '2026-11-01'), updatedAt: undefined }); });
     const r = await mergeRemote(doc({ planned: [planned('other', '2026-11-02')] }));
     expect((await db.planned.toArray()).map((p) => p.id).sort()).toEqual(['legacy', 'other']);
     expect(r.localNewer).toBe(true);
@@ -117,5 +117,55 @@ describe('secrets stay on the device', () => {
     await db.tombstones.put({ id: 'plans:ghost', at: '2026-10-20T15:00:00Z' });          // deleted here this afternoon
     await mergeRemote(doc({ plans: [plan as never] }));                                 // an older phone re-checked its copy tonight
     expect(await db.plans.get('ghost')).toBeUndefined();
+  });
+});
+
+describe('change stamps', () => {
+  it('every save of a tracked record is stamped, a second put() of the same record included', async () => {
+    const { setSetting } = await import('./db');
+    await setSetting('historyFrom', '2026-01-01');
+    const first = (await db.settings.get('historyFrom'))?.updatedAt;
+    expect(typeof first).toBe('string');
+    await new Promise((r) => setTimeout(r, 5));
+    await setSetting('historyFrom', '2025-06-01');
+    const second = (await db.settings.get('historyFrom'))?.updatedAt;
+    expect(typeof second).toBe('string');
+    expect(second! > first!).toBe(true);
+    const { saveDayNote } = await import('../ui/store');
+    await saveDayNote('2026-10-20', { text: 'one' });
+    await saveDayNote('2026-10-20', { text: 'two' });
+    expect(typeof (await db.dayNotes.get('2026-10-20'))?.updatedAt).toBe('string');
+  });
+  it('a record arriving from another device keeps its own stamp', async () => {
+    const { untracked } = await import('./db');
+    await untracked(async () => { await db.planned.put({ ...planned('remote', '2026-11-01'), updatedAt: '2026-01-01T00:00:00.000Z' }); });
+    expect((await db.planned.get('remote'))?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+});
+
+describe('a completion beats a state a device worked out for itself', () => {
+  const base = planned('s', '2026-10-20');
+  it('a device that marked the session missed before hearing it was done does not win on its newer stamp', () => {
+    const mine = { ...base, status: 'missed' as const, updatedAt: '2026-10-21T08:00:00Z' };
+    const remote = { ...base, status: 'completed' as const, activityId: 'r1', updatedAt: '2026-10-20T20:00:00Z' };
+    expect(completionWins(mine, remote)).toBe('remote');
+    expect(completionWins(remote, mine)).toBe('mine');
+  });
+  it('the rider’s own undo is newer and explicit, so it wins', () => {
+    const done = { ...base, status: 'completed' as const, activityId: 'r1', updatedAt: '2026-10-20T20:00:00Z' };
+    const refused = { ...base, status: 'sent' as const, notActivityIds: ['r1'], updatedAt: '2026-10-21T08:00:00Z' };
+    expect(completionWins(done, refused)).toBe('remote');
+    const undone = { ...base, status: 'planned' as const, undoneAt: '2026-10-21T08:00:00Z', updatedAt: '2026-10-21T08:00:00Z' };
+    expect(completionWins(done, undone)).toBe('remote');
+    expect(completionWins(undone, done)).toBe('mine');
+  });
+  it('two completions, or two not-yet-done states, go by the stamp as before', () => {
+    expect(completionWins({ ...base, status: 'completed' as const }, { ...base, status: 'completed' as const })).toBeUndefined();
+    expect(completionWins({ ...base, status: 'sent' as const }, { ...base, status: 'missed' as const })).toBeUndefined();
+  });
+  it('merging applies the rule', async () => {
+    await db.planned.put({ ...base, status: 'missed', updatedAt: '2026-10-21T08:00:00Z' });
+    await mergeRemote(doc({ planned: [{ ...base, status: 'completed', activityId: 'r1', updatedAt: '2026-10-20T20:00:00Z' } as never] }));
+    expect((await db.planned.get('s'))?.status).toBe('completed');
   });
 });

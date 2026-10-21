@@ -7,6 +7,8 @@ import { powerZone, zonesFor } from '../../engine/zones';
 import type { Family, Workout, WorkoutBlock, WorkoutStep } from '../../engine/types';
 import { db } from '../../data/db';
 import { go } from '../router';
+import { deleteWorkoutEverywhere } from '../planService';
+import { today } from '../../engine/load';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
@@ -95,7 +97,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     };
     await db.workouts.put(w);
     if (then === 'today') {
-      await db.planned.put({ id: newId(), date: new Date().toISOString().slice(0, 10), workoutId: w.id, basis: profile.basis, status: 'planned' });
+      await db.planned.put({ id: newId(), date: today(), workoutId: w.id, basis: profile.basis, status: 'planned' });
     }
     notify();
     setSaved(w.id);
@@ -196,7 +198,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
         <button class="btn" onClick={() => save('today')} disabled={!name.trim() || rows.length === 0}>Save and ride today</button>
         <button class="btn quiet" onClick={reset} disabled={!dirty}>Reset</button>
         <button class="btn quiet" onClick={cancel}>Cancel</button>
-        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (!confirm(`Delete ${existing.name}? It also comes off any calendar day it is on.`)) return; await db.planned.where('workoutId').equals(existing.id).delete(); await db.workouts.delete(existing.id); notify(); go('library'); }}>Delete</button>}
+        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
       </div>
     </div>
   );

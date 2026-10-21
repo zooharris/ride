@@ -110,7 +110,10 @@ const TRACKED = ['profile', 'settings', 'workouts', 'planned', 'dayNotes', 'plan
 for (const name of TRACKED) {
   const table = db.table(name);
   table.hook('creating', function (_pk, obj: { updatedAt?: string }) { if (tracking) obj.updatedAt = new Date().toISOString(); });
-  table.hook('updating', function (mods: { updatedAt?: string }) { return tracking && !('updatedAt' in mods) ? { updatedAt: new Date().toISOString() } : undefined; });
+  // Dexie lists a key the new object lacks as `updatedAt: undefined`, so the test is for a real stamp,
+  // not for the key: a put() of a record built without one must still be stamped, or the other
+  // device's older copy wins the next merge.
+  table.hook('updating', function (mods: { updatedAt?: string }) { return tracking && typeof mods.updatedAt !== 'string' ? { updatedAt: new Date().toISOString() } : undefined; });
   table.hook('deleting', function (pk) {
     if (!tracking) return;
     const at = new Date().toISOString();

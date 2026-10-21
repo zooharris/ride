@@ -388,7 +388,7 @@ function HistoryLoader() {
   return (
     <section class="section">
       <h2>History</h2>
-      <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have, so it is safe to run again, for example after importing older history into Intervals.icu.</p>
+      <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have, so it is safe to run again, for example after importing older history into Intervals.icu. <b>Your other devices follow</b>: load history on one and the rest load back to the same date on their own the next time they open, so fitness, readiness and the plan's suggestions are the same everywhere.</p>
       <div class="panel">
         <p class="small" style="margin-bottom:10px">{cov?.from ? <>This device has <b>{cov.activities}</b> activities, back to <b>{fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>{cov.wellnessFrom ? <>, and wellness (sleep, HRV, resting heart rate) back to <b>{fmtDate(cov.wellnessFrom, { month: 'long', day: 'numeric', year: 'numeric' })}</b></> : ''}.</> : 'Nothing synced yet. Press Sync on Today first.'}</p>
         <div class="row wrap" style="gap:8px">

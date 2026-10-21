@@ -1,4 +1,4 @@
-import { db, getSetting } from '../data/db';
+import { db, getSetting, setSetting } from '../data/db';
 import { addDays, hrTss, rideTss, today } from '../engine/load';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
@@ -6,7 +6,7 @@ import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
 import type { IntervalsCredentials } from './intervals';
 import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
-import { syncDevices } from '../data/devicesync';
+import { schedulePush, syncDevices } from '../data/devicesync';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -69,10 +69,13 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
 
   const wellness = await fetchWellness(c, oldest, newest);
   await db.wellness.bulkPut(wellness);
+  if (first) await noteLoadedFrom(oldest);
 
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined });
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
+  // A new device catches up to the history the rider's other devices hold, in the background.
+  void matchHistory();
   return { rides: rides.length, wellness: wellness.length, newIds };
 }
 
@@ -252,8 +255,79 @@ export async function loadHistory(back: string, onProgress: (done: number, total
     acts += fresh.length; well += newW.length;
     onProgress(i + 1, pieces.length);
   }
+  // Only a load that reached today counts: one stopped part-way is carried on by the next.
+  await noteLoadedFrom(back);
+  await shareHistoryFrom(back);
   return { activities: acts, wellness: well };
 }
+
+/**
+ * Every device holds the same history, so fitness, readiness and the plan's
+ * re-check give the same answers everywhere (20 Oct 2026: a laptop with two
+ * years and a phone with 120 days showed readiness 61 and 60, and 6 and 12
+ * suggested changes). `historyFrom` travels in the sync note: the earliest date
+ * any of the rider's devices has loaded from. `historyLoadedFrom` stays on each
+ * device: how far back this one has loaded. A device that has loaded further
+ * back than the note says moves the note back; one that has less loads the
+ * difference by itself.
+ */
+async function noteLoadedFrom(from: string): Promise<void> {
+  const have = await getSetting<string | null>('historyLoadedFrom', null);
+  if (!have || from < have) await setSetting('historyLoadedFrom', from);
+}
+
+async function shareHistoryFrom(from: string): Promise<void> {
+  const shared = await getSetting<string | null>('historyFrom', null);
+  if (shared && shared <= from) return;
+  await setSetting('historyFrom', from);
+  schedulePush(credentials);
+}
+
+/** How far back this device has loaded. Devices from before this was kept are judged by what they hold. */
+export async function loadedFrom(): Promise<string | undefined> {
+  const kept = await getSetting<string | null>('historyLoadedFrom', null);
+  if (kept) return kept;
+  const cov = await historyCoverage();
+  const held = [cov.from, cov.wellnessFrom].filter((d): d is string => !!d).sort()[0];
+  if (held) await setSetting('historyLoadedFrom', held);
+  return held;
+}
+
+let matching: Promise<{ activities: number; wellness: number; from: string } | null> | null = null;
+
+/**
+ * Bring this device level with the rider's others. Run after every merge with
+ * the note. Returns what was loaded, or null when nothing was needed (or the
+ * device has not synced yet, or a load failed; the next run carries on).
+ */
+export function matchHistory(): Promise<{ activities: number; wellness: number; from: string } | null> {
+  if (matching) return matching;
+  matching = (async () => {
+    try {
+      if (!(await credentials())) return null;
+      const mine = await loadedFrom();
+      if (!mine) return null;                       // never synced: the first Sync comes first
+      const shared = await getSetting<string | null>('historyFrom', null);
+      if (!shared || mine < shared) { await shareHistoryFrom(mine); return null; }
+      if (shared >= mine) return null;
+      const r = await loadHistory(shared, () => {});
+      for (const l of historyListeners) l(r);
+      return { ...r, from: shared };
+    } catch { return null; }
+    finally { matching = null; }
+  })();
+  return matching;
+}
+
+/** Screens told when history arrived to match the rider's other devices. */
+const historyListeners = new Set<(r: { activities: number; wellness: number }) => void>();
+export function onHistoryMatched(fn: (r: { activities: number; wellness: number }) => void): () => void {
+  historyListeners.add(fn);
+  return () => { historyListeners.delete(fn); };
+}
+
+/** True while this device is loading history to match the others. */
+export const matchingHistory = (): boolean => matching != null;
 
 /**
  * Which recording belongs to which planned session. Certain matches first:

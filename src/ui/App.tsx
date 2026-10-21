@@ -1,9 +1,9 @@
 import { APP_NAME } from '../appName';
 import { useRoute } from './router';
-import { useAppData } from './store';
+import { notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
-import { credentials } from '../sync/syncService';
+import { credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -22,7 +22,7 @@ import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
 import { Icon } from './icons';
 import { Logo, Mark } from './Brand';
-import { Toaster } from './Toast';
+import { toast, Toaster } from './Toast';
 import { UpdateBanner } from './UpdateBanner';
 import { Skeleton } from './PageHead';
 
@@ -40,14 +40,19 @@ const TABS = [
 export function App() {
   const route = useRoute();
   const data = useAppData();
-  // Merge with the rider's other devices on launch and whenever the app comes back to the front (at most once a minute).
+  // Merge with the rider's other devices on launch and whenever the app comes back to the front (at most once a minute),
+  // then bring this device's history level with theirs.
   useEffect(() => {
     let last = 0;
-    const run = async () => { if (Date.now() - last < 60_000) return; last = Date.now(); const c = await credentials(); if (c) syncDevices(c); };
+    const run = async () => { if (Date.now() - last < 60_000) return; last = Date.now(); const c = await credentials(); if (c) { await syncDevices(c); void matchHistory(); } };
+    const off = onHistoryMatched((r) => {
+      notify();
+      if (r.activities || r.wellness) toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness, so this device has the same history as your others.` });
+    });
     run();
     const onVis = () => { if (document.visibilityState === 'visible') run(); };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    return () => { document.removeEventListener('visibilitychange', onVis); off(); };
   }, []);
   if (!data.loaded) return <Loading />;
   if (!data.profile) return <Onboarding />;

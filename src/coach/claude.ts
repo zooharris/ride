@@ -366,9 +366,11 @@ export function readReview(date: string, data: { content?: Array<{ type: string;
  * yes/no (a review saved before 21 Oct 2026 still renders): true is all, false none.
  */
 export function readVerdict(v: { applyChanges?: unknown; skip?: unknown }): Pick<CoachReview, 'applyChanges' | 'skip'> {
-  const a = v.applyChanges;
-  const applyChanges = a === true || a === 'all' ? 'all' : a === 'some' ? 'some' : 'none';
-  const skip = applyChanges === 'some' && Array.isArray(v.skip) ? v.skip.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
+  // Structured outputs do not promise the capitalisation of enum values, so compare lower-case.
+  const a = typeof v.applyChanges === 'string' ? v.applyChanges.toLowerCase() : v.applyChanges;
+  const skip = a === 'some' && Array.isArray(v.skip) ? v.skip.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
+  // "Some" with no date named is all of them: the coach made no exception.
+  const applyChanges = a === true || a === 'all' || (a === 'some' && !skip.length) ? 'all' : a === 'some' ? 'some' : 'none';
   return { applyChanges, skip };
 }
 
@@ -378,6 +380,6 @@ export function readVerdict(v: { applyChanges?: unknown; skip?: unknown }): Pick
  * note is rewritten when this changes: when the watch syncs and moves the band, not when only
  * a name in Settings changes.
  */
-export function noteSignature(d: { sessions: string[]; noteText?: string; badWellness?: boolean; wellnessToday: boolean; band: Readiness['band'] }): string {
-  return `v4|${d.sessions.join(',')}|${d.noteText ?? ''}|${d.badWellness ? 'bad' : ''}|${d.wellnessToday ? d.band : 'nowellness'}`;
+export function noteSignature(d: { sessions: string[]; noteText?: string; badWellness?: boolean; wellnessToday: boolean; band: Readiness['band']; plan?: CoachPlan }): string {
+  return `v4|${d.sessions.join(',')}|${d.noteText ?? ''}|${d.badWellness ? 'bad' : ''}|${d.wellnessToday ? d.band : 'nowellness'}|${d.plan ? `${d.plan.name}:${d.plan.phase ?? ''}` : ''}`;
 }

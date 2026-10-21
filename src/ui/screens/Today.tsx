@@ -48,11 +48,6 @@ export function Today({ data }: { data: AppData }) {
   const stats = workout ? workoutStats(workout.blocks) : undefined;
   // What is on today's calendar, in one string: the coach note is remade when this changes.
   const recOf = (p: { activityId?: string }) => (p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined);
-  const daySig = noteSignature({
-    sessions: withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`),
-    noteText: todayNote?.text, badWellness: todayNote?.badWellness,
-    wellnessToday: data.wellness.some((w) => w.date === date), band: ready.band,
-  });
 
   const [busy, setBusy] = useState<string | null>(null);
   const setMsg = toast;
@@ -60,6 +55,11 @@ export function Today({ data }: { data: AppData }) {
   const [active, setActive] = useState<ActivePlan | null>(null);
   // The coach is told about the plan, so it waits until the plan has been read (a note written before would say "no plan").
   const [planRead, setPlanRead] = useState(false);
+  const daySig = noteSignature({
+    sessions: withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`),
+    noteText: todayNote?.text, badWellness: todayNote?.badWellness,
+    wellnessToday: data.wellness.some((w) => w.date === date), band: ready.band, plan: coachPlan(active, date),
+  });
   const [check, setCheck] = useState<Replan | null>(null);
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<SavedReview | null>(null);

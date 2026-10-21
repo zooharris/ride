@@ -76,6 +76,9 @@ describe('the review answers per change', () => {
     expect(r).toMatchObject({ applyChanges: 'some', skip: ['2026-10-23'], reason: 'Keep Thursday.' });
     const none = readReview('2026-10-21', { content: [{ type: 'text', text: '{"text":"Hold.","applyChanges":"none","skip":["2026-10-23"],"reason":"r"}' }] });
     expect(none).toMatchObject({ applyChanges: 'none', skip: [] });
+    // enum capitalisation is not promised; "some" naming no date is all of them
+    expect(readReview('d', { content: [{ type: 'text', text: '{"text":"t","applyChanges":"All","skip":[],"reason":"r"}' }] }).applyChanges).toBe('all');
+    expect(readReview('d', { content: [{ type: 'text', text: '{"text":"t","applyChanges":"some","skip":[],"reason":"r"}' }] }).applyChanges).toBe('all');
   });
   it('reads past a thinking block to the answer', () => {
     const r = readReview('2026-10-21', { content: [{ type: 'thinking', text: '{"text":"not this"}' }, { type: 'text', text: '{"text":"This one.","applyChanges":"all","skip":[],"reason":"r"}' }], stop_reason: 'end_turn' });
@@ -95,6 +98,8 @@ describe('the note is rewritten for the right reasons', () => {
     expect(sig({ wellnessToday: false })).not.toBe(sig());
     expect(sig({ band: 'easy' })).not.toBe(sig());
     expect(sig({ wellnessToday: false, band: 'easy' })).toBe(sig({ wellnessToday: false, band: 'go' }));   // no wellness: the band is form alone and does not count
+    expect(sig({ plan: { name: 'P', goal: 'g', phase: 'Base 1' } })).not.toBe(sig());                        // a plan applied during the day
+    expect(sig({ plan: { name: 'P', goal: 'g', phase: 'Base 1' } })).not.toBe(sig({ plan: { name: 'P', goal: 'g', phase: 'Recovery' } }));
   });
   it('Settings clears the note only for a field the coach reads', () => {
     expect(coachFieldsChanged(todd, { ...todd, name: 'Todd W. Harris' })).toBe(true);

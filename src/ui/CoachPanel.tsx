@@ -3,7 +3,8 @@ import { askCoach, dailyNote, type ChatTurn, type CoachContext } from '../coach/
 import { getSetting, setSetting } from '../data/db';
 import type { SavedReview } from './planService';
 
-interface SavedNote { date: string; text: string; sig?: string; at?: string }
+/** `v` 2: notes written since thinking was turned off; earlier ones may have been cut off mid-sentence and are written again. */
+interface SavedNote { date: string; text: string; sig?: string; at?: string; v?: number }
 interface SavedChat { date: string; turns: ChatTurn[] }
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '');
@@ -29,7 +30,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
     setUpdating(true);
     try {
       const text = await dailyNote(apiKey, ctxRef.current);
-      const saved: SavedNote = { date, text, sig: daySig, at: new Date().toISOString() };
+      const saved: SavedNote = { date, text, sig: daySig, at: new Date().toISOString(), v: 2 };
       await setSetting('coachNote', saved);
       setNote(saved);
       setError(null);
@@ -48,7 +49,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
       if (alive) setTurns(chat?.date === date ? chat.turns : []);
       if (!k) return;
       const cached = await getSetting<SavedNote | null>('coachNote', null);
-      if (cached?.date === date && cached.text) {
+      if (cached?.date === date && cached.text && cached.v === 2) {
         if (alive) setNote(cached);
         if ((cached.sig ?? '') === daySig) return;      // still current
       }

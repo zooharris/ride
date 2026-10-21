@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityLine, describeSession, durationWords, readReview } from './claude';
+import { activityLine, describeSession, durationWords, readReview, readText } from './claude';
 import type { PlannedWorkout, Ride, Workout } from '../engine/types';
 
 const planned = (over: Partial<PlannedWorkout>): PlannedWorkout => ({ id: 'p', date: '2026-10-19', workoutId: 'w', basis: 'power', status: 'planned', ...over });
@@ -44,5 +44,16 @@ describe('reading the review', () => {
     expect(cut.failed).toMatch(/cut off/);
     const empty = readReview('2026-10-19', { content: [{ type: 'tool_use', input: {} }], stop_reason: 'tool_use' });
     expect(empty.failed).toMatch(/missing its text/);
+  });
+  it('reads the review from its JSON form', () => {
+    const r = readReview('2026-10-20', { content: [{ type: 'text', text: '{"text":"Steady week.","applyChanges":false,"reason":"Too early."}' }], stop_reason: 'end_turn' });
+    expect(r).toMatchObject({ text: 'Steady week.', applyChanges: false, reason: 'Too early.' });
+  });
+});
+
+describe('the daily note is never shown cut off', () => {
+  it('a reply stopped at the limit is an error, not half a sentence', () => {
+    expect(() => readText({ content: [{ type: 'text', text: 'Nothing is on the calendar today, and with readiness' }], stop_reason: 'max_tokens' })).toThrow(/cut off/);
+    expect(readText({ content: [{ type: 'thinking' }, { type: 'text', text: 'A full note.' }], stop_reason: 'end_turn' })).toBe('A full note.');
   });
 });

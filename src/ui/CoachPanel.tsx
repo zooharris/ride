@@ -98,7 +98,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
         {note ? (
           <>
             <p style="font-size:15px;line-height:1.6;margin:0">{note.text}</p>
-            <p class="faint small" style="margin-top:6px">{updating ? 'Updating for the latest changes…' : `Written at ${time(note.at)}${note.sig !== daySig ? '; the day has changed since' : ''}.`}</p>
+            <p class="faint small" style="margin-top:6px">{updating ? 'Updating for the latest changes…' : `Written at ${time(note.at)}${note.sig !== daySig ? '; the day has changed since then' : ''}.`}</p>
           </>
         ) : updating ? <p class="muted small" style="margin:0">The coach is writing today's note…</p> : null}
         {error && <p class="msg err small" style="margin-top:8px">Coach note unavailable: {error}</p>}

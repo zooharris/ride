@@ -14,6 +14,7 @@ import { buildPowerCurves } from '../powerCurves';
 import { getActivePlan, type ActivePlan } from '../planService';
 import type { Ride, SessionKind } from '../../engine/types';
 import { ZONE_VAR } from '../Profile';
+import { ZONE_KEY } from '../glossary';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -50,7 +51,7 @@ export function Progress({ data }: { data: AppData }) {
   if (!data.rides.length) {
     return (
       <div>
-        <PageHead title="Progress" />
+        <PageHead title="Progress" help="progress" />
         <div class="empty"><b>Nothing to chart yet.</b><p class="small muted">Connect Intervals.icu in Settings and press Sync on Today; the charts here fill in from your synced activities and wellness.</p></div>
       </div>
     );
@@ -58,7 +59,7 @@ export function Progress({ data }: { data: AppData }) {
 
   return (
     <div>
-      <PageHead eyebrow={`${inRange.length} activities in range`} title="Progress">
+      <PageHead eyebrow={`${inRange.length} activities in this range`} title="Progress" help="progress">
         <RangePicker value={range} onChange={pick} keys={['6w', '3m', '6m', '1y', 'all']} />
       </PageHead>
 
@@ -138,6 +139,7 @@ function ZonesCard({ rides, from, to }: { rides: Ride[]; from: string; to: strin
         height={180}
         readout={(i) => { const w = weeks[i]; const tot = w.seconds.reduce((a, b) => a + b, 0) || 1; return `Week of ${short(w.start)} · ${w.seconds.map((s, z) => s > 0 ? `Z${z + 1} ${share ? `${Math.round((s / tot) * 100)}%` : `${hours(s)} h`}` : null).filter(Boolean).join(' · ') || 'no ride time'}`; }}
       />
+      <p class="faint small" style="margin-top:6px">{ZONE_KEY}</p>
     </Card>
   );
 }
@@ -251,7 +253,7 @@ function ConsistencyCard({ rides }: { rides: Ride[] }) {
   return (
     <Card title="Consistency" explain="Every day of the last year, darker for more training load. Gaps are rest days, or days nothing was recorded.">
       <div class="row wrap" style="gap:12px 28px;margin-bottom:12px">
-        <div class="stat"><div class="v">{streak}</div><div class="l">week{streak === 1 ? '' : 's'} in a row with training</div></div>
+        <div class="stat"><div class="v">{streak}</div><div class="l">week training streak</div></div>
         <div class="stat"><div class="v">{activeDays}</div><div class="l">active days so far this year</div></div>
       </div>
       <div style="overflow-x:auto;position:relative" onMouseLeave={() => setHover(null)}>

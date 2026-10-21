@@ -42,10 +42,12 @@ type Axis = 'time' | 'distance';
  * and a readout of every value under the cursor. The same cursor index drives
  * the route map, so the parent owns it.
  */
-export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride' }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind }) {
+export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean }) {
   const ride = kind === 'ride';
   const onFoot = kind === 'walk' || kind === 'other';
-  const [axis, setAxis] = useState<Axis>(() => (samples.some((s) => s.d > 0) ? 'distance' : 'time'));
+  // By distance suits a ride on the road; walks (often on a treadmill), strength, mobility and indoor rides read by time.
+  const timeFirst = kind === 'walk' || kind === 'strength' || kind === 'mobility' || (ride && indoor);
+  const [axis, setAxis] = useState<Axis>(() => (!timeFirst && samples.some((s) => s.d > 0) ? 'distance' : 'time'));
   const imperial = profile.units === 'imperial';
   const hasDist = samples.some((s) => s.d > 0);
   const xOf = (p: Sample) => (axis === 'distance' && hasDist ? p.d : p.t);
@@ -55,7 +57,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   const panels = useMemo(() => {
     const list: Array<{ key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> }> = [];
     if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP; shaded bands are planned targets when the ride was from a plan.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
-    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: profile.lthr ? [{ v: profile.lthr, label: `LTHR ${profile.lthr}` }] : [] });
+    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: profile.lthr ? [{ v: profile.lthr, label: `threshold ${profile.lthr}` }] : [] });
     if (ride && samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     if ((ride || onFoot) && samples.some((s) => s.speed != null)) list.push({ key: 'speed', title: ride ? 'Speed' : 'Walking speed', unit: imperial ? 'mph' : 'km/h', color: 'var(--z4)', get: (p) => (p.speed == null ? undefined : imperial ? p.speed * 2.23694 : p.speed * 3.6), explain: ride ? 'Ground speed from GPS or the wheel sensor.' : 'Ground speed from GPS or the watch.' });
     if ((ride || onFoot) && samples.some((s) => s.alt != null)) list.push({ key: 'alt', title: 'Elevation', unit: imperial ? 'ft' : 'm', color: 'var(--ink-3)', get: (p) => (p.alt == null ? undefined : imperial ? p.alt * 3.28084 : p.alt), area: true, explain: 'Height above sea level along the route.' });

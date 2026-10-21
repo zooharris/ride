@@ -78,13 +78,16 @@ export function activityLine(r: Ride): string {
   return `${r.date}: ${r.name} (${r.sport}), duration ${durationWords(r.seconds)}, training load ${r.tss ?? '?'} TSS${r.normalizedPower ? `, normalized power ${r.normalizedPower} W` : ''}${r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}`;
 }
 
+/** A driver's effect on readiness in words: "down" meant it pulled readiness down, which read as "heart rate went down". */
+const EFFECT_WORDS: Record<'up' | 'down' | 'flat', string> = { up: 'better than normal', down: 'worse than normal', flat: 'normal' };
+
 /** The day as the coach sees it: athlete, readiness, notes, calendar, recent activities. Shared by the daily note and questions. */
 export function dayFacts(ctx: CoachContext): string {
   const rides = ctx.recentRides.slice(0, 7).map(activityLine).join('\n');
   const sessions = ctx.todaySessions.map((s) => '- ' + describeSession(s)).join('\n');
   return `Athlete: FTP ${ctx.profile.ftp} W, LTHR ${ctx.profile.lthr} bpm, trains ${ctx.profile.hoursPerWeek} h/week, basis ${ctx.profile.basis}.
 Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
-Readiness ${ctx.wellnessSetAside ? `not scored from wellness today: the rider set today's HRV, sleep and resting heart rate aside as wrong (${ctx.readiness.score}/100 from form alone)` : `${ctx.readiness.score}/100 (${ctx.readiness.band}); drivers: ${ctx.readiness.drivers.map((d) => `${d.name} ${d.value} (${d.effect})`).join('; ')}`}.
+Readiness ${ctx.wellnessSetAside ? `not scored from wellness today: the rider set today's HRV, sleep and resting heart rate aside as wrong (${ctx.readiness.score}/100 from form alone)` : `${ctx.readiness.score}/100 (${ctx.readiness.band}); drivers: ${ctx.readiness.drivers.map((d) => `${d.name} ${d.value} (${EFFECT_WORDS[d.effect]})`).join('; ')}`}.
 The rider's own note for today: ${ctx.riderNote ? `"${ctx.riderNote}"` : 'none'}.${ctx.recentNotes?.length ? `\nThe rider's notes from recent days:\n${ctx.recentNotes.map((n) => '- ' + n).join('\n')}` : ''}
 On the calendar today:\n${sessions || '- nothing; a rest day unless the rider chooses otherwise'}
 Missed sessions this week: ${ctx.missedThisWeek}.

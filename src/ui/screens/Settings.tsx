@@ -61,7 +61,7 @@ export function Settings({ data }: { data: AppData }) {
     if (changed && c?.apiKey) {
       try {
         await pushAthleteNumbers(c, { ftp: p.ftp, lthr: p.lthr, maxHr: p.maxHr });
-        setMsg({ ok: true, text: `Saved, and FTP ${p.ftp} W / LTHR ${p.lthr} bpm sent to Intervals.icu so Garmin targets use the new numbers.` });
+        setMsg({ ok: true, text: `Saved, and FTP ${p.ftp} W and threshold heart rate ${p.lthr} bpm sent to Intervals.icu so Garmin targets use the new numbers.` });
       } catch (e) {
         setMsg({ ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to Garmin use the FTP Intervals.icu has.` });
       }
@@ -128,7 +128,7 @@ export function Settings({ data }: { data: AppData }) {
 
   return (
     <div>
-      <PageHead title="Settings">
+      <PageHead title="Settings" help="settings">
         {dirty && <button class="btn sm quiet" onClick={discard}>Discard changes</button>}<button class="btn primary sm" onClick={save} disabled={!dirty}>Save</button>
       </PageHead>
 
@@ -178,7 +178,7 @@ export function Settings({ data }: { data: AppData }) {
           <div class="field"><label>Birth year</label><input type="number" value={p.birthYear ?? ''} onInput={(e) => upd('birthYear', Number((e.target as HTMLInputElement).value) || undefined)} /></div>
         </div>
         <div class="row wrap" style="margin-top:14px;gap:18px">
-          <div class="field"><label>Default basis</label>
+          <div class="field"><label>Targets sent to Garmin</label>
             <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
           <div class="field"><label>Units</label>
             <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
@@ -212,9 +212,9 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Coach (optional)</h2>
-        <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a short daily note from a coach who has read your numbers. The key is stored only on this device and calls go straight to Anthropic. Leave blank to skip.</p>
+        <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a coach who has read your numbers: a short daily note, a review after each sync, and answers to your questions. The daily note reads your notes from the last three months; the review after a sync reads the last two weeks. The key is stored only on this device and calls go straight to Anthropic. Leave blank to skip.</p>
         <div class="field"><label>Claude API key</label><input type="password" autocomplete="off" value={claudeKey} onInput={(e) => setClaudeKey((e.target as HTMLInputElement).value)} placeholder="sk-ant-…" /></div>
-        <div class="field" style="margin-top:12px"><label>Ask Claude after new activities arrive</label>
+        <div class="field" style="margin-top:12px"><label>Review new activities after each sync</label>
           <div class="seg"><button class={coachAuto ? 'on' : ''} onClick={() => setCoachAuto(true)} disabled={!claudeKey.trim()}>On</button><button class={!coachAuto ? 'on' : ''} onClick={() => setCoachAuto(false)}>Off</button></div>
           <p class="faint small" style="margin-top:6px">On: each time a sync brings in new rides or sessions, Claude reads them with the plan's own re-check and gives a recommendation on Today. Off: the app's re-check works as it does now. Either way, nothing changes on the plan until you approve it.</p></div>
       </section>
@@ -234,7 +234,7 @@ export function Settings({ data }: { data: AppData }) {
         </div>
       </section>
 
-      <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · phase 1 · all data stays on this device</p>
+      <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · your data stays on your devices and in your Intervals.icu account</p>
       <UpdateCheck />
     </div>
   );

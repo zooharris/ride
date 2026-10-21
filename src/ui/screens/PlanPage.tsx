@@ -16,6 +16,7 @@ import { go } from '../router';
 import { toast } from '../Toast';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
 import { AwayFields, GOAL_KIND_LABEL, GoalFields, WeekFields } from '../PlanForm';
+import { NameSheet } from '../NameSheet';
 
 const statusOfPlan = (p: ActivePlan) => { const t = today(); return p.goalDate < t ? 'finished' : p.start > t ? 'upcoming' : 'current'; };
 const goalLine = (p: ActivePlan) => p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })}` : GOAL_KIND_LABEL[p.goal.kind];
@@ -28,6 +29,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   const [check, setCheck] = useState<Replan | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   async function load() {
     const plans = await getPlans();
@@ -53,9 +55,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   const expected = plan.projection.find((f) => f.date === today())?.ctl;
   const projection = plan.projection.filter((f) => f.date >= today());
 
-  async function rename() {
-    const n = prompt('Name for this plan', plan!.name);
-    if (n == null || !n.trim() || n.trim() === plan!.name) return;
+  async function rename(n: string) {
     await renamePlan(plan!.id, n);
     await load();
   }
@@ -87,7 +87,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
       <PageHead back={{ label: 'Plans', href: '#/plan' }} eyebrow={`${status} · ${goalLine(plan)} · ${fmtDate(plan.start, { month: 'short', day: 'numeric' })} to ${fmtDate(plan.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}`} title={plan.name} />
       <div class="row wrap" style="gap:8px;margin-top:-4px">
         {status !== 'finished' && <a class="btn primary sm" href={`#/plan/${plan.id}/edit`}>Edit plan</a>}
-        <button class="btn sm quiet" onClick={rename}>Rename</button>
+        <button class="btn sm quiet" onClick={() => setRenaming(true)}>Rename</button>
         <a class="btn sm quiet" href={`#/print/${plan.id}`}>Print</a>
         {status !== 'finished' && <button class="btn sm quiet" onClick={cancel} disabled={busy}>Cancel plan</button>}
       </div>
@@ -122,7 +122,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
           <FitnessChart series={series} projection={projection} events={plan.goal.kind === 'event' ? [{ date: plan.goalDate, label: 'event' }] : []} />
           <p class="faint small" style="margin-top:6px">
             {now != null && expected != null ? `Fitness today ${Math.round(now)}; the plan expected about ${Math.round(expected)} by now. ` : now != null ? `Fitness today ${Math.round(now)}. ` : ''}
-            {projection.length ? 'The dashed line is where the plan, as built, takes it.' : 'This plan has no projection saved; editing it, or the next re-check you accept, adds one.'}
+            {projection.length ? 'The dashed line is where the plan, as built, takes it.' : 'No fitness forecast is saved for this plan; editing it, or the next re-check you accept, adds one.'}
           </p>
         </div>
       </section>
@@ -159,6 +159,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
           })}
         </div>
       </section>
+      {renaming && <NameSheet title="Rename the plan" label="Plan name" initial={plan.name} onSave={rename} onClose={() => setRenaming(false)} />}
     </div>
   );
 }

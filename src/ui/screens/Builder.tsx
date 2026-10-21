@@ -113,13 +113,13 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     <input type="number" min="0.25" step="0.25" value={value} onInput={(e) => on(Number((e.target as HTMLInputElement).value) || 0)} style="width:64px" />
   );
   const labelField = (value: string, on: (v: string) => void) => (
-    <input value={value} placeholder="label" onInput={(e) => on((e.target as HTMLInputElement).value)} style="flex:1;min-width:90px" />
+    <input value={value} placeholder="step name, e.g. Warm-up" onInput={(e) => on((e.target as HTMLInputElement).value)} style="flex:1;min-width:90px" />
   );
   const zoneDot = (pct: number) => <span class="z" style={`background:${ZONE_VAR[powerZone(pct / 100) - 1]};display:inline-block;width:10px;height:10px;border-radius:2px;flex:0 0 10px`} />;
 
   return (
     <div>
-      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit workout' : 'New ride workout'} eyebrow={`${clock(stats.seconds)} · ${stats.tss} TSS · IF ${stats.intensityFactor.toFixed(2)}`} />
+      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit workout' : 'New ride workout'} eyebrow={`${clock(stats.seconds)} · ${stats.tss} TSS · intensity ${stats.intensityFactor.toFixed(2)}`} />
 
       <div class="panel" style="padding:14px 16px 12px">
         <div class="row between" style="margin-bottom:8px">
@@ -132,7 +132,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
       <div class="form" style="margin-top:16px">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder="Tuesday sweet spot" onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} placeholder="One sentence you will read on the day" onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>
-        <div class="field"><label>Family</label>
+        <div class="field"><label>Type</label>
           <select value={family} onChange={(e) => setFamily((e.target as HTMLSelectElement).value as Family | 'auto')}>
             <option value="auto">Auto ({FAMILY_LABEL[guessFamily(blocks)]})</option>
             {FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
@@ -189,7 +189,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
       <section class="section">
         <h2>Your zones</h2>
         <div class="row wrap faint small" style="gap:12px">
-          {zones.map((z, i) => <span key={z.n}><span style={`color:${ZONE_VAR[i]}`}>■</span> Z{z.n} {Math.round(z.low * 100)}{isFinite(z.high) ? `–${Math.round(z.high * 100)}` : '+'}%</span>)}
+          {zones.map((z, i) => <span key={z.n}><span style={`color:${ZONE_VAR[i]}`}>■</span> Z{z.n} {z.name.toLowerCase()} {Math.round(z.low * 100)}{isFinite(z.high) ? `–${Math.round(z.high * 100)}` : '+'}%</span>)}
         </div>
       </section>
 

@@ -11,7 +11,7 @@ import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
-import type { CoachContext } from '../../coach/claude';
+import { durationWords, type CoachContext } from '../../coach/claude';
 import { CoachPanel } from '../CoachPanel';
 import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
@@ -19,7 +19,7 @@ import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
-import { StatusMark, StatusPill, statusOf } from '../StatusMark';
+import { StatusPill, statusOf } from '../StatusMark';
 import { applyPlan, changeSig, coachReviewAfterSync, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, type ActivePlan, type SavedReview } from '../planService';
 import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
@@ -27,6 +27,7 @@ import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
 import { Icon } from '../icons';
 import { ChangeSheet } from '../ChangeSheet';
+import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
 
 export function Today({ data }: { data: AppData }) {
@@ -135,7 +136,7 @@ export function Today({ data }: { data: AppData }) {
   async function send() {
     if (!plan || !workout) return;
     const c = await credentials();
-    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
+    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     setBusy('send');
     try {
       const id = await sendWorkout(c, workout, plan.date, plan.basis, profile);
@@ -174,7 +175,7 @@ export function Today({ data }: { data: AppData }) {
 
   return (
     <div>
-      <PageHead eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
+      <PageHead help="today" eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
         <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}><Icon.sync size={15} />{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
       </PageHead>
 
@@ -220,11 +221,11 @@ export function Today({ data }: { data: AppData }) {
         <section class="panel accent" style="padding:18px 18px 16px">
           <div class="row between">
             <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
-            <span class="row" style="gap:8px"><StatusMark status={statusOf(plan.status)} /><StatusPill status={statusOf(plan.status)} /></span>
+            <StatusPill status={statusOf(plan.status)} />
           </div>
           <h2 style="font-size:28px;line-height:32px;font-weight:700;letter-spacing:-0.02em;margin:12px 0 2px">{workout.name}</h2>
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
-          <p class="muted small">{clock(stats.seconds)} · {stats.tss} TSS · IF {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>
+          <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>
           <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero /></div>
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
@@ -248,9 +249,8 @@ export function Today({ data }: { data: AppData }) {
             {others.map(({ p, w }) => (
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
-                <StatusMark status={statusOf(p.status)} />
                 <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap for the details and to log it'}</span></div>
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}
@@ -314,7 +314,6 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
       <div class="stack" style="margin-top:8px">
         {items.map(({ p, w }) => (
           <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, w!.id, 'today', nextDate, data.rides)}>
-            <StatusMark status={statusOf(p.status)} />
             {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
             <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS` : `${KIND_LABEL[w!.kind]}${w!.minutes ? ` · ${w!.minutes} min` : ''}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>
             <StatusPill status={statusOf(p.status)} />
@@ -358,9 +357,9 @@ function DayNoteEditor({ date, note, hasWellness }: { date: string; note?: DayNo
       </div>
       <label class="row small" style="gap:8px;margin-top:8px;align-items:flex-start;cursor:pointer">
         <input type="checkbox" checked={bad} onChange={() => setBad(!bad)} style="margin-top:3px" />
-        <span>Today's wellness numbers are not real measurements: leave today's HRV, sleep and resting heart rate out of readiness and out of my averages{!hasWellness ? <span class="faint"> (none synced for today yet; the flag will apply when they arrive)</span> : null}</span>
+        <span>Today's wellness numbers are not real measurements</span>
       </label>
-      <p class="faint small" style="margin-top:6px">Tick only when the watch was not measuring you (out of sleep mode, on the nightstand). Real numbers with a reason behind them, a late glass of wine, a flight, a cold coming on, stay in: just write the note. The coach reads your notes before the numbers and keeps three months of them in mind.</p>
+      <p class="faint small" style="margin-top:6px">Ticked, today's HRV, sleep and resting heart rate are left out of readiness and out of your averages{!hasWellness ? ' (none synced for today yet; the flag will apply when they arrive)' : ''}. Tick only when the watch was not measuring you (out of sleep mode, on the nightstand). Real numbers with a reason behind them, a late glass of wine, a flight, a cold coming on, stay in: just write the note. The coach reads your notes before the numbers, the last three months of them.</p>
       <div class="row" style="gap:8px;margin-top:10px">
         <button class="btn sm primary" onClick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save'}</button>
         <button class="btn sm quiet" onClick={() => { setText(note?.text ?? ''); setBad(!!note?.badWellness); if (!dirty) setOpen(false); }} disabled={saving}>{dirty ? 'Reset' : 'Close'}</button>
@@ -390,12 +389,6 @@ export function readinessAdvice(band: 'go' | 'ease' | 'easy' | 'rest', kinds: st
   return { go: 'Ready for the full session' + extra, ease: 'Ease the intensity 10–15% if it feels heavy' + extra, easy: 'Keep the ride in zone 1–2 today' + (lift ? ' and keep the lifting light' : ''), rest: 'A rest day would serve you better' + (lift ? '; if you do anything, make it the mobility and skip the lifting' : '') }[band];
 }
 
-const READINESS_HELP: Record<string, string> = {
-  HRV: 'Heart-rate variability this morning against your two-week average. Higher than normal means recovered; lower means stress or fatigue.',
-  Sleep: 'Last night against your two-week average.',
-  'Resting HR': 'Resting heart rate this morning against your two-week average. Higher than normal is a fatigue or illness signal.',
-  Form: 'Fitness minus fatigue. Negative while building, positive when fresh; +5 to +20 is the window for an event.',
-};
 
 
 /** Fitness, fatigue and form today, each with its change over the last seven days. */
@@ -412,9 +405,9 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
   };
   return (
     <div class="stats tiles" style="margin-bottom:12px">
-      {tile('Fitness', now?.ctl, ago?.ctl, 'var(--info)', 'Fitness: the 42-day weighted average of daily training load.')}
-      {tile('Fatigue', now?.atl, ago?.atl, 'var(--z5)', 'Fatigue: the 7-day weighted average of daily training load.')}
-      {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', 'Form: fitness minus fatigue, today. Negative while building, positive when fresh.', true)}
+      {tile('Fitness', now?.ctl, ago?.ctl, 'var(--info)', `Fitness: the ${GLOSSARY.fitness.short}.`)}
+      {tile('Fatigue', now?.atl, ago?.atl, 'var(--z5)', `Fatigue: the ${GLOSSARY.fatigue.short}.`)}
+      {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', `Form, today: ${GLOSSARY.form.short}.`, true)}
     </div>
   );
 }
@@ -434,6 +427,8 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
   const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
   const w = (d: string) => data.wellness.find((x) => x.date === d);
   const mean = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  // Form is negative as often as not, so its normal is the plain mean of the two weeks.
+  const meanSigned = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const rows: Array<{ name: string; vals: Array<number | null>; fmt: (v: number) => string; unit: string; help: string }> = [
     { name: 'HRV', vals: days.map((d) => w(d)?.hrv ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
     { name: 'Sleep', vals: days.map((d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }), fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
@@ -442,10 +437,10 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
   ];
   return (
     <div class="rd-rows">
-      <div class="rd-row rd-head caption" aria-hidden="true"><span /><span class="rd-spark" /><span class="rd-val">Today</span><span class="rd-delta">vs normal</span></div>
+      <div class="rd-row rd-head caption" aria-hidden="true"><span /><span class="rd-spark" /><span class="rd-val">Today</span><span class="rd-delta">vs 2-week normal</span></div>
       {rows.map((r) => {
         const todayV = r.vals[14];
-        const base = r.name === 'Form' ? null : mean(r.vals.slice(0, 14));
+        const base = r.name === 'Form' ? meanSigned(r.vals.slice(0, 14)) : mean(r.vals.slice(0, 14));
         const eff = drivers.find((d) => d.name === r.name)?.effect ?? 'flat';
         const color = eff === 'up' ? 'var(--good)' : eff === 'down' ? 'var(--bad)' : 'var(--ink-2)';
         const raw = todayV != null && base != null ? todayV - base : null;
@@ -456,7 +451,7 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
             <span class="rd-name">{r.name}</span>
             <span class="rd-spark"><Sparkline values={r.vals} width={56} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} /></span>
             <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}{todayV != null && r.unit ? <span class="rd-unit">{r.unit}</span> : null}</span>
-            <span class="rd-delta small" style={`color:${color}`}>{r.name === 'Form' ? (eff === 'up' ? 'fresh' : eff === 'down' ? 'tired' : 'normal') : diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}</span>
+            <span class="rd-delta small" style={`color:${color}`}>{diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}</span>
           </div>
         );
       })}

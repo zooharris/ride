@@ -82,7 +82,7 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
               <button class="btn sm" onClick={() => move(date)} disabled={busy || !date || date === planned.date || date < today()}>Move</button>
             </div>
           </div>
-          <button class="btn" style="justify-content:flex-start" onClick={() => setMode('replace')}>Replace with another workout<span class="faint small" style="margin-left:auto">any kind</span></button>
+          <button class="btn" style="justify-content:flex-start" onClick={() => setMode('replace')}>Replace with another session<span class="faint small" style="margin-left:auto">any kind</span></button>
           <button class="btn quiet" style="justify-content:flex-start;color:var(--bad)" onClick={remove}>Remove from the calendar</button>
         </div>
         {planned.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Moving or replacing takes it off the Garmin; send the new one when you are ready.</p>}

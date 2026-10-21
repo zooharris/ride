@@ -101,10 +101,10 @@ export function Onboarding() {
             <div class="field"><label>Hours per week you can train</label><input type="number" step="0.5" value={p.hoursPerWeek} onInput={num('hoursPerWeek')} /></div>
           </div>
           <div class="row wrap" style="margin-top:16px;gap:18px">
-            <div class="field"><label>Train by</label>
+            <div class="field"><label>Targets sent to Garmin</label>
               <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
             <div class="field"><label>Units</label>
-              <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>Kilometres</button></div></div>
+              <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
           </div>
           <button class="btn primary block" style="margin-top:26px" onClick={start} disabled={!p.ftp || !p.lthr}>{found ? 'Start and pull my rides' : 'Start'}</button>
           {!found && <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('connect')}>Back to connecting Intervals.icu</button>}

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, getCurrentEquipment, notify } from '../store';
 import type { Equipment, Exercise, SessionKind, Workout } from '../../engine/types';
@@ -30,6 +30,19 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const [hrLow, setHrLow] = useState(Math.round((source?.walk?.hrLow ?? 0.6) * 100));
   const [hrHigh, setHrHigh] = useState(Math.round((source?.walk?.hrHigh ?? 0.7) * 100));
   const maxHr = data.profile?.maxHr ?? 0;
+  // Where the builder started, for Reset and for the leave-without-saving guard (as in the ride builder).
+  const snapshot = () => JSON.stringify({ name, purpose, exercises, minutes, packLb, effort, hrLow, hrHigh });
+  const initial = useRef(snapshot());
+  const dirty = snapshot() !== initial.current;
+  function reset() {
+    if (dirty && !confirm('Reset the builder to where it started? Your edits here will be lost.')) return;
+    const s0 = JSON.parse(initial.current) as { name: string; purpose: string; exercises: Exercise[]; minutes: number; packLb: number; effort: number; hrLow: number; hrHigh: number };
+    setName(s0.name); setPurpose(s0.purpose); setExercises(s0.exercises); setMinutes(s0.minutes); setPackLb(s0.packLb); setEffort(s0.effort); setHrLow(s0.hrLow); setHrHigh(s0.hrHigh);
+  }
+  function cancel() {
+    if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
+    go('library');
+  }
   const walkSpec = { minutes, hrLow: hrLow / 100, hrHigh: hrHigh / 100, packKg: packLb ? packLb / 2.2 : undefined };
   const tss = estimateSessionTss({ kind, minutes, walk: kind === 'walk' ? walkSpec : undefined, effort: kind === 'strength' ? effort : undefined });
   const WALK_TARGETS: Array<[string, number, number, string]> = [
@@ -66,14 +79,14 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
 
   return (
     <div>
-      <PageHead back={{ label: 'Library', href: '#/library' }} title={existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`} eyebrow={<span title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>} />
+      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`} eyebrow={<span title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>} />
       <div class="form">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder={kind === 'strength' ? 'Tuesday legs' : kind === 'walk' ? 'Lunchtime walk' : 'Evening stretch'} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>
         <div class="field"><label>Minutes</label><input type="number" min="5" value={minutes} onInput={(e) => setMinutes(Number((e.target as HTMLInputElement).value) || 30)} /></div>
         {kind === 'walk' && <div class="field"><label>Pack weight (lb, 0 for none)</label><input type="number" min="0" value={packLb} onInput={(e) => setPackLb(Number((e.target as HTMLInputElement).value) || 0)} /></div>}
         {kind === 'strength' && (
-          <div class="field"><label>Planned effort (sets the TSS estimate)</label>
+          <div class="field"><label>How hard you plan to go (1–10; sets the training-load estimate)</label>
             <select value={effort} onChange={(e) => setEffort(Number((e.target as HTMLSelectElement).value))}>
               {[[3, '3 · very easy: mobility-like, no strain'], [4, '4 · easy: light weights, long rests'], [5, '5 · light: moderate weights, reps in reserve'], [6, '6 · moderate: working weights, 2 reps in reserve'], [7, '7 · hard: heavy, 1 rep in reserve on the last set'], [8, '8 · very hard: near maximal on main lifts']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select></div>
@@ -122,7 +135,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
                     <>
                       <input type="number" min="1" value={e.sets ?? 3} onInput={(ev) => update(i, { sets: Number((ev.target as HTMLInputElement).value) || 1 })} style="width:60px" /><span class="faint small">sets ×</span>
                       <input value={e.reps ?? ''} placeholder="8–10" onInput={(ev) => update(i, { reps: (ev.target as HTMLInputElement).value })} style="width:140px" />
-                      <input value={e.load ?? ''} placeholder="load note" onInput={(ev) => update(i, { load: (ev.target as HTMLInputElement).value })} style="flex:1;min-width:140px" />
+                      <input value={e.load ?? ''} placeholder="weight or load, e.g. 35 lb" onInput={(ev) => update(i, { load: (ev.target as HTMLInputElement).value })} style="flex:1;min-width:140px" />
                     </>
                   ) : (
                     <>
@@ -141,7 +154,8 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
         <button class="btn primary" onClick={() => save('library')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0) || (kind === 'walk' && hrHigh <= hrLow)}>Save to My Workouts</button>
         <button class="btn" onClick={() => save('date')} disabled={!name.trim() || (kind !== 'walk' && exercises.length === 0) || (kind === 'walk' && hrHigh <= hrLow)}>Save and put on {date === today() ? 'today' : fmtDate(date)}</button>
         <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date to put it on" />
-        <a class="btn quiet" href="#/library">Cancel</a>
+        <button class="btn quiet" onClick={reset} disabled={!dirty}>Reset</button>
+        <button class="btn quiet" onClick={cancel}>Cancel</button>
         {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
       </div>
     </div>

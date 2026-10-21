@@ -1,6 +1,7 @@
 import type { Fitness } from '../engine/types';
 import { addDays } from '../engine/load';
 import { FORM_BANDS, LineChart, type ChartMarker } from './LineChart';
+import { GLOSSARY } from './glossary';
 
 export type RangeKey = '6w' | '3m' | '6m' | '1y' | 'all';
 export const RANGE_DAYS: Record<RangeKey, number> = { '6w': 42, '3m': 91, '6m': 182, '1y': 365, all: 100000 };
@@ -44,9 +45,9 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
   return (
     <LineChart
       series={[
-        { name: 'fitness', color: 'var(--info)', values: histOnly((f) => f.ctl), width: 2.2, explain: '42-day weighted average of daily training load' },
-        { name: 'fatigue', color: 'var(--z5)', values: histOnly((f) => f.atl), width: 1.3, explain: '7-day weighted average of daily training load' },
-        { name: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), width: 1.2, explain: 'fitness minus fatigue; negative while building, positive when fresh' },
+        { name: 'fitness', color: 'var(--info)', values: histOnly((f) => f.ctl), width: 2.2, explain: GLOSSARY.fitness.short },
+        { name: 'fatigue', color: 'var(--z5)', values: histOnly((f) => f.atl), width: 1.3, explain: GLOSSARY.fatigue.short },
+        { name: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), width: 1.2, explain: GLOSSARY.form.short },
         ...(proj.length ? [
           { name: 'fitness, as planned', color: 'var(--info)', values: projOnly((f) => f.ctl), dash: '6 4', width: 1.8, explain: 'fitness if every session on the calendar is done as planned' },
           { name: 'fatigue, as planned', color: 'var(--z5)', values: projOnly((f) => f.atl), dash: '6 4', width: 1.1, explain: 'fatigue if every session on the calendar is done as planned; form mirrors it' },

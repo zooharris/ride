@@ -2,6 +2,7 @@ import { addDays, today } from '../engine/load';
 import type { Availability, AwayRange } from '../engine/planner';
 import type { EventType, Goal } from '../engine/goals';
 import type { Equipment, Profile, SessionKind } from '../engine/types';
+import { toast } from './Toast';
 import { dayOrder, fmtDate } from './derived';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -127,7 +128,7 @@ export function AwayFields({ away, setAway }: { away: AwayRange[]; setAway: (a: 
           <div class="field"><label>From</label><input type="date" value={r.from} onInput={(e) => { const v = (e.target as HTMLInputElement).value; set(i, { from: v, to: r.to < v ? v : r.to }); }} /></div>
           <div class="field"><label>To</label><input type="date" value={r.to} min={r.from} onInput={(e) => set(i, { to: (e.target as HTMLInputElement).value })} /></div>
           <div class="field" style="flex:1;min-width:160px"><label>Note (optional)</label><input value={r.note ?? ''} placeholder="Work trip" onInput={(e) => set(i, { note: (e.target as HTMLInputElement).value || undefined })} /></div>
-          <button class="btn sm quiet" onClick={() => setAway(away.filter((_, k) => k !== i))} aria-label={`Remove time away from ${fmtDate(r.from)}`}>Remove</button>
+          <button class="btn sm quiet" onClick={() => { const before = away; setAway(away.filter((_, k) => k !== i)); toast({ ok: true, text: `Time away from ${fmtDate(r.from, { month: 'short', day: 'numeric' })} removed.`, action: { label: 'Undo', run: () => setAway(before) } }); }} aria-label={`Remove time away from ${fmtDate(r.from)}`}>Remove</button>
         </div>
       ))}
       <button class="btn sm" style="align-self:flex-start" onClick={() => { const from = addDays(today(), 7); setAway([...away, { from, to: addDays(from, 4) }]); }}>Add time away</button>

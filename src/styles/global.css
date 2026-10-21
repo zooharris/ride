@@ -219,11 +219,20 @@ p { margin: 0; }
 .cal-day .d b { display: block; font-size: 16px; color: var(--ink-2); font-weight: 600; }
 .cal-day.today .d b { color: var(--today); }
 .cal-day .c { padding: 10px 0 10px 8px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-height: 52px; }
+/* A day opened from a link (?d=): scrolled to the top, clear of the sticky page head on a laptop, and outlined for a moment.
+   The day row is display: contents, so its two cells draw one outline between them. */
+.cal-day .d { scroll-margin-top: 16px; }
+@media (min-width: 900px) { .cal-day .d { scroll-margin-top: 104px; } }
+.cal-day .d, .cal-day .c { transition: box-shadow .6s ease, background-color .6s ease; }
+.cal-day.focused .d { box-shadow: inset 2px 0 0 var(--today), inset 0 2px 0 var(--today), inset 0 -2px 0 var(--today); background: color-mix(in srgb, var(--today) 7%, transparent); }
+.cal-day.focused .c { box-shadow: inset -2px 0 0 var(--today), inset 0 2px 0 var(--today), inset 0 -2px 0 var(--today); background: color-mix(in srgb, var(--today) 7%, transparent); }
+@media (prefers-reduced-motion: reduce) { .cal-day .d, .cal-day .c { transition: none; } }
 .cal-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-s); background: var(--bg-2); border: 1px solid var(--line); text-decoration: none; }
 .cal-item .profile { width: 54px; flex: 0 0 54px; }
 .cal-item .t { flex: 1; min-width: 0; }
 .cal-item .t b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-item .t span { font-size: 12px; color: var(--ink-3); }
+.cal-item .t .t2 { display: block; font-size: 11.5px; color: var(--ink-3); opacity: .8; margin-top: 1px; }
 .cal-item.completed, .cal-item.done { border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
 .cal-item.missed { opacity: 0.6; }
 .cal-item .status-pill { flex: 0 0 auto; white-space: nowrap; }
@@ -325,6 +334,10 @@ p { margin: 0; }
 .help-toc { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 14px; }
 .help-toc a { font-size: 13px; color: var(--ink-2); text-decoration: none; padding: 4px 0; }
 .help-toc a:hover { color: var(--ink); }
+.help-toc a.dim { opacity: .4; }
+/* A section opened from a screen's "?" or the contents lands clear of the sticky page head on a laptop. */
+.help-body .section { scroll-margin-top: 16px; }
+@media (min-width: 900px) { .help-body .section { scroll-margin-top: 104px; } }
 @media (min-width: 1100px) {
   .help { grid-template-columns: 200px 1fr; align-items: start; }
   .help-toc { flex-direction: column; position: sticky; top: 24px; gap: 2px; }
@@ -428,6 +441,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 @media (min-width: 900px) { .toasts { bottom: 24px; left: calc(50% + var(--rail-w) / 2); } }
 .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 10px 8px 10px 14px; background: var(--bg-3); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow); font-size: 14px; line-height: 20px; animation: toast-in .2s cubic-bezier(.2,.8,.2,1) both; }
 .toast-text { flex: 1; padding-top: 2px; }
+.toast .toast-action { color: var(--accent); font-weight: 600; margin: -3px 0; flex: 0 0 auto; }
 .toast-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; flex: 0 0 8px; background: var(--good); }
 .toast.err .toast-dot { background: var(--bad); }
 .toast.err { border-color: color-mix(in srgb, var(--bad) 45%, var(--line-2)); }
@@ -511,6 +525,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .month-item .mi-prof { width: 40px; flex: 0 0 auto; display: block; }
 .month-item .mi-prof svg { display: block; }
 .month-item .mi-top .sw { display: none; }
+.month-item .mi-top .kind-tile { width: 18px !important; height: 12px !important; flex: 0 0 18px !important; border-radius: 3px; }
+.month-item .mi-top .kind-tile svg { width: 9px; height: 9px; }
 .month-item .mi-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .month-item:has(.mi-prof) { border-left-color: transparent; padding-left: 0; }
 @media (max-width: 599px) { .month-item .mi-prof { width: 28px; } .month-item { font-size: 10px; } }

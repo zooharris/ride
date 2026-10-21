@@ -30,8 +30,8 @@ export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: S
     const halo = cssVar('--bg') || '#0A1220';
     L.polyline(latlngs, { color: halo, weight: 7, opacity: 0.55, interactive: false }).addTo(m);   // a halo under the track so it reads on any tile
     const line = L.polyline(latlngs, { color: cssVar('--accent') || '#20D6B5', weight: 3.5, opacity: 0.95 }).addTo(m);
-    L.circleMarker(latlngs[0], { radius: 5, color: '#fff', weight: 2, fillColor: cssVar('--good') || '#34C77B', fillOpacity: 1 }).addTo(m).bindTooltip('Start');
-    L.circleMarker(latlngs[latlngs.length - 1], { radius: 5, color: '#fff', weight: 2, fillColor: cssVar('--bad') || '#F0506E', fillOpacity: 1 }).addTo(m).bindTooltip('Finish');
+    L.circleMarker(latlngs[0], { radius: 5, color: cssVar('--on-color') || '#fff', weight: 2, fillColor: cssVar('--good') || '#34C77B', fillOpacity: 1 }).addTo(m).bindTooltip('Start');
+    L.circleMarker(latlngs[latlngs.length - 1], { radius: 5, color: cssVar('--on-color') || '#fff', weight: 2, fillColor: cssVar('--bad') || '#F0506E', fillOpacity: 1 }).addTo(m).bindTooltip('Finish');
     const box = el.current;
     const offTheme = onThemeChange((t) => { box.classList.toggle('dark', t === 'dark'); line.setStyle({ color: cssVar('--accent') }); });
     // A pinned map changes size with the window; keep Leaflet's idea of it current.
@@ -39,7 +39,7 @@ export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: S
     ro.observe(el.current);
     m.fitBounds(line.getBounds(), { padding: [18, 18] });
     setTimeout(() => { m.invalidateSize(); m.fitBounds(line.getBounds(), { padding: [18, 18] }); }, 50);
-    marker.current = L.circleMarker(latlngs[0], { radius: 7, color: '#fff', weight: 2, fillColor: cssVar('--today') || '#FF8A1E', fillOpacity: 1, interactive: false }).addTo(m);
+    marker.current = L.circleMarker(latlngs[0], { radius: 7, color: cssVar('--on-color') || '#fff', weight: 2, fillColor: cssVar('--today') || '#FF8A1E', fillOpacity: 1, interactive: false }).addTo(m);
     marker.current.setStyle({ opacity: 0, fillOpacity: 0 });
     // Mouse over the map: pick the nearest point of the route, within a few screen pixels of it.
     const nearest = (latlng: L.LatLng, within: number) => {

@@ -13,7 +13,8 @@ import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go } from '../router';
-import { fetchStreams } from '../../sync/intervals';
+import { fetchStreams, sportOf } from '../../sync/intervals';
+import { StatusPill } from '../StatusMark';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
 import { RouteMap } from '../RouteMap';
@@ -23,6 +24,7 @@ import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
 import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
 import { ZONE_VAR } from '../Profile';
+import { GLOSSARY, ZONE_KEY, ZONE_NAMES } from '../glossary';
 import { KindStack } from '../Glance';
 import { hoursLabel, type WeekSummary } from '../week';
 
@@ -36,7 +38,7 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
   if (data.rides.length === 0) {
     return (
       <div>
-        <PageHead title="Activities" />
+        <PageHead title="Activities" help="activities" />
         <Empty title="No activities yet."><span>Connect Intervals.icu in Settings, then press Sync on Today. Your last 120 days of activities arrive on the first sync.</span></Empty>
       </div>
     );
@@ -57,7 +59,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   const pickView = (v: 'list' | 'month') => setView(v);
   return (
     <div>
-      <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities">
+      <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities" help="activities">
         <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
       </PageHead>
       {hidden > 0 && (
@@ -101,6 +103,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                       <div class="act-load">
                         <div class="num" style="font-size:18px;line-height:22px" title={loadTitle(r)}>{r.notTraining ? 'not training' : <>{r.tssBasis === 'estimate' ? '≈ ' : ''}{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></>}</div>
                         {c && <div class="small" style="color:var(--ink-2)"><span class="sw-dot" style={`background:${verdictColor(c.verdict)}`} /> {verdictLabel(c.verdict)}</div>}
+                        {!c && p?.status === 'completed' && <div style="margin-top:3px"><StatusPill status="done" /></div>}
                       </div>
                     </a>
                   );
@@ -206,12 +209,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const showRecording = !handLogged && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120;
   return (
     <div>
-      <PageHead back={{ label: 'Activities', href: '#/rides' }} title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]} · ${r.type}` : ''}`} />
+      <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
-          <p class="muted small" style="margin-top:4px">{clock(r.seconds)} {handLogged ? 'logged' : 'recorded'}{plannedSecs ? ` against ${Math.round(plannedSecs / 60)} min planned` : ''}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}{r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}.</p>
-          {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({clock(r.seconds)} of {Math.round(plannedSecs / 60)} min). If it was something else, press This was a different workout.</p>}
+          <p class="muted small" style="margin-top:4px">{doneAgainst(r.seconds, plannedSecs, handLogged ? 'logged' : 'recorded')}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}{r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}.</p>
+          {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
         </div>
       )}
@@ -219,7 +222,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         <div class="panel hub" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
           <p class="muted small" style="margin-top:4px">{c.reason}{analysis ? ` ${analysis.summary}` : ''}</p>
-          {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({clock(r.seconds)} of {clock(plannedSecs)}). If it was something else, press This was a different workout.</p>}
+          {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
         </div>
       )}
@@ -259,7 +262,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded bands are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
-              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} /></div>
+              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} /></div>
             </div>
           </section>
         </>
@@ -290,6 +293,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             {isRide && r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
             {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
           </div>
+          {[isRide ? coverage(r.powerZoneSeconds, r.seconds, 'power') : null, coverage(r.hrZoneSeconds, r.seconds, 'heart rate')].filter(Boolean).map((t) => <p class="faint small" key={t!} style="margin-top:6px">{t}</p>)}
+          <p class="faint small" style="margin-top:6px">{ZONE_KEY}</p>
         </section>
       )}
       {isRide && streams?.watts?.length ? (
@@ -320,7 +325,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
-        <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It is deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
+        <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
       </section>
     </div>
   );
@@ -330,10 +335,37 @@ function verdictColor(v: string): string {
   return { nailed: 'var(--good)', done: 'var(--z2)', partial: 'var(--warn)', overcooked: 'var(--z5)', missed: 'var(--bad)' }[v] ?? 'var(--ink-3)';
 }
 function verdictLabel(v: string): string {
-  return { nailed: 'Nailed it', done: 'Done', partial: 'Partial', overcooked: 'Over-cooked', missed: 'Missed' }[v] ?? v;
+  return { nailed: 'Nailed it', done: 'Close to plan', partial: 'Partial', overcooked: 'Over-cooked', missed: 'Missed' }[v] ?? v;
 }
 
-/** Activities by week, newest week first, each week's activities newest first. */
+/**
+ * Two lengths said the same way: minutes on both sides ("45 min", "60 min"),
+ * or hours and minutes ("1:05", "2:00") only when both are an hour or more.
+ */
+function lengths(a: number, b: number): [string, string] {
+  if (a >= 3600 && b >= 3600) { const hm = (s: number) => { const m = Math.round(s / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; }; return [hm(a), hm(b)]; }
+  return [`${Math.round(a / 60)} min`, `${Math.round(b / 60)} min`];
+}
+/** "45 min recorded against 60 min planned", or just "45 min recorded" with nothing planned to compare. */
+function doneAgainst(seconds: number, planned: number, verb: string): string {
+  if (!planned) return `${lengths(seconds, seconds)[0]} ${verb}`;
+  const [a, b] = lengths(seconds, planned);
+  return `${a} ${verb} against ${b} planned`;
+}
+/** "12:48 of 30:38 with heart rate", when the zones cover under 90% of the activity (the strap dropped out, or was on late). */
+function coverage(zones: number[] | undefined, seconds: number, what: string): string | null {
+  if (!zones?.length || !seconds) return null;
+  const covered = zones.reduce((a, b) => a + (b ?? 0), 0);
+  return covered > 0 && covered < seconds * 0.9 ? `${clock(Math.round(covered))} of ${clock(Math.round(seconds))} with ${what}.` : null;
+}
+
+/** What the device filed the activity as, when that is not what the app counts it as (strength recorded as a ride). */
+function recordedAs(r: Ride): string | null {
+  const filed = sportOf(r.type, r.averageSpeedMs);
+  if (filed === r.sport) return null;
+  return { ride: 'a ride', walk: 'a walk', strength: 'a strength session', mobility: 'a mobility session', other: /Run/.test(r.type) ? 'a run' : `"${r.type}"` }[filed];
+}
+
 /** Where an activity's training load came from, for the hover text on the list. */
 function loadTitle(r: Ride): string {
   if (r.notTraining === 'drive') return 'Not training: at car speed with no power. Counts 0.';
@@ -349,6 +381,7 @@ function loadTitle(r: Ride): string {
   }
 }
 
+/** Activities by week, newest week first, each week's activities newest first. */
 function groupByWeek(rides: Ride[]): Array<{ start: string; rides: Ride[] }> {
   const out: Array<{ start: string; rides: Ride[] }> = [];
   for (const r of rides) {
@@ -369,7 +402,7 @@ function doneOnly(rides: Ride[]): WeekSummary {
 /** A small bar of an activity's time in each zone. */
 function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
   const total = seconds.reduce((a, b) => a + b, 0) || 1;
-  const title = `Time in ${power ? 'power' : 'heart-rate'} zones: ` + seconds.map((s, i) => (s / total >= 0.01 ? `Z${i + 1} ${Math.round((s / total) * 100)}%` : null)).filter(Boolean).join(', ');
+  const title = `Time in ${power ? 'power' : 'heart-rate'} zones: ` + seconds.map((s, i) => (s / total >= 0.01 ? `Z${i + 1} ${ZONE_NAMES[Math.min(i, 6)]} ${Math.round((s / total) * 100)}%` : null)).filter(Boolean).join(', ');
   return (
     <span class="zonestrip" title={title} role="img" aria-label={title}>
       {seconds.map((s, i) => s > 0 ? <span key={i} style={`flex:${s};background:${ZONE_VAR[Math.min(i, 6)]}`} /> : null)}
@@ -378,6 +411,11 @@ function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
 }
 
 const KIND_NOUN: Record<Ride['sport'], string> = { ride: 'ride', walk: 'walk', strength: 'session', mobility: 'session', other: 'activity' };
+
+/** Recorded indoors: a trainer ride, a treadmill walk or run. */
+function isIndoor(r: Ride): boolean { return /Virtual|Treadmill|Indoor/i.test(r.type); }
+/** Pace means something over half a mile outdoors; a treadmill's GPS distance, or a few hundred metres, it does not. */
+function showPace(r: Ride): boolean { return (r.distanceM ?? 0) >= 805 && !isIndoor(r); }
 
 /** Pace for a walk or run, as minutes per mile or kilometre. */
 function pace(speedMs: number | undefined, profile: { units?: string }): string | undefined {
@@ -402,14 +440,14 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ['Elapsed time', r.elapsedSeconds && r.elapsedSeconds - r.seconds >= 60 ? clock(r.elapsedSeconds) : undefined, 'Start to finish, stops included'],
     ['Distance', distance(r.distanceM, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],
-    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (no power was recorded). An hour flat out at threshold is 100' : 'How much the ride cost you, from power. An hour flat out at FTP is 100'],
-    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, 'What the ride felt like in steady watts; surges count more than coasting'],
+    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (no power was recorded). An hour flat out at threshold is 100' : GLOSSARY.tss.short],
+    ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, GLOSSARY.np.short],
     ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
-    ['Intensity factor', r.intensityFactor?.toFixed(2), 'Normalized power over FTP. 0.70 is endurance, 1.00 is threshold'],
+    ['Intensity', r.intensityFactor?.toFixed(2), GLOSSARY.intensity.short],
     ...hr,
     ['Average cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined, 'Over the whole ride, while pedalling'],
-    ['Efficiency factor', r.efficiencyFactor?.toFixed(2), 'Normalized power per heartbeat. Rising over months on the same kind of ride means aerobic fitness is improving'],
-    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, 'How much HR rose for the same power in the second half. Under 5% on a long ride is a sign of good aerobic base'],
+    ['Efficiency factor', r.efficiencyFactor?.toFixed(2), GLOSSARY.ef.short],
+    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, GLOSSARY.drift.short],
     ['Average temperature', tempF],
     ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
   ];
@@ -417,7 +455,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ['Time', clock(r.seconds), 'Start to finish. A watch on a still arm (a treadmill, a phone in hand) can think you stopped, so its "moving time" is not used for walks'],
     ['Moving time, as the watch judged it', r.movingSeconds && r.seconds - r.movingSeconds >= 120 ? clock(r.movingSeconds) : undefined, 'Shown only when it differs; not used for anything'],
     ['Distance', distance(r.distanceM, profile)],
-    ['Average pace', pace(r.averageSpeedMs, profile)],
+    ['Average pace', showPace(r) ? pace(r.averageSpeedMs, profile) : undefined],
     ['Total climbing', elevation(r.elevationM, profile)],
     ['Training load (TSS)', r.tss, 'How much the walk cost you, from heart rate and time. An hour flat out at threshold is 100; an easy walk is a small fraction of that'],
     ...hr,
@@ -431,7 +469,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
   return [
     ['Time', clock(r.seconds)],
     ['Distance', distance(r.distanceM, profile)],
-    ['Average pace', pace(r.averageSpeedMs, profile)],
+    ['Average pace', showPace(r) ? pace(r.averageSpeedMs, profile) : undefined],
     ['Total climbing', elevation(r.elevationM, profile)],
     ['Training load (TSS)', r.tss, 'How much it cost you, from heart rate and time'],
     ...hr,
@@ -490,9 +528,13 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited }: { ride: Ride;
   const [name, setName] = useState(r.name);
   const [busy, setBusy] = useState(false);
   useEffect(() => setName(r.name), [r.name]);
-  const run = async (what: () => Promise<void>, ok: string) => {
+  // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
+  const run = async (what: () => Promise<void>, ok: string, undo?: () => Promise<void>) => {
     setBusy(true);
-    try { await what(); notify(); toast({ ok: true, text: ok }); }
+    try {
+      await what(); notify();
+      toast({ ok: true, text: ok, action: undo ? { label: 'Undo', run: async () => { try { await undo(); notify(); toast({ ok: true, text: 'Undone.' }); } catch (e) { toast({ ok: false, text: `Not undone: ${(e as Error).message}` }); } } } : undefined });
+    }
     catch (e) { toast({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
     finally { setBusy(false); }
   };
@@ -509,15 +551,15 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited }: { ride: Ride;
         {!matched && (
           <div class="field">
             <label>What it was</label>
-            <select value={kindEdited ?? ''} disabled={busy} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as SessionKind | ''; void run(() => setActivityKind(r, v || undefined), v ? `Counted as ${KIND_CHOICES.find(([k]) => k === v)![1].toLowerCase()}.` : 'Back to what the device recorded.'); }}>
-              <option value="">As recorded ({KIND_LABEL[r.sport].toLowerCase()}, type {recorded})</option>
+            <select value={kindEdited ?? ''} disabled={busy} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as SessionKind | ''; const was = kindEdited; void run(() => setActivityKind(r, v || undefined), v ? `Counted as ${KIND_CHOICES.find(([k]) => k === v)![1].toLowerCase()}.` : 'Back to what the device recorded.', async () => setActivityKind((await db.rides.get(r.id)) ?? r, was)); }}>
+              <option value="">As recorded ({KIND_LABEL[sportOf(recorded, r.averageSpeedMs)].toLowerCase()})</option>
               {KIND_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
             <span class="faint small">Correct it when the device filed it wrongly (a treadmill walk as a run, say). The training load is worked out again for that kind, and the type in Intervals.icu is corrected too.</span>
           </div>
         )}
         <label class="row" style="gap:10px;align-items:flex-start;cursor:pointer">
-          <input type="checkbox" style="width:18px;height:18px;margin-top:2px;accent-color:var(--accent)" checked={excluded} disabled={busy} onChange={(e) => { const v = (e.target as HTMLInputElement).checked; void run(() => setExcluded(r, v), v ? 'Left out of training load.' : 'Counted toward training load again.'); }} />
+          <input type="checkbox" style="width:18px;height:18px;margin-top:2px;accent-color:var(--accent)" checked={excluded} disabled={busy} onChange={(e) => { const v = (e.target as HTMLInputElement).checked; void run(() => setExcluded(r, v), v ? 'Left out of training load.' : 'Counted toward training load again.', () => setExcluded(r, !v)); }} />
           <span><b style="font-weight:600">Leave out of training load</b><br /><span class="faint small">{excluded ? `Counts 0 toward fitness, fatigue and your week (it would be ${r.uncountedTss ?? 0} TSS). It stays in your history.` : 'For something that happened but should not count, like carrying the bike or a walk to the shop. It stays in your history and counts 0 toward fitness, fatigue and your week.'}</span></span>
         </label>
       </div>

@@ -11,6 +11,7 @@ import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
+import { GLOSSARY } from '../glossary';
 
 const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk';
@@ -39,7 +40,7 @@ export function Library({ data }: { data: AppData }) {
   const ready = list.filter((w) => w.source === 'library');
   return (
     <div>
-      <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library">
+      <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library" help="library">
         <a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a>
       </PageHead>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
@@ -104,7 +105,7 @@ function Card({ w, mine = false, basis, onPick }: { w: Workout; mine?: boolean; 
         <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} /></div>
         <h3>{w.name}</h3>
         <p class="wc-sub small">{w.subtitle ?? '\u00a0'}</p>
-        <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span><b class="num">{s.intensityFactor.toFixed(2)}</b> IF</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
+        <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
         <button class="btn sm primary" onClick={async () => { await scheduleWorkout(w, today(), basis); toast({ ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
@@ -121,7 +122,7 @@ function SessionCard({ w, mine = false, onAdd }: { w: Workout; mine?: boolean; o
     : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`;
   return (
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">
-      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} TSS` : ''}</span></div>
+      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} TSS, estimated` : ''}</span></div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
       <p class="muted small" style="margin:0">{detail}</p>
       {w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}
@@ -140,7 +141,7 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
         <div class="row between" style="margin-bottom:12px"><h2>Add to a date</h2><button class="btn sm quiet" onClick={onClose}>Close</button></div>
         <p class="small" style="margin:0 0 12px"><b>{w.name}</b> <span class="muted">· {KIND_LABEL[w.kind]}{w.minutes ? ` · ${w.minutes} min` : ''}</span></p>
         {done ? (
-          <p class="msg ok">Added to {fmtDate(date)}. <a href="#/calendar">Open the calendar</a>.</p>
+          <p class="msg ok">Added to {fmtDate(date)}. <a href={`#/calendar?d=${date}`}>Open the calendar</a>.</p>
         ) : (
           <div class="row wrap" style="gap:8px;align-items:center">
             <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date" />

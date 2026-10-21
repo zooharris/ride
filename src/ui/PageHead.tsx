@@ -1,16 +1,19 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { Mark } from './Brand';
+import { Icon } from './icons';
 
 /**
  * The one header every screen uses: a small line above the title (the date,
  * a count, or the way back), the title, and the screen's actions on the right.
- * On a laptop it stays pinned while the page scrolls.
+ * On a laptop it stays pinned while the page scrolls. `help` names the Help
+ * section for the screen; a small "?" then opens Help at it.
  */
-export function PageHead({ title, eyebrow, back, children }: {
+export function PageHead({ title, eyebrow, back, help, children }: {
   title: ComponentChildren;
   eyebrow?: ComponentChildren;
   back?: { label: string; href?: string; onClick?: () => void };
+  help?: string;
   children?: ComponentChildren;
 }) {
   // Things pinned below the header (the ride page's map and readout) need its real height, which varies by page.
@@ -33,7 +36,7 @@ export function PageHead({ title, eyebrow, back, children }: {
         <h1>{title}</h1>
         {back && eyebrow != null && <p class="eyebrow" style="margin-top:4px">{eyebrow}</p>}
       </div>
-      {children && <div class="ph-actions">{children}</div>}
+      {(children || help) && <div class="ph-actions">{children}{help && <a class="icon-btn ph-help" href={`#/help?s=${help}`} aria-label="Help for this screen" title="Help for this screen"><Icon.help size={18} /></a>}</div>}
     </header>
   );
 }

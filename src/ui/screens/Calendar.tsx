@@ -23,6 +23,12 @@ import { WeekBar } from '../Glance';
 import { weekSummary } from '../week';
 import { Icon } from '../icons';
 
+/** A name short enough for a month cell: the part before any colon ("Strength A"), at most 14 characters. The full name is the cell's title. */
+function shortName(name: string): string {
+  const n = name.split(':')[0].trim();
+  return n.length > 14 ? `${n.slice(0, 13).trimEnd()}…` : n;
+}
+
 const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
 
 export function Calendar({ data, params }: { data: AppData; params?: URLSearchParams }) {
@@ -35,6 +41,18 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   // Opened from Today's week strip or its ⋯ button: show that week as a list, and open the change sheet if asked.
   useEffect(() => { setView(focus ? 'list' : 'month'); }, [focus]);
   useEffect(() => { if (focus) setStart(weekStart(focus)); }, [focus]);
+  // ...and scroll to that day, outlined for a moment. After a short delay, so it lands after the
+  // shell's own scroll to the top of a new screen (which runs after this component's effects).
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focus || view !== 'list') return;
+    const go = setTimeout(() => {
+      document.getElementById(`day-${focus}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      setFlash(focus);
+    }, 80);
+    const stop = setTimeout(() => setFlash(null), 2200);
+    return () => { clearTimeout(go); clearTimeout(stop); };
+  }, [focus, view, start]);
   const pickView = (v: 'list' | 'month') => setView(v);
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
@@ -66,7 +84,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
 
   async function sendWeek(ws: string) {
     const c = await credentials();
-    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
+    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     const end = addDays(ws, 6);
     const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind));
     if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
@@ -80,7 +98,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
         await db.planned.update(p.id, { status: 'sent', icuEventId: id });
         sent++;
       }
-      setMsg({ ok: true, text: `Sent ${sent} workout${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.` });
+      setMsg({ ok: true, text: `Sent ${sent} session${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.` });
     } catch (e) {
       setMsg({ ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` });
     } finally { setBusy(null); notify(); }
@@ -89,10 +107,10 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
 
   return (
     <div>
-      <PageHead title="Calendar">
+      <PageHead title="Calendar" help="calendar">
         <>
           <a class="btn sm" href="#/plan">Plan my training</a>
-          <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
+          <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
           {view === 'list' && <div class="row" style="gap:0">
             <button class="icon-btn" aria-label="Previous week" onClick={() => setStart(addDays(start, -7))}><span style="transform:scaleX(-1);display:inline-flex"><Icon.chevron /></span></button>
             <button class="btn sm quiet" onClick={() => setStart(weekStart(today()))}>This week</button>
@@ -104,7 +122,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
           cellClass={(d) => `${recoveryWeeks.has(weekStart(d)) ? 'recovery' : ''} ${dnd.dropClass(d)}`}
-          weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <><b class="num">{wk.doneTss}</b>{wk.plannedTss > 0 && <span class="faint"> of {wk.plannedTss}</span>}<span class="faint">TSS</span>{recoveryWeeks.has(ws) && <span class="mn-tag">recovery</span>}</> : null; }}
+          weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <><b class="num">{wk.doneTss}</b>{wk.plannedTss > 0 && <span class="faint"> of {wk.plannedTss}</span>}<span class="faint"> TSS</span>{recoveryWeeks.has(ws) && <span class="mn-tag">recovery</span>}</> : null; }}
           render={(d) => {
             const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
             const rides = data.rides.filter((r) => r.date === d && !plans.some((p) => p.activityId === r.id));
@@ -118,12 +136,12 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
                   return (
                     <a class={`month-item ${p.status} k-${w.kind}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
-                      <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <span class="sw" />}</span>
-                      <span class="mi-name">{w.name}</span>
+                      <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <KindDot kind={w.kind} />}</span>
+                      <span class="mi-name">{shortName(w.name)}</span>
                     </a>
                   );
                 })}
-                {rides.map((r) => <a class={`month-item completed k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`} style={`--c:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`}><span class="mi-top"><StatusMark status="done" size={11} /><span class="sw" /></span><span class="mi-name">{r.name}</span></a>)}
+                {rides.map((r) => <a class={`month-item completed k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`} style={`--c:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`}><span class="mi-top"><StatusMark status="done" size={11} /><KindDot kind={r.sport === 'other' ? 'ride' : r.sport} /></span><span class="mi-name">{shortName(r.name)}</span></a>)}
                 {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking({ date: d })}>+</button>}
               </>
             );
@@ -147,8 +165,8 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                 const rides = data.rides.filter((r) => r.date === d);
                 const isToday = d === today();
                 return (
-                  <div class={`cal-day${isToday ? ' today' : ''} ${dnd.dropClass(d)}`} key={d} data-date={d}>
-                    <div class="d">{fmtDate(d, { weekday: 'short' })}<b>{Number(d.slice(8))}</b></div>
+                  <div class={`cal-day${isToday ? ' today' : ''}${flash === d ? ' focused' : ''} ${dnd.dropClass(d)}`} key={d} data-date={d}>
+                    <div class="d" id={`day-${d}`}>{fmtDate(d, { weekday: 'short' })}<b>{Number(d.slice(8))}</b></div>
                     <div class="c">
                       {plans.map((p) => {
                         const w = findWorkout(data.mine, p.workoutId);
@@ -156,7 +174,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                         const s = workoutStats(w.blocks);
                         const rec = p.status === 'completed' && p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined;
                         // A done row shows what was recorded; a scheduled one what is planned.
-                        const recorded = rec ? `${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · NP ${rec.normalizedPower} W` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'logged by hand' : '';
+                        const recorded = rec ? `${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · ${rec.normalizedPower} W normalized` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'logged by hand' : '';
                         const plannedLine = w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''}`;
                         const st = statusOf(p.status);
                         return (
@@ -164,7 +182,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? ` · moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : ' · changed by you') : ''}</span></div>
+                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
                             <StatusPill status={st} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Move, replace or remove" onClick={() => setChanging(p)}>⋯</button>}
@@ -176,7 +194,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                         <a class="cal-item completed" key={r.id} href={`#/rides/${r.id}`}>
                           <StatusMark status="done" />
                           <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
-                          <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · NP ${r.normalizedPower} W` : r.averageHr ? ` · ${r.averageHr} bpm` : ''} · unscheduled</span></div>
+                          <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · ${r.normalizedPower} W normalized` : r.averageHr ? ` · ${r.averageHr} bpm` : ''} · unscheduled</span></div>
                           <StatusPill status="done" />
                         </a>
                       ))}

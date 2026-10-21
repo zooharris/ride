@@ -80,7 +80,7 @@ function Effort({ rpe, kind, onEffort }: { rpe?: number; kind: Kind; onEffort: (
   const pick = async (n: number) => { setBusy(true); try { await onEffort(n); } finally { setBusy(false); } };
   return (
     <div class="field">
-      <label>How hard was it, 1 easy to 10 all-out</label>
+      <label>How hard was it? 1 easy, 10 all-out</label>
       <div class="effort-chips">{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} disabled={busy} class={`chip${rpe === n ? ' on' : ''}`} onClick={() => pick(n)}>{n}</button>)}</div>
       <span class="faint small">{kind === 'strength' ? 'Sets the training load for this session: heart rate under-reads lifting.' : 'For your records and the coach.'}</span>
     </div>

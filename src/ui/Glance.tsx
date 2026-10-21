@@ -44,7 +44,7 @@ export function WeekStrip({ week }: { week: WeekSummary }) {
           <div class="ws-fill" style={`width:${pct}%`} />
         </div>
         {week.sessionsPlanned > 0
-          ? <p class="small muted"><b class="num" style="color:var(--ink)">{week.doneTss}</b> of {week.plannedTss} planned training load (TSS) · {week.sessionsDone} of {week.sessionsPlanned} planned sessions done · {hoursLabel(week.doneMinutes)} of {hoursLabel(week.plannedMinutes)}</p>
+          ? <p class="small muted"><b class="num" style="color:var(--ink)">{week.doneTss}</b> of {week.plannedTss} TSS planned · {week.sessionsDone} of {week.sessionsPlanned} planned sessions done · {hoursLabel(week.doneMinutes)} of {hoursLabel(week.plannedMinutes)}</p>
           : <p class="small muted">This week: <b class="num" style="color:var(--ink)">{week.doneTss}</b> training load (TSS) in {hoursLabel(week.doneMinutes)}. Nothing planned yet.</p>}
       </div>
     </section>

@@ -57,7 +57,7 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
         <h1>{plan.name}</h1>
         <div class="p-sub">{goalText} · {weeks.length} weeks · {fmt(plan.start, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} to {fmt(plan.goalDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}{pages.length > 1 ? ` · page ${page} of ${pages.length}` : ''}</div>
       </div>
-      <div class="p-meta"><b>{profile.name}</b> · FTP {profile.ftp} W · LTHR {profile.lthr}{commitments ? <><br />Standing: {commitments}</> : null}<br />{Math.round(totalHours)} hours · {totalTss} TSS planned</div>
+      <div class="p-meta"><b>{profile.name}</b> · FTP {profile.ftp} W · threshold HR {profile.lthr} bpm{commitments ? <><br />Standing: {commitments}</> : null}<br />{Math.round(totalHours)} hours · {totalTss} TSS planned</div>
     </div>
   );
   const Legend = () => (
@@ -75,7 +75,7 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
     <div class={`print-root${dense ? ' dense' : ''}${perPage >= 16 ? ' tight' : ''}`}>
       <div class="p-tools">
         <a href="#/plan" class="btn sm quiet">‹ Back</a>
-        <div class="seg"><button class={layout === 'calendar' ? 'on' : ''} onClick={() => setLayout('calendar')}>Calendar</button><button class={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')}>List</button></div>
+        <div class="seg"><button class={layout === 'calendar' ? 'on' : ''} onClick={() => setLayout('calendar')}>Month</button><button class={layout === 'list' ? 'on' : ''} onClick={() => setLayout('list')}>List</button></div>
         <span class="faint small">US Letter, landscape. {pages.length === 1 ? 'Fits one page.' : `${pages.length} pages.`} Use the print dialog's Save as PDF to keep a copy.</span>
         <button class="btn primary sm" style="margin-left:auto" onClick={() => window.print()}>Print</button>
       </div>

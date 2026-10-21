@@ -4,6 +4,7 @@ import { hrZone, powerZone } from '../engine/zones';
 import { powerHistogram } from '../engine/progress';
 import { BarChart } from './BarChart';
 import { ZONE_VAR } from './Profile';
+import { ZONE_NAMES } from './glossary';
 
 /** Time in each zone as a row of labelled bars: zone, bar, share and time. */
 export function ZoneBars({ title, seconds }: { title: string; seconds: number[] }) {
@@ -13,7 +14,7 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
     <div class="zonebars">
       <div class="small" style="margin-bottom:6px"><b>{title}</b></div>
       {seconds.map((s, i) => (
-        <div class="zb-row" key={i} title={`Zone ${i + 1}: ${clock(s)}, ${Math.round((s / total) * 100)}% of the ride`}>
+        <div class="zb-row" key={i} title={`Zone ${i + 1}, ${ZONE_NAMES[Math.min(i, 6)]}: ${clock(s)}, ${Math.round((s / total) * 100)}% of the time`}>
           <span class="zb-z">Z{i + 1}</span>
           <span class="zb-track"><span class="zb-fill" style={`width:${(s / max) * 100}%;background:${ZONE_VAR[Math.min(i, 6)]}`} /></span>
           <span class="zb-pct num">{Math.round((s / total) * 100)}%</span>

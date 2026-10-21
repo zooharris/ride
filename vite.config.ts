@@ -21,9 +21,9 @@ export default defineConfig({
         short_name: APP_SHORT_NAME,
         description: 'Plan, ride, and adapt. A personal cycling coach.',
         theme_color: '#0A1220',
-        background_color: '#0B2A57',
+        background_color: '#0A1220',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'any',
         start_url: '/ride/',
         scope: '/ride/',
         icons: [

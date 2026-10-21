@@ -69,7 +69,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       </div>
       <h1>{w.name}</h1>
       {w.subtitle && <p style="margin:2px 0 0;font-size:16px;color:var(--ink-2)">{w.subtitle}</p>}
-      <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · IF {s.intensityFactor.toFixed(2)}</p>
+      <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · intensity {s.intensityFactor.toFixed(2)}</p>
       <WorkoutProfile blocks={w.blocks} height={110} hero />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
@@ -88,7 +88,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       )}
 
       <section class="section">
-        <h2>Steps · {basis === 'power' ? `watts at FTP ${profile.ftp}` : `bpm at LTHR ${profile.lthr}`}</h2>
+        <h2>Steps · {basis === 'power' ? `watts at FTP ${profile.ftp}` : `beats per minute, threshold ${profile.lthr}`}</h2>
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
@@ -124,7 +124,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
   async function sendWalk() {
     if (!planned) return;
     const c = await credentials();
-    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send workouts to your Garmin.' }); return; }
+    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     setSending(true);
     try {
       const id = await sendWorkout(c, w, planned.date, basis, { maxHr, lthr });

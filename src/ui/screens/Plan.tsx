@@ -22,6 +22,7 @@ import { PageHead } from '../PageHead';
 import { PlanTimeline } from '../Glance';
 import { AwayFields, GoalFields, WeekFields } from '../PlanForm';
 import type { AwayRange } from '../../engine/planner';
+import { NameSheet } from '../NameSheet';
 
 
 interface Saved { goal: Goal; availability: Availability; masters: boolean }
@@ -45,6 +46,9 @@ export function Plan({ data }: { data: AppData }) {
   const [nameTouched, setNameTouched] = useState(false);
   const [startDate, setStartDate] = useState(today());
   const [away, setAway] = useState<AwayRange[]>([]);
+  // With a plan under way the form for a new one stays folded away until asked for.
+  const [showForm, setShowForm] = useState(false);
+  const [renaming, setRenaming] = useState<ActivePlan | null>(null);
   const refreshPlans = () => getPlans().then((ps) => { setPlans(ps); getActivePlan().then(setActive); });
 
   useEffect(() => {
@@ -84,9 +88,7 @@ export function Plan({ data }: { data: AppData }) {
     try { setCheck(await replan(data)); await markChecked(); } finally { setBusy(false); }
   }
 
-  async function rename(p: ActivePlan) {
-    const n = prompt('Name for this plan', p.name);
-    if (n == null || !n.trim() || n.trim() === p.name) return;
+  async function rename(p: ActivePlan, n: string) {
     await renamePlan(p.id, n);
     await refreshPlans();
   }
@@ -125,7 +127,7 @@ export function Plan({ data }: { data: AppData }) {
 
   return (
     <div>
-      <PageHead eyebrow={`Fitness today ${assessment.fitness.ctl.toFixed(0)}`} title="Plan my training" />
+      <PageHead eyebrow={`Fitness today ${assessment.fitness.ctl.toFixed(0)}`} title="Plan my training" help="plan" />
 
       {plans.length > 0 && (
         <section style="margin-bottom:22px">
@@ -140,12 +142,12 @@ export function Plan({ data }: { data: AppData }) {
                   <div class="row between wrap" style="gap:8px">
                     <div>
                       <a class="plain-link" href={`#/plan/${p.id}`}><b>{p.name}</b></a> <span class="faint small">· {status}</span>
-                      <div class="muted small">{p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })} · ` : `${GOAL_LABEL[p.goal.kind]} · `}{fmtDate(p.start, { month: 'short', day: 'numeric' })} to {fmtDate(p.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}{p.requiredCtl ? ` · goal wants fitness ${p.requiredCtl}` : ''}</div>
+                      <div class="muted small">{p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })} · ` : `${GOAL_LABEL[p.goal.kind]} · `}{fmtDate(p.start, { month: 'short', day: 'numeric' })} to {fmtDate(p.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}{p.requiredCtl ? ` · goal needs fitness ${p.requiredCtl}` : ''}</div>
                     </div>
                     <div class="row wrap" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check the plan'}</button>}
                       <a class="btn sm" href={`#/plan/${p.id}`}>Open</a>
-                      <button class="btn sm quiet" onClick={() => rename(p)} disabled={busy}>Rename</button>
+                      <button class="btn sm quiet" onClick={() => setRenaming(p)} disabled={busy}>Rename</button>
                       <a class="btn sm quiet" href={`#/print/${p.id}`}>Print</a>
                       {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
                     </div>
@@ -174,6 +176,13 @@ export function Plan({ data }: { data: AppData }) {
         <p class="small" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p></div>
       </section>
 
+      {active && !showForm && !plan && (
+        <div class="row" style="margin-top:20px">
+          <button class="btn" onClick={() => setShowForm(true)}>Build a new plan</button>
+        </div>
+      )}
+
+      {(!active || showForm || plan) && <>
       <section class="section">
         <h2 style="margin-bottom:12px">{plans.length ? 'New plan' : 'Goal'}</h2>
         <div class="panel"><div class="form">
@@ -198,7 +207,7 @@ export function Plan({ data }: { data: AppData }) {
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">
-        <button class="btn primary" style="flex:1" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Plan my training</button>
+        <button class="btn primary" style="flex:1" onClick={build} disabled={totalHours < 2 || (goal.kind === 'event' && !goal.date)}>Build the plan</button>
         <button class="btn quiet" onClick={resetForm}>Reset</button>
       </div>
 
@@ -271,13 +280,17 @@ export function Plan({ data }: { data: AppData }) {
           </section>
 
           {clash && <p class="msg err" style="margin-top:16px">This plan would run {fmtDate(planStart, { month: 'short', day: 'numeric' })} to {fmtDate(plan.goalDate, { month: 'short', day: 'numeric' })}, which overlaps “{clash.name}” ({fmtDate(clash.start, { month: 'short', day: 'numeric' })} to {fmtDate(clash.goalDate, { month: 'short', day: 'numeric' })}). Plans cannot overlap: start this one after {fmtDate(clash.goalDate, { month: 'short', day: 'numeric' })}, shorten it, or cancel “{clash.name}” above.</p>}
-          <div class="row" style="margin-top:20px;gap:8px">
-            <button class="btn primary" style="flex:1" onClick={apply} disabled={busy || !!clash}>{busy ? 'Placing…' : `Put “${name.trim() || defaultPlanName(goal)}” on the calendar`}</button>
+          <p class="small" style="margin:20px 0 0"><b>{name.trim() || defaultPlanName(goal)}</b></p>
+          <div class="row" style="margin-top:8px;gap:8px">
+            <button class="btn primary" style="flex:1" onClick={apply} disabled={busy || !!clash}>{busy ? 'Placing…' : 'Put it on the calendar'}</button>
             <button class="btn quiet" onClick={() => { setPlan(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Discard</button>
           </div>
           <p class="faint small" style="margin-top:10px">Sessions this plan places go on the calendar from {fmtDate(planStart, { month: 'short', day: 'numeric' })}; anything you added by hand stays. The plan is re-checked as rides and wellness arrive.</p>
         </div>
       )}
+      </>}
+
+      {renaming && <NameSheet title="Rename the plan" label="Plan name" initial={renaming.name} onSave={(n) => rename(renaming, n)} onClose={() => setRenaming(null)} />}
     </div>
   );
 }

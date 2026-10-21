@@ -54,6 +54,9 @@ export function App() {
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); off(); };
   }, []);
+  // Every new screen starts at its top. Keyed on the path only, so a change of query inside a
+  // screen (the Calendar's ?d=) does not jump; a screen that wants a place scrolls there itself.
+  useEffect(() => { window.scrollTo(0, 0); }, [route.path]);
   if (!data.loaded) return <Loading />;
   if (!data.profile) return <Onboarding />;
 
@@ -78,7 +81,7 @@ export function App() {
     case 'progress': screen = <Progress data={data} />; break;
     case 'rides': screen = <Rides data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
-    case 'help': screen = <Help />; break;
+    case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;
   }
   const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : root || 'today';

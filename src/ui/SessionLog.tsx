@@ -84,7 +84,7 @@ export function SessionLog({ planned, workout, defaultMinutes, recording, units,
     <div class="panel">
       <div class="row wrap" style="gap:14px">
         <div class="field"><label>Minutes</label><input type="number" value={minutes} onInput={(e) => setMinutes(Number((e.target as HTMLInputElement).value) || defaultMinutes)} style="width:80px" /></div>
-        <div class="field"><label>How hard, 1 easy to 10 all-out</label>
+        <div class="field"><label>How hard was it? 1 easy, 10 all-out</label>
           <div class="chips">{[2, 3, 4, 5, 6, 7, 8, 9].map((n) => <button key={n} class={`chip${rpe === n ? ' on' : ''}`} onClick={() => setRpe(n)}>{n}</button>)}</div></div>
       </div>
       <button class="btn primary" style="margin-top:12px" onClick={done} disabled={busy}>{busy ? 'Saving…' : 'Mark done'}</button>

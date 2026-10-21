@@ -92,7 +92,14 @@ export function sameSession(before: Workout, after: Workout): boolean {
 }
 
 /** Compare the current calendar (from today) with a freshly generated plan. Only changes that matter are listed. */
-export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workout>, plan: Plan, from = today()): Change[] {
+/**
+ * What the plan would change on the calendar. A session the rider moved, replaced
+ * or added by hand is their decision for that date and kind: the daily re-check
+ * never suggests undoing it (a rider who moved two sessions to today was offered
+ * "remove" for both, one tap below the move, and lost them, 21 Oct 2026). Only
+ * Edit plan › Preview lists those changes, unticked, with `includeEdited`.
+ */
+export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workout>, plan: Plan, from = today(), opts: { includeEdited?: boolean } = {}): Change[] {
   const future = current.filter((p) => p.date >= from && p.status !== 'completed');
   const key = (date: string, kind: string) => `${date}|${kind}`;
   const before = new Map<string, Workout[]>();
@@ -134,6 +141,7 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     if (b.length === a.length && b.every((w, i) => sameSession(w, a[i].workout))) continue;   // a few minutes either way is not a change
     const userEdited = edited.has(k) || undefined;
     const userAdded = added.has(k) || undefined;
+    if (userEdited && !opts.includeEdited) continue;
     if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited, userAdded });
     else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed', userEdited, userAdded });
     else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed', userEdited, userAdded });

@@ -213,7 +213,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
     setBusy(true);
     try {
       const built = await buildPlan(data, goal, av, masters, upcoming ? startDate : plan.start, goal.kind === 'event' ? undefined : endDate, away);
-      const changes = diffPlan(mine, workouts, built);
+      const changes = diffPlan(mine, workouts, built, undefined, { includeEdited: true });
       setPreview({ plan: built, changes });
       setTicked(new Set(changes.filter((c) => !c.userEdited).map(sig)));
     } finally { setBusy(false); }

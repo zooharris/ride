@@ -277,7 +277,7 @@ describe('adaptation', () => {
     const plan = generatePlan(req());
     const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
     // calendar = the plan as applied, with one future ride renamed to stand for a change
-    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const })));
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const, planId: 'p' })));
     const same = diffPlan(planned, workouts, plan, today);
     expect(same).toHaveLength(0);
     const altered = generatePlan(req({ availability: { ...req().availability, hours: [4, 0.5, 1.5, 0.5, 1.5, 0, 2] } }));
@@ -302,7 +302,7 @@ describe('adaptation', () => {
     const moveIdx = future.findIndex((p, i) => i !== rideIdx && workouts.get(p.workoutId)?.kind !== 'ride');
     const from = future[moveIdx].date;
     future[moveIdx] = { ...future[moveIdx], date: addDays(from, 1), movedFrom: from, userEdited: true } as typeof future[number];
-    const diff = diffPlan([...planned.filter((p) => p.date <= today), ...future], workouts, plan, today);
+    const diff = diffPlan([...planned.filter((p) => p.date <= today), ...future], workouts, plan, today, { includeEdited: true });
     const edited = diff.filter((c) => c.userEdited);
     expect(edited.length).toBeGreaterThan(0);
     expect(edited.some((c) => c.date === future[rideIdx].date && c.kind === 'ride')).toBe(true);
@@ -320,7 +320,9 @@ describe('hand-added sessions in the re-check', () => {
     // the rider adds a strength session by hand on a day the plan left without one
     const strength = [...workouts.values()].find((w) => w.kind === 'strength')!;
     const free = plan.weeks.flatMap((w) => w.sessions).map((s) => s.date).filter((d) => d > today).find((d) => !planned.some((p) => p.date === d && workouts.get(p.workoutId)?.kind === 'strength'))!;
-    const diff = diffPlan([...planned, { id: 'hand', date: free, workoutId: strength.id, basis: 'power' as const, status: 'planned' as const }], workouts, plan, today);
+    const hand = { id: 'hand', date: free, workoutId: strength.id, basis: 'power' as const, status: 'planned' as const };
+    expect(diffPlan([...planned, hand], workouts, plan, today)).toHaveLength(0);   // the daily re-check leaves it alone
+    const diff = diffPlan([...planned, hand], workouts, plan, today, { includeEdited: true });
     const mine = diff.filter((c) => c.date === free && c.kind === 'strength');
     expect(mine).toHaveLength(1);
     expect(mine[0].userEdited).toBe(true);
@@ -412,5 +414,24 @@ describe('the week under way responds to what was done, judged against the plan'
     if (tueRide) expect(tueRide.type).toBe('recovery');
     const sum = (xs: typeof after) => xs.filter((x) => x.kind === 'ride' && x.date > mon).reduce((s, x) => s + x.tss, 0);
     expect(sum(after)).toBeLessThan(sum(wk.sessions));
+  });
+});
+
+describe('a moved session is the rider’s decision', () => {
+  it('the daily re-check never offers to remove sessions the rider moved to today', async () => {
+    const { diffPlan } = await import('./adapt');
+    const plan = generatePlan(req());
+    const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const, planId: 'p' })));
+    // yesterday's strength and mobility sessions, moved to today (as movePlanned records them)
+    const yesterday = addDays(today, -1);
+    const moved = planned.filter((p) => p.date === yesterday && workouts.get(p.workoutId)?.kind !== 'ride').map((p) => ({ ...p, date: today, movedFrom: yesterday, userEdited: true }));
+    if (!moved.length) return;   // the generated week has nothing on that day; nothing to move
+    const current = [...planned.filter((p) => !moved.some((m) => m.id === p.id)), ...moved];
+    const diff = diffPlan(current, workouts, plan, today);
+    expect(diff.filter((c) => c.date === today && c.note === 'removed')).toHaveLength(0);
+    // Edit plan › Preview still lists them, marked as the rider's
+    const listed = diffPlan(current, workouts, plan, today, { includeEdited: true }).filter((c) => c.date === today && c.note === 'removed');
+    expect(listed.every((c) => c.userEdited)).toBe(true);
   });
 });

@@ -378,7 +378,7 @@ export function ReplanView({ check, onAccept, onReject, busy, coachSays, coachVe
           {check.changes.length > 6 && <button class="btn sm quiet" style="align-self:flex-start;margin-left:-10px" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${check.changes.length} changes`}</button>}
           {check.changes.length > 1 && (
             <div class="row" style="gap:8px;margin-top:6px">
-              <button class="btn primary sm" onClick={() => onAccept(check.changes)} disabled={busy}>Accept all {check.changes.length}</button>
+              <button class="btn primary sm" onClick={() => onAccept(check.changes.filter((c) => !c.userEdited))} disabled={busy}>Accept all {check.changes.length}</button>
               <button class="btn sm quiet" onClick={() => onReject(check.changes)} disabled={busy}>Reject all</button>
             </div>
           )}

@@ -29,7 +29,7 @@ function shortName(name: string): string {
   return n.length > 14 ? `${n.slice(0, 13).trimEnd()}…` : n;
 }
 
-const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'strength' || k === 'mobility';
+const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'run' || k === 'strength' || k === 'mobility';
 
 export function Calendar({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;

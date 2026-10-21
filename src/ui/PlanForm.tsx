@@ -1,5 +1,5 @@
 import { addDays, today } from '../engine/load';
-import type { Availability, AwayRange } from '../engine/planner';
+import { mayOf, type Availability, type AwayRange, type MaySchedule } from '../engine/planner';
 import type { EventType, Goal } from '../engine/goals';
 import type { Equipment, Profile, SessionKind } from '../engine/types';
 import { toast } from './Toast';
@@ -71,13 +71,33 @@ export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate,
   );
 }
 
+const NEVER_LABEL = { ride: 'Ride', strength: 'Strength', walk: 'Walk', run: 'Run', mobility: 'Mobility' } as const;
+
 /** The rider's week: hours, where they can ride, standing commitments, equipment, recovery rhythm. */
 export function WeekFields({ av, setAv, masters, setMasters, profile }: { av: Availability; setAv: (a: Availability) => void; masters: boolean; setMasters: (m: boolean) => void; profile: Profile }) {
   const setHours = (i: number, v: number) => setAv({ ...av, hours: av.hours.map((h, k) => (k === i ? v : h)) });
   const toggleEquipment = (q: Equipment) => setAv({ ...av, equipment: av.equipment.includes(q) ? av.equipment.filter((e) => e !== q) : [...av.equipment, q] });
-  const setPin = (dow: number, kind: SessionKind | 'rest' | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])] });
+  // A day's "Always" and "Never" for the same kind cannot both stand: choosing one clears the other.
+  const setPin = (dow: number, kind: SessionKind | 'rest' | '') => setAv({ ...av, pins: [...(av.pins ?? []).filter((p) => p.dow !== dow), ...(kind ? [{ dow, kind }] : [])], never: (av.never ?? []).filter((x) => !(x.dow === dow && x.kind === kind)) });
+  const may = mayOf(av);
+  const setMay = (k: keyof MaySchedule) => setAv({ ...av, may: { ...may, [k]: !may[k] } });
+  const isNever = (dow: number, kind: SessionKind) => (av.never ?? []).some((x) => x.dow === dow && x.kind === kind);
+  const toggleNever = (dow: number, kind: SessionKind) => setAv({
+    ...av,
+    never: isNever(dow, kind) ? (av.never ?? []).filter((x) => !(x.dow === dow && x.kind === kind)) : [...(av.never ?? []), { dow, kind }],
+    pins: (av.pins ?? []).filter((p) => !(p.dow === dow && p.kind === kind)),
+  });
+  const neverKinds = (['ride', 'strength', 'walk', 'run', 'mobility'] as const).filter((k) => k === 'ride' || may[k]);
+  const MAY_LABEL: Record<keyof MaySchedule, string> = { strength: 'Strength', walk: 'Walks', run: 'Runs', mobility: 'Mobility' };
   return (
     <>
+        <div class="field" style="margin-bottom:12px"><label>The app may schedule</label>
+          <div class="chips" role="group" aria-label="What the app may schedule">
+            <span class="chip on" aria-disabled="true" title="Rides are the plan; they are always scheduled">Rides</span>
+            {(['strength', 'walk', 'run', 'mobility'] as const).map((k) => <button key={k} class={`chip${may[k] ? ' on' : ''}`} aria-pressed={may[k]} onClick={() => setMay(k)}>{MAY_LABEL[k]}</button>)}
+          </div>
+          <span class="faint small">Turn off anything you never want planned. Per day, "Always" places a kind every week and "Never" keeps it off that day.</span>
+        </div>
         <div class="week-table">
           <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>
           {dayOrder().map((i) => {
@@ -95,8 +115,14 @@ export function WeekFields({ av, setAv, masters, setMasters, profile }: { av: Av
                   <button class={where === 'none' ? 'on' : ''} onClick={() => setWhere('none')} title="No ride this day; strength, a walk or mobility can still be placed">No bike</button>
                 </div>
                 <select value={pin} onChange={(e) => setPin(i, (e.target as HTMLSelectElement).value as SessionKind | 'rest' | '')} style="min-height:36px;padding:4px 8px" aria-label={`Commitment on ${d}`}>
-                  <option value="">App decides</option><option value="ride">Always a ride</option><option value="strength">Always strength</option><option value="walk">Always a walk</option><option value="mobility">Always mobility</option><option value="rest">Always rest</option>
+                  <option value="">App decides</option><option value="ride">Always a ride</option><option value="strength">Always strength</option><option value="walk">Always a walk</option><option value="run">Always a run</option><option value="mobility">Always mobility</option><option value="rest">Always rest</option>
                 </select>
+                {pin !== 'rest' && (
+                  <div class="week-never" role="group" aria-label={`Never on ${d}`}>
+                    <span class="faint small">Never:</span>
+                    {neverKinds.map((k) => <button key={k} class={`chip sm${isNever(i, k) ? ' on never' : ''}`} aria-pressed={isNever(i, k)} onClick={() => toggleNever(i, k)}>{NEVER_LABEL[k]}</button>)}
+                  </div>
+                )}
               </div>
             );
           })}

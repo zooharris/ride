@@ -5,8 +5,8 @@ import { today } from '../engine/load';
 import { fmtDate } from './derived';
 import { hoursLabel, type WeekSummary } from './week';
 
-const KIND_VAR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', other: 'var(--z1)' };
-const KIND_WORD: Record<SessionKind, string> = { ride: 'ride', strength: 'strength', mobility: 'mobility', walk: 'walk', other: 'other' };
+const KIND_VAR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', run: 'var(--run)', other: 'var(--z1)' };
+const KIND_WORD: Record<SessionKind, string> = { ride: 'ride', strength: 'strength', mobility: 'mobility', walk: 'walk', run: 'run', other: 'other' };
 
 /**
  * The week at a glance: a cell per day with a block per session (taller is
@@ -53,7 +53,7 @@ export function WeekStrip({ week }: { week: WeekSummary }) {
 
 /** A small stacked bar of a week's load by kind: done solid, the rest of what was planned faint behind it. */
 export function KindStack({ week, width = 140 }: { week: WeekSummary; width?: number }) {
-  const kinds = (['ride', 'strength', 'walk', 'mobility', 'other'] as SessionKind[]).filter((k) => week.byKind[k].done || week.byKind[k].planned);
+  const kinds = (['ride', 'strength', 'walk', 'run', 'mobility', 'other'] as SessionKind[]).filter((k) => week.byKind[k].done || week.byKind[k].planned);
   const total = Math.max(1, kinds.reduce((a, k) => a + Math.max(week.byKind[k].done, week.byKind[k].planned), 0));
   let x = 0;
   const title = kinds.map((k) => `${KIND_WORD[k]}: ${Math.round(week.byKind[k].done)} done of ${Math.round(week.byKind[k].planned)} planned`).join(' · ');

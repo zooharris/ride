@@ -33,7 +33,7 @@
   /* validated as a categorical set for colour-blind readers; stack in this order: ride, strength, walk, mobility */
   --ride: #3987E5;
   --strength: #D55181;
-  --walk: #C98500;
+  --walk: #C98500; --run: var(--z7);
   --mobility: #199E70;
 
   --shadow: 0 10px 30px rgba(3, 8, 20, .45);
@@ -56,7 +56,7 @@
   --accent: #0A806C; --accent-ink: #FFFFFF; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
   --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
-  --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100;
+  --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
   --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
   color-scheme: light;
 }
@@ -67,7 +67,7 @@
     --accent: #0A806C; --accent-ink: #FFFFFF; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
     --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
-    --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100;
+    --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
     --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
     color-scheme: light;
   }
@@ -375,10 +375,14 @@ p { margin: 0; }
 .week-head { font-size: 11px; color: var(--ink-3); padding: 0 2px; }
 .week-row .seg button { padding: 7px 8px; font-size: 12px; flex: 1; justify-content: center; }
 .week-row .seg { display: flex; }
+/* Never: a line of small chips under the day's controls; a ticked one is struck through in the bad colour. */
+.week-never { grid-column: 3 / -1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: -2px; }
+.chip.sm { padding: 3px 9px; font-size: 12px; min-height: 26px; }
+.chip.on.never { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); text-decoration: line-through; }
 @media (max-width: 599px) {
   .week-head { display: none; }
-  .week-row { grid-template-columns: 36px 60px 1fr; grid-template-areas: "day hours where" "day hours pin"; row-gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  .week-row > :nth-child(1) { grid-area: day; } .week-row > :nth-child(2) { grid-area: hours; } .week-row > :nth-child(3) { grid-area: where; } .week-row > :nth-child(4) { grid-area: pin; }
+  .week-row { grid-template-columns: 36px 60px 1fr; grid-template-areas: "day hours where" "day hours pin" "day hours never"; row-gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .week-row > :nth-child(1) { grid-area: day; } .week-row > :nth-child(2) { grid-area: hours; } .week-row > :nth-child(3) { grid-area: where; } .week-row > :nth-child(4) { grid-area: pin; } .week-row > .week-never { grid-area: never; margin-top: 0; }
 }
 
 /* library filter bar */

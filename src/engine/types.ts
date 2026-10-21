@@ -11,6 +11,8 @@ export interface Profile {
   restingHr: number;    // bpm
   weightKg: number;
   birthYear?: number;
+  /** Threshold run pace, seconds per kilometre (shown per mile or km by units). Optional: runs are by heart rate; pace is a hint. */
+  thresholdPaceSec?: number;
   basis: Basis;         // default basis for new workouts
   masters: boolean;     // masters recovery ratios in the plan builder
   units: 'imperial' | 'metric';
@@ -53,7 +55,7 @@ export type Family =
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'any';
 
-export type SessionKind = 'ride' | 'strength' | 'mobility' | 'walk' | 'other';
+export type SessionKind = 'ride' | 'strength' | 'mobility' | 'walk' | 'run' | 'other';
 
 /** One exercise in a strength or mobility session, with what to do and why. */
 export interface Exercise {
@@ -76,6 +78,10 @@ export interface WalkSpec {
   packKg?: number;          // weighted pack, if any
 }
 
+/** One step of a run: time, a heart-rate band as a fraction of max HR (as walks), and optionally repeats with a recovery. */
+export interface RunStep { seconds: number; hrLow: number; hrHigh: number; label?: string; repeat?: number; recoverSeconds?: number; recoverLow?: number; recoverHigh?: number }
+export interface RunSpec { steps: RunStep[]; where?: 'outdoor' | 'treadmill' }
+
 export interface Workout {
   updatedAt?: string;
   /** The descriptive form of a named library ride ("Sweet Spot 3 × 12"); the name itself is a place. */
@@ -95,6 +101,7 @@ export interface Workout {
   blocks: WorkoutBlock[];   // empty for non-ride sessions
   exercises?: Exercise[];
   walk?: WalkSpec;
+  run?: RunSpec;
   /** Rough training stress for non-ride sessions (rides compute theirs from the blocks). */
   estimatedTss?: number;
   /** Planned effort for strength sessions, 1–10 (RPE); drives the estimate. */

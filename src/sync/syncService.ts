@@ -168,12 +168,14 @@ export async function writeRecord(c: IntervalsCredentials, ride: Ride, workoutNa
  * recordings score, and a sync only re-scores the last fortnight). Runs at
  * launch, before matching, and is a no-op after the first time.
  */
-export const SCORING_RULES = '2026-10-21';
+export const SCORING_RULES = '2026-10-21b';   // b: runs became their own kind (were "other")
 export async function rescoreAllOnce(): Promise<boolean> {
   if ((await getSetting<string>('scoringRules', '')) === SCORING_RULES) return false;
   const [rides, planned, edits, profile] = await Promise.all([db.rides.toArray(), db.planned.toArray(), db.activityEdits.toArray(), db.profile.get('me')]);
   if (!profile) return false;
   const handMatched = new Set(planned.filter((p) => p.matchedByHand && p.activityId).map((p) => p.activityId!));
+  // Runs recorded before 21 Oct 2026 were filed as "other"; they are runs now. Nothing else changes kind here.
+  for (const r of rides) if (r.sport === 'other') r.sport = sportOf(r.type, r.averageSpeedMs);
   for (const r of rides) scoreActivity(r, profile, { handMatched: handMatched.has(r.id) });
   applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
@@ -262,6 +264,11 @@ export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | 
     if (hrOnly) set(hrOnly, 'heart-rate');
     else if (r.icuLoad) set(r.icuLoad, 'intervals');
     else set(Math.round(r.seconds / 3600 * 38), 'estimate');
+  } else if (r.sport === 'run') {
+    // Heart rate first, through the same zone mapping as rides; then Intervals' own load; then 55 an hour.
+    if (hrOnly) set(hrOnly, 'heart-rate');
+    else if (r.icuLoad) set(r.icuLoad, 'intervals');
+    else set(Math.round(r.seconds / 3600 * 55), 'estimate');
   } else if (r.sport === 'strength') {
     // A strap on the wrist says more than Intervals' guess; and when the session was sent to the
     // Garmin typed as a ride, Intervals' load is a ride load until the relabel, so it comes second.

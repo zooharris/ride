@@ -24,6 +24,7 @@ const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
   { k: 'strength', name: 'Strength', color: 'var(--strength)' },
   { k: 'walk', name: 'Walks', color: 'var(--walk)' },
+  { k: 'run', name: 'Runs', color: 'var(--run)' },
   { k: 'mobility', name: 'Mobility', color: 'var(--mobility)' },
 ];
 const short = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -334,6 +335,13 @@ function TotalsCard({ rides, imperial }: { rides: Ride[]; imperial: boolean }) {
         {small('Climbing', imperial ? 'feet' : 'metres', m.map((x) => Math.round(imperial ? x.climbingM * 3.28084 : x.climbingM)), (v) => `${v.toLocaleString()} ${imperial ? 'ft' : 'm'}`)}
         {small('Sessions', 'count', m.map((x) => x.sessions), (v) => `${v} session${v === 1 ? '' : 's'}`)}
       </div>
+      {(() => {
+        // Runs on their own line: the charts above mix every kind, and a run's mile is not a ride's.
+        const runs = rides.filter((r) => r.sport === 'run' && r.date.slice(0, 7) >= m[0].month);
+        if (!runs.length) return null;
+        const h = runs.reduce((t, r) => t + r.seconds, 0) / 3600, dm = runs.reduce((t, r) => t + (r.distanceM ?? 0), 0);
+        return <p class="small" style="margin:10px 0 0"><b>Runs</b> in these twelve months: {runs.length} run{runs.length === 1 ? '' : 's'}, {h >= 10 ? Math.round(h) : Math.round(h * 10) / 10} h{dm ? `, ${Math.round(imperial ? dm / 1609.344 : dm / 1000)} ${imperial ? 'mi' : 'km'}` : ''}.</p>;
+      })()}
     </Card>
   );
 }
@@ -478,7 +486,7 @@ function ChartCoach({ on, range, from, to, series, data }: { on: OverlayKey[]; r
   );
 }
 
-const KIND_ROW: Record<MorningRow['kind'], string> = { hard: 'Hard ride', long: 'Long ride', strength: 'Strength', rest: 'Rest day' };
+const KIND_ROW: Record<MorningRow['kind'], string> = { hard: 'Hard ride or run', long: 'Long ride', strength: 'Strength', run: 'Run', rest: 'Rest day' };
 
 /** HRV, resting heart rate and sleep the morning after each kind of day, against the rider's normal for the range. */
 function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to: string }) {
@@ -498,7 +506,7 @@ function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to:
       {!any ? <div class="empty small">Draws once Intervals.icu has morning readings for this range.</div> : (
         <table class="mtable">
           <thead><tr><th>Day before</th><th class="r">HRV</th><th class="r">Resting HR</th><th class="r">Sleep</th></tr></thead>
-          {rows.map((r) => (
+          {rows.filter((r) => r.kind !== 'run' || r.n > 0).map((r) => (
             <tr key={r.kind}>
               <td>{KIND_ROW[r.kind]}<span class="mtable-n">{r.n} morning{r.n === 1 ? '' : 's'}</span></td>
               {cell(r.hrv, r.n, (v) => v > 0, (v) => `${v.toFixed(1)} ms`)}
@@ -508,7 +516,7 @@ function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to:
           ))}
         </table>
       )}
-      <p class="faint small mtable-note">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent); a long ride is 2½ hours or more; a rest day has nothing recorded.</p>
+      <p class="faint small mtable-note">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent), a hard run 30 minutes or more at 85% of threshold heart rate; a long ride is 2½ hours or more; a rest day has nothing recorded. The run row appears once there are mornings after a run.</p>
       </div>
     </Card>
   );

@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from './store';
-import { allWorkouts, findWorkout } from './store';
+import { allWorkouts, findWorkout, getCurrentMay } from './store';
+import { runBandText } from '../engine/run';
 import { WorkoutProfile } from './Profile';
 import { clock, workoutStats } from '../engine/workout';
 import { today } from '../engine/load';
@@ -93,8 +94,10 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
 }
 
 /** Choose a workout of any kind from the library and My Workouts. */
-export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind }: { data: AppData; title: string; onPick: (w: Workout) => void; onClose: () => void; onBack?: () => void; startKind?: 'ride' | 'strength' | 'mobility' | 'walk' }) {
-  const [kind, setKind] = useState<'ride' | 'strength' | 'mobility' | 'walk'>(startKind ?? 'ride');
+export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind }: { data: AppData; title: string; onPick: (w: Workout) => void; onClose: () => void; onBack?: () => void; startKind?: 'ride' | 'strength' | 'mobility' | 'walk' | 'run' }) {
+  const [kind, setKind] = useState<'ride' | 'strength' | 'mobility' | 'walk' | 'run'>(startKind ?? 'ride');
+  // Runs are offered when the rider's week has them on, or when the session being replaced is a run.
+  const kinds = (['ride', 'strength', 'mobility', 'walk', 'run'] as const).filter((k) => k !== 'run' || getCurrentMay().run || startKind === 'run');
   return (
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
@@ -103,7 +106,7 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
           <button class="btn sm quiet" onClick={onClose}>Cancel</button>
         </div>
         <div class="seg" style="margin-bottom:12px">
-          {(['ride', 'strength', 'mobility', 'walk'] as const).map((k) => <button key={k} class={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : KIND_LABEL[k]}</button>)}
+          {kinds.map((k) => <button key={k} class={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : k === 'run' ? 'Runs' : KIND_LABEL[k]}</button>)}
         </div>
         <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">make a new workout</a>.</p>
         <div class="stack">
@@ -113,7 +116,7 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
             return (
               <button class="cal-item" key={w.id} onClick={() => onPick(w)} style="cursor:pointer;text-align:left">
                 {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : FAMILY_LABEL[w.family] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
+                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : FAMILY_LABEL[w.family] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w)}${w.source === 'mine' ? ' · mine' : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
               </button>
             );
           })}

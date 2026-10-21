@@ -34,7 +34,7 @@ export interface WeekSummary {
   byKind: Record<SessionKind, { done: number; planned: number }>;
 }
 
-const KINDS: SessionKind[] = ['ride', 'strength', 'walk', 'mobility', 'other'];
+const KINDS: SessionKind[] = ['ride', 'strength', 'walk', 'run', 'mobility', 'other'];
 
 /**
  * One week of the calendar read as numbers: what was planned (every session on

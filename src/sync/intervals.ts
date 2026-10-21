@@ -138,9 +138,10 @@ export function sportOf(type: string, averageSpeedMs?: number): SessionKind {
   if (/Ride/.test(type) || type === 'Velomobile') return 'ride';
   if (/Walk|Hike|Ruck/.test(type)) return 'walk';
   if (/Run|Treadmill/.test(type) && averageSpeedMs != null && averageSpeedMs > 0 && averageSpeedMs < 1.95) return 'walk';
+  if (/Run/.test(type)) return 'run';   // 7 km/h or faster, or no speed recorded (a treadmill run without a footpod)
   if (/^(WeightTraining|Workout|Crossfit|HIIT)$/.test(type)) return 'strength';
   if (/^(Yoga|Pilates|Stretching|Mobility)$/.test(type)) return 'mobility';
-  return 'other';   // runs, swims, rows, anything else: counted toward load, never planned
+  return 'other';   // swims, rows, anything else: counted toward load, never planned
 }
 
 /**
@@ -151,7 +152,7 @@ export function sportOf(type: string, averageSpeedMs?: number): SessionKind {
  * whole session is the work, so those count elapsed time.
  */
 export function durationFor(kind: SessionKind, moving?: number, elapsed?: number): number {
-  if (kind === 'ride' || kind === 'other') return moving || elapsed || 0;
+  if (kind === 'ride' || kind === 'run' || kind === 'other') return moving || elapsed || 0;   // a run, like a ride, stops at lights
   return elapsed || moving || 0;
 }
 
@@ -270,6 +271,7 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  */
 export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: { maxHr: number; lthr: number }): Promise<number> {
   const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
+    : workout.kind === 'run' ? runEvent(workout, date, profile)
     : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)
     : rideEvent(workout, date, basis);
   const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
@@ -380,7 +382,7 @@ function sessionEvent(workout: Workout, date: string) {
 /** How strength and mobility sessions are typed when sent; see sessionEvent. */
 export const SESSION_EVENT_TYPE = 'Ride';
 /** The type each kind of recording ought to carry in Intervals.icu. */
-export const ICU_TYPE_FOR_KIND: Record<string, string> = { strength: 'WeightTraining', mobility: 'Yoga', walk: 'Walk' };
+export const ICU_TYPE_FOR_KIND: Record<string, string> = { strength: 'WeightTraining', mobility: 'Yoga', walk: 'Walk', run: 'Run' };
 
 /** Set an activity's type in Intervals.icu (a recording the watch filed as a ride but that was a planned strength session, say). */
 export async function updateActivityType(c: IntervalsCredentials, activityId: string, type: string): Promise<void> {
@@ -426,10 +428,41 @@ function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lt
 }
 
 /**
+ * A run goes to the Garmin as a Run workout with heart-rate steps. Like a walk, the app's
+ * bands are shares of max heart rate, converted here to shares of threshold heart rate
+ * with the rider's numbers. A repeated step is an Intervals.icu repeat block: the work
+ * and its recovery, "6x". (Intervals repeats the recovery after the last one too, a
+ * minute the app's own count leaves out.)
+ */
+export function runEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
+  const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));
+  const band = (lo: number, hi: number) => `${lo > 0 ? toLthr(lo) : Math.round(NO_FLOOR.hr * 100)}-${toLthr(hi)}% LTHR`;
+  const dur = (sec: number) => { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m && s ? `${m}m${s}s` : m ? `${m}m` : `${s}s`; };
+  const lines: string[] = [workout.purpose, ''];
+  for (const s of workout.run?.steps ?? []) {
+    const n = Math.max(1, s.repeat ?? 1);
+    const step = `- ${dur(s.seconds)} ${band(s.hrLow, s.hrHigh)}`;
+    if (n === 1) { lines.push(step); continue; }
+    lines.push('', `${s.label ? s.label.split(':')[0] : 'Set'} ${n}x`, step);
+    if (s.recoverSeconds) lines.push(`- ${dur(s.recoverSeconds)} ${band(s.recoverLow ?? 0.65, s.recoverHigh ?? 0.75)}`);
+    lines.push('');
+  }
+  return {
+    category: 'WORKOUT',
+    start_date_local: `${date}T00:00:00`,
+    type: 'Run',
+    name: workout.name,
+    description: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n',
+    moving_time: (workout.minutes ?? 0) * 60,
+    icu_training_load: workout.estimatedTss ?? 0,
+  };
+}
+
+/**
  * Record a session done without a device as a manual activity, so Intervals.icu
  * holds the complete record and the next sync treats it like any other.
  */
-export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga' | 'Ride'; seconds: number; tss: number; rpe?: number; description?: string }): Promise<string> {
+export async function createManualActivity(c: IntervalsCredentials, a: { date: string; name: string; type: 'Walk' | 'WeightTraining' | 'Yoga' | 'Ride' | 'Run'; seconds: number; tss: number; rpe?: number; description?: string; distanceM?: number }): Promise<string> {
   const full = {
     start_date_local: `${a.date}T12:00:00`,
     name: a.name,
@@ -439,6 +472,7 @@ export async function createManualActivity(c: IntervalsCredentials, a: { date: s
     icu_training_load: a.tss,
     icu_rpe: a.rpe,
     description: a.description,
+    ...(a.distanceM ? { distance: a.distanceM } : {}),
   };
   // Intervals.icu validates the body strictly; if it refuses the load/effort fields, send the plain record
   // and then set the load with an update, so the session still counts.

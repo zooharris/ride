@@ -363,7 +363,7 @@ function coverage(zones: number[] | undefined, seconds: number, what: string): s
 function recordedAs(r: Ride): string | null {
   const filed = sportOf(r.type, r.averageSpeedMs);
   if (filed === r.sport) return null;
-  return { ride: 'a ride', walk: 'a walk', strength: 'a strength session', mobility: 'a mobility session', other: /Run/.test(r.type) ? 'a run' : `"${r.type}"` }[filed];
+  return { ride: 'a ride', walk: 'a walk', strength: 'a strength session', mobility: 'a mobility session', run: 'a run', other: `"${r.type}"` }[filed];
 }
 
 /** Where an activity's training load came from, for the hover text on the list. */
@@ -394,7 +394,7 @@ function groupByWeek(rides: Ride[]): Array<{ start: string; rides: Ride[] }> {
 
 /** A week of activities in the shape the kind bar reads (everything done, nothing outstanding). */
 function doneOnly(rides: Ride[]): WeekSummary {
-  const byKind = { ride: { done: 0, planned: 0 }, strength: { done: 0, planned: 0 }, walk: { done: 0, planned: 0 }, mobility: { done: 0, planned: 0 }, other: { done: 0, planned: 0 } };
+  const byKind = { ride: { done: 0, planned: 0 }, strength: { done: 0, planned: 0 }, walk: { done: 0, planned: 0 }, run: { done: 0, planned: 0 }, mobility: { done: 0, planned: 0 }, other: { done: 0, planned: 0 } };
   for (const r of rides) { byKind[r.sport ?? 'ride'].done += r.tss ?? 0; byKind[r.sport ?? 'ride'].planned += r.tss ?? 0; }
   return { start: '', days: [], plannedTss: 0, doneTss: 0, plannedMinutes: 0, doneMinutes: 0, sessionsPlanned: 0, sessionsDone: 0, byKind };
 }
@@ -410,7 +410,7 @@ function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
   );
 }
 
-const KIND_NOUN: Record<Ride['sport'], string> = { ride: 'ride', walk: 'walk', strength: 'session', mobility: 'session', other: 'activity' };
+const KIND_NOUN: Record<Ride['sport'], string> = { ride: 'ride', walk: 'walk', run: 'run', strength: 'session', mobility: 'session', other: 'activity' };
 
 /** Recorded indoors: a trainer ride, a treadmill walk or run. */
 function isIndoor(r: Ride): boolean { return /Virtual|Treadmill|Indoor/i.test(r.type); }
@@ -461,6 +461,15 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ...hr,
     ['Average temperature', tempF],
   ];
+  if (r.sport === 'run') return [
+    ['Time', clock(r.seconds), 'Moving time: stops at lights and crossings are left out, as on a ride'],
+    ['Distance', distance(r.distanceM, profile)],
+    ['Average pace', showPace(r) ? pace(r.averageSpeedMs, profile) : undefined, 'Moving time over distance'],
+    ['Total climbing', elevation(r.elevationM, profile)],
+    ['Training load (TSS)', r.tss, r.tssBasis === 'heart-rate' ? 'From heart rate and time, the same way an HR-only ride is scored' : r.tssBasis === 'intervals' ? 'Intervals.icu\'s own load for the run (no heart rate recorded)' : 'Estimated at 55 an hour: no heart rate or load came with the recording'],
+    ...hr,
+    ['Average temperature', tempF],
+  ];
   if (r.sport === 'strength' || r.sport === 'mobility') return [
     ['Time', clock(r.seconds), 'From start to finish of the recording, rests included'],
     ['Training load (TSS)', r.tss, r.uncountedTss != null ? `Left out of training load at your request; it would be ${r.uncountedTss}.` : r.sport === 'strength' && effort ? `From your effort rating (${effort}/10) and the time: heart rate under-reads lifting, so your rating sets the load.` : r.sport === 'strength' ? 'How much the session cost you, estimated from heart rate and time. Lifting loads the muscles more than the heart shows, so treat this as a floor' : 'How much the session cost you, from heart rate and time; mobility is meant to cost very little'],
@@ -477,7 +486,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
   ];
 }
 
-const KIND_CHOICES: Array<[SessionKind, string]> = [['ride', 'Ride'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walk'], ['other', 'Other (run, swim, anything else)']];
+const KIND_CHOICES: Array<[SessionKind, string]> = [['ride', 'Ride'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walk'], ['run', 'Run'], ['other', 'Other (swim, row, anything else)']];
 
 /**
  * Match an unmatched recording to a planned session by hand: one done a day

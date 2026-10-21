@@ -1,5 +1,6 @@
 import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
+import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
@@ -177,6 +178,7 @@ export function Settings({ data }: { data: AppData }) {
             <input type="number" value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
           <div class="field"><label>Hours per week</label><input type="number" step="0.5" value={p.hoursPerWeek} onInput={num('hoursPerWeek')} /></div>
           <div class="field"><label>Birth year</label><input type="number" value={p.birthYear ?? ''} onInput={(e) => upd('birthYear', Number((e.target as HTMLInputElement).value) || undefined)} /></div>
+          <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
         </div>
         <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Targets sent to Garmin</label>
@@ -428,4 +430,19 @@ function UpdateCheck() {
 export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'ftp', 'lthr', 'hoursPerWeek', 'basis'] as const;
 export function coachFieldsChanged(before: Profile, after: Profile): boolean {
   return COACH_FIELDS.some((k) => before[k] !== after[k]);
+}
+
+/**
+ * Threshold run pace as m:ss per mile or km (stored per km). Typed as text and read
+ * when it makes sense, so "8:" on the way to "8:05" is not thrown away.
+ */
+function PaceField({ value, imperial, onChange }: { value?: number; imperial: boolean; onChange: (v: number | undefined) => void }) {
+  const [text, setText] = useState(formatPace(value, imperial));
+  const bad = text.trim() !== '' && parsePace(text, imperial) == null;
+  return (
+    <div class="field"><label>Threshold run pace (min per {imperial ? 'mile' : 'km'})</label>
+      <input value={text} placeholder="e.g. 8:30" inputMode="numeric" aria-invalid={bad} onInput={(e) => { const t = (e.target as HTMLInputElement).value; setText(t); if (!t.trim()) onChange(undefined); else { const v = parsePace(t, imperial); if (v) onChange(v); } }} />
+      <span class={`small ${bad ? '' : 'faint'}`} style={bad ? 'color:var(--bad)' : ''}>{bad ? 'Minutes and seconds, like 8:30.' : 'The pace you could hold for about an hour. Leave it blank and runs are by heart rate only.'}</span>
+    </div>
+  );
 }

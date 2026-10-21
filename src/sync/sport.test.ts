@@ -15,8 +15,10 @@ describe('activity types from Intervals.icu', () => {
   it('treats a slow treadmill "run" as a walk, a real run as other', () => {
     expect(sportOf('Run', 1.5)).toBe('walk');          // 5.4 km/h
     expect(sportOf('VirtualRun', 1.7)).toBe('walk');
-    expect(sportOf('Run', 3.0)).toBe('other');          // 10.8 km/h
-    expect(sportOf('Run')).toBe('other');               // no speed known
+    expect(sportOf('Run', 3.0)).toBe('run');            // 10.8 km/h: a run since 21 Oct 2026
+    expect(sportOf('Run')).toBe('run');                 // no speed known (a treadmill run without a footpod)
+    expect(sportOf('Run', 2.5)).toBe('run');
+    expect(sportOf('VirtualRun', 3)).toBe('run');
   });
 });
 

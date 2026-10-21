@@ -94,7 +94,7 @@ export async function deleteRecording(rideId: string): Promise<void> {
 
 /* ---------- the rider's edits to a recorded activity ---------- */
 
-const ICU_TYPE: Record<string, string> = { ride: 'Ride', strength: 'WeightTraining', mobility: 'Yoga', walk: 'Walk' };
+const ICU_TYPE: Record<string, string> = { ride: 'Ride', strength: 'WeightTraining', mobility: 'Yoga', walk: 'Walk', run: 'Run' };
 
 async function upsertEdit(id: string, date: string, patch: Partial<ActivityEdit>): Promise<ActivityEdit> {
   const cur = (await db.activityEdits.get(id)) ?? { id, date };

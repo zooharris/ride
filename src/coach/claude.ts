@@ -7,6 +7,7 @@ import type { Fitness, PlannedWorkout, Profile, Ride, Workout } from '../engine/
 import { exerciseLine } from '../engine/record';
 import type { Readiness, ReadinessDriver } from '../engine/readiness';
 import { workoutStats } from '../engine/workout';
+import { runStepsLine } from '../engine/run';
 
 const MODEL = 'claude-sonnet-5-5';
 
@@ -81,7 +82,7 @@ export function planLine(plan: CoachPlan | undefined): string {
   return `Plan: ${plan.name}, ${plan.goal}${week}${togo}.`;
 }
 
-const KIND_WORD: Record<Workout['kind'], string> = { ride: 'ride', strength: 'strength session', mobility: 'mobility session', walk: 'walk', other: 'session' };
+const KIND_WORD: Record<Workout['kind'], string> = { ride: 'ride', strength: 'strength session', mobility: 'mobility session', walk: 'walk', run: 'run', other: 'session' };
 
 /** One line per session on the day, with what it is, how big it is, and whether it is done. */
 export function describeSession({ planned, workout, recorded }: TodaySession, withStatus = true): string {
@@ -94,6 +95,7 @@ export function describeSession({ planned, workout, recorded }: TodaySession, wi
     if (workout.estimatedTss != null) parts.push(`planned training load about ${workout.estimatedTss} TSS`);
     if (workout.kind === 'strength' && workout.effort) parts.push(`planned effort ${workout.effort}/10`);
     if (workout.kind === 'walk' && workout.walk) parts.push(workout.walk.hrLow > 0 ? `heart rate ${Math.round(workout.walk.hrLow * 100)}–${Math.round(workout.walk.hrHigh * 100)}% of max` : `no minimum heart rate, up to ${Math.round(workout.walk.hrHigh * 100)}% of max`);
+    if (workout.kind === 'run' && workout.run?.steps.length) parts.push(`steps: ${runStepsLine(workout)}`);
     if (workout.exercises?.length) parts.push(`${workout.exercises.length} exercises: ${workout.exercises.slice(0, 6).map((e) => e.name).join(', ')}${workout.exercises.length > 6 ? '…' : ''}`);
   }
   if (workout.purpose) parts.push(workout.purpose);

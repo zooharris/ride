@@ -122,7 +122,7 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
   );
 }
 
-function kindOrder(k?: SessionKind): number { return { ride: 0, walk: 1, strength: 2, mobility: 3, other: 4 }[k ?? 'other'] ?? 5; }
+function kindOrder(k?: SessionKind): number { return { ride: 0, walk: 1, run: 1, strength: 2, mobility: 3, other: 4 }[k ?? 'other'] ?? 5; }
 function minutesOf(w: Workout): number { return w.kind === 'ride' ? Math.round(workoutStats(w.blocks).seconds / 60) : (w.walk?.minutes ?? w.minutes ?? 0); }
 function tssOf(w: Workout): number { return w.kind === 'ride' ? workoutStats(w.blocks).tss : (w.estimatedTss ?? 0); }
 function hm(m: number): string { return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}` : `${m} min`; }

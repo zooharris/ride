@@ -1,6 +1,6 @@
 import type { Equipment, Exercise, Workout } from '../engine/types';
-import { estimateSessionTss, generateMobility, generateStrength, generateWalk } from '../engine/sessions';
-import { exercisesFor, lightLoad, type Pattern } from './strength';
+import { estimateSessionTss, generateMobility, generateRun, generateStrength, generateWalk } from '../engine/sessions';
+import { exercisesFor, firstFirst, lightLoad, type Pattern } from './strength';
 import { MOBILITY } from './mobility';
 
 /**
@@ -54,7 +54,7 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
       const isHold = /plank|dead bug|bird dog|pallof|wall sit|hollow|carry/i.test(pick.name);
       exercises.push({ name: pick.name, sets: t.sets, reps: isHold ? undefined : pick.unilateral && !/per side/.test(pick.reps ?? t.reps) ? `${pick.reps ?? t.reps} per side` : pick.reps ?? t.reps, holdSeconds: isHold ? 40 : undefined, load: pick.loadable ? t.load : lightLoad(pick), cue: pick.cue, why: pick.why, equipment: pick.equipment });
     }
-    out.push({ id: `lib-str-${t.id}`, name: t.name, kind: 'strength', family: 'recovery', purpose: t.purpose, physiology: t.physiology, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises, effort: t.effort, estimatedTss: estimateSessionTss({ kind: 'strength', minutes: t.minutes, effort: t.effort }), minutes: t.minutes, source: 'library' });
+    out.push({ id: `lib-str-${t.id}`, name: t.name, kind: 'strength', family: 'recovery', purpose: t.purpose, physiology: t.physiology, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises: firstFirst(exercises), effort: t.effort, estimatedTss: estimateSessionTss({ kind: 'strength', minutes: t.minutes, effort: t.effort }), minutes: t.minutes, source: 'library' });
   }
 
   // Mobility by focus, the planner's own routines
@@ -94,5 +94,16 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   walk('lib-walk-90', generateWalk({ minutes: 90, where, reason: 'A long walk in zone 2: ninety minutes of aerobic work that costs the legs very little.' }), { name: 'Long walk 1:30' });
   if (where === 'treadmill') walk('lib-walk-incline', generateWalk({ minutes: 40, where, reason: 'Set the treadmill to a steady 8–12% grade and walk briskly without holding on: glutes and calves work like a climb and heart rate reaches zone 2 with no pack.' }), { name: 'Incline walk 40 min', walk: { minutes: 40, hrLow: 0.6, hrHigh: 0.72 } });
   walk('lib-walk-brisk', generateWalk({ minutes: 30, where, reason: 'Thirty minutes at the top of zone 2 into low zone 3: a brisk walk with purpose, arms swinging, for a day with no time for more.' }), { name: 'Brisk walk 30 min', walk: { minutes: 30, hrLow: 0.68, hrHigh: 0.78 } });
+
+  // Runs: always built (so a run on the calendar is always found); the Library and the picker
+  // show them only when the rider's week has runs on.
+  const runWhere = eq.includes('treadmill') && !eq.includes('outdoor-walk') ? 'treadmill' : 'outdoor';
+  const run = (id: string, w: Workout) => out.push(fix(w, id));
+  run('lib-run-easy-30', generateRun({ kind: 'easy', minutes: 30, where: runWhere, reason: 'Thirty easy minutes on foot: aerobic work with the impact cycling lacks, at a heart rate low enough to run again in two days.' }));
+  run('lib-run-easy-45', generateRun({ kind: 'easy', minutes: 45, where: runWhere, reason: 'Forty-five easy minutes: the same aerobic work as an hour of zone 2 riding, with the running muscles and tendons doing it.' }));
+  run('lib-run-long-60', generateRun({ kind: 'long', minutes: 60, where: runWhere, reason: 'An hour at an easy heart rate, two or more days clear of the long ride: time on feet without adding much fatigue.' }));
+  run('lib-run-strides-35', generateRun({ kind: 'strides', minutes: 35, where: runWhere, reason: 'An easy run with six short strides near the end: quick, relaxed turnover that keeps running form sharp.' }));
+  run('lib-run-tempo-44', generateRun({ kind: 'tempo', minutes: 44, where: runWhere, reason: 'Three eight-minute blocks at a comfortably hard heart rate: one a week at most, never the day before a hard ride.' }));
+  run('lib-run-hills-35', generateRun({ kind: 'hills', minutes: 35, where: runWhere, reason: 'Six one-minute climbs at a hard effort, walking down between them: leg power for standing climbs, with the impact kept low.' }));
   return out;
 }

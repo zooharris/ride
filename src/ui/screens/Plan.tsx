@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { setCurrentEquipment } from '../store';
+import { setCurrentEquipment, setCurrentMay } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
@@ -68,7 +68,7 @@ export function Plan({ data }: { data: AppData }) {
     }
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
-    setCurrentEquipment(av.equipment);
+    setCurrentEquipment(av.equipment); setCurrentMay(av);
     setTimeout(() => document.getElementById('plan-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
@@ -194,7 +194,7 @@ export function Plan({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Your week</h2>
-        <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, mobility or rest for every other day. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
+        <p class="faint small" style="margin:4px 0 10px">For each day: how much time you have, where you can ride, and whether the day is already spoken for. Leave the commitment on "App decides" unless a day really is fixed (a class, a friend you lift with, a day you always rest): the app chooses ride, strength, walk, run, mobility or rest for every other day, within what you let it schedule. {totalHours ? `${hoursText(totalHours)} a week in total.` : ''}</p>
         <div class="panel">
         <WeekFields av={av} setAv={setAv} masters={masters} setMasters={setMasters} profile={profile} />
         </div>
@@ -329,8 +329,8 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
   );
 }
 
-export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk', other: 'Other' };
-export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', other: 'var(--z1)' };
+export const KIND_LABEL: Record<SessionKind, string> = { ride: 'Ride', strength: 'Strength', mobility: 'Mobility', walk: 'Walk', run: 'Run', other: 'Other' };
+export const KIND_COLOR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', run: 'var(--run)', other: 'var(--z1)' };
 
 export function KindDot({ kind, big = false }: { kind: SessionKind; big?: boolean }) {
   const I = KIND_ICON[kind];

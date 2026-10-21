@@ -10,20 +10,23 @@ import { addDays, rideIntensity } from './load';
  * matching as the plan assessment's recovery evidence (the morning is the day
  * after), so this card and the planner read the rider the same way.
  */
-export type DayKind = 'long' | 'hard' | 'strength' | 'rest' | 'other';
+export type DayKind = 'long' | 'hard' | 'strength' | 'run' | 'rest' | 'other';
 
 export function dayKind(onDay: Ride[], lthr: number): DayKind {
   if (!onDay.length) return 'rest';
   const rides = onDay.filter((r) => r.sport === 'ride');
   if (rides.some((r) => r.seconds >= 9000)) return 'long';
   if (rides.some((r) => r.seconds >= 2400 && (rideIntensity(r, lthr) ?? 0) >= 0.85)) return 'hard';
+  // A run of 30 minutes or more at 85% of threshold heart rate or above is a hard day like a hard ride.
+  if (onDay.some((r) => r.sport === 'run' && r.seconds >= 1800 && lthr > 0 && (r.averageHr ?? 0) / lthr >= 0.85)) return 'hard';
   if (onDay.some((r) => r.sport === 'strength')) return 'strength';
+  if (onDay.some((r) => r.sport === 'run')) return 'run';
   return 'other';
 }
 
 export const DAY_KIND_PHRASE: Record<DayKind, string> = {
   long: 'the morning after a long ride', hard: 'the morning after a hard ride', strength: 'the morning after strength',
-  rest: 'the morning after a rest day', other: 'the morning after an easy day',
+  run: 'the morning after a run', rest: 'the morning after a rest day', other: 'the morning after an easy day',
 };
 
 export interface MorningRow { kind: Exclude<DayKind, 'other'>; n: number; hrv?: number; restingHr?: number; sleepSeconds?: number }
@@ -46,7 +49,7 @@ export function morningsAfter(rides: Ride[], wellness: Wellness[], from: string,
     restingHr: mean(mornings.map((w) => pick(w, 'restingHr')).filter((v): v is number => v != null)),
     sleepSeconds: mean(mornings.map((w) => pick(w, 'sleepSeconds')).filter((v): v is number => v != null)),
   };
-  const kinds: Array<MorningRow['kind']> = ['hard', 'long', 'strength', 'rest'];
+  const kinds: Array<MorningRow['kind']> = ['hard', 'long', 'strength', 'run', 'rest'];
   return kinds.map((kind) => {
     const after = mornings.filter((w) => dayKind(byDate.get(addDays(w.date, -1)) ?? [], lthr) === kind);
     const diff = (k: 'hrv' | 'restingHr' | 'sleepSeconds') => {

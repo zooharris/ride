@@ -13,7 +13,8 @@ import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { sendWorkout } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
-import { sessionSteps } from '../../sync/intervals';
+import { runEvent, sessionSteps } from '../../sync/intervals';
+import { bandOf, hrBandWords, paceHint, timeWords } from '../../engine/run';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
@@ -44,7 +45,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm quiet" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm quiet" onClick={() => setChange('replace')}>Replace</button></>;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -117,7 +118,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, thresholdPace, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -159,6 +160,29 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
         </section>
       )}
 
+      {w.run && (
+        <section class="section">
+          <h2>The run</h2>
+          <table class="steps" style="margin-top:8px">
+            <tr><td class="faint small">Step</td><td class="faint small">Time</td><td class="faint small">Heart rate</td>{maxHr > 0 && <td class="faint small r">bpm</td>}{thresholdPace ? <td class="faint small r">Pace, as a guide</td> : null}</tr>
+            {w.run.steps.flatMap((s, i) => {
+              const n = Math.max(1, s.repeat ?? 1);
+              const row = (key: string, label: string, sec: number, lo: number, hi: number) => (
+                <tr key={key}>
+                  <td style="white-space:nowrap">{label}</td><td class="num" style="white-space:nowrap">{n > 1 && key.endsWith('w') ? `${n} × ` : ''}{timeWords(sec)}</td><td>{hrBandWords(lo, hi)}</td>
+                  {maxHr > 0 && <td class="r num">{lo ? `${Math.round(maxHr * lo)}–` : 'up to '}{Math.round(maxHr * hi)}</td>}
+                  {thresholdPace ? <td class="r num">{paceHint(bandOf(lo, hi), thresholdPace, units === 'imperial') ?? '–'}</td> : null}
+                </tr>
+              );
+              const out = [row(`${i}w`, s.label ? s.label.charAt(0).toUpperCase() + s.label.slice(1) : `Step ${i + 1}`, s.seconds, s.hrLow, s.hrHigh)];
+              if (n > 1 && s.recoverSeconds) out.push(row(`${i}r`, `  between: ${s.recoverLow === 0 ? 'walk' : 'easy'}`, s.recoverSeconds, s.recoverLow ?? 0.65, s.recoverHigh ?? 0.75));
+              return out;
+            })}
+          </table>
+          <p class="muted small" style="margin-top:10px">Runs go by heart rate: the Garmin holds you in each band. {thresholdPace ? 'The pace column comes from your threshold pace and is only a guide; on hills, heat or tired legs, follow the heart rate.' : 'Set a threshold run pace in Settings to see the pace each band implies.'} Easy means easy: if the heart rate climbs past the band, slow down or walk.</p>
+        </section>
+      )}
+
       {w.exercises && (
         <section class="section">
           <h2>{w.kind === 'strength' ? 'Exercises' : 'Stretches'}</h2>
@@ -182,9 +206,15 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       {planned && w.kind !== 'ride' && planned.status !== 'completed' && (
         <section class="section">
           <h2>On the Garmin</h2>
-          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
+          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : w.kind === 'run' ? 'Sent: it is on your Garmin after its next phone sync, as a running workout with each step and its heart-rate band.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'run' ? 'Send it as a running workout: the watch shows each step with its heart-rate band and moves you on. The recording comes back through Intervals.icu and is matched to this session.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
-          {w.kind !== 'walk' && (
+          {w.kind === 'run' && (
+            <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
+              <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>
+              <p class="faint small">Percentages are of your threshold heart rate ({lthr} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are shares of your maximum ({maxHr} bpm), converted.</p>
+            </details>
+          )}
+          {w.kind !== 'walk' && w.kind !== 'run' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{sessionSteps(w).map((l) => /^\d+x$/.test(l) ? `${l.slice(0, -1)} sets of:` : l.replace(/^- /, '  ')).join('\n')}</pre>
               <p class="faint small">"Press lap" steps end when you press the lap button; the time after a set is only the estimate the plan uses. Rests and holds count down on the watch. Repeated sets appear as repeats.</p>

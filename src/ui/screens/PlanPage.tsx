@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { findWorkout, sessionHref } from '../store';
+import { findWorkout, sessionHref, setCurrentEquipment, setCurrentMay } from '../store';
 import { applyPlan, buildPlan, cancelPlan, changeSig, freshData, getActivePlan, getPlans, plannedTss, putPlan, rejectChanges, renamePlan, replan, type ActivePlan, type PlanWeekSummary } from '../planService';
 import { changeKey, diffPlan, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, AwayRange, Plan as GeneratedPlan } from '../../engine/planner';
@@ -233,6 +233,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
       const saved = (await getPlans()).find((p) => p.id === plan.id);
       if (saved) await putPlan({ ...saved, goal, availability: av, masters, away, start: upcoming ? (preview.plan.weeks[0]?.sessions[0]?.date ?? startDate) : saved.start, goalDate: preview.plan.goalDate, projection: preview.plan.projection, requiredCtl: preview.plan.requiredCtl });
       if (declined.length) await rejectChanges(declined);
+      setCurrentEquipment(av.equipment); setCurrentMay(av);   // the Library shows what this week allows
       toast({ ok: true, text: accepted.length ? `Plan saved; ${accepted.length} change${accepted.length === 1 ? '' : 's'} made on the calendar.` : 'Plan settings saved; the calendar is unchanged.' });
       go(`plan/${plan.id}`);
     } finally { setBusy(false); }

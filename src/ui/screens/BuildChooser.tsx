@@ -7,6 +7,7 @@ const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: s
   { kind: 'strength', title: 'Strength', text: 'Exercises for your equipment, with sets, reps and load.' },
   { kind: 'mobility', title: 'Mobility', text: 'Stretches and how long to hold each one.' },
   { kind: 'walk', title: 'Walk', text: 'Treadmill or outdoors, with or without a weighted pack.' },
+  { kind: 'run', title: 'Run', text: 'Steps on time with a heart-rate band, sent to your Garmin as a run.' },
 ];
 
 /** The first step of New workout: say what kind of session this is. */

@@ -2,7 +2,7 @@ import type { Assessment } from './assessment';
 import { hm } from './assessment';
 import { demand, hoursText, type Demand, type Goal } from './goals';
 import { generateSession, type SessionIntent, type SessionType } from './generate';
-import { generateMobility, generateStrength, generateWalk, type StrengthLevel } from './sessions';
+import { generateMobility, generateRun, generateStrength, generateWalk, type StrengthLevel } from './sessions';
 import { addDays, fitnessSeries } from './load';
 import type { Basis, Equipment, Fitness, Profile, SessionKind, Workout } from './types';
 import { workoutStats } from './workout';
@@ -18,7 +18,27 @@ export interface Availability {
   outdoor: boolean[];     // ride outdoors on that day when the slot allows
   noBike: boolean[];      // the bike is not available that day (travel, logistics)
   equipment: Equipment[]; // what the rider has: bodyweight, dumbbells, bench, band, treadmill, outdoor-walk, trainer
-  pins: Array<{ dow: number; kind: SessionKind | 'rest' }>;  // standing commitments the plan must honour
+  pins: Array<{ dow: number; kind: SessionKind | 'rest' }>;  // standing commitments the plan must honour ("Always")
+  /** Which kinds the app may schedule at all (rides always). Undefined in plans saved before 21 Oct 2026: see mayOf. */
+  may?: MaySchedule;
+  /** Kinds a day must never have ("Never"). A pin for the same day and kind wins. */
+  never?: Array<{ dow: number; kind: SessionKind }>;
+}
+
+export interface MaySchedule { strength: boolean; walk: boolean; run: boolean; mobility: boolean }
+
+/**
+ * What the app may schedule. A week saved before these switches existed behaves as it
+ * always did: strength and mobility on, walks on when a treadmill or outdoor walks are
+ * ticked, runs off.
+ */
+export function mayOf(av: Pick<Availability, 'may' | 'equipment'>): MaySchedule {
+  return av.may ?? { strength: true, mobility: true, walk: av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk'), run: false };
+}
+
+/** The availability with every switch filled in, so nothing downstream reads undefined. */
+export function normalizeAvailability(av: Availability): Availability {
+  return { ...av, pins: av.pins ?? [], noBike: av.noBike ?? [false, false, false, false, false, false, false], may: mayOf(av), never: av.never ?? [] };
 }
 
 /** Days away (travel, a busy week), inclusive. Nothing is planned on them. */
@@ -57,7 +77,7 @@ export interface PlanRequest {
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
 
-export interface PlannedSession { date: string; kind: SessionKind; type: SessionType | 'strength' | 'mobility' | 'walk'; workout: Workout; seconds: number; tss: number; reason: string }
+export interface PlannedSession { date: string; kind: SessionKind; type: SessionType | 'strength' | 'mobility' | 'walk' | 'run'; workout: Workout; seconds: number; tss: number; reason: string }
 export interface PlanWeek { index: number; start: string; phase: Phase; label: string; targetTss: number; tss: number; hours: number; sessions: PlannedSession[]; note: string }
 
 export interface Plan {
@@ -77,7 +97,7 @@ export interface Plan {
 const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.max(0, Math.min(1, t));
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const dateOfSlot = (weekStart: string, slot: number) => addDays(weekStart, (slot - dow(weekStart) + 7) % 7);
-const KIND_ORDER: Record<SessionKind, number> = { ride: 0, walk: 1, strength: 2, mobility: 3, other: 4 };
+const KIND_ORDER: Record<SessionKind, number> = { ride: 0, walk: 1, run: 1, strength: 2, mobility: 3, other: 4 };
 const dow = (date: string) => new Date(date + 'T00:00:00').getDay();
 
 export function planWeeks(goal: Goal, start: string): number {
@@ -123,7 +143,9 @@ function topEmphasis(d: Demand): string {
 }
 
 export function generatePlan(req: PlanRequest): Plan {
-  const { goal, availability: av, assessment: a, profile } = req;
+  const { goal, assessment: a, profile } = req;
+  const av = normalizeAvailability(req.availability);
+  const may = av.may!;
   const d = demand(goal, profile, a, req.longRideKmh);
   const fixed = req.layout?.length ? req.layout : undefined;
   const n = fixed ? fixed.length : planWeeks(goal, req.start);
@@ -137,13 +159,20 @@ export function generatePlan(req: PlanRequest): Plan {
   // Standing commitments: a day pinned to rest carries nothing; a day pinned to strength,
   // a walk or mobility is kept clear of rides; a day pinned to a ride always gets one.
   const pinOf = (dw: number): SessionKind | 'rest' | undefined => (av.pins ?? []).find((p) => p.dow === dw)?.kind;
+  // "Never" for a day and kind; a pin ("Always") for the same day and kind is the stronger word.
+  const never = (dw: number, kind: SessionKind) => pinOf(dw) !== kind && (av.never ?? []).some((x) => x.dow === dw && x.kind === kind);
   const daysWithTime = [0, 1, 2, 3, 4, 5, 6].filter((i) => (av.hours[i] ?? 0) > 0 && pinOf(i) !== 'rest');
-  const slotsAll = daysWithTime.filter((i) => !av.noBike?.[i] && !['strength', 'walk', 'mobility'].includes(pinOf(i) ?? ''));
+  const slotsAll = daysWithTime.filter((i) => !av.noBike?.[i] && !never(i, 'ride') && !['strength', 'walk', 'run', 'mobility'].includes(pinOf(i) ?? ''));
   const pinsUsed = (av.pins ?? []).filter((p) => (av.hours[p.dow] ?? 0) > 0 || p.kind === 'rest');
-  if (pinsUsed.length) decisions.push(`Standing commitments honoured: ${pinsUsed.map((p) => `${DAY[p.dow]} is ${p.kind === 'rest' ? 'a rest day' : p.kind === 'ride' ? 'always a ride' : p.kind}`).join(', ')}.`);
+  if (pinsUsed.length) decisions.push(`Standing commitments honoured: ${pinsUsed.map((p) => `${DAY[p.dow]} is ${p.kind === 'rest' ? 'a rest day' : p.kind === 'ride' ? 'always a ride' : `always ${p.kind === 'walk' ? 'a walk' : p.kind === 'run' ? 'a run' : p.kind}`}`).join(', ')}.`);
+  const nevers = (av.never ?? []).filter((x) => pinOf(x.dow) !== x.kind && (x.kind === 'ride' || x.kind === 'mobility' || may[x.kind as keyof MaySchedule]));
+  if (nevers.length) decisions.push(`${nevers.map((x) => `Never ${x.kind === 'ride' ? 'a ride' : x.kind === 'walk' ? 'a walk' : x.kind === 'run' ? 'a run' : x.kind} on ${DAY[x.dow]}`).join('; ')}.`);
+  const off = (['strength', 'walk', 'run', 'mobility'] as const).filter((k) => !may[k] && (k !== 'run'));
+  if (off.length && req.availability.may) decisions.push(`Not scheduled, as you asked: ${off.map((k) => (k === 'walk' ? 'walks' : k)).join(', ')}.`);
   const capMinutes = slotsAll.reduce((s, i) => s + av.hours[i] * 60, 0);
   const capTss = capMinutes / 60 * 62;
-  const canWalk = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk');
+  const canWalk = may.walk;
+  const canRun = may.run;
   const pinned = (kind: SessionKind) => (av.pins ?? []).filter((p) => p.kind === kind).map((p) => p.dow);
 
   // Load trajectory. Fitness moves by (daily load - fitness) / 42 each day, so a
@@ -299,7 +328,7 @@ export function generatePlan(req: PlanRequest): Plan {
 
     // How much strength this week, and how heavy. Masters riders lose muscle and
     // tendon strength fastest, so they keep two sessions through base and build.
-    let strengthCount = phase === 'base' ? 2 : phase === 'build' ? (req.masters ? 2 : 1) : phase === 'peak' ? 1 : phase === 'taper' ? (phaseIdx === 0 ? 1 : 0) : 1;
+    let strengthCount = !may.strength ? 0 : phase === 'base' ? 2 : phase === 'build' ? (req.masters ? 2 : 1) : phase === 'peak' ? 1 : phase === 'taper' ? (phaseIdx === 0 ? 1 : 0) : 1;
     const pinnedStrengthDays = pinned('strength').filter((dw) => daysThisWeek.includes(dw));
     strengthCount = Math.max(strengthCount, pinnedStrengthDays.length);   // a standing commitment is kept even in weeks the plan would lift less
     const level: StrengthLevel = phase === 'base' ? (phaseIdx < 2 && i < 4 ? 'foundation' : 'build') : phase === 'build' ? (quality.length >= 2 ? 'maintain' : 'build') : phase === 'recovery' || phase === 'taper' ? 'light' : 'maintain';
@@ -315,7 +344,7 @@ export function generatePlan(req: PlanRequest): Plan {
       if (pinned('strength').includes(dw)) c -= 6;                        // a standing commitment wins
       return c;
     };
-    const strengthCandidates = () => daysThisWeek.filter((dw) => !strengthDays.includes(dw) && (av.hours[dw] * 60 - (rideOn.get(dw)?.minutes ?? 0)) >= 25);
+    const strengthCandidates = () => daysThisWeek.filter((dw) => !strengthDays.includes(dw) && !never(dw, 'strength') && (may.strength || pinnedStrengthDays.includes(dw)) && (av.hours[dw] * 60 - (rideOn.get(dw)?.minutes ?? 0)) >= 25);
     for (let k = 0; k < strengthCount; k++) {
       const cands = strengthCandidates().sort((x, y) => strengthCost(x) - strengthCost(y));
       if (!cands.length) break;
@@ -331,14 +360,54 @@ export function generatePlan(req: PlanRequest): Plan {
       const w = generateStrength({ level, minutes, equipment: av.equipment, variant: k === 0 ? 'A' : 'B', weekInBlock: phaseIdx, reason });
       extra.push({ date: dateOf(dw), kind: 'strength', type: 'strength', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason });
     }
-    if (i === 0) decisions.push(strengthDays.length
+    if (i === 0 && (may.strength || strengthDays.length)) decisions.push(strengthDays.length
       ? `Strength ${strengthCount === 2 ? 'twice' : 'once'} a week in ${phase}, placed on days that do not fight the rides (${strengthDays.map((dw) => DAY[dw]).join(' and ')} this week), ${av.equipment.length ? 'built from the equipment you have' : 'bodyweight only, since no equipment is listed'}. The day before a hard ride is avoided in proportion to ${a.afterStrength.confidence === 'none' ? 'an assumed mild cost; there is no data yet on how you recover from lifting' : 'what your mornings after lifting show'}.`
       : 'No strength session fitted this week: every day with time is already carrying a hard or long ride. Adding 30 minutes on a rest day would make room.');
+
+    // The days a ride cannot use (too short a window, or no bike): a run when runs are on and the
+    // day is safe for one, otherwise a walk when walks are on.
+    const footDay = (dw: number) => !rideOn.has(dw) && !strengthDays.includes(dw) && av.hours[dw] * 60 >= 25 && (!!av.noBike?.[dw] || av.hours[dw] * 60 < 45);
+
+    // Runs (masters guards): never the day before a hard ride or the day after the long ride; at most
+    // two a week in base, one in build, peak and recovery weeks, none in a taper or the last seven
+    // days before an event. A day pinned to a run always gets one: the rider chose.
+    const QUALITY_TYPES = ['sweetspot', 'threshold', 'vo2max', 'anaerobic'];
+    const qualityOn = (dw: number) => QUALITY_TYPES.includes(rideOn.get(dw)?.type ?? '');
+    const runCap = phase === 'base' ? 2 : phase === 'taper' ? 0 : 1;
+    const nearEvent = (dw: number) => goal.kind === 'event' && dateOf(dw) > addDays(goal.date, -7);
+    const pinnedRunDays = pinned('run').filter((dw) => daysThisWeek.includes(dw) && !rideOn.has(dw));
+    const runDays: number[] = [...pinnedRunDays];
+    if (canRun) {
+      for (const dw of daysThisWeek) {
+        if (runDays.filter((x) => !pinnedRunDays.includes(x)).length >= runCap) break;
+        if (runDays.includes(dw) || !footDay(dw) || never(dw, 'run') || nearEvent(dw)) continue;
+        if (qualityOn((dw + 1) % 7) || longOn((dw + 6) % 7)) continue;
+        runDays.push(dw);
+      }
+    }
+    let longRunDone = false;
+    runDays.forEach((dw, k) => {
+      const slot = Math.round(av.hours[dw] * 60);
+      const pin = pinnedRunDays.includes(dw);
+      const farFromLong = longSlots.every((l) => Math.min((dw - l + 7) % 7, (l - dw + 7) % 7) >= 2);
+      const kind = !longRunDone && slot >= 60 && farFromLong && phase !== 'recovery' ? 'long' : phase === 'base' && phaseIdx >= 2 && k === 1 && slot >= 30 ? 'strides' : 'easy';
+      if (kind === 'long') longRunDone = true;
+      const minutes = kind === 'long' ? 60 : Math.min(45, Math.max(25, slot));
+      const reason = pin ? 'Your standing run day: easy, by heart rate.'
+        : kind === 'long' ? 'A longer easy run on a day with an hour free and well clear of the long ride: time on feet, by heart rate.'
+        : kind === 'strides' ? 'An easy run with six short strides near the end: leg speed and running form, no fatigue to speak of.'
+        : av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from an easy run.' : 'Too short a window for a ride worth doing; an easy run uses it well and adds the impact loading cycling lacks.';
+      const w = generateRun({ kind, minutes, where: av.equipment.includes('treadmill') && !av.equipment.includes('outdoor-walk') ? 'treadmill' : 'outdoor', reason });
+      extra.push({ date: dateOf(dw), kind: 'run', type: 'run', workout: w, seconds: (w.minutes ?? minutes) * 60, tss: w.estimatedTss ?? 0, reason });
+    });
+    if (i === 0 && canRun) decisions.push(runDays.length
+      ? `Runs take the ${runDays.length === 1 ? 'day' : 'days'} a ride cannot use (${runDays.map((dw) => DAY[dw]).join(', ')}): easy, by heart rate, never the day before a hard ride or the day after the long one; at most two a week in base, one when the riding gets hard, none in the last week before the event.`
+      : 'Runs are on, but no day this week is a safe one for a run: every short day sits before a hard ride or after the long one.');
 
     // Walks: zone-2 aerobic work for the slots a ride cannot use (too short, or no bike that day).
     const pinnedWalkDays = pinned('walk').filter((dw) => daysThisWeek.includes(dw));
     if (canWalk || pinnedWalkDays.length) {
-      const walkDays = daysThisWeek.filter((dw) => pinOf(dw) === 'walk' || (canWalk && !rideOn.has(dw) && !strengthDays.includes(dw) && av.hours[dw] * 60 >= 25 && (av.noBike?.[dw] || av.hours[dw] * 60 < 45)));
+      const walkDays = daysThisWeek.filter((dw) => pinOf(dw) === 'walk' || (canWalk && !runDays.includes(dw) && !never(dw, 'walk') && footDay(dw)));
       const packKg = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk') ? Math.round(Math.min(11, 7 + loadingProgress * 4)) : undefined;
       for (const dw of walkDays) {
         const minutes = Math.min(60, Math.round(av.hours[dw] * 60));
@@ -351,11 +420,12 @@ export function generatePlan(req: PlanRequest): Plan {
 
     // Mobility: short routines after the long ride and after strength.
     for (const slot of longSlots) {
-      if (phase === 'taper') continue;
+      if (phase === 'taper' || !may.mobility || never(slot, 'mobility')) continue;
       const w = generateMobility({ focus: 'after-long-ride', minutes: 12, reason: 'Twelve minutes after the long ride: hips, back and hamstrings, while they are warm.' });
       extra.push({ date: dateOf(slot), kind: 'mobility', type: 'mobility', workout: w, seconds: 12 * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
     }
     for (const dw of strengthDays) {
+      if (!may.mobility || never(dw, 'mobility')) continue;
       const w = generateMobility({ focus: 'after-strength', minutes: 10, reason: 'Ten minutes after lifting: the hips and legs just worked.' });
       extra.push({ date: dateOf(dw), kind: 'mobility', type: 'mobility', workout: w, seconds: 10 * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
     }
@@ -364,7 +434,7 @@ export function generatePlan(req: PlanRequest): Plan {
       const w = generateMobility({ focus: 'full', minutes, reason: 'Your standing mobility day: the whole body, unhurried.' });
       extra.push({ date: dateOf(dw), kind: 'mobility', type: 'mobility', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason: w.purpose });
     }
-    if (i === 0) decisions.push('Mobility is attached to the long ride and to strength days: ten to twelve minutes while the muscles are warm, which is when stretching does the most and costs the least.');
+    if (i === 0 && may.mobility) decisions.push('Mobility is attached to the long ride and to strength days: ten to twelve minutes while the muscles are warm, which is when stretching does the most and costs the least.');
 
     // Fit to the weekly target: shrink or grow the endurance minutes.
     const goneDay = (slot: number) => refit && dateOfSlot(weekStart, slot) < req.notBefore!;

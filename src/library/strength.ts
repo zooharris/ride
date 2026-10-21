@@ -15,6 +15,8 @@ export interface ExerciseDef extends Omit<Exercise, 'sets' | 'reps' | 'load'> {
   unilateral?: boolean;
   /** Reps that suit this exercise whatever the session's scheme (e.g. pull-ups: as many clean reps as you have, up to 8). */
   reps?: string;
+  /** An explosive move that goes first in any session that includes it, while the legs are fresh (swings). */
+  first?: true;
 }
 
 const E = (id: string, pattern: Pattern, name: string, equipment: Equipment[], cue: string, why: string, loadable = true, unilateral = false, reps?: string): ExerciseDef =>
@@ -58,7 +60,7 @@ export const EXERCISES: ExerciseDef[] = [
   E('wall-sit', 'squat', 'Wall sit', ['bodyweight'], 'Back flat against a wall, thighs level, hold; breathe steadily.', 'Isometric quad endurance like a long seated climb.', false),
   E('single-leg-bridge', 'hinge', 'Single-leg glute bridge', ['bodyweight'], 'On your back, one foot flat, the other leg held up; drive the hips up with the one leg, keep the pelvis level.', 'One-sided glute strength and pelvic control.', false, true),
   E('lateral-lunge', 'single-leg', 'Lateral lunge', ['bodyweight', 'dumbbells'], 'Step wide to one side, sit into that hip with the other leg straight, push back to standing.', 'Adductors and glutes in the sideways plane the bike never trains; protects the hips.', true, true),
-  E('db-swing', 'hinge', 'Dumbbell swing', ['dumbbells'], 'One dumbbell held in both hands, hinge and swing it between the legs, snap the hips forward to chest height; the arms just hold on.', 'Explosive hip extension: power for sprints and standing climbs.'),
+  { ...E('db-swing', 'hinge', 'Dumbbell swing', ['dumbbells'], 'One dumbbell held in both hands, hinge and swing it between the legs, snap the hips forward to chest height; the arms just hold on.', 'Explosive hip extension: power for sprints and standing climbs.'), first: true },
   // More push and pull
   E('floor-press', 'push', 'Dumbbell floor press', ['dumbbells'], 'On your back on the floor, dumbbells pressed from the upper arms resting on the floor to lockout.', 'A pressing option with no bench, kind to the shoulders.'),
   E('band-row', 'pull', 'Band row', ['band'], 'Band anchored in front at chest height, row the hands to the ribs, squeeze the shoulder blades, slow return.', 'Upper-back strength with just a band.'),
@@ -87,7 +89,7 @@ export const EXERCISES: ExerciseDef[] = [
   // Kettlebell versions (Oct 21, 2026). One bell is enough for all of these; they lead the
   // rotation for a rider who has one, after any gym lifts.
   E('kb-goblet-squat', 'squat', 'Kettlebell goblet squat', ['kettlebell'], 'Hold the bell by the horns at your chest, elbows in; sit down between your heels with the chest up, drive up through the whole foot.', 'Quad and glute strength through the full pedal stroke; the bell at the chest keeps the torso tall.'),
-  E('kb-swing', 'hinge', 'Kettlebell swing', ['kettlebell'], 'Hike the bell back between the legs, snap the hips forward so it floats to chest height; arms just guide it, flat back, glutes tight at the top.', 'Explosive hip extension and posterior-chain endurance: power for sprints and standing climbs.', true, false, '10–15'),
+  { ...E('kb-swing', 'hinge', 'Kettlebell swing', ['kettlebell'], 'Hike the bell back between the legs, snap the hips forward so it floats to chest height; arms just guide it, flat back, glutes tight at the top.', 'Explosive hip extension and posterior-chain endurance: power for sprints and standing climbs.', true, false, '10–15'), first: true },
   E('kb-deadlift', 'hinge', 'Kettlebell deadlift', ['kettlebell'], 'Bell between the feet, hips back, flat back, hands on the handle; push the floor away and stand tall, lower the same way.', 'Glutes, hamstrings and back from the floor; the pattern to learn before the swing.'),
   E('kb-sl-rdl', 'hinge', 'Kettlebell single-leg deadlift', ['kettlebell'], 'Bell in the hand opposite the standing leg; hinge forward as the free leg rises behind, hips square, bell toward the floor, stand tall.', 'Hamstring strength with the hip stability each pedal stroke asks for.', true, true),
   E('kb-rack-lunge', 'single-leg', 'Kettlebell reverse lunge, racked', ['kettlebell'], 'Bell in the rack position at one shoulder, step back into a lunge, front knee over the ankle, push through the front heel to stand.', 'Single-leg strength with the trunk resisting a one-sided load, as on a hard climb.', true, true),
@@ -117,4 +119,10 @@ export function lightLoad(e: Pick<ExerciseDef, 'equipment'>): string {
   if (e.equipment.length === 1 && e.equipment[0] === 'band') return 'Light to medium band; slow and controlled';
   if (e.equipment.length === 1 && e.equipment[0] === 'kettlebell') return 'Light kettlebell; slow and controlled';
   return 'Bodyweight; slow and controlled';
+}
+
+/** An exercise marked to go first moves to the front of the session; the rest keep their order. */
+export function firstFirst<T extends { name: string }>(list: T[]): T[] {
+  const lead = list.filter((e) => EXERCISES.some((d) => d.first && d.name === e.name));
+  return [...lead, ...list.filter((e) => !lead.includes(e))];
 }

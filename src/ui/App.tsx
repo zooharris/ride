@@ -14,6 +14,7 @@ import { Onboarding } from './screens/Onboarding';
 import { Builder } from './screens/Builder';
 import { SessionBuilder } from './screens/SessionBuilder';
 import { BuildChooser } from './screens/BuildChooser';
+import { RunBuilder } from './screens/RunBuilder';
 import { findWorkout } from './store';
 import { Plan } from './screens/Plan';
 import { PlanPage } from './screens/PlanPage';
@@ -72,7 +73,8 @@ export function App() {
       const source = id ? findWorkout(data.mine, id) : copyId ? findWorkout(data.mine, copyId) : undefined;
       const kind = (source?.kind ?? route.params.get('kind') ?? '') as string;
       const key = id ?? copyId ?? `new-${kind}`;
-      screen = !kind ? <BuildChooser /> : kind === 'strength' || kind === 'mobility' || kind === 'walk'
+      screen = !kind ? <BuildChooser /> : kind === 'run' ? <RunBuilder key={key} data={data} id={id} copyId={copyId} />
+        : kind === 'strength' || kind === 'mobility' || kind === 'walk'
         ? <SessionBuilder key={key} data={data} kind={kind} id={id} copyId={copyId} />
         : <Builder key={key} data={data} id={id} copyId={copyId} />;
       break;

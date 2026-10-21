@@ -12,6 +12,11 @@ export const ZONE_KEY = ZONE_NAMES.map((n, i) => `Z${i + 1} ${n}`).join(' · ');
 export interface Term { term: string; short: string; long: string }
 
 export const GLOSSARY = {
+  runLoad: {
+    term: 'Run load',
+    short: 'A run scored from heart rate and time, then Intervals.icu, then 55 an hour',
+    long: 'A run is scored from heart rate and time, the same way an HR-only ride is. With no heart rate it takes Intervals.icu\'s own load; with neither, 55 an hour, marked ≈ as an estimate.',
+  },
   tss: {
     term: 'Training load (TSS)',
     short: 'How much the ride cost you, from power. An hour flat out at FTP is 100',
@@ -105,7 +110,7 @@ export const GLOSSARY = {
 } satisfies Record<string, Term>;
 
 /** The order of Help's "The numbers, explained". */
-export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort'];
+export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort', 'runLoad'];
 
 /** The hover text on each readiness row on Today. */
 export const READINESS_HELP: Record<string, string> = {

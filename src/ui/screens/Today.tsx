@@ -12,6 +12,7 @@ import { credentials, syncAll } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
+import { runBandText } from '../../engine/run';
 import { CoachPanel } from '../CoachPanel';
 import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
@@ -258,7 +259,7 @@ export function Today({ data }: { data: AppData }) {
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
                 <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}
@@ -381,7 +382,8 @@ function DayNoteEditor({ date, note, hasWellness }: { date: string; note?: DayNo
  * on the calendar today (anything not yet done), not for an assumed ride.
  */
 export function readinessAdvice(band: 'go' | 'ease' | 'easy' | 'rest', kinds: string[]): string {
-  const ride = kinds.includes('ride'), lift = kinds.includes('strength'), walk = kinds.includes('walk'), mob = kinds.includes('mobility');
+  const ride = kinds.includes('ride'), lift = kinds.includes('strength'), walk = kinds.includes('walk'), mob = kinds.includes('mobility'), run = kinds.includes('run');
+  if (run && !ride && !lift) return { go: 'Recovered and ready; the run as planned, by heart rate', ease: 'A little below normal; keep the run at the bottom of its band', easy: 'Below normal; make the run a short easy one, or walk it', rest: 'Well below normal; skip the run today, a walk at most' }[band];
   const gentleOnly = kinds.length > 0 && !ride && !lift;
   if (kinds.length === 0) {
     return { go: 'Recovered and ready; nothing is on the calendar, so the day is yours', ease: 'A little below normal; a free day suits', easy: 'Below normal; keep anything you add gentle', rest: 'Well below normal; rest is the right call today' }[band];

@@ -111,7 +111,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
       {kind === 'strength' && (
         <section class="section">
           <div class="field"><label>Equipment to choose from</label>
-            <div class="chips">{([['dumbbells', 'Dumbbells'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight'], ['barbell', 'Barbell'], ['pullup-bar', 'Pull-up bar'], ['dip-bars', 'Dip bars']] as Array<[Equipment, string]>).map(([q, l]) => <button key={q} class={`chip${equipment.includes(q) ? ' on' : ''}`} onClick={() => setEquipment(equipment.includes(q) ? equipment.filter((e) => e !== q) : [...equipment, q])}>{l}</button>)}</div></div>
+            <div class="chips">{([['dumbbells', 'Dumbbells'], ['kettlebell', 'Kettlebell'], ['bench', 'Bench'], ['band', 'Bands'], ['bodyweight', 'Bodyweight'], ['barbell', 'Barbell'], ['pullup-bar', 'Pull-up bar'], ['dip-bars', 'Dip bars']] as Array<[Equipment, string]>).map(([q, l]) => <button key={q} class={`chip${equipment.includes(q) ? ' on' : ''}`} onClick={() => setEquipment(equipment.includes(q) ? equipment.filter((e) => e !== q) : [...equipment, q])}>{l}</button>)}</div></div>
           <Picker onAdd={add} label="Add an exercise" items={pool.map((e) => ({ name: e.name, group: PATTERN_LABEL[e.pattern], make: () => ({ name: e.name, sets: 3, reps: /carry/i.test(e.name) ? undefined : `${e.reps ?? '8–10'}${e.unilateral ? ' per side' : ''}`, holdSeconds: /carry/i.test(e.name) ? 40 : undefined, load: e.loadable ? 'Leave 2 reps in reserve' : lightLoad(e), cue: e.cue, why: e.why, equipment: e.equipment }) }))} />
         </section>
       )}

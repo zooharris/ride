@@ -84,6 +84,19 @@ export const EXERCISES: ExerciseDef[] = [
   E('overhead-carry', 'carry', 'Overhead carry', ['dumbbells'], 'Press one dumbbell overhead, arm straight beside the ear, ribs down; walk tall without leaning, then switch hands.', 'Shoulder stability and a trunk that stays upright under load.', true, true),
   E('band-woodchop', 'rotate', 'Band woodchop', ['band'], 'Band anchored high to one side, both hands on it, feet wide; pull down and across to the opposite knee, turning the hips and chest, arms long; return slowly.', 'Rotational power from the hips through the trunk, controlled on the way back.', false, true, '10–12'),
   E('russian-twist', 'rotate', 'Russian twist', ['dumbbells', 'bodyweight'], 'Sit with knees bent, heels down, lean back about 45 degrees with a straight back; turn the chest and dumbbell side to side, knees still.', 'Obliques and trunk rotation; the trunk turns while the hips stay put.', false, true, '10–12'),
+  // Kettlebell versions (Oct 21, 2026). One bell is enough for all of these; they lead the
+  // rotation for a rider who has one, after any gym lifts.
+  E('kb-goblet-squat', 'squat', 'Kettlebell goblet squat', ['kettlebell'], 'Hold the bell by the horns at your chest, elbows in; sit down between your heels with the chest up, drive up through the whole foot.', 'Quad and glute strength through the full pedal stroke; the bell at the chest keeps the torso tall.'),
+  E('kb-swing', 'hinge', 'Kettlebell swing', ['kettlebell'], 'Hike the bell back between the legs, snap the hips forward so it floats to chest height; arms just guide it, flat back, glutes tight at the top.', 'Explosive hip extension and posterior-chain endurance: power for sprints and standing climbs.', true, false, '10–15'),
+  E('kb-deadlift', 'hinge', 'Kettlebell deadlift', ['kettlebell'], 'Bell between the feet, hips back, flat back, hands on the handle; push the floor away and stand tall, lower the same way.', 'Glutes, hamstrings and back from the floor; the pattern to learn before the swing.'),
+  E('kb-sl-rdl', 'hinge', 'Kettlebell single-leg deadlift', ['kettlebell'], 'Bell in the hand opposite the standing leg; hinge forward as the free leg rises behind, hips square, bell toward the floor, stand tall.', 'Hamstring strength with the hip stability each pedal stroke asks for.', true, true),
+  E('kb-rack-lunge', 'single-leg', 'Kettlebell reverse lunge, racked', ['kettlebell'], 'Bell in the rack position at one shoulder, step back into a lunge, front knee over the ankle, push through the front heel to stand.', 'Single-leg strength with the trunk resisting a one-sided load, as on a hard climb.', true, true),
+  E('kb-press', 'push', 'Kettlebell overhead press', ['kettlebell'], 'Bell racked at the shoulder, ribs down, glutes tight; press straight up until the arm is beside the ear, lower back to the rack.', 'Shoulder strength and stability, the opposite of the riding position, one side at a time.', true, true),
+  E('kb-row', 'pull', 'Kettlebell row', ['kettlebell'], 'Staggered stance, hinge forward with a flat back, free hand on the front knee; row the bell to the hip, squeeze the shoulder blade, lower slowly.', 'Upper-back strength that stops the shoulders rounding over the bars.', true, true),
+  E('kb-suitcase-carry', 'carry', 'Kettlebell suitcase carry', ['kettlebell'], 'Bell in one hand by your side, walk tall without leaning or letting the hip drop; switch hands.', 'Lateral trunk strength; the hips stay level while one leg pushes.', true, true),
+  E('kb-rack-carry', 'carry', 'Kettlebell rack carry', ['kettlebell'], 'Bell in the rack position at one shoulder, elbow tucked, ribs down; walk tall, then switch sides.', 'Trunk and upper-back endurance under an off-centre load.', true, true),
+  E('kb-halo', 'rotate', 'Kettlebell halo', ['kettlebell'], 'Hold the bell upside down by the horns at the chest; circle it slowly around the head, close to the neck, ribs down; both directions.', 'Shoulder mobility and a trunk that stays still while the arms move: the hoods posture undone.', false, false, '5 each way'),
+  E('kb-get-up', 'trunk', 'Kettlebell Turkish get-up', ['kettlebell'], 'Light bell pressed up from the floor, eyes on it; roll to the elbow, the hand, bridge, sweep the leg through, kneel, stand; reverse it slowly.', 'Shoulder stability and whole-body control in one movement; light and slow, never rushed.', false, true, '1–2'),
 ];
 
 /** Carries and rotation borrow a trunk exercise when the rider has nothing for them (e.g. bodyweight only). */
@@ -92,7 +105,8 @@ const FALLBACK: Partial<Record<Pattern, Pattern>> = { carry: 'trunk', rotate: 't
 
 export function exercisesFor(pattern: Pattern, have: Equipment[]): ExerciseDef[] {
   // When the rider has gym equipment, its exercises lead the rotation: a barbell should be used, not saved for week five.
-  const gym = (e: ExerciseDef) => (e.equipment.some((q) => GYM.includes(q)) ? 0 : 1);
+  // A kettlebell comes next, for the same reason.
+  const gym = (e: ExerciseDef) => (e.equipment.some((q) => GYM.includes(q)) ? 0 : e.equipment.includes('kettlebell') ? 1 : 2);
   const found = EXERCISES.filter((e) => e.pattern === pattern && e.equipment.some((q) => have.includes(q))).sort((x, y) => gym(x) - gym(y));
   const fb = FALLBACK[pattern];
   return found.length || !fb ? found : exercisesFor(fb, have);
@@ -100,5 +114,7 @@ export function exercisesFor(pattern: Pattern, have: Equipment[]): ExerciseDef[]
 
 /** Load advice for an exercise that is not loaded heavily: a band says so, the rest is bodyweight. */
 export function lightLoad(e: Pick<ExerciseDef, 'equipment'>): string {
-  return e.equipment.length === 1 && e.equipment[0] === 'band' ? 'Light to medium band; slow and controlled' : 'Bodyweight; slow and controlled';
+  if (e.equipment.length === 1 && e.equipment[0] === 'band') return 'Light to medium band; slow and controlled';
+  if (e.equipment.length === 1 && e.equipment[0] === 'kettlebell') return 'Light kettlebell; slow and controlled';
+  return 'Bodyweight; slow and controlled';
 }

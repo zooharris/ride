@@ -37,4 +37,19 @@ describe('strength: seven patterns, home and gym versions', () => {
     }
     throw new Error('pull-up never chosen over eight weeks');
   });
+  it('kettlebell: its exercises appear only with one, lead the rotation, and get their own session', async () => {
+    const all = (eq: Equipment[]) => (['squat', 'hinge', 'single-leg', 'push', 'pull', 'carry', 'rotate', 'trunk'] as const).flatMap((p) => exercisesFor(p, eq).map((e) => e.id));
+    expect(all(home).some((id) => id.startsWith('kb-'))).toBe(false);
+    const kb: Equipment[] = [...home, 'kettlebell'];
+    expect(exercisesFor('hinge', kb)[0].id.startsWith('kb-')).toBe(true);
+    const a = names(kb, 'A', 0), b = names(kb, 'B', 0);
+    expect([...a, ...b].some((n) => /Kettlebell/.test(n))).toBe(true);
+    // a barbell still comes before the kettlebell
+    expect(exercisesFor('hinge', [...kb, 'barbell'])[0].equipment).toContain('barbell');
+    const { readyMadeSessions } = await import('../library/sessions');
+    expect(readyMadeSessions(home).some((w) => w.id === 'lib-str-kettlebell')).toBe(false);
+    const session = readyMadeSessions(kb).find((w) => w.id === 'lib-str-kettlebell')!;
+    expect(session.exercises!.map((e) => e.name)).toEqual(['Kettlebell swing', 'Kettlebell goblet squat', 'Kettlebell overhead press', 'Kettlebell row', 'Kettlebell reverse lunge, racked', 'Kettlebell suitcase carry', 'Kettlebell Turkish get-up']);
+    expect(session.exercises!.find((e) => e.name === 'Kettlebell Turkish get-up')!.load).toMatch(/Light kettlebell/);
+  });
 });

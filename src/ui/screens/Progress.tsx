@@ -478,7 +478,7 @@ function ChartCoach({ on, range, from, to, series, data }: { on: OverlayKey[]; r
   );
 }
 
-const KIND_ROW: Record<MorningRow['kind'], string> = { hard: 'After a hard ride', long: 'After a long ride', strength: 'After strength', rest: 'After a rest day' };
+const KIND_ROW: Record<MorningRow['kind'], string> = { hard: 'Hard ride', long: 'Long ride', strength: 'Strength', rest: 'Rest day' };
 
 /** HRV, resting heart rate and sleep the morning after each kind of day, against the rider's normal for the range. */
 function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to: string }) {
@@ -494,12 +494,13 @@ function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to:
   };
   return (
     <Card title="The morning after" explain="What HRV, resting heart rate and sleep look like on the mornings after each kind of day, against your normal for this range. The planner uses the same evidence when it spaces hard days.">
+      <div class="mafter">
       {!any ? <div class="empty small">Draws once Intervals.icu has morning readings for this range.</div> : (
-        <table class="steps">
-          <tr><td class="faint small">Day before</td><td class="r faint small">HRV</td><td class="r faint small">Resting HR</td><td class="r faint small">Sleep</td></tr>
+        <table class="mtable">
+          <thead><tr><th>Day before</th><th class="r">HRV</th><th class="r">Resting HR</th><th class="r">Sleep</th></tr></thead>
           {rows.map((r) => (
             <tr key={r.kind}>
-              <td>{KIND_ROW[r.kind]} <span class="faint small">· {r.n} morning{r.n === 1 ? '' : 's'}</span></td>
+              <td>{KIND_ROW[r.kind]}<span class="mtable-n">{r.n} morning{r.n === 1 ? '' : 's'}</span></td>
               {cell(r.hrv, r.n, (v) => v > 0, (v) => `${v.toFixed(1)} ms`)}
               {cell(r.restingHr, r.n, (v) => v < 0, (v) => `${v.toFixed(1)} bpm`)}
               {cell(r.sleepSeconds != null ? r.sleepSeconds / 60 : undefined, r.n, (v) => v > 0, (v) => `${Math.round(v)} min`, 0)}
@@ -507,7 +508,8 @@ function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to:
           ))}
         </table>
       )}
-      <p class="faint small" style="margin-top:8px">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent); a long ride is 2½ hours or more; a rest day has nothing recorded.</p>
+      <p class="faint small mtable-note">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent); a long ride is 2½ hours or more; a rest day has nothing recorded.</p>
+      </div>
     </Card>
   );
 }

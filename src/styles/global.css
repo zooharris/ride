@@ -242,6 +242,17 @@ p { margin: 0; }
 .cal-add:hover { color: var(--ink-2); border-color: var(--line-2); }
 
 /* steps table */
+/* The morning after: a compact table that sits at its content's width rather than spreading across the card. */
+.mafter { display: flex; flex-wrap: wrap; gap: 10px 32px; align-items: flex-start; }
+.mtable { border-collapse: collapse; font-size: 14px; flex: 1 1 340px; max-width: 520px; }
+.mtable th { font-weight: 500; font-size: 12px; color: var(--ink-3); text-align: left; padding: 0 0 6px; border-bottom: 1px solid var(--line); }
+.mtable td { padding: 9px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; white-space: nowrap; }
+.mtable tr:last-child td { border-bottom: 0; }
+.mtable .r { text-align: right; padding-left: 16px; }
+.mtable td.r { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mtable-n { display: block; font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.mtable-note { flex: 1 1 220px; max-width: 360px; margin: 0; padding-top: 24px; }
+@media (max-width: 640px) { .mtable-note { padding-top: 0; max-width: none; } }
 .steps { width: 100%; border-collapse: collapse; font-size: 14px; }
 .steps td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .steps td:first-child { width: 10px; padding-left: 0; }

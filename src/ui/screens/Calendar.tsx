@@ -52,7 +52,9 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     }, 80);
     const stop = setTimeout(() => setFlash(null), 2200);
     return () => { clearTimeout(go); clearTimeout(stop); };
-  }, [focus, view, start]);
+    // Once per focused day: moving between weeks or views afterwards must not scroll or flash again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
   const pickView = (v: 'list' | 'month') => setView(v);
   const [picking, setPicking] = useState<{ date: string; replace?: PlannedWorkout } | null>(null);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);

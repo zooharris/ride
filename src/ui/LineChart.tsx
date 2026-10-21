@@ -14,6 +14,8 @@ import { useWidth } from './useWidth';
 export interface ChartSeries {
   name: string; color: string; values: Array<number | null>; dash?: string; width?: number; explain?: string; dots?: boolean;
   scale?: 'shared' | 'own'; ownFloor?: number; kind?: 'line' | 'bars'; projectedFrom?: number;
+  /** Own-scale series: the range is at least this wide, centred on the values (weight: a stable rider is a gentle line, not a jagged one). */
+  ownMinSpan?: number;
   unit?: string; format?: (v: number) => string; group?: string; connectGaps?: boolean; opacity?: number; hideInLegend?: boolean;
   /** Own-scale series with the same key share one scale (a metric's daily dots and its 7-day line). */
   scaleKey?: string;
@@ -68,6 +70,7 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
     let a = s.ownFloor ?? Math.min(...vs), b = Math.max(...vs);
     if (!isFinite(a) || !isFinite(b)) { a = 0; b = 1; }
     if (b === a) { a -= 1; b += 1; }
+    if (s.ownMinSpan && b - a < s.ownMinSpan) { const mid = (a + b) / 2; a = mid - s.ownMinSpan / 2; b = mid + s.ownMinSpan / 2; }
     const pad = (b - a) * 0.08; a = s.ownFloor ?? a - pad; b += pad;
     return (v: number) => padT + (1 - (v - a) / (b - a)) * (H - padT - padB);
   };

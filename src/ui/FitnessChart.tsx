@@ -49,7 +49,7 @@ export interface OverlayData {
   imperial: boolean;
 }
 
-const hm = (h: number) => `${Math.floor(h)}h${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+export const hm = (h: number) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
 const dur = (sec: number) => { const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`; };
 
 /**
@@ -125,7 +125,7 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
     if (has('hrv')) wellnessPair('hrv', 'HRV', 'var(--aqua)', (w) => w.hrv, 'ms', { format: (v) => `${Math.round(v)}` });
     if (has('sleep')) wellnessPair('sleep', 'sleep', 'var(--info)', (w) => (w.sleepSeconds ? w.sleepSeconds / 3600 : undefined), '', { format: hm, ownFloor: 0, dash: '1 3', width: 2 });
     if (has('restinghr')) wellnessPair('restinghr', 'resting HR', 'var(--z6)', (w) => w.restingHr, 'bpm', { format: (v) => `${Math.round(v)}` });
-    if (has('weight')) wellnessPair('weight', 'weight', 'var(--z7)', (w) => (w.weightKg ? (data.imperial ? w.weightKg * 2.20462 : w.weightKg) : undefined), data.imperial ? 'lb' : 'kg', { format: (v) => v.toFixed(1), ownFloor: 0 });
+    if (has('weight')) wellnessPair('weight', 'weight', 'var(--z7)', (w) => (w.weightKg ? (data.imperial ? w.weightKg * 2.20462 : w.weightKg) : undefined), data.imperial ? 'lb' : 'kg', { format: (v) => v.toFixed(1), ownMinSpan: data.imperial ? 6 : 3 });
     // Efficiency and drift: steady rides only, as dots, with the 5-ride average as a line once there are three.
     if (has('efficiency') || has('drift')) {
       const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };

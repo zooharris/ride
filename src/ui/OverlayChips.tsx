@@ -26,7 +26,7 @@ export function OverlayChips({ on, available, onChange }: { on: OverlayKey[]; av
       onChange(next);
       return;
     }
-    if (on.length >= MAX_OVERLAYS) { toast({ ok: false, text: 'Turn one off first (six at once is the limit).' }); return; }
+    if (on.filter((x) => available[x]).length >= MAX_OVERLAYS) { toast({ ok: false, text: 'Turn one off first (six at once is the limit).' }); return; }
     onChange(OVERLAYS.map((o) => o.key).filter((x) => x === k || on.includes(x)));
   }
   return (

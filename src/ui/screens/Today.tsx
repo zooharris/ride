@@ -13,7 +13,7 @@ import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
 import { durationWords, type CoachContext } from '../../coach/claude';
 import { CoachPanel } from '../CoachPanel';
-import { CHART_CAPTION, FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
+import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
@@ -293,7 +293,7 @@ export function Today({ data }: { data: AppData }) {
           <FitnessTiles series={series} />
           <FitnessChart series={series} range={range} projection={projection} events={events} />
         </div>
-        <p class="faint small" style="margin-top:8px">{CHART_CAPTION} Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry all three forward over what is on your calendar, every session done as planned; form is the mirror of fatigue because fitness moves slowly. Tap or hover over a band or a line for more.</p>
+        <p class="faint small" style="margin-top:8px">Hover or touch the chart to read any day. Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry all three forward over what is on your calendar, every session done as planned; form is the mirror of fatigue because fitness moves slowly. Tap or hover over a band or a line for more.</p>
       </section>
       </div>
       </div>
@@ -441,7 +441,7 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
     { name: 'HRV', vals: days.map((d) => w(d)?.hrv ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
     { name: 'Sleep', vals: days.map((d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }), fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
     { name: 'Resting HR', vals: days.map((d) => w(d)?.restingHr ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Resting HR'] },
-    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => `${v > 0 ? '+' : Math.round(v) < 0 ? '−' : ''}${Math.abs(Math.round(v))}`, unit: '', help: READINESS_HELP.Form },
+    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => { const n = Math.round(v); return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`; }, unit: '', help: READINESS_HELP.Form },
   ];
   return (
     <div class="rd-rows">

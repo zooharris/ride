@@ -31,7 +31,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
-  const backHref = from === 'today' ? '#/today' : from === 'calendar' ? '#/calendar' : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
+  const backHref = from === 'today' ? '#/today' : from === 'calendar' ? (params.get('date') ? `#/calendar?d=${params.get('date')}` : '#/calendar') : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
   // The calendar entry this page is about: the one on the date in the link, else the nearest upcoming entry for
   // this workout or for a copy of it (a library session is copied when it is put on a date).
   const sameSession = (p: PlannedWorkout) => { if (p.workoutId === w.id) return true; const c = findWorkout(data.mine, p.workoutId); return !!c && c.source === 'generated' && c.kind === w.kind && c.name === w.name; };

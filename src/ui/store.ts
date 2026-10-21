@@ -2,7 +2,6 @@ import { useEffect, useState } from 'preact/hooks';
 import { db, getSetting, loadProfile } from '../data/db';
 import type { ActivityEdit, DayNote, Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
-import { mayOf, type Availability, type MaySchedule } from '../engine/planner';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
 import { setFirstDay } from './derived';
@@ -93,11 +92,7 @@ export function readyMade(equipment: Equipment[] = currentEquipment): Workout[] 
 let currentEquipment: Equipment[] = DEFAULT_EQUIPMENT;
 export function setCurrentEquipment(e: Equipment[]): void { if (e.length) currentEquipment = e; }
 export function getCurrentEquipment(): Equipment[] { return currentEquipment; }
-/** What the rider's week lets the app schedule (runs show in the Library and the picker only when on). */
-let currentMay: MaySchedule = mayOf({ equipment: DEFAULT_EQUIPMENT });
-export function setCurrentMay(av: Pick<Availability, 'may' | 'equipment'>): void { currentMay = mayOf(av); }
-export function getCurrentMay(): MaySchedule { return currentMay; }
-getSetting<{ availability?: Availability } | null>('planRequest', null).then((s) => { if (s?.availability?.equipment?.length) { setCurrentEquipment(s.availability.equipment); setCurrentMay(s.availability); } }).catch(() => {});
+getSetting<{ availability?: { equipment?: Equipment[] } } | null>('planRequest', null).then((s) => { if (s?.availability?.equipment?.length) setCurrentEquipment(s.availability.equipment); }).catch(() => {});
 
 export function allWorkouts(mine: Workout[]): Workout[] {
   return [...mine, ...LIBRARY, ...readyMade()];

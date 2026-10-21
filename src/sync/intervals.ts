@@ -138,7 +138,7 @@ export function sportOf(type: string, averageSpeedMs?: number): SessionKind {
   if (/Ride/.test(type) || type === 'Velomobile') return 'ride';
   if (/Walk|Hike|Ruck/.test(type)) return 'walk';
   if (/Run|Treadmill/.test(type) && averageSpeedMs != null && averageSpeedMs > 0 && averageSpeedMs < 1.95) return 'walk';
-  if (/Run/.test(type)) return 'run';   // 7 km/h or faster, or no speed recorded (a treadmill run without a footpod)
+  if (/Run|Treadmill/.test(type)) return 'run';   // 7 km/h or faster, or no speed recorded (a treadmill run without a footpod)
   if (/^(WeightTraining|Workout|Crossfit|HIIT)$/.test(type)) return 'strength';
   if (/^(Yoga|Pilates|Stretching|Mobility)$/.test(type)) return 'mobility';
   return 'other';   // swims, rows, anything else: counted toward load, never planned

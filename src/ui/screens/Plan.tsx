@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { setCurrentEquipment, setCurrentMay } from '../store';
+import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
@@ -68,7 +68,7 @@ export function Plan({ data }: { data: AppData }) {
     }
     setOpenWeek(1);
     setSetting('planRequest', { goal, availability: av, masters } as Saved);
-    setCurrentEquipment(av.equipment); setCurrentMay(av);
+    setCurrentEquipment(av.equipment);
     setTimeout(() => document.getElementById('plan-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 

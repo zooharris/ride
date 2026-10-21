@@ -19,6 +19,7 @@ describe('activity types from Intervals.icu', () => {
     expect(sportOf('Run')).toBe('run');                 // no speed known (a treadmill run without a footpod)
     expect(sportOf('Run', 2.5)).toBe('run');
     expect(sportOf('VirtualRun', 3)).toBe('run');
+    expect(sportOf('Treadmill', 2.5)).toBe('run');
   });
 });
 

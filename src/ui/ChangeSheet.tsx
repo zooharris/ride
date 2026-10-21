@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from './store';
-import { allWorkouts, findWorkout, getCurrentMay } from './store';
+import { allWorkouts, findWorkout } from './store';
 import { runBandText } from '../engine/run';
 import { WorkoutProfile } from './Profile';
 import { clock, workoutStats } from '../engine/workout';
@@ -96,8 +96,7 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
 /** Choose a workout of any kind from the library and My Workouts. */
 export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind }: { data: AppData; title: string; onPick: (w: Workout) => void; onClose: () => void; onBack?: () => void; startKind?: 'ride' | 'strength' | 'mobility' | 'walk' | 'run' }) {
   const [kind, setKind] = useState<'ride' | 'strength' | 'mobility' | 'walk' | 'run'>(startKind ?? 'ride');
-  // Runs are offered when the rider's week has them on, or when the session being replaced is a run.
-  const kinds = (['ride', 'strength', 'mobility', 'walk', 'run'] as const).filter((k) => k !== 'run' || getCurrentMay().run || startKind === 'run');
+  const kinds = ['ride', 'strength', 'mobility', 'walk', 'run'] as const;
   return (
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>

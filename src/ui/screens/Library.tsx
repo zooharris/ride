@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { allWorkouts, getCurrentMay, scheduleWorkout } from '../store';
+import { allWorkouts, scheduleWorkout } from '../store';
 import { runBandText } from '../../engine/run';
 import { WorkoutProfile } from '../Profile';
 import { clock, workoutStats } from '../../engine/workout';
@@ -46,7 +46,7 @@ export function Library({ data }: { data: AppData }) {
       </PageHead>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
         <div class="seg kinds">
-          {TABS.filter(([t]) => t !== 'run' || getCurrentMay().run || data.mine.some((w) => w.kind === 'run')).map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
+          {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
         </div>
       </div>
       <div class="filterbar">
@@ -79,7 +79,7 @@ export function Library({ data }: { data: AppData }) {
             {tab === 'strength' && 'Built for your equipment from the planner’s own sessions: the same lifts, sets and reps a plan would give you, at each level. Add one to any date, or make your own with New workout.'}
             {tab === 'mobility' && 'Stretching routines by what cycling tightens. Each one names the stretches and how long to hold them. Add one to any date, or make your own with New workout.'}
             {tab === 'walk' && 'Zone 2 on foot for days the bike is out: treadmill or outdoors, with or without a weighted pack. Add one to any date, or make your own with New workout.'}
-            {tab === 'run' && 'Runs by heart rate, sent to your Garmin as running workouts: easy, long, strides, tempo and hills. The plan only ever places the easy ones; tempo and hills are yours to add. With a threshold pace in Settings, each run also shows the pace its bands imply, as a guide.'}
+            {tab === 'run' && 'Runs by heart rate, sent to your Garmin as running workouts: easy, long, strides, tempo and hills. Add one to any date, whether or not your plan schedules runs; the plan itself only ever places the easy ones. With a threshold pace in Settings, each run also shows the pace its bands imply, as a guide.'}
           </p>
           <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} />)}</div>
         </>

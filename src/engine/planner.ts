@@ -402,7 +402,7 @@ export function generatePlan(req: PlanRequest): Plan {
     });
     if (i === 0 && canRun) decisions.push(runDays.length
       ? `Runs take the ${runDays.length === 1 ? 'day' : 'days'} a ride cannot use (${runDays.map((dw) => DAY[dw]).join(', ')}): easy, by heart rate, never the day before a hard ride or the day after the long one; at most two a week in base, one when the riding gets hard, none in the last week before the event.`
-      : 'Runs are on, but no day this week is a safe one for a run: every short day sits before a hard ride or after the long one.');
+      : 'Runs are on, but no day this week has a run: a run needs a day of 25 minutes or more that a ride cannot use, not the day before a hard ride or the day after the long one.');
 
     // Walks: zone-2 aerobic work for the slots a ride cannot use (too short, or no bike that day).
     const pinnedWalkDays = pinned('walk').filter((dw) => daysThisWeek.includes(dw));

@@ -31,7 +31,17 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
  * the power zone it falls in, so a lap's effort reads without the numbers.
  * Without power, the bar is heart rate against threshold heart rate.
  */
-export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; heartRateOnly?: boolean }) {
+export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false, distance, time, imperial = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; heartRateOnly?: boolean; distance?: number[]; time?: number[]; imperial?: boolean }) {
+  // Runs: each lap's pace from the distance stream. A lap's start and end are seconds into the
+  // recording, found in the time stream (or sample indices when there is no time stream).
+  const at = (sec: number) => { if (!time?.length) return Math.max(0, Math.min(sec, (distance?.length ?? 1) - 1)); let i = 0; while (i < time.length - 1 && time[i] < sec) i++; return i; };
+  const lapPace = (r: { start: number; end: number }) => {
+    if (!distance?.length) return undefined;
+    const d = (distance[at(r.end)] ?? 0) - (distance[at(r.start)] ?? 0);
+    if (d < 20) return undefined;
+    const t = Math.round((r.end - r.start) / (d / (imperial ? 1609.344 : 1000)));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
   const rows = intervals.filter((iv) => iv.end > iv.start);
   if (!rows.length) return null;
   const byW = !heartRateOnly && rows.some((r) => r.avgWatts) && ftp > 0;
@@ -42,7 +52,7 @@ export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false }: { int
   return (
     <>
       <table class="steps laps">
-        <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td>{showPower && <td class="r faint small">Avg power</td>}<td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
+        <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td>{distance?.length ? <td class="r faint small">Pace (per {imperial ? 'mile' : 'km'})</td> : null}{showPower && <td class="r faint small">Avg power</td>}<td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
         {rows.map((r, i) => {
           const v = byW ? r.avgWatts ?? 0 : r.avgHr ?? 0;
           const zone = byW ? powerZone(v / ftp) : hrZone(v / ref);
@@ -52,6 +62,7 @@ export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false }: { int
               <td class="faint">{i + 1}</td>
               <td>{r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
               <td class="r num">{clock(Math.round(r.end - r.start))}</td>
+              {distance?.length ? <td class="r num">{lapPace(r) ?? '–'}</td> : null}
               {showPower && <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>}
               <td class="r num">{r.avgHr ? `${Math.round(r.avgHr)} bpm` : '–'}</td>
               <td class="lap-barcol" title={`${pctOfRef}% of ${byW ? 'FTP' : 'threshold heart rate'} · zone ${zone}`}>

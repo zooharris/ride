@@ -238,14 +238,14 @@ describe('ready-made sessions', () => {
     const { readyMadeSessions } = await import('../library/sessions');
     const list = readyMadeSessions(['bodyweight', 'dumbbells', 'bench', 'treadmill']);
     expect(new Set(list.map((w) => w.id)).size).toBe(list.length);
-    expect(list.filter((w) => w.kind === 'strength').length).toBe(15);
-    expect(list.filter((w) => w.kind === 'mobility').length).toBe(11);
-    expect(list.filter((w) => w.kind === 'walk').length).toBe(9);
+    expect(list.filter((w) => w.kind === 'strength').length).toBe(21);   // 15 + 6 of Batch 5c's 8 (the kettlebell two need a kettlebell)
+    expect(list.filter((w) => w.kind === 'mobility').length).toBe(17);
+    expect(list.filter((w) => w.kind === 'walk').length).toBe(14);
     for (const w of list) if (w.kind !== 'walk' && w.kind !== 'run') expect((w.exercises ?? []).length).toBeGreaterThanOrEqual(4);
-    expect(list.filter((w) => w.kind === 'run').length).toBe(6);   // built always; shown only when the week has runs on
+    expect(list.filter((w) => w.kind === 'run').length).toBe(10);   // built always; shown only when the week has runs on
     for (const w of list) { expect(w.minutes).toBeGreaterThan(0); expect(w.source).toBe('library'); }
     for (const w of list.filter((w) => w.kind === 'strength')) for (const e of w.exercises ?? []) expect(e.equipment.some((q) => ['bodyweight', 'dumbbells', 'bench'].includes(q))).toBe(true);
-    expect(list.find((w) => w.kind === 'walk')?.setting).toBe('indoor');
+    expect(list.find((w) => w.kind === 'walk')?.setting).toBe('indoor');   // the hill walk is outdoors by nature; the rest follow the treadmill
   });
   it('keeps bodyweight-only riders to bodyweight exercises', async () => {
     const { readyMadeSessions } = await import('../library/sessions');

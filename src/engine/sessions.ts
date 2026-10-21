@@ -204,22 +204,27 @@ export function runStepsTss(steps: RunStep[]): number {
   return Math.round(tss);
 }
 
-export type RunKind = 'easy' | 'long' | 'strides' | 'tempo' | 'hills';
+export type RunKind = 'easy' | 'long' | 'strides' | 'tempo' | 'hills' | 'fartlek' | 'progression' | 'run-walk';
 export interface RunIntent { kind: RunKind; minutes: number; where: 'outdoor' | 'treadmill'; reason: string }
 
 const EASY = { hrLow: 0.65, hrHigh: 0.75 };
 const RUN_NAME: Record<RunKind, (m: number) => string> = {
   easy: (m) => `Reston easy run ${m} min`, long: (m) => `Vienna long run ${m} min`, strides: (m) => `Strides at Herndon ${m} min`,
   tempo: (m) => `Tempo on the trail ${m} min`, hills: (m) => `Hills at Difficult Run ${m} min`,
+  fartlek: (m) => `Fartlek at Sunset Hills ${m} min`, progression: (m) => `Progression to Vienna ${m} min`, 'run-walk': (m) => `Run-walk at Herndon ${m} min`,
 };
 /** Load per hour by kind, as the brief sets it: easy and long 55, strides 60, tempo 75, hills 80. */
-const RUN_KIND_TSS: Record<RunKind, { perHour: number; effort: number }> = { easy: { perHour: 55, effort: 4 }, long: { perHour: 55, effort: 4 }, strides: { perHour: 60, effort: 5 }, tempo: { perHour: 75, effort: 7 }, hills: { perHour: 80, effort: 7 } };
+/** The newer kinds (0) take their load from their steps' bands instead. */
+const RUN_KIND_TSS: Record<RunKind, { perHour: number; effort: number }> = { easy: { perHour: 55, effort: 4 }, long: { perHour: 55, effort: 4 }, strides: { perHour: 60, effort: 5 }, tempo: { perHour: 75, effort: 7 }, hills: { perHour: 80, effort: 7 }, fartlek: { perHour: 0, effort: 6 }, progression: { perHour: 0, effort: 6 }, 'run-walk': { perHour: 0, effort: 3 } };
 const RUN_PHYSIOLOGY: Record<RunKind, string> = {
   easy: 'Aerobic work with the impact and bone loading cycling never gives, and calf and foot strength the bike leaves alone. Easy means easy: a masters rider recovers from running more slowly than from riding, so the heart rate stays low and the pace is whatever that allows.',
   long: 'Time on feet at an easy heart rate: the tendons, feet and hips get used to running for longer while the aerobic system does the same work a long ride does, at a lower dose.',
   strides: 'Six short, quick strides on top of an easy run teach the legs to turn over fast and smoothly, with almost no fatigue: running form without running hard.',
   tempo: 'Three blocks at a comfortably hard heart rate raise the pace you can hold aerobically; for a cyclist it is threshold work with the legs used differently. Keep it to one a week at most.',
   hills: 'Short climbs at a hard effort build leg strength and power that carry to standing climbs on the bike, with the downhill walk as recovery so the impact stays low.',
+  fartlek: 'Speed play: short pickups chosen by feel and held in the band by the watch. It trains changes of pace, the way a group ride surges, without the structure of intervals.',
+  progression: 'A run that finishes faster than it starts teaches pacing and holding form on tired legs, the way the end of a long ride asks for it, with only the last ten minutes hard.',
+  'run-walk': 'Running in two-minute doses with walking between: the feet, calves and tendons, which adapt more slowly than the heart, get the impact a little at a time. The way to start running.',
 };
 
 /** A run with its steps, minutes and load, for the Library and the planner. */
@@ -240,6 +245,21 @@ export function generateRun(intent: RunIntent): Workout {
     { seconds: 60, hrLow: 0.88, hrHigh: 0.95, label: 'uphill, strong', repeat: 6, recoverSeconds: 90, recoverLow: 0, recoverHigh: 0.7 },
     { seconds: 5 * 60, ...EASY, label: 'cool-down' },
   ];
+  else if (intent.kind === 'fartlek') steps = [
+    { seconds: 10 * 60, ...EASY, label: 'warm-up' },
+    { seconds: 60, hrLow: 0.85, hrHigh: 0.9, label: 'pick it up', repeat: 8, recoverSeconds: 2 * 60, recoverLow: 0.65, recoverHigh: 0.75 },
+    { seconds: 3 * 60, ...EASY, label: 'easy' },
+  ];
+  else if (intent.kind === 'progression') steps = [
+    { seconds: 15 * 60, ...EASY, label: 'easy' },
+    { seconds: 10 * 60, hrLow: 0.75, hrHigh: 0.85, label: 'steady' },
+    { seconds: 10 * 60, hrLow: 0.85, hrHigh: 0.9, label: 'strong' },
+    { seconds: 5 * 60, ...EASY, label: 'cool-down' },
+  ];
+  else if (intent.kind === 'run-walk') steps = [
+    { seconds: 2 * 60, ...EASY, label: 'run', repeat: 10, recoverSeconds: 60, recoverLow: 0, recoverHigh: 0.7 },
+    { seconds: 60, hrLow: 0, hrHigh: 0.7, label: 'walk' },
+  ];
   else steps = [{ seconds: intent.minutes * 60, ...EASY, label: intent.kind === 'long' ? 'long and easy' : 'easy' }];
   const run = { steps, where: intent.where };
   const minutes = runMinutes(run);
@@ -248,7 +268,7 @@ export function generateRun(intent: RunIntent): Workout {
     id: `gen-${newId()}`,
     name: RUN_NAME[intent.kind](minutes),
     kind: 'run',
-    family: intent.kind === 'tempo' || intent.kind === 'hills' ? 'tempo' : 'endurance',
+    family: ['tempo', 'hills', 'fartlek', 'progression'].includes(intent.kind) ? 'tempo' : 'endurance',
     purpose: intent.reason,
     physiology: RUN_PHYSIOLOGY[intent.kind],
     phases: ['any'],
@@ -256,7 +276,7 @@ export function generateRun(intent: RunIntent): Workout {
     setting: intent.where === 'outdoor' ? 'outdoor' : 'indoor',
     blocks: [],
     run,
-    estimatedTss: Math.round(runSeconds(run) / 3600 * k.perHour),
+    estimatedTss: k.perHour ? Math.round(runSeconds(run) / 3600 * k.perHour) : runStepsTss(steps),
     effort: k.effort,
     minutes,
     source: 'generated',

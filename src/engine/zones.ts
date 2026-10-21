@@ -66,6 +66,24 @@ export function powerToHrFraction(powerFraction: number): number {
   return round3(hz.low + t * (hiHigh - hz.low));
 }
 
+/**
+ * The inverse, for scoring a ride by heart rate: a fraction of threshold heart
+ * rate as the power fraction it costs. Piecewise linear through the zone
+ * boundaries (HR Z2 starts at 82% and power Z2 at 55%, and so on), with
+ * threshold meeting threshold: 88% of LTHR is a zone 2 ride, about 72% of
+ * FTP; an hour at LTHR costs what an hour at FTP costs.
+ */
+const HR_TO_POWER: Array<[number, number]> = [[0, 0], [0.82, 0.55], [0.89, 0.75], [0.94, 0.90], [1.00, 1.00], [1.06, 1.20], [1.10, 1.50]];
+export function hrToPowerFraction(hrFraction: number): number {
+  const pts = HR_TO_POWER;
+  if (hrFraction >= pts[pts.length - 1][0]) return round3(1.5 + (hrFraction - 1.10) * 2);
+  for (let i = 1; i < pts.length; i++) {
+    const [h0, p0] = pts[i - 1], [h1, p1] = pts[i];
+    if (hrFraction < h1) return round3(p0 + ((hrFraction - h0) / (h1 - h0)) * (p1 - p0));
+  }
+  return 0;
+}
+
 /** Absolute zone boundaries for the profile, in watts or bpm. */
 export function zoneTable(profile: Profile, basis: Basis): Array<{ zone: Zone; low: number; high: number | null }> {
   const threshold = basis === 'power' ? profile.ftp : profile.lthr;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aerobicPoints, ftpByDay, meanMaxPower, monthlyTotals, powerHistogram, rollingDays, rollingMean, weekStreak, weeklyLoad, weeklyZones } from './progress';
+import { aerobicPoints, isSteadyAerobicRide, ftpByDay, meanMaxPower, monthlyTotals, powerHistogram, rollingDays, rollingMean, weekStreak, weeklyLoad, weeklyZones } from './progress';
 import type { Ride } from './types';
 
 const ride = (p: Partial<Ride>): Ride => ({ id: p.id ?? Math.random().toString(36), date: '2026-10-10', startTime: '', name: 'r', type: 'Ride', sport: 'ride', seconds: 3600, ...p });
@@ -85,5 +85,30 @@ describe('totals and FTP history', () => {
   it('carries FTP forward from the rides and ends at the current value', () => {
     const f = ftpByDay([ride({ date: '2026-10-02', ftpAtRide: 220 }), ride({ date: '2026-10-04', ftpAtRide: 230 })], '2026-10-01', '2026-10-06', 235);
     expect(f.map((x) => x.ftp)).toEqual([220, 220, 220, 230, 230, 235]);
+  });
+});
+
+describe('isSteadyAerobicRide', () => {
+  const steady = (p: Partial<Ride> = {}) => ride({ seconds: 5400, intensityFactor: 0.7, efficiencyFactor: 1.3, decoupling: 4, ...p });
+  it('takes an endurance ride of an hour or more with a believable drift', () => {
+    expect(isSteadyAerobicRide(steady())).toBe(true);
+    expect(isSteadyAerobicRide(steady({ seconds: 3000 }))).toBe(false);
+    expect(isSteadyAerobicRide(steady({ sport: 'walk' }))).toBe(false);
+  });
+  it('leaves out hard rides, by intensity factor when known, by heart rate otherwise', () => {
+    expect(isSteadyAerobicRide(steady({ intensityFactor: 0.84 }))).toBe(false);
+    expect(isSteadyAerobicRide(steady({ intensityFactor: undefined, averageHr: 140 }), 169)).toBe(true);    // 83% of threshold: zone 2
+    expect(isSteadyAerobicRide(steady({ intensityFactor: undefined, averageHr: 155 }), 169)).toBe(false);   // 92%: tempo
+    expect(isSteadyAerobicRide(steady({ intensityFactor: undefined }))).toBe(false);                        // nothing to judge by
+  });
+  it('the planned purpose outranks the numbers, and an implausible drift means the ride was not steady', () => {
+    expect(isSteadyAerobicRide(steady({ intensityFactor: 0.84 }), undefined, () => true)).toBe(true);
+    expect(isSteadyAerobicRide(steady(), undefined, () => false)).toBe(false);
+    expect(isSteadyAerobicRide(steady({ decoupling: -38.7 }))).toBe(false);
+    expect(isSteadyAerobicRide(steady({ decoupling: 17.6 }))).toBe(false);
+  });
+  it('aerobicPoints uses the same rule', () => {
+    const pts = aerobicPoints([steady({ date: '2026-10-01' }), steady({ date: '2026-10-02', intensityFactor: 0.9 }), steady({ date: '2026-10-03', decoupling: -30 })], () => undefined);
+    expect(pts.map((p) => p.date)).toEqual(['2026-10-01']);
   });
 });

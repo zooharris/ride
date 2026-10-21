@@ -85,6 +85,10 @@ class RideDb extends Dexie {
     this.version(6).stores({ plans: 'id' });
     // The rider's edits to recorded activities (kind, left out of load, what was done, effort).
     this.version(7).stores({ activityEdits: 'id, date' });
+    // Intensity factor was stored as Intervals.icu sends it, a percent (84); the engine reads a fraction (0.84).
+    this.version(8).stores({}).upgrade((tx) => tx.table('rides').toCollection().modify((r: { intensityFactor?: number }) => {
+      if (r.intensityFactor != null && r.intensityFactor > 3) r.intensityFactor = Math.round(r.intensityFactor) / 100;
+    }));
   }
 }
 

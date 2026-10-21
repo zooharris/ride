@@ -339,6 +339,15 @@ describe('re-checking a plan keeps its layout', () => {
     for (const w of again.weeks) expect(w.phase).toBe(layout.find((x) => x.start === w.start)!.phase);
     expect(again.weeks.every((w) => w.sessions.every((s) => s.date >= later))).toBe(true);
   });
+  it('projects a plan under way from today\u2019s fitness, not from a line decayed across its past weeks', () => {
+    const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
+    const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+    const later = addDays(layout[0].start, 6 * 7 + 2);   // six weeks and two days in
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout }));
+    expect(again.projection[0].date).toBe(later);
+    expect(Math.abs(again.projection[0].ctl - req().assessment.fitness.ctl)).toBeLessThan(1.5);   // today's fitness, give or take one day's load
+    expect(again.projectedCtl).toBeGreaterThanOrEqual(Math.round(req().assessment.fitness.ctl) - 1);
+  });
   it('responds the next day to a big unplanned ride, and does not cram in a missed session', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
     const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));

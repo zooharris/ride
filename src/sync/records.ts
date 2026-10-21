@@ -117,7 +117,8 @@ async function reapply(rideId: string): Promise<void> {
     r.sport = e?.kind ?? sportOf(r.type, r.averageSpeedMs);
     r.seconds = durationFor(r.sport, r.movingSeconds, r.elapsedSeconds) || r.seconds;
   }
-  scoreActivity(r, profile);
+  // A recording the rider matched to a session by hand is that session, however short.
+  scoreActivity(r, profile, { handMatched: planned.some((p) => p.activityId === rideId && p.matchedByHand) });
   applyLoadEdits([r], edits, planned);
   await db.rides.put(r);
   await recheckMatches();

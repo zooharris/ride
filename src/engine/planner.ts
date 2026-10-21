@@ -461,7 +461,10 @@ export function generatePlan(req: PlanRequest): Plan {
   // Projection and verdict.
   const goalDate = goal.kind === 'event' ? goal.date : addDays(req.start, n * 7 - 1);
   const loads = weeks.flatMap((w) => w.sessions.map((s) => ({ date: s.date, tss: s.tss })));
-  const projection = fitnessSeries(loads, req.start, goalDate, { ctl: ctl0, atl: a.fitness.atl });
+  // Today's fitness is where the line starts: from the first day for a new plan, from today for a
+  // plan under way (its past weeks are history, already in today's fitness, not days of zero load).
+  const projFrom = req.layout?.length && req.notBefore && req.notBefore > req.start ? req.notBefore : req.start;
+  const projection = fitnessSeries(loads, projFrom, goalDate, { ctl: ctl0, atl: a.fitness.atl });
   const taperStart = weeks.find((w) => w.phase === 'taper')?.start;
   const peakPoint = taperStart ? projection.find((f) => f.date === taperStart) : projection[projection.length - 1];
   const projectedCtl = Math.round(peakPoint?.ctl ?? ctl0);

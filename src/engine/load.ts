@@ -1,4 +1,5 @@
 import type { DayLoad, Fitness, Ride } from './types';
+import { hrToPowerFraction } from './zones';
 
 /**
  * Training Stress Score from power: (seconds × NP × IF) / (FTP × 3600) × 100,
@@ -11,14 +12,49 @@ export function powerTss(seconds: number, normalizedPower: number, ftp: number):
 }
 
 /**
- * Heart-rate TSS for rides without power: the same formula with IF taken as
- * average HR over LTHR. Simple and continuous with power TSS near threshold;
- * it under-reads very short hard efforts, which is why those are power-only.
+ * Heart-rate TSS for activities without power: the power formula with the
+ * intensity taken from average heart rate, mapped zone by zone onto the power
+ * scale (88% of threshold heart rate is a zone 2 ride, so it costs what 72% of
+ * FTP costs, not what 88% would). Heart rate lags the legs, so this under-reads
+ * very short hard efforts, which is why those are power-only.
  */
 export function hrTss(seconds: number, averageHr: number, lthr: number): number {
   if (!lthr || !averageHr || !seconds) return 0;
-  const IF = averageHr / lthr;
+  const IF = hrIntensity(averageHr, lthr);
   return Math.round((seconds * IF * IF) / 36);
+}
+
+/** The power-equivalent intensity of an average heart rate (a fraction of FTP). */
+export function hrIntensity(averageHr: number, lthr: number): number {
+  return hrToPowerFraction(averageHr / lthr);
+}
+
+/**
+ * The intensity of a ride as a fraction of FTP: the recorded intensity factor
+ * when there is one (power), else the heart-rate equivalent, else unknown.
+ */
+export function rideIntensity(r: Pick<Ride, 'intensityFactor' | 'averageHr'>, lthr: number): number | undefined {
+  if (r.intensityFactor != null) return r.intensityFactor;
+  if (r.averageHr && lthr) return hrIntensity(r.averageHr, lthr);
+  return undefined;
+}
+
+/**
+ * A ride with neither power nor heart rate still cost something. About the
+ * load of an easy endurance hour (45 an hour), marked as an estimate by the
+ * caller. Only the duration speaks, so nothing finer is pretended.
+ */
+export const ESTIMATED_RIDE_TSS_PER_HOUR = 45;
+export function estimatedRideTss(seconds: number): number {
+  return Math.round((seconds / 3600) * ESTIMATED_RIDE_TSS_PER_HOUR);
+}
+
+/**
+ * A "ride" averaging over 16 m/s (about 36 mph) with no power is a car, a
+ * train, or a watch left recording; it must not count as training.
+ */
+export function looksLikeADrive(r: Pick<Ride, 'type' | 'averageSpeedMs' | 'normalizedPower' | 'sport'>): boolean {
+  return r.sport === 'ride' && !/Virtual/.test(r.type ?? '') && !r.normalizedPower && (r.averageSpeedMs ?? 0) > 16;
 }
 
 /** Load for a strength session from duration and RPE (1..10). */
@@ -37,7 +73,9 @@ export function rideTss(ride: Pick<Ride, 'seconds' | 'normalizedPower' | 'averag
 /**
  * The performance-management model. Fitness (CTL) is a 42-day exponentially
  * weighted average of daily load; fatigue (ATL) a 7-day one; form (TSB) is
- * yesterday's fitness minus yesterday's fatigue. Days with no training count as 0.
+ * fitness minus fatigue, of the same day, so the three numbers shown together
+ * always add up (the classic convention takes yesterday's, which reads as a
+ * sum that is one day off). Days with no training count as 0.
  */
 export function fitnessSeries(loads: DayLoad[], from: string, to: string, start = { ctl: 0, atl: 0 }): Fitness[] {
   const byDate = new Map<string, number>();
@@ -46,11 +84,10 @@ export function fitnessSeries(loads: DayLoad[], from: string, to: string, start 
   let ctl = start.ctl;
   let atl = start.atl;
   for (const date of eachDay(from, to)) {
-    const tsb = round1(ctl - atl);
     const tss = byDate.get(date) ?? 0;
     ctl = ctl + (tss - ctl) / 42;
     atl = atl + (tss - atl) / 7;
-    out.push({ date, ctl: round1(ctl), atl: round1(atl), tsb });
+    out.push({ date, ctl: round1(ctl), atl: round1(atl), tsb: round1(ctl - atl) });
   }
   return out;
 }

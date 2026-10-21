@@ -66,7 +66,7 @@ export function Progress({ data }: { data: AppData }) {
         <p class="small muted" style="margin:-8px 0 8px">Your synced history starts {fmtDate(earliest, { month: 'long', day: 'numeric', year: 'numeric' })}, so the charts start there. <a href="#/settings" style="color:var(--accent)">Load older history in Settings</a>.</p>
       )}
 
-      <Card title="Fitness, fatigue and form" explain="Fitness is the 42-day weighted average of daily training load, fatigue the 7-day average, form the difference. Dashed lines carry fitness and form forward over what is on your calendar.">
+      <Card title="Fitness, fatigue and form" explain="Fitness is the 42-day weighted average of daily training load, fatigue the 7-day average, form the difference. Form mirrors fatigue because fitness moves slowly: a hard week pushes it down, a rest week lets it climb. Dashed lines carry all three forward over what is on your calendar, every session done as planned.">
         <FitnessChart series={series} range={range} projection={projection} events={events} height={190} />
       </Card>
 
@@ -185,9 +185,9 @@ function PowerCurveCard({ rides, from, ftp, weightKg }: { rides: Ride[]; from: s
 /** Efficiency factor and heart-rate drift on steady rides of an hour or more, as two panels on one time axis. */
 function AerobicCard({ data, rides }: { data: AppData; rides: Ride[] }) {
   const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
-  const pts = aerobicPoints(rides, isEndurance);
+  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr);
   if (pts.length < 2) {
-    return <Card title="Aerobic fitness" explain="Efficiency factor (normalized power per heartbeat) and heart-rate drift on steady rides of an hour or more."><div class="empty small">Two or more steady rides of an hour or longer in this range draw here.</div></Card>;
+    return <Card title="Aerobic fitness" explain="Efficiency factor (normalized power per heartbeat) and heart-rate drift on steady rides of an hour or more."><div class="empty small">Two or more steady rides of an hour or longer in this range draw here: endurance rides with power and heart rate, at or under 78% of FTP (or zone 2 by heart rate), whose drift reading is believable.</div></Card>;
   }
   const labels = pts.map((p) => p.date);
   const tick = (d: string, i: number) => (i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 5) === 0) ? short(d) : null;

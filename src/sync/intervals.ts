@@ -178,7 +178,7 @@ function toRide(a: IcuActivity): Ride {
     icuLoad: a.icu_training_load,
     normalizedPower: a.icu_weighted_avg_watts,
     averagePower: a.icu_average_watts,
-    intensityFactor: a.icu_intensity,
+    intensityFactor: intensityFraction(a.icu_intensity, a.icu_weighted_avg_watts, a.icu_ftp),
     averageHr: a.average_heartrate,
     maxHr: a.max_heartrate,
     averageCadence: a.average_cadence,
@@ -193,6 +193,23 @@ function toRide(a: IcuActivity): Ride {
     pairedEventId: a.paired_event_id,
     description: a.description ?? undefined,
   };
+}
+
+/**
+ * Intensity factor as a fraction of FTP. Intervals.icu's `icu_intensity` is a
+ * percent (84, not 0.84) and exists only for rides with power; a value under 3
+ * is taken as already a fraction, in case the API changes. Without it, NP over
+ * the FTP of the day; without power, unknown (never 0 or 1: the engine treats
+ * an unknown intensity as unknown).
+ */
+export function intensityFraction(icuIntensity?: number, normalizedPower?: number, ftp?: number): number | undefined {
+  if (icuIntensity != null && icuIntensity > 0) return round2(icuIntensity > 3 ? icuIntensity / 100 : icuIntensity);
+  if (normalizedPower && ftp) return round2(normalizedPower / ftp);
+  return undefined;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function zoneSeconds(z: IcuActivity['icu_zone_times']): number[] | undefined {

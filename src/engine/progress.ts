@@ -98,15 +98,35 @@ export function weekStarts(from: string, to: string, weekStartOf: (d: string) =>
   return out;
 }
 
+/** The most heart-rate drift a steady ride shows; beyond it the ride was not steady (stops, a tailwind home, a sprint at the end). */
+export const MAX_STEADY_DRIFT = 15;
+
+/**
+ * Is this a steady aerobic ride, the kind efficiency factor and heart-rate
+ * drift mean something on? An hour or more; endurance by the caller's word
+ * (planned as such) or, failing that, by intensity factor at most 0.78 when
+ * one is known, or by average heart rate under 89% of threshold (the top of
+ * heart-rate zone 2) when it is not; with a drift reading that is plausible.
+ * One rule, so the Plan page and the Progress page cannot disagree.
+ */
+export function isSteadyAerobicRide(r: Ride, lthr?: number, isEndurance?: (r: Ride) => boolean | undefined): boolean {
+  if (r.sport !== 'ride' || r.seconds < 3600) return false;
+  if (!(r.efficiencyFactor || r.decoupling != null)) return false;
+  if (r.decoupling != null && Math.abs(r.decoupling) > MAX_STEADY_DRIFT) return false;
+  const planned = isEndurance?.(r);
+  if (planned != null) return planned;
+  if (r.intensityFactor != null) return r.intensityFactor <= 0.78;
+  if (r.averageHr && lthr) return r.averageHr / lthr < 0.89;
+  return false;
+}
+
 /**
  * Efficiency factor and heart-rate drift on steady rides of an hour or more:
- * the honest signal of a growing aerobic base. A ride counts when the caller
- * says it is endurance work (planned as such) or, unplanned, its intensity
- * factor is at most 0.78.
+ * the honest signal of a growing aerobic base.
  */
-export function aerobicPoints(rides: Ride[], isEndurance: (r: Ride) => boolean | undefined): Array<{ date: string; ef?: number; drift?: number; name: string }> {
+export function aerobicPoints(rides: Ride[], isEndurance: (r: Ride) => boolean | undefined, lthr?: number): Array<{ date: string; ef?: number; drift?: number; name: string }> {
   return rides
-    .filter((r) => r.sport === 'ride' && r.seconds >= 3600 && (isEndurance(r) ?? ((r.intensityFactor ?? 1) <= 0.78)) && (r.efficiencyFactor || r.decoupling != null))
+    .filter((r) => isSteadyAerobicRide(r, lthr, isEndurance))
     .map((r) => ({ date: r.date, ef: r.efficiencyFactor, drift: r.decoupling, name: r.name }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }

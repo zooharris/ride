@@ -20,7 +20,10 @@ onDeviceSync(() => listeners.forEach((l) => l()));
 export interface AppData {
   profile: Profile | null;
   planned: PlannedWorkout[];
+  /** Activities that count as training: a drive or a recording under five minutes (see `notTraining`) is left out everywhere but `ridesAll`. */
   rides: Ride[];
+  /** Every synced activity, the ones that are not training included (the Activities list can show them; a recording page opens any of them). */
+  ridesAll: Ride[];
   /** Wellness the rider has not disowned: days flagged in a day note as wrong are already left out. */
   wellness: Wellness[];
   /** Every wellness day as synced, flagged ones included (Settings and the readiness panel show what was set aside). */
@@ -49,11 +52,11 @@ export function trustedWellness(wellness: Wellness[], notes: DayNote[]): Wellnes
 let rechecked = false;
 
 export function useAppData(): AppData {
-  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], edits: [], loaded: false });
+  const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], ridesAll: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], edits: [], loaded: false });
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [profile, planned, rides, wellnessAll, mine, dayNotes, edits] = await Promise.all([
+      const [profile, planned, ridesAll, wellnessAll, mine, dayNotes, edits] = await Promise.all([
         loadProfile(),
         db.planned.toArray(),
         db.rides.orderBy('date').reverse().toArray(),
@@ -66,7 +69,7 @@ export function useAppData(): AppData {
       // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
       const history = doneHistory(planned, edits);
       setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });
-      if (alive) setData({ profile, planned, rides, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, edits, loaded: true });
+      if (alive) setData({ profile, planned, rides: ridesAll.filter((r) => !r.notTraining), ridesAll, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, edits, loaded: true });
     };
     load();
     listeners.add(load);

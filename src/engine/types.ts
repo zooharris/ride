@@ -206,9 +206,13 @@ export interface Ride {
   icuLoad?: number;         // Intervals' own load, for reference
   normalizedPower?: number;
   averagePower?: number;
-  intensityFactor?: number;
+  intensityFactor?: number; // a fraction of FTP (0.84), known only for rides with power
   averageHr?: number;
   maxHr?: number;
+  /** How `tss` was arrived at: 'power', 'heart-rate', Intervals.icu's own load, or a duration estimate (no power, no heart rate). */
+  tssBasis?: 'power' | 'heart-rate' | 'intervals' | 'estimate' | 'effort';
+  /** Not training: a "ride" at car speed, or a recording too short to mean anything. Counts 0 and is hidden from lists. */
+  notTraining?: 'drive' | 'trivial';
   averageCadence?: number;
   averageSpeedMs?: number;
   averageTempC?: number;

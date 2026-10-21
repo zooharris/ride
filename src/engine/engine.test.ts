@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { POWER_ZONES, hrZone, powerToHrFraction, powerZone, zoneTable } from './zones';
 import { flattenSteps, formatDuration, renderIntervalsText, workoutStats } from './workout';
-import { fitnessSeries, hrTss, powerTss, rideTss } from './load';
+import { estimatedRideTss, fitnessSeries, hrIntensity, hrTss, looksLikeADrive, powerTss, rideIntensity, rideTss } from './load';
+import { hrToPowerFraction } from './zones';
 import { scoreRide } from './compliance';
 import { readiness } from './readiness';
 import type { Profile, Ride, Workout } from './types';
@@ -95,21 +96,43 @@ describe('load', () => {
     expect(powerTss(3600, 250, 250)).toBe(100);
     expect(powerTss(7200, 175, 250)).toBe(98);
   });
-  it('hr TSS mirrors the formula with LTHR', () => {
+  it('hr TSS: an hour at threshold heart rate is 100, and a zone-2 heart rate costs what zone-2 power costs', () => {
     expect(hrTss(3600, 160, 160)).toBe(100);
-    expect(hrTss(3600, 136, 160)).toBe(72);
+    expect(hrTss(3600, 136, 160)).toBe(40);        // 85% of LTHR is zone 2: not 72, which 0.85² would give
+    expect(hrTss(24180, 149, 169)).toBe(354);      // a 6 h 43 century at 88% of LTHR: endurance pace, not sweet spot
+    expect(hrIntensity(149, 169)).toBeCloseTo(0.73, 2);
+  });
+  it('the heart-rate to power mapping is monotonic and meets at threshold', () => {
+    let last = -1;
+    for (let h = 0; h <= 1.3; h += 0.01) { const p = hrToPowerFraction(h); expect(p).toBeGreaterThanOrEqual(last); last = p; }
+    expect(hrToPowerFraction(1)).toBe(1);
+    expect(hrToPowerFraction(0.82)).toBe(0.55);
+    expect(hrToPowerFraction(0.89)).toBe(0.75);
   });
   it('prefers power and falls back to HR', () => {
     expect(rideTss({ seconds: 3600, normalizedPower: 200, averageHr: 150 }, 250, 160)).toBe(64);
-    expect(rideTss({ seconds: 3600, averageHr: 150 }, 250, 160)).toBe(88);
+    expect(rideTss({ seconds: 3600, averageHr: 150 }, 250, 160)).toBe(80);
     expect(rideTss({ seconds: 3600 }, 250, 160)).toBe(0);
   });
-  it('fitness series follows the 42/7 day model', () => {
+  it('a ride intensity is the power one when known, the heart-rate equivalent otherwise, unknown with neither', () => {
+    expect(rideIntensity({ intensityFactor: 0.84, averageHr: 150 }, 160)).toBe(0.84);
+    expect(rideIntensity({ averageHr: 150 }, 160)).toBeCloseTo(0.89, 2);
+    expect(rideIntensity({}, 160)).toBeUndefined();
+  });
+  it('a ride with neither power nor heart rate is estimated from its time; a car is not a ride', () => {
+    expect(estimatedRideTss(3600)).toBe(45);
+    expect(looksLikeADrive({ sport: 'ride', type: 'Ride', averageSpeedMs: 17 })).toBe(true);        // 38 mph, no power
+    expect(looksLikeADrive({ sport: 'ride', type: 'Ride', averageSpeedMs: 17, normalizedPower: 300 })).toBe(false);
+    expect(looksLikeADrive({ sport: 'ride', type: 'VirtualRide', averageSpeedMs: 17 })).toBe(false);
+    expect(looksLikeADrive({ sport: 'ride', type: 'Ride', averageSpeedMs: 7 })).toBe(false);
+  });
+  it('fitness series follows the 42/7 day model, with form as fitness minus fatigue of the same day', () => {
     const f = fitnessSeries([{ date: '2026-01-01', tss: 100 }], '2026-01-01', '2026-01-03');
-    expect(f[0]).toMatchObject({ date: '2026-01-01', tsb: 0 });
     expect(f[0].ctl).toBeCloseTo(100 / 42, 1);
     expect(f[0].atl).toBeCloseTo(100 / 7, 1);
-    // next day's form is yesterday's ctl - atl, negative after a hard day
+    for (const day of f) expect(day.tsb).toBeCloseTo(day.ctl - day.atl, 1);
+    // form is negative after a hard day
+    expect(f[0].tsb).toBeLessThan(0);
     expect(f[1].tsb).toBeLessThan(0);
     expect(f[2].atl).toBeLessThan(f[1].atl);
     expect(f).toHaveLength(3);

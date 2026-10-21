@@ -18,7 +18,7 @@ export function RangePicker({ value, onChange, keys = ['6w', '3m', '6m', '1y'] }
 /**
  * Fitness, fatigue and form over the chosen range, with the form bands shaded
  * so the dotted line reads at a glance, and (when the calendar has sessions
- * ahead) fitness and form carried forward over them as dashed lines.
+ * ahead) all three carried forward over them as dashed lines.
  */
 export function FitnessChart({ series, projection = [], range = '3m', events = [], height = 170 }: {
   series: Fitness[];
@@ -49,6 +49,7 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
         { name: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), width: 1.2, explain: 'fitness minus fatigue; negative while building, positive when fresh' },
         ...(proj.length ? [
           { name: 'fitness, as planned', color: 'var(--info)', values: projOnly((f) => f.ctl), dash: '6 4', width: 1.8, explain: 'fitness if every session on the calendar is done as planned' },
+          { name: 'fatigue, as planned', color: 'var(--z5)', values: projOnly((f) => f.atl), dash: '6 4', width: 1.1, explain: 'fatigue if every session on the calendar is done as planned; form mirrors it' },
           { name: 'form, as planned', color: 'var(--ink-3)', values: projOnly((f) => f.tsb), dash: '3 3', width: 1.4, explain: 'form if every session on the calendar is done as planned' },
         ] : []),
       ]}

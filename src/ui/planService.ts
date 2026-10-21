@@ -4,7 +4,7 @@ import { activityLine, durationWords, reviewAfterSync, type CoachReview } from '
 import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
-import { addDays, today } from '../engine/load';
+import { addDays, rideIntensity, today } from '../engine/load';
 import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase } from '../engine/planner';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
@@ -182,10 +182,21 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const t = today(), wk = weekStart(t);
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
-      .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: r.intensityFactor, kind: r.sport }));
+      .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr), kind: r.sport }));
     return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done });
   }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });
+}
+
+/**
+ * A re-check projects from today; the days before it keep the line the plan
+ * had, so the chart on the plan page stays whole and "fitness against the
+ * plan's line" compares with what was planned, not with a line redrawn today.
+ */
+export function mergeProjection(previous: Fitness[] | undefined, next: Fitness[]): Fitness[] {
+  const first = next[0]?.date;
+  if (!previous?.length || !first) return next;
+  return [...previous.filter((f) => f.date < first), ...next];
 }
 
 /**
@@ -262,7 +273,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
-  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: plan.projection, appliedAt: new Date().toISOString(), lastCheck: from, weeks };
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks };
   await putPlan(active);
   notify();
   if (c) autoBackup(c, true);

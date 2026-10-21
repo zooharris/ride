@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { durationFor, sessionSteps, sportOf } from './intervals';
+import { durationFor, intensityFraction, sessionSteps, sportOf } from './intervals';
 import { readyMadeSessions } from '../library/sessions';
 import type { Ride } from '../engine/types';
 
@@ -117,5 +117,18 @@ describe('pairing recordings to planned sessions', () => {
     const fn = () => ({ name: 'Strength A: legs and trunk', kind: 'strength' as const, minutes: 40 });
     expect(pairRecordings(planned, [rec('extra', 1800)], fn).size).toBe(0);
     expect(pairRecordings(planned, [rec('extra', 1800), rec('later', 2400)], fn).get('ps')?.id).toBe('later');
+  });
+});
+
+describe('intensity factor from Intervals.icu', () => {
+  it('reads the percent Intervals.icu sends as a fraction', () => {
+    expect(intensityFraction(84.23424)).toBe(0.84);
+    expect(intensityFraction(58.6)).toBe(0.59);
+  });
+  it('accepts a fraction if one ever arrives, falls back to NP over the FTP of the day, and is unknown without power', () => {
+    expect(intensityFraction(0.84)).toBe(0.84);
+    expect(intensityFraction(undefined, 180, 222)).toBe(0.81);
+    expect(intensityFraction(undefined, undefined, 222)).toBeUndefined();
+    expect(intensityFraction(0)).toBeUndefined();
   });
 });

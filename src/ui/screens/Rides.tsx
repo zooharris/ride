@@ -29,7 +29,7 @@ import { hoursLabel, type WeekSummary } from '../week';
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
   if (id) {
-    const r = data.rides.find((x) => x.id === id);
+    const r = data.ridesAll.find((x) => x.id === id);
     if (!r) return <Empty title="That activity is not synced." action={<a class="btn sm" href="#/rides">All activities</a>}>It may have been deleted on Intervals.icu, or this device has not synced since it was recorded.</Empty>;
     return <RideDetail ride={r} data={data} />;
   }
@@ -49,21 +49,28 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   const profile = data.profile!;
   const [view, setView] = useState<'list' | 'month'>('list');
   const [month, setMonth] = useState(monthOf(today()));
+  // Drives and recordings under five minutes are not training; they are kept out of the list unless asked for.
+  const [showAll, setShowAll] = useState(false);
+  const hidden = data.ridesAll.length - data.rides.length;
+  const list = showAll ? data.ridesAll : data.rides;
   // Activities always opens as the list (the rider's preference); the switch changes it for this visit only.
   const pickView = (v: 'list' | 'month') => setView(v);
   return (
     <div>
-      <PageHead eyebrow={`${data.rides.length} synced`} title="Activities">
-        <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Calendar</button></div>
+      <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities">
+        <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
       </PageHead>
+      {hidden > 0 && (
+        <label class="row small muted" style="gap:8px;margin:-6px 0 10px;cursor:pointer"><input type="checkbox" checked={showAll} onChange={() => setShowAll(!showAll)} />Show the {hidden} recording{hidden === 1 ? '' : 's'} that {hidden === 1 ? 'is' : 'are'} not training (under five minutes, or at car speed); they count 0 and can be deleted from their page</label>
+      )}
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
-          render={(d) => data.rides.filter((r) => r.date === d).map((r) => (
+          render={(d) => list.filter((r) => r.date === d).map((r) => (
             <a class={`month-item done k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`} style={`--c:${KIND_COLOR[r.sport]}`}><span class="mi-name">{r.name}</span></a>
           ))} />
       )}
       {view === 'list' && <div class="actlist">
-        {groupByWeek(data.rides).map(({ start, rides }) => {
+        {groupByWeek(list).map(({ start, rides }) => {
           const secs = rides.reduce((a, r) => a + r.seconds, 0);
           const tss = rides.reduce((a, r) => a + (r.tss ?? 0), 0);
           return (
@@ -92,7 +99,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                       </div>
                       {zones && zones.some((z) => z > 0) && <ZoneStrip seconds={zones} power={!!r.powerZoneSeconds?.length} />}
                       <div class="act-load">
-                        <div class="num" style="font-size:18px;line-height:22px">{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></div>
+                        <div class="num" style="font-size:18px;line-height:22px" title={loadTitle(r)}>{r.notTraining ? 'not training' : <>{r.tssBasis === 'estimate' ? '≈ ' : ''}{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></>}</div>
                         {c && <div class="small" style="color:var(--ink-2)"><span class="sw-dot" style={`background:${verdictColor(c.verdict)}`} /> {verdictLabel(c.verdict)}</div>}
                       </div>
                     </a>
@@ -327,6 +334,21 @@ function verdictLabel(v: string): string {
 }
 
 /** Activities by week, newest week first, each week's activities newest first. */
+/** Where an activity's training load came from, for the hover text on the list. */
+function loadTitle(r: Ride): string {
+  if (r.notTraining === 'drive') return 'Not training: at car speed with no power. Counts 0.';
+  if (r.notTraining === 'trivial') return 'Not training: under five minutes. Counts 0.';
+  if (r.uncountedTss != null) return `Left out of training load at your request (it would be ${r.uncountedTss}).`;
+  switch (r.tssBasis) {
+    case 'power': return 'Training load from power.';
+    case 'heart-rate': return 'Training load from heart rate (no power recorded).';
+    case 'intervals': return 'Training load as Intervals.icu scored it.';
+    case 'effort': return 'Training load from your effort rating.';
+    case 'estimate': return 'Estimated from the time alone: no power and no heart rate were recorded.';
+    default: return 'Training load (TSS).';
+  }
+}
+
 function groupByWeek(rides: Ride[]): Array<{ start: string; rides: Ride[] }> {
   const out: Array<{ start: string; rides: Ride[] }> = [];
   for (const r of rides) {
@@ -380,7 +402,7 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ['Elapsed time', r.elapsedSeconds && r.elapsedSeconds - r.seconds >= 60 ? clock(r.elapsedSeconds) : undefined, 'Start to finish, stops included'],
     ['Distance', distance(r.distanceM, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],
-    ['Training load (TSS)', r.tss, 'How much the ride cost you. An hour flat out at FTP is 100'],
+    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (no power was recorded). An hour flat out at threshold is 100' : 'How much the ride cost you, from power. An hour flat out at FTP is 100'],
     ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, 'What the ride felt like in steady watts; surges count more than coasting'],
     ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
     ['Intensity factor', r.intensityFactor?.toFixed(2), 'Normalized power over FTP. 0.70 is endurance, 1.00 is threshold'],

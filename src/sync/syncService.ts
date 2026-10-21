@@ -1,5 +1,5 @@
 import { db, getSetting, setSetting } from '../data/db';
-import { addDays, hrTss, rideTss, today } from '../engine/load';
+import { addDays, estimatedRideTss, hrTss, looksLikeADrive, rideTss, today } from '../engine/load';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
 import { LIBRARY } from '../library/workouts';
@@ -43,8 +43,8 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   // Rides score from power or heart rate; walks from heart rate; strength from
   // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
   // own load is the fallback whenever the app has nothing better.
-  const score = (r: Ride) => scoreActivity(r, profile);
-  rides.forEach(score);
+  const handMatched = new Set((await db.planned.where('date').between(oldest, newest, true, true).toArray()).filter((p) => p.matchedByHand && p.activityId).map((p) => p.activityId!));
+  rides.forEach((r) => scoreActivity(r, profile, { handMatched: handMatched.has(r.id) }));
 
   // Pair activities to planned sessions. Two passes. First the certain matches:
   // Intervals.icu's own pairing (the event the Garmin was following), then the
@@ -152,7 +152,27 @@ export async function writeRecord(c: IntervalsCredentials, ride: Ride, workoutNa
  * last two weeks), so a rule change or a deleted recording takes effect
  * without waiting for a Sync. Returns how many sessions changed.
  */
+/**
+ * Every stored activity scored again by the current rules, once per rule
+ * change (the 21 Oct 2026 build changed how heart rate, missing data and tiny
+ * recordings score, and a sync only re-scores the last fortnight). Runs at
+ * launch, before matching, and is a no-op after the first time.
+ */
+export const SCORING_RULES = '2026-10-21';
+export async function rescoreAllOnce(): Promise<boolean> {
+  if ((await getSetting<string>('scoringRules', '')) === SCORING_RULES) return false;
+  const [rides, planned, edits, profile] = await Promise.all([db.rides.toArray(), db.planned.toArray(), db.activityEdits.toArray(), db.profile.get('me')]);
+  if (!profile) return false;
+  const handMatched = new Set(planned.filter((p) => p.matchedByHand && p.activityId).map((p) => p.activityId!));
+  for (const r of rides) scoreActivity(r, profile, { handMatched: handMatched.has(r.id) });
+  applyLoadEdits(rides, edits, planned);
+  await db.rides.bulkPut(rides);
+  await setSetting('scoringRules', SCORING_RULES);
+  return true;
+}
+
 export async function recheckMatches(): Promise<number> {
+  await rescoreAllOnce();
   const oldest = addDays(today(), -14), newest = addDays(today(), 1);
   const [rides, planned, profile] = await Promise.all([
     db.rides.where('date').between(oldest, newest, true, true).toArray(),
@@ -190,20 +210,50 @@ export function applyLoadEdits(rides: Ride[], edits: ActivityEdit[], planned: Pl
     const matched = planned.some((p) => p.activityId === r.id && p.status === 'completed');
     if (e?.rpe && !matched && r.sport === 'strength') {
       const t = recordTss({ kind: 'strength' }, r.seconds, e.rpe);
-      if (t != null) r.tss = t;
+      if (t != null) { r.tss = t; r.tssBasis = 'effort'; }
     }
     if (e?.excluded) { r.uncountedTss = r.tss ?? 0; r.tss = 0; }
     else r.uncountedTss = undefined;
   }
 }
 
-/** The app's own training load for an activity (see the comment in syncAll). */
-export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | undefined | null): void {
+/** A recording too short to be training (under five minutes), unless the rider matched it to a session by hand. */
+export const TRIVIAL_SECONDS = 300;
+export function isTrivialRecording(r: Pick<Ride, 'seconds' | 'elapsedSeconds'>): boolean {
+  return Math.max(r.seconds ?? 0, r.elapsedSeconds ?? 0) < TRIVIAL_SECONDS;
+}
+
+/**
+ * The app's own training load for an activity (see the comment in syncAll),
+ * with a note of where the number came from. A ride with neither power nor
+ * heart rate gets a duration estimate rather than 0, so a forgotten strap does
+ * not read as a rest day. A drive or a tiny recording counts 0 and is hidden.
+ */
+export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | undefined | null, opts: { handMatched?: boolean } = {}): void {
+  r.notTraining = looksLikeADrive(r) ? 'drive' : !opts.handMatched && isTrivialRecording(r) ? 'trivial' : undefined;
+  if (r.notTraining) { r.tss = 0; r.tssBasis = undefined; return; }
   const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
-  r.tss = r.sport === 'ride' ? (rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0) || r.icuLoad || 0)
-    : r.sport === 'walk' ? (hrOnly || r.icuLoad || Math.round(r.seconds / 3600 * 38))
-    : r.sport === 'strength' ? (r.icuLoad || Math.round(hrOnly * 0.7) || Math.round(r.seconds / 3600 * 32))
-    : (r.icuLoad || Math.round(r.seconds / 3600 * 8));
+  const set = (tss: number, basis: Ride['tssBasis']) => { r.tss = tss; r.tssBasis = basis; };
+  if (r.sport === 'ride') {
+    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0), 'power');
+    else if (hrOnly) set(hrOnly, 'heart-rate');
+    else if (r.icuLoad) set(r.icuLoad, 'intervals');
+    else set(estimatedRideTss(r.seconds), 'estimate');
+  } else if (r.sport === 'walk') {
+    if (hrOnly) set(hrOnly, 'heart-rate');
+    else if (r.icuLoad) set(r.icuLoad, 'intervals');
+    else set(Math.round(r.seconds / 3600 * 38), 'estimate');
+  } else if (r.sport === 'strength') {
+    // A strap on the wrist says more than Intervals' guess; and when the session was sent to the
+    // Garmin typed as a ride, Intervals' load is a ride load until the relabel, so it comes second.
+    if (hrOnly) set(Math.round(hrOnly * 0.7), 'heart-rate');
+    else if (r.icuLoad && r.type === 'WeightTraining') set(r.icuLoad, 'intervals');
+    else set(Math.round(r.seconds / 3600 * 32), 'estimate');
+  } else {
+    if (r.icuLoad) set(r.icuLoad, 'intervals');
+    else if (hrOnly) set(hrOnly, 'heart-rate');
+    else set(Math.round(r.seconds / 3600 * 8), 'estimate');
+  }
 }
 
 /** The earliest day this device has activities or wellness for, or undefined before the first sync. */

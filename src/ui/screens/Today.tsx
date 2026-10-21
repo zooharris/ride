@@ -100,7 +100,8 @@ export function Today({ data }: { data: AppData }) {
   /** Everything as it is in storage now, for a coach request right after a sync. */
   async function storedData(): Promise<AppData> {
     const notes = await db.dayNotes.toArray();
-    return { ...data, rides: await db.rides.orderBy('date').reverse().toArray(), planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
+    const ridesAll = await db.rides.orderBy('date').reverse().toArray();
+    return { ...data, rides: ridesAll.filter((r) => !r.notTraining), ridesAll, planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
   }
 
   const [retrying, setRetrying] = useState(false);
@@ -292,7 +293,7 @@ export function Today({ data }: { data: AppData }) {
           <FitnessTiles series={series} />
           <FitnessChart series={series} range={range} projection={projection} events={events} />
         </div>
-        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry fitness and form forward over what is on your calendar. Tap or hover over a band or a line for more.</p>
+        <p class="faint small" style="margin-top:8px">Form is fitness minus fatigue. It runs below zero while fitness is being built (the blue band), returns toward zero in a recovery week, and should sit above zero on an event day. Dashed lines carry all three forward over what is on your calendar, every session done as planned; form is the mirror of fatigue because fitness moves slowly. Tap or hover over a band or a line for more.</p>
       </section>
       </div>
       </div>
@@ -413,7 +414,7 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
     <div class="stats tiles" style="margin-bottom:12px">
       {tile('Fitness', now?.ctl, ago?.ctl, 'var(--info)', 'Fitness: the 42-day weighted average of daily training load.')}
       {tile('Fatigue', now?.atl, ago?.atl, 'var(--z5)', 'Fatigue: the 7-day weighted average of daily training load.')}
-      {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', 'Form: fitness minus fatigue.', true)}
+      {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', 'Form: fitness minus fatigue, today. Negative while building, positive when fresh.', true)}
     </div>
   );
 }

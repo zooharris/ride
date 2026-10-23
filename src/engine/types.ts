@@ -147,8 +147,6 @@ export interface Workout {
   /** Intended duration for non-ride sessions. */
   minutes?: number;
   source: 'library' | 'mine' | 'generated';
-  /** A session a plan needed that the Library did not have, added to the rider's Library by the plan (Batch 6, B1). Stored with My Workouts. */
-  planMade?: boolean;
 }
 
 export interface WorkoutStats {

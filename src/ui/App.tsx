@@ -4,7 +4,7 @@ import { notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
-import { nameRideSessions, retargetFootSessions } from './planService';
+import { nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -66,6 +66,8 @@ export function App() {
       // Batch 6 B4: rides the plan put on the calendar before plans were built from the Library take
       // their Library names, after the walk re-target above.
       try { if (await nameRideSessions() && c) await syncDevices(c); } catch { /* runs again at the next start */ }
+      // Batch 6 B2.6: workouts Part B briefly let a plan add to the Library are retired.
+      try { const n = await retireCreatedWorkouts(); if (n) { if (c) await syncDevices(c); toast({ ok: true, text: `${n} session${n === 1 ? '' : 's'} on your calendar now use${n === 1 ? 's' : ''} the nearest Library workout.` }); } } catch { /* runs again at the next start */ }
     };
     const off = onHistoryMatched((r) => {
       notify();

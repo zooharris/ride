@@ -3,7 +3,7 @@ import { assess } from './assessment';
 import { generatePlan, type PlanRequest } from './planner';
 import { generateSession } from './generate';
 import { diffPlan } from './adapt';
-import { planMadeEntry, sameWithin, sizeOf, snap } from './snap';
+import { poorFit, sameWithin, sizeOf, snap } from './snap';
 import { LIBRARY } from '../library/workouts';
 import { addDays } from './load';
 import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from './types';
@@ -32,33 +32,37 @@ describe('Batch 6 B1: snapping to the Library', () => {
     for (const x of LIBRARY.filter((x) => x.family === 'endurance' && x.setting !== 'indoor')) expect(d(lib)).toBeLessThanOrEqual(d(x) + 1e-9);
   });
 
-  it('nothing close enough → null; an outdoor ride never gets a trainer-only one; heart-rate riders never get power-only ones', () => {
-    expect(snap(gen('threshold', 240), { basis: 'power' })).toBeNull();
-    for (const type of ['endurance', 'sweetspot', 'threshold', 'tempo'] as const) for (const m of [60, 90, 120]) {
-      const lib = snap(gen(type, m, true), { basis: 'power' });
-      if (lib) expect(lib.setting).not.toBe('indoor');
-    }
-    for (const m of [40, 46, 55, 65]) { const lib = snap(gen('vo2max', m, false), { basis: 'hr' }); if (lib) expect(lib.bases).toContain('hr'); }
-  });
-
-  it('openers and strength are never snapped', () => {
-    expect(snap(gen('openers', 45), { basis: 'power' })).toBeNull();
-  });
-
-  it('a session the Library cannot carry becomes a named, reusable plan-made entry with a unique id', () => {
-    const own: Workout[] = [];
+  it('always the nearest, however far: a 4-hour threshold intent still gets a Library threshold ride, and it is a poor fit', () => {
     const w = gen('threshold', 240);
-    const { entry, isNew } = planMadeEntry(w, own);
-    expect(isNew).toBe(true);
-    expect(entry).toMatchObject({ source: 'mine', planMade: true, subtitle: w.name, family: 'threshold' });
-    expect(entry.id).toMatch(/^lib-gen-threshold-\d+$/);
-    expect(LIBRARY.some((x) => x.name === entry.name)).toBe(false);
-    own.push(entry);
-    expect(planMadeEntry(gen('threshold', 240), own)).toMatchObject({ isNew: false, entry: { id: entry.id } });   // the same intent again: reused
-    const other = planMadeEntry(gen('threshold', 300), own);
-    expect(other.isNew).toBe(true);
-    expect(other.entry.id).not.toBe(entry.id);
-    expect(other.entry.name).not.toBe(entry.name);
+    const lib = snap(w, { basis: 'power' })!;
+    expect(lib.family).toBe('threshold');
+    expect(poorFit(w, lib)).toBe(true);
+    expect(poorFit(gen('long', 180), snap(gen('long', 180), { basis: 'power' })!)).toBe(false);
+  });
+
+  it('an outdoor ride never gets a trainer-only one; heart-rate riders never get power-only ones', () => {
+    for (const type of ['endurance', 'sweetspot', 'threshold', 'tempo'] as const) for (const m of [60, 90, 120]) {
+      expect(snap(gen(type, m, true), { basis: 'power' })!.setting).not.toBe('indoor');
+    }
+    for (const type of ['vo2max', 'anaerobic', 'endurance', 'tempo'] as const) for (const m of [40, 46, 55, 65, 75, 90]) {
+      const lib = snap(gen(type, m, false), { basis: 'hr' });
+      expect(lib, `${type} ${m}`).toBeTruthy();
+      expect(lib!.bases).toContain('hr');
+    }
+  });
+
+  it('openers are the Library’s openers ride (Lake Anne)', () => {
+    const lib = snap(gen('openers', 45), { basis: 'power' })!;
+    expect(lib.id).toBe('lib-opener');
+    expect(lib.name).toBe('Lake Anne');
+  });
+
+  it('a 30-minute walk with a 24 lb pack is a Library walk with a pack, not nothing', async () => {
+    const { generateWalk } = await import('./sessions');
+    const lib = snap(generateWalk({ minutes: 30, packKg: 10.9, where: 'outdoor', reason: 'r' }), { basis: 'power', equipment: ['bodyweight'] })!;
+    expect(lib.source).toBe('library');
+    expect(lib.walk).toMatchObject({ zoneLow: 0, zoneHigh: 3 });
+    expect(lib.walk!.packKg).toBeGreaterThan(0);
   });
 
   it('the old 47 → 54 minute row is the same session now', () => {
@@ -106,21 +110,47 @@ describe('Batch 6 B: plans built from the Library', () => {
     });
   }
 
-  it('the first re-check after the move proposes nothing: a plan made the old way, against the same plan built from the Library', () => {
+  it('the first re-check after the move proposes nothing: a plan made the old way, relabelled once at start-up, against the same plan built from the Library', () => {
     const old = generatePlan(req({ noSnap: true }));
     const now = generatePlan(req());
     const workouts = new Map<string, Workout>();
     const calendar: PlannedWorkout[] = [];
     let i = 0;
+    // What the app does once at start-up (nameRideSessions): every plan session but strength is pointed
+    // at its nearest Library workout. Then the daily re-check runs against the plan built from the Library.
     for (const w of old.weeks) for (const s of w.sessions) {
-      workouts.set(s.workout.id, s.workout);
-      calendar.push({ id: `p${i++}`, date: s.date, workoutId: s.workout.id, basis: 'power', status: 'planned', planId: 'plan' });
+      const lib = s.kind === 'strength' ? null : snap(s.workout, { basis: 'power', equipment: req().availability.equipment });
+      const on = lib ?? s.workout;
+      workouts.set(on.id, on);
+      calendar.push({ id: `p${i++}`, date: s.date, workoutId: on.id, basis: 'power', status: 'planned', planId: 'plan' });
     }
     expect(diffPlan(calendar, workouts, now, today)).toEqual([]);
   });
 
-  it('the rider’s own and plan-made rides are offered alongside the Library', () => {
-    const mine: Workout = { ...gen('threshold', 240), id: 'lib-gen-threshold-240', source: 'mine', planMade: true, name: 'Ashburn' };
-    expect(snap(gen('threshold', 240), { basis: 'power', extra: [mine] })?.id).toBe('lib-gen-threshold-240');
+  it('the Library has 92 rides, ids and names unique, and every family has a ride that works by heart rate', () => {
+    expect(LIBRARY.filter((w) => w.kind === 'ride')).toHaveLength(92);
+    expect(new Set(LIBRARY.map((w) => w.id)).size).toBe(LIBRARY.length);
+    expect(new Set(LIBRARY.map((w) => w.name)).size).toBe(LIBRARY.length);
+    for (const f of ['endurance', 'recovery', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test']) expect(LIBRARY.some((w) => w.family === f && w.bases.includes('hr')), f).toBe(true);
+  });
+
+  it('the rider’s own rides are offered alongside the Library', () => {
+    const mine: Workout = { ...gen('threshold', 240), id: 'mine-1', source: 'mine', name: 'My long threshold' };
+    expect(snap(gen('threshold', 240), { basis: 'power', extra: [mine] })?.id).toBe('mine-1');
+  });
+
+  it('every session of 18 plans (three goals, three weeks, both bases) is a Library workout, except strength', () => {
+    const goals = [undefined, { kind: 'event', date: '2027-02-06', name: 'C', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' }, { kind: 'general', weeks: 12 }] as Array<PlanRequest['goal'] | undefined>;
+    const weeks = [[3, 0.5, 1.5, 0.5, 1.5, 0, 3.5], [4, 0, 1, 1, 1, 0, 4], [2, 1, 1.25, 1, 1.25, 1, 2.5]];
+    const generated: string[] = [];
+    for (const goal of goals) for (const hours of weeks) for (const basis of ['power', 'hr'] as const) {
+      const r = req({ basis, profile: { ...profile, basis }, availability: { ...req().availability, hours }, ...(goal ? { goal } : {}) });
+      const plan = generatePlan(r);
+      for (const w of plan.weeks) for (const s of w.sessions) if (s.kind !== 'strength' && s.workout.source !== 'library') generated.push(`${basis} ${s.workout.name}`);
+      expect(plan.decisions.filter((d) => d.startsWith('The Library has no'))).toEqual([]);
+      const fits = plan.decisions.filter((d) => d.startsWith('The plan wanted')).map((d) => d.replace(/^The plan wanted a \d+-minute (.+?);.*$/, '$1'));
+      expect(new Set(fits).size, fits.join(' | ')).toBe(fits.length);   // at most one line per family
+    }
+    expect(generated).toEqual([]);
   });
 });

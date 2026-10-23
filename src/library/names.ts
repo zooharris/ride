@@ -6,9 +6,8 @@
  * toward Washington; indoor rides take the loops near home, shortest first.
  * Tests keep their plain names. The descriptive name becomes the subtitle.
  *
- * Unused names (23 Oct 2026, after Batch 6): Sterling (2.5) and Ashburn (7) on the west trail;
- * Shirlington (20) and Jones Point (27) east. They are kept in SPARE_NAMES below for the rides a plan
- * adds to the Library. More names are needed for more rides.
+ * Unused names (23 Oct 2026, after Batch 6 B2): Jones Point (27) east. More names are needed
+ * for more rides; the plan never adds rides itself (Batch 6, B2).
  */
 export const RIDE_NAMES: Record<string, string> = {
   // West, long rides on the trail
@@ -101,17 +100,8 @@ export const RIDE_NAMES: Record<string, string> = {
   'in-recovery-60': 'Fox Mill',
   'in-ss-3x8': 'Dulles',
   'in-vo2-5x2': 'Church Road',
-};
-
-/**
- * Names not yet used, for the rides a plan adds to the Library when nothing
- * there is close enough (Batch 6, B1), by the same rule: long and endurance
- * rides take trail towns west, interval rides the roads and landmarks, easy
- * rides the local loops. When a group runs out the others are used, and when
- * all are used the ride keeps its descriptive name.
- */
-export const SPARE_NAMES: { long: string[]; interval: string[]; easy: string[] } = {
-  long: ['Ashburn', 'Sterling'],
-  interval: ['Shirlington', 'Jones Point'],
-  easy: [],
+  // 23 Oct 2026 (Batch 6, B2.5): hard rides that work by heart rate
+  'lib-vo2-hr-4x4': 'Ashburn',
+  'lib-vo2-hr-5x5': 'Sterling',
+  'lib-anaerobic-hr': 'Shirlington',
 };

@@ -6,7 +6,7 @@ import { generateMobility, generateRun, generateStrength, generateWalk, type Str
 import { addDays, fitnessSeries } from './load';
 import type { Basis, Equipment, Fitness, Profile, SessionKind, Workout } from './types';
 import { workoutStats } from './workout';
-import { sizeOf, snap } from './snap';
+import { poorFit, sizeOf, snap } from './snap';
 
 /**
  * The planner: an assessment of the rider and a model of the goal go in; a
@@ -72,7 +72,7 @@ export interface PlanRequest {
    * every phase as the weeks go by.
    */
   layout?: Array<{ start: string; phase: Phase }>;
-  /** The rider's own saved sessions and the plan-made Library entries, offered to the planner alongside the Library (Batch 6, B1). */
+  /** The rider's own saved workouts, offered to the planner alongside the Library (Batch 6, B1). The plan never adds to them. */
   ownWorkouts?: Workout[];
   /** Build the sessions as generated, without the Library: plans as they were made before 23 Oct 2026 (tests of the move). */
   noSnap?: boolean;
@@ -213,6 +213,8 @@ export function generatePlan(req: PlanRequest): Plan {
   const startLongest = Math.max(90, Math.round((a.longestRide.confidence === 'none' ? 7200 : a.longestRide.value) / 60));
   let longestPlanned = 0;
   let saidTwoLongs = false;
+  const saidPoorFit = new Set<string>();   // B2.2: one line per family per plan
+  const saidNoCandidate = new Set<string>();   // B2.3
   let saidDropped = false;
   let loadingSeen = 0;
 
@@ -524,16 +526,31 @@ export function generatePlan(req: PlanRequest): Plan {
     }
     sessions.sort((x, y) => x.date.localeCompare(y.date) || KIND_ORDER[x.kind] - KIND_ORDER[y.kind]);
 
-    // Library first (Batch 6, B1–B3, B7): each session is carried out by the nearest Library workout
-    // within the tolerance, so the calendar shows named workouts; the planner's sentence stays. What
-    // the Library cannot carry stays as generated (and is added to the Library when the plan is applied).
+    // Library only (Batch 6, B and B2): each session is carried out by the nearest Library workout (or
+    // the rider's own), however far, so the calendar shows named workouts; the planner's sentence stays.
+    // The plan never creates a workout. When the nearest is a poor fit the decisions say so, once per
+    // family per plan, so the rider can add one; strength is built by the plan (its exercises rotate).
     // The week's load is recomputed from what was chosen; there is no second fit against the Library.
     const before = total;
     for (let k = 0; k < sessions.length && !req.noSnap; k++) {
       const x = sessions[k];
+      if (x.kind === 'strength') continue;
       const lib = snap(x.workout, { basis: req.basis, extra: req.ownWorkouts, equipment: av.equipment });
-      if (!lib) continue;
+      const what = x.workout.name === 'Openers' ? 'openers ride' : x.kind === 'ride' ? `${FAMILY_WORDS[x.workout.family] ?? x.workout.family} ride` : x.kind;
+      if (!lib) {
+        // B2.3: no candidate at all (a heart-rate rider and a family with no ride that works by heart rate).
+        if (!saidNoCandidate.has(what)) { saidNoCandidate.add(what); decisions.push(`The Library has no ${what} that works by heart rate, so the plan builds its own for those days (${x.workout.name}). Adding one to the Library would let the plan use it.`); }
+        continue;
+      }
       const size = sizeOf(lib);
+      if (poorFit(x.workout, lib)) {
+        const key = x.kind === 'ride' ? x.workout.family : `${x.kind}:${x.workout.name.replace(/\s*\d.*$/, '')}`;
+        if (!saidPoorFit.has(key)) {
+          saidPoorFit.add(key);
+          const wantMin = Math.round(sizeOf(x.workout).minutes);
+          decisions.push(`The plan wanted a ${wantMin}-minute ${what}; the nearest in the Library is ${lib.name}${lib.subtitle ? ` (${lib.subtitle}, ${Math.round(size.minutes)} min)` : ` (${Math.round(size.minutes)} min)`}. A ${what} nearer ${wantMin} minutes in the Library would fit these weeks better.`);
+        }
+      }
       sessions[k] = { ...x, workout: lib, seconds: Math.round(size.minutes * 60), tss: Math.round(size.tss) };
     }
     total = sessions.reduce((s, x) => s + x.tss, 0);
@@ -604,6 +621,8 @@ const QUALITY_REASON: Record<SessionType, (phase: Phase, a: Assessment) => strin
   tempo: () => 'Tempo: brisk but sustainable, the intensity of a strong group ride, kind to recovery.',
   endurance: () => 'Zone 2 hours.', long: () => 'Long ride.', recovery: () => 'Easy.', openers: () => 'Openers.', test: () => 'Test.',
 };
+
+const FAMILY_WORDS: Partial<Record<string, string>> = { endurance: 'endurance', recovery: 'recovery', tempo: 'tempo', sweetspot: 'sweet spot', threshold: 'threshold', vo2max: 'VO2max', anaerobic: 'anaerobic', test: 'test' };
 
 const PHASE_NOTE: Record<Phase, string> = {
   base: 'Long rides and sweet spot build the aerobic engine with manageable fatigue; each week adds a little.',

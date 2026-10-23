@@ -8,10 +8,10 @@ import type { Goal } from '../engine/goals';
 import { addDays, rideIntensity, today } from '../engine/load';
 import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase } from '../engine/planner';
 import { weeklyLoad } from '../engine/progress';
-import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
+import type { Basis, Equipment, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { retargetWorkout } from '../engine/sessions';
-import { planMadeEntry, snap } from '../engine/snap';
+import { sameWithin, snap } from '../engine/snap';
 import { deleteEvent, sendWorkout, type HrProfile, type IntervalsCredentials } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
@@ -187,9 +187,9 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: data.mine.filter((w) => w.source === 'mine') });
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine) });
   }
-  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: data.mine.filter((w) => w.source === 'mine') });
+  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine) });
 }
 
 /**
@@ -271,9 +271,8 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     await db.planned.delete(p.id);
     removed++;
   }
-  const own = data.mine.filter((w) => w.source === 'mine');
   const rows: PlannedWorkout[] = [];
-  for (const x of toAdd) rows.push({ id: newId(), date: x.s.date, workoutId: await storeSessionWorkout(x.s.workout, own), basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name });
+  for (const x of toAdd) rows.push({ id: newId(), date: x.s.date, workoutId: await storeSessionWorkout(x.s.workout), basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name });
   await db.planned.bulkAdd(rows);
   added = toAdd.length;
   await pruneOrphanWorkouts();
@@ -286,16 +285,23 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   return { added, removed, kept };
 }
 
+/** The rider's own saved workouts, offered to the planner alongside the Library; never the entries Part B created (B2.6 retires them). */
+export const ownWorkouts = (all: Workout[]) => all.filter((w) => w.source === 'mine' && !isCreatedByPlan(w));
+/** A workout Part B (23 Oct 2026) added to the Library for a plan, before B2 stopped plans creating workouts. */
+const isCreatedByPlan = (w: Workout) => w.id.startsWith('lib-gen-');
+
 /**
- * Batch 6, B4 (23 Oct 2026): rides a plan put on the calendar before plans were
- * built from the Library are generated ("Long Endurance 3:00"). Each is
- * relabelled to the Library ride it snaps to, or made into a plan-made Library
- * entry, so the calendar carries names from day one and the first re-check
- * finds nothing to change. Only rides still to come, made by a plan and not
- * edited or moved by the rider. A copy already on the Garmin is left as it is
- * (its content is the same within the tolerance); nothing is re-sent for a
- * name. Runs at start-up after the walk re-target (A6); idempotent, since a
- * relabelled ride is no longer a generated one.
+ * Batch 6, B4 and B2 (23 Oct 2026): sessions a plan put on the calendar before
+ * plans were built from the Library are generated ("Long Endurance 3:00",
+ * "Easy walk 30 min with a 22 lb pack"). Each is pointed at its nearest Library
+ * workout, the one the plan now picks, so the calendar carries names from day
+ * one and the first re-check finds nothing to change. Only sessions still to
+ * come, made by a plan and not edited or moved by the rider; strength is
+ * built by the plan and stays. A session already on the Garmin is re-pointed
+ * only when the Library workout is still the same session by the re-check's
+ * rule (so the watch's copy still matches); otherwise it stays, and the
+ * re-check offers the change, which re-sends it when accepted. Runs at start-up
+ * after the walk re-target (A6); idempotent.
  */
 export async function nameRideSessions(): Promise<number> {
   const t = today();
@@ -303,20 +309,17 @@ export async function nameRideSessions(): Promise<number> {
   if (!planned.length) return 0;
   const workouts = await db.workouts.toArray();
   const byId = new Map(workouts.map((w) => [w.id, w]));
-  const own = workouts.filter((w) => w.source === 'mine');
+  const own = ownWorkouts(workouts);
+  const equipment = (await getSetting<{ availability?: { equipment?: Equipment[] } } | null>('planRequest', null))?.availability?.equipment;
   let n = 0;
   for (const p of planned) {
     const w = byId.get(p.workoutId);
-    if (!w || w.source !== 'generated' || w.kind !== 'ride') continue;
-    const lib = snap(w, { basis: p.basis, extra: own });
-    let id: string;
-    if (lib) id = lib.id;
-    else {
-      const { entry, isNew } = planMadeEntry(w, own);
-      if (isNew) { await db.workouts.put(entry); own.push(entry); }
-      id = entry.id;
-    }
-    await db.planned.update(p.id, { workoutId: id });
+    if (!w || w.source !== 'generated' || w.kind === 'strength') continue;
+    const lib = snap(w, { basis: p.basis, extra: own, equipment });
+    if (!lib) continue;
+    if (w.kind !== 'ride' && lib.name === w.name) continue;                      // already the Library's session, as its own copy
+    if (p.status === 'sent' && !sameWithin(w, lib)) continue;                     // the watch's copy would no longer match
+    await db.planned.update(p.id, { workoutId: await storeSessionWorkout(lib) });
     n++;
   }
   if (n) { await pruneOrphanWorkouts(); notify(); }
@@ -324,21 +327,51 @@ export async function nameRideSessions(): Promise<number> {
 }
 
 /**
- * Where a plan session's workout lives (Batch 6, B1): a Library ride and the
- * rider's own or plan-made workouts are used by id, never copied; a ready-made
- * walk, run or mobility routine is stored as its own copy (as when it is added
- * by hand, so the entry keeps what was chosen if the equipment changes); a
- * generated session the Library could not carry becomes a plan-made Library
- * entry, reused by later sessions and plans; strength is stored as generated
- * (its exercises rotate week by week). `own` gains any entry made here.
+ * Batch 6, B2.6: Part B briefly let a plan add a workout to the Library when
+ * nothing there was close enough (ids "lib-gen-…"). B2 stopped that. Every
+ * session still to come that uses one is pointed at its nearest Library
+ * workout, and an entry no calendar entry uses any more is deleted. A done
+ * session keeps what it was planned against (its record and verdict depend on
+ * it), so an entry a done session uses is kept. Sent copies on the Garmin are
+ * left alone. Idempotent.
  */
-export async function storeSessionWorkout(w: Workout, own: Workout[]): Promise<string> {
+export async function retireCreatedWorkouts(): Promise<number> {
+  const workouts = await db.workouts.toArray();
+  const created = workouts.filter(isCreatedByPlan);
+  if (!created.length) return 0;
+  const own = ownWorkouts(workouts);
+  const byId = new Map(created.map((w) => [w.id, w]));
+  const planned = await db.planned.toArray();
+  const equipment = (await getSetting<{ availability?: { equipment?: Equipment[] } } | null>('planRequest', null))?.availability?.equipment;
+  let n = 0;
+  for (const p of planned) {
+    const w = byId.get(p.workoutId);
+    if (!w || p.status === 'completed') continue;
+    const lib = snap(w, { basis: p.basis, extra: own, equipment });
+    if (!lib) continue;
+    await db.planned.update(p.id, { workoutId: await storeSessionWorkout(lib) });
+    n++;
+  }
+  const used = new Set((await db.planned.toArray()).map((p) => p.workoutId));
+  const unused = created.filter((w) => !used.has(w.id)).map((w) => w.id);
+  if (unused.length) await db.workouts.bulkDelete(unused);
+  if (n || unused.length) notify();
+  return n;
+}
+
+/**
+ * Where a plan session's workout lives: a Library ride and the rider's own
+ * workouts are used by id, never copied; a ready-made walk, run or mobility
+ * routine is stored as its own copy (as when it is added by hand, so the entry
+ * keeps what was chosen if the equipment changes); strength, and a ride with no
+ * Library candidate at all (B2.3), are stored as generated. Nothing is ever
+ * added to the Library (Batch 6, B2).
+ */
+export async function storeSessionWorkout(w: Workout): Promise<string> {
   if (w.source === 'mine' || (w.source === 'library' && w.kind === 'ride')) return w.id;
   if (w.source === 'library') { const id = `gen-${newId()}`; await db.workouts.put({ ...w, id, source: 'generated' }); return id; }
-  if (w.kind === 'strength') { await db.workouts.put(w); return w.id; }
-  const { entry, isNew } = planMadeEntry(w, own);
-  if (isNew) { await db.workouts.put(entry); own.push(entry); }
-  return entry.id;
+  await db.workouts.put(w);
+  return w.id;
 }
 
 /**

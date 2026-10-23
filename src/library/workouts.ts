@@ -171,6 +171,20 @@ const CORE: Workout[] = [
     purpose: 'Three six-minute efforts at FTP in forty-five minutes: the short way into threshold work.',
     physiology: 'Lactate threshold; raises FTP directly.',
     blocks: [warm(10), rep(3, 'Threshold', step(6, 0.95, { intensityHigh: 1.0 }), step(3, 0.5)), cool(8)] }),
+  // 23 Oct 2026 (Batch 6, B2.5): hard rides that work by heart rate, so a rider training by heart rate
+  // is never handed a power-only session. Efforts long enough for the heart rate to get there.
+  lib({ id: 'lib-vo2-hr-4x4', name: 'VO2max 4 x 4 by heart rate', family: 'vo2max', phases: ['build', 'peak'], bases: ['power', 'hr'],
+    purpose: 'VO2max for a rider training by heart rate: four four-minute efforts, long enough for the heart rate to get there and sit there. Start each one hard and hold it; heart rate lags the legs by a minute.',
+    physiology: 'Maximal oxygen uptake.',
+    blocks: [warm(10), rep(4, 'VO2max', step(4, 1.1, { intensityHigh: 1.18 }), step(4, 0.5, { label: 'Easy' })), step(10, 0.62, { intensityHigh: 0.7, label: 'Zone 2' }), cool(8)] }),
+  lib({ id: 'lib-vo2-hr-5x5', name: 'VO2max 5 x 5 by heart rate', family: 'vo2max', phases: ['build', 'peak'], bases: ['power', 'hr'],
+    purpose: 'Five five-minute efforts above threshold, the longest VO2max set there is: by heart rate, each effort spends its last three minutes where it counts. Start hard, hold, and recover fully between.',
+    physiology: 'Maximal oxygen uptake, with time at intensity.',
+    blocks: [warm(10), rep(5, 'VO2max', step(5, 1.08, { intensityHigh: 1.15 }), step(5, 0.5, { label: 'Easy' })), step(20, 0.62, { intensityHigh: 0.7, label: 'Zone 2' }), cool(10)] }),
+  lib({ id: 'lib-anaerobic-hr', name: 'Anaerobic 6 x 2 by heart rate', family: 'anaerobic', phases: ['peak'], bases: ['power', 'hr'],
+    purpose: 'Six two-minute efforts well above threshold with four minutes easy between. Heart rate will not settle in two minutes, so the watch\'s target is a floor to pass, not a band to hold: go by feel, as hard as you can keep even for the whole two minutes.',
+    physiology: 'Anaerobic capacity; tolerance of hard efforts.',
+    blocks: [warm(12), rep(6, 'Anaerobic', step(2, 1.2, { intensityHigh: 1.3 }), step(4, 0.5, { label: 'Easy' })), step(4, 0.62, { label: 'Zone 2' }), cool(8)] }),
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */

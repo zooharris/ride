@@ -198,7 +198,11 @@ export function Settings({ data }: { data: AppData }) {
         <h2>Thresholds and zones</h2>
         <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same zones on the Garmin itself once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them. Threshold heart rate on foot is usually a few beats above the bike's, so runs and walks have their own.</p>
 
-        <h3 class="small" style="margin:0 0 8px">On the bike</h3>
+        <div class="panel" style="margin-top:4px;border-left:4px solid var(--ride)">
+          <div class="row between wrap" style="align-items:baseline;gap:10px;margin-bottom:10px">
+            <h3 style="margin:0;font-size:17px">On the bike</h3>
+            <span class="muted small">Rides: FTP, threshold heart rate, max, and the power and heart-rate tables.</span>
+          </div>
         <div class="form">
           <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} /></div>
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
@@ -213,7 +217,13 @@ export function Settings({ data }: { data: AppData }) {
           onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
           onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
 
-        <h3 class="small" style="margin:18px 0 8px">On foot: runs and walks</h3>
+        </div>
+
+        <div class="panel" style="margin-top:16px;border-left:4px solid var(--walk)">
+          <div class="row between wrap" style="align-items:baseline;gap:10px;margin-bottom:10px">
+            <h3 style="margin:0;font-size:17px">On foot</h3>
+            <span class="muted small">Runs and walks: their own threshold heart rate, the run pace, and their own heart-rate table.</span>
+          </div>
         <div class="form">
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={footThreshold(p)} onInput={(e) => upd('footLthr', Number((e.target as HTMLInputElement).value) || undefined)} />
             {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
@@ -223,6 +233,7 @@ export function Settings({ data }: { data: AppData }) {
           onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
           onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
           onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />
+        </div>
       </section>
 
       <section class="section">

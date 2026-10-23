@@ -26,7 +26,7 @@ export async function runSelfTest(c: IntervalsCredentials, onStep: (r: CheckResu
 
   await step('Credentials and your numbers', async () => {
     numbers = await testConnection(c);
-    return `Connected as ${numbers.name}. FTP ${numbers.ftp ?? '–'} W, threshold HR ${numbers.lthr ?? '–'}, max HR ${numbers.maxHr ?? '–'}, resting HR ${numbers.restingHr ?? '–'}, weight ${numbers.weight ?? '–'} kg.`;
+    return `Connected as ${numbers.name}. FTP ${numbers.ftp ?? '–'} W, threshold HR ${numbers.lthr ?? '–'} on the bike and ${numbers.footLthr ?? '–'} on foot, max HR ${numbers.maxHr ?? '–'}, resting HR ${numbers.restingHr ?? '–'}, weight ${numbers.weight ?? '–'} kg; cycling zone tops ${numbers.hrZoneTops ? numbers.hrZoneTops.join('/') : 'not set'}.`;
   });
   await step('Activities (last 90 days)', async () => {
     const rides = await fetchRides(c, addDays(t, -90), t);
@@ -55,8 +55,8 @@ export async function runSelfTest(c: IntervalsCredentials, onStep: (r: CheckResu
   });
   await step('Pushing your numbers to Intervals.icu', async () => {
     if (!numbers) return 'Skipped: could not read them first.';
-    await pushAthleteNumbers(c, { ftp: numbers.ftp, lthr: numbers.lthr, maxHr: numbers.maxHr });
-    return 'Wrote FTP, threshold HR and max HR back unchanged; Intervals.icu accepted them.';
+    await pushAthleteNumbers(c, { ftp: numbers.ftp, lthr: numbers.lthr, maxHr: numbers.maxHr, hrZoneTops: numbers.hrZoneTops, footLthr: numbers.footLthr, footHrZoneTops: numbers.footHrZoneTops });
+    return `Wrote FTP, threshold HR, max HR and the zone tables back unchanged; Intervals.icu accepted them.${numbers.hrZoneTops ? '' : ' (It holds no full cycling zone table yet; Save in Settings will give it one.)'}`;
   });
   await step('Calendar event: create and delete', async () => {
     const date = addDays(BACKUP_DATE, -1);

@@ -14,6 +14,7 @@
  */
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
+import { footLthr as footThreshold, rideHrZones, validTops } from '../engine/zones';
 
 const BASE = 'https://intervals.icu/api/v1';
 
@@ -59,7 +60,15 @@ export interface AthleteNumbers {
   maxHr?: number;
   restingHr?: number;
   weight?: number;
+  /** Top of heart-rate zones 1..6 on the bike, when Intervals.icu holds a full table. */
+  hrZoneTops?: number[];
+  /** Threshold heart rate and zone tops on foot (Intervals.icu's Run settings). */
+  footLthr?: number;
+  footHrZoneTops?: number[];
 }
+
+/** The rider's heart-rate numbers a workout is sent with, so targets land on the right ladder. */
+export type HrProfile = { maxHr: number; lthr: number; footLthr?: number; hrZoneTops?: number[]; footHrZoneTops?: number[] };
 
 /**
  * The athlete's numbers as Intervals.icu holds them. FTP, LTHR and max HR live in
@@ -69,6 +78,7 @@ export interface AthleteNumbers {
 export async function testConnection(c: IntervalsCredentials): Promise<AthleteNumbers> {
   const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
   const sport = rideSettings(a);
+  const foot = footSettings(a)[0];
   return {
     name: String(a.name ?? ''),
     ftp: num(sport?.ftp) ?? num(a.icu_ftp),
@@ -76,12 +86,39 @@ export async function testConnection(c: IntervalsCredentials): Promise<AthleteNu
     maxHr: num(sport?.max_hr),
     restingHr: num(a.icu_resting_hr),
     weight: num(a.icu_weight) ?? num(a.weight),
+    hrZoneTops: zoneTops(sport?.hr_zones),
+    footLthr: num(foot?.lthr),
+    footHrZoneTops: zoneTops(foot?.hr_zones),
   };
 }
 
+/** Intervals.icu keeps a zone table as the top of each zone in bpm, seven long with max HR last; the app keeps the first six. */
+function zoneTops(v: unknown): number[] | undefined {
+  if (!Array.isArray(v) || v.length < 6) return undefined;
+  const tops = v.slice(0, 6).map((x) => Number(x));
+  return validTops(tops) ? tops : undefined;
+}
+
+function sportSettings(athlete: Record<string, unknown>): Array<Record<string, unknown>> {
+  return Array.isArray(athlete.sportSettings) ? (athlete.sportSettings as Array<Record<string, unknown>>) : [];
+}
+
 function rideSettings(athlete: Record<string, unknown>): Record<string, unknown> | undefined {
-  const settings = Array.isArray(athlete.sportSettings) ? (athlete.sportSettings as Array<Record<string, unknown>>) : [];
+  const settings = sportSettings(athlete);
   return settings.find((s) => (s.types as string[] | undefined)?.includes('Ride')) ?? settings[0];
+}
+
+/**
+ * The settings that govern runs and walks: Intervals.icu files a Walk under its
+ * "Other" entry and a Run under "Run", so both are kept the same. Run first, so
+ * it is the one read back.
+ */
+function footSettings(athlete: Record<string, unknown>): Array<Record<string, unknown>> {
+  const settings = sportSettings(athlete);
+  const types = (s: Record<string, unknown>) => (s.types as string[] | undefined) ?? [];
+  const run = settings.filter((s) => types(s).includes('Run'));
+  const other = settings.filter((s) => !types(s).includes('Run') && (types(s).includes('Other') || types(s).includes('Walk')));
+  return [...run, ...other];
 }
 
 /**
@@ -89,16 +126,26 @@ function rideSettings(athlete: Record<string, unknown>): Record<string, unknown>
  * the app's "% of FTP" into watts with ITS FTP before the workout reaches Garmin,
  * so the two must agree. Only the fields given are changed.
  */
-export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: number; lthr?: number; maxHr?: number }): Promise<void> {
+export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: number; lthr?: number; maxHr?: number; hrZoneTops?: number[]; footLthr?: number; footHrZoneTops?: number[] }): Promise<void> {
   const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
   const sport = rideSettings(a);
   if (!sport || sport.id == null) throw new IntervalsError('Intervals.icu has no cycling sport settings to update; open its Settings page once and save, then try again.');
   const body: Record<string, unknown> = {};
-  if (n.ftp) body.ftp = n.ftp;
+  if (n.ftp) { body.ftp = n.ftp; body.indoor_ftp = n.ftp; }
   if (n.lthr) body.lthr = n.lthr;
   if (n.maxHr) body.max_hr = n.maxHr;
-  if (Object.keys(body).length === 0) return;
-  await call(c, `/athlete/${c.athleteId}/sport-settings/${sport.id}`, { method: 'PUT', body: JSON.stringify(body) });
+  if (validTops(n.hrZoneTops) && n.maxHr) body.hr_zones = [...n.hrZoneTops, n.maxHr];
+  if (Object.keys(body).length) await call(c, `/athlete/${c.athleteId}/sport-settings/${sport.id}`, { method: 'PUT', body: JSON.stringify(body) });
+  // Runs and walks: their own threshold and table, written to every entry that governs them.
+  const foot: Record<string, unknown> = {};
+  if (n.footLthr) foot.lthr = n.footLthr;
+  if (n.maxHr) foot.max_hr = n.maxHr;
+  if (validTops(n.footHrZoneTops) && n.maxHr) foot.hr_zones = [...n.footHrZoneTops, n.maxHr];
+  if (!n.footLthr && !validTops(n.footHrZoneTops)) return;
+  for (const s of footSettings(a)) {
+    if (s.id == null) continue;
+    await call(c, `/athlete/${c.athleteId}/sport-settings/${s.id}`, { method: 'PUT', body: JSON.stringify(foot) });
+  }
 }
 
 interface IcuActivity {
@@ -269,23 +316,24 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  * Garmin Connect, which sends it to the Edge on its next phone sync.
  * Returns the event id, which is how the ride is later paired back.
  */
-export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: { maxHr: number; lthr: number }): Promise<number> {
+export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: HrProfile): Promise<number> {
   const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
     : workout.kind === 'run' ? runEvent(workout, date, profile)
     : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)
-    : rideEvent(workout, date, basis);
+    : rideEvent(workout, date, basis, profile);
   const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
   return ev.id;
 }
 
-function rideEvent(workout: Workout, date: string, basis: Basis) {
+function rideEvent(workout: Workout, date: string, basis: Basis, profile?: HrProfile) {
   const stats = workoutStats(workout.blocks);
+  const zones = profile ? rideHrZones(profile) : undefined;
   return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
     type: 'Ride',
     name: workout.subtitle ? `${workout.name} · ${workout.subtitle}` : workout.name,
-    description: renderIntervalsText(workout, basis),
+    description: renderIntervalsText(workout, basis, zones),
     moving_time: stats.seconds,
     icu_training_load: stats.tss,
   };
@@ -407,9 +455,9 @@ export async function updateActivityDescription(c: IntervalsCredentials, activit
 let lastWeightOf: (name: string) => string | undefined = () => undefined;
 export function setLastWeightLookup(fn: (name: string) => string | undefined): void { lastWeightOf = fn; }
 
-function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
+function walkEvent(workout: Workout, date: string, profile?: HrProfile) {
   const w = workout.walk ?? { minutes: workout.minutes ?? 30, hrLow: 0.6, hrHigh: 0.7 };
-  const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));
+  const toLthr = toFootLthr(profile);
   const pack = w.packKg ? ` with a ${Math.round(w.packKg * 2.2)} lb pack` : '';
   const lines = [
     `${workout.purpose}${pack ? ` Walk${pack}.` : ''}`,
@@ -428,14 +476,23 @@ function walkEvent(workout: Workout, date: string, profile?: { maxHr: number; lt
 }
 
 /**
+ * Shares of max heart rate as shares of the threshold Intervals.icu applies to a walk
+ * or run: the foot threshold, which is the Run and Other settings' number, not the bike's.
+ */
+function toFootLthr(profile?: HrProfile): (f: number) => number {
+  const lthr = profile ? footThreshold(profile) : 0;
+  return (f: number) => (profile && lthr > 0 ? Math.round((f * profile.maxHr / lthr) * 100) : Math.round(f * 100 / 0.92));
+}
+
+/**
  * A run goes to the Garmin as a Run workout with heart-rate steps. Like a walk, the app's
  * bands are shares of max heart rate, converted here to shares of threshold heart rate
  * with the rider's numbers. A repeated step is an Intervals.icu repeat block: the work
  * and its recovery, "6x". (Intervals repeats the recovery after the last one too, a
  * minute the app's own count leaves out.)
  */
-export function runEvent(workout: Workout, date: string, profile?: { maxHr: number; lthr: number }) {
-  const toLthr = (f: number) => (profile && profile.lthr > 0 ? Math.round((f * profile.maxHr / profile.lthr) * 100) : Math.round(f * 100 / 0.92));
+export function runEvent(workout: Workout, date: string, profile?: HrProfile) {
+  const toLthr = toFootLthr(profile);
   const band = (lo: number, hi: number) => `${lo > 0 ? toLthr(lo) : Math.round(NO_FLOOR.hr * 100)}-${toLthr(hi)}% LTHR`;
   const dur = (sec: number) => { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m && s ? `${m}m${s}s` : m ? `${m}m` : `${s}s`; };
   const lines: string[] = [workout.purpose, ''];

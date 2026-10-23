@@ -4,6 +4,7 @@ import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout }
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
 import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
+import { footHrZones, footLthr, rideHrZones } from '../engine/zones';
 import type { IntervalsCredentials } from './intervals';
 import { durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
 import { schedulePush, syncDevices } from '../data/devicesync';
@@ -30,7 +31,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   let profile = await db.profile.get('me');
   const numbers = await testConnection(c);
   if (profile) {
-    const next = { ...profile, ftp: numbers.ftp ?? profile.ftp, lthr: numbers.lthr ?? profile.lthr, maxHr: numbers.maxHr ?? profile.maxHr, restingHr: numbers.restingHr ?? profile.restingHr, weightKg: numbers.weight ?? profile.weightKg };
+    const next = { ...profile, ftp: numbers.ftp ?? profile.ftp, lthr: numbers.lthr ?? profile.lthr, maxHr: numbers.maxHr ?? profile.maxHr, restingHr: numbers.restingHr ?? profile.restingHr, weightKg: numbers.weight ?? profile.weightKg, hrZoneTops: numbers.hrZoneTops ?? profile.hrZoneTops, footLthr: numbers.footLthr ?? profile.footLthr, footHrZoneTops: numbers.footHrZoneTops ?? profile.footHrZoneTops };
     if (JSON.stringify(next) !== JSON.stringify(profile)) { await db.profile.put(next); profile = next; }
   }
 
@@ -250,13 +251,17 @@ export function isTrivialRecording(r: Pick<Ride, 'seconds' | 'elapsedSeconds'>):
  * heart rate gets a duration estimate rather than 0, so a forgotten strap does
  * not read as a rest day. A drive or a tiny recording counts 0 and is hidden.
  */
-export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number } | undefined | null, opts: { handMatched?: boolean } = {}): void {
+export function scoreActivity(r: Ride, profile: { ftp: number; lthr: number; footLthr?: number; hrZoneTops?: number[]; footHrZoneTops?: number[] } | undefined | null, opts: { handMatched?: boolean } = {}): void {
   r.notTraining = looksLikeADrive(r) ? 'drive' : !opts.handMatched && isTrivialRecording(r) ? 'trivial' : undefined;
   if (r.notTraining) { r.tss = 0; r.tssBasis = undefined; return; }
-  const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, profile?.lthr ?? 0) : 0;
+  // Rides are judged on the bike ladder; anything on foot on the foot threshold and its ladder.
+  const onFoot = r.sport === 'walk' || r.sport === 'run';
+  const lthr = profile ? (onFoot ? footLthr(profile) : profile.lthr) : 0;
+  const ladder = profile ? (onFoot ? footHrZones(profile) : rideHrZones(profile)) : undefined;
+  const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, lthr, ladder) : 0;
   const set = (tss: number, basis: Ride['tssBasis']) => { r.tss = tss; r.tssBasis = basis; };
   if (r.sport === 'ride') {
-    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0), 'power');
+    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0, ladder), 'power');
     else if (hrOnly) set(hrOnly, 'heart-rate');
     else if (r.icuLoad) set(r.icuLoad, 'intervals');
     else set(estimatedRideTss(r.seconds), 'estimate');

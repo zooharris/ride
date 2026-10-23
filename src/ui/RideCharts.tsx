@@ -1,6 +1,6 @@
 import type { StreamSet } from '../data/db';
 import { clock } from '../engine/workout';
-import { hrZone, powerZone } from '../engine/zones';
+import { HR_ZONES, hrZone, powerZone, type Zone } from '../engine/zones';
 import { powerHistogram } from '../engine/progress';
 import { BarChart } from './BarChart';
 import { ZONE_VAR } from './Profile';
@@ -31,7 +31,7 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
  * the power zone it falls in, so a lap's effort reads without the numbers.
  * Without power, the bar is heart rate against threshold heart rate.
  */
-export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false, distance, time, imperial = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; heartRateOnly?: boolean; distance?: number[]; time?: number[]; imperial?: boolean }) {
+export function LapsTable({ intervals, ftp, lthr, hrZones = HR_ZONES, heartRateOnly = false, distance, time, imperial = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; hrZones?: Zone[]; heartRateOnly?: boolean; distance?: number[]; time?: number[]; imperial?: boolean }) {
   // Runs: each lap's pace from the distance stream. A lap's start and end are seconds into the
   // recording, found in the time stream (or sample indices when there is no time stream).
   const at = (sec: number) => { if (!time?.length) return Math.max(0, Math.min(sec, (distance?.length ?? 1) - 1)); let i = 0; while (i < time.length - 1 && time[i] < sec) i++; return i; };
@@ -55,7 +55,7 @@ export function LapsTable({ intervals, ftp, lthr, heartRateOnly = false, distanc
         <tr><td class="faint small">#</td><td class="faint small">Lap</td><td class="r faint small">Time</td>{distance?.length ? <td class="r faint small">Pace (per {imperial ? 'mile' : 'km'})</td> : null}{showPower && <td class="r faint small">Avg power</td>}<td class="r faint small">Avg HR</td><td class="faint small lap-barcol">{byW ? `Power against FTP ${ftp} W` : `Heart rate against threshold ${lthr} bpm`}</td></tr>
         {rows.map((r, i) => {
           const v = byW ? r.avgWatts ?? 0 : r.avgHr ?? 0;
-          const zone = byW ? powerZone(v / ftp) : hrZone(v / ref);
+          const zone = byW ? powerZone(v / ftp) : hrZone(v / ref, hrZones);
           const pctOfRef = Math.round((v / ref) * 100);
           return (
             <tr key={i}>

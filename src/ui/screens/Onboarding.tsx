@@ -31,7 +31,7 @@ export function Onboarding() {
       await setSetting('intervals', c);
       setFound(a);
       try { setBackup(await fetchAutoBackup(c)); } catch { /* none, or unreadable */ }
-      setP({ ...p, name: a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg });
+      setP({ ...p, name: a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, hrZoneTops: a.hrZoneTops ?? p.hrZoneTops, footLthr: a.footLthr ?? p.footLthr, footHrZoneTops: a.footHrZoneTops ?? p.footHrZoneTops });
       setStep('review');
     } catch (e) {
       setErr((e as Error).message);

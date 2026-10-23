@@ -1,3 +1,4 @@
+import { rideHrZones } from '../engine/zones';
 /**
  * Optional narrative layer. With an API key in Settings the app asks Claude for a
  * short daily note; without one, nothing here runs. Calls go straight from the
@@ -65,7 +66,7 @@ export function riderLine(profile: Profile, date: string): string {
   const age = profile.birthYear ? Number(date.slice(0, 4)) - profile.birthYear : undefined;
   const name = firstName(profile);
   const who = name === 'the rider' ? 'The rider' : name;
-  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${profile.units} units, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm, workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
+  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${profile.units} units, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm on the bike${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm), workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
 }
 
 /** The opening of every prompt: whose coach, and who they are. */

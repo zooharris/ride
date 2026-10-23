@@ -1,5 +1,5 @@
 import type { DayLoad, Fitness, Ride } from './types';
-import { hrToPowerFraction } from './zones';
+import { hrToPowerFraction, type Zone } from './zones';
 
 /**
  * Training Stress Score from power: (seconds × NP × IF) / (FTP × 3600) × 100,
@@ -18,24 +18,24 @@ export function powerTss(seconds: number, normalizedPower: number, ftp: number):
  * FTP costs, not what 88% would). Heart rate lags the legs, so this under-reads
  * very short hard efforts, which is why those are power-only.
  */
-export function hrTss(seconds: number, averageHr: number, lthr: number): number {
+export function hrTss(seconds: number, averageHr: number, lthr: number, zones?: Zone[]): number {
   if (!lthr || !averageHr || !seconds) return 0;
-  const IF = hrIntensity(averageHr, lthr);
+  const IF = hrIntensity(averageHr, lthr, zones);
   return Math.round((seconds * IF * IF) / 36);
 }
 
 /** The power-equivalent intensity of an average heart rate (a fraction of FTP). */
-export function hrIntensity(averageHr: number, lthr: number): number {
-  return hrToPowerFraction(averageHr / lthr);
+export function hrIntensity(averageHr: number, lthr: number, zones?: Zone[]): number {
+  return hrToPowerFraction(averageHr / lthr, zones);
 }
 
 /**
  * The intensity of a ride as a fraction of FTP: the recorded intensity factor
  * when there is one (power), else the heart-rate equivalent, else unknown.
  */
-export function rideIntensity(r: Pick<Ride, 'intensityFactor' | 'averageHr'>, lthr: number): number | undefined {
+export function rideIntensity(r: Pick<Ride, 'intensityFactor' | 'averageHr'>, lthr: number, zones?: Zone[]): number | undefined {
   if (r.intensityFactor != null) return r.intensityFactor;
-  if (r.averageHr && lthr) return hrIntensity(r.averageHr, lthr);
+  if (r.averageHr && lthr) return hrIntensity(r.averageHr, lthr, zones);
   return undefined;
 }
 
@@ -64,9 +64,9 @@ export function strengthTss(seconds: number, rpe: number): number {
 }
 
 /** Pick the right TSS for a ride given the profile numbers in force that day. */
-export function rideTss(ride: Pick<Ride, 'seconds' | 'normalizedPower' | 'averageHr' | 'ftpAtRide'>, ftp: number, lthr: number): number {
+export function rideTss(ride: Pick<Ride, 'seconds' | 'normalizedPower' | 'averageHr' | 'ftpAtRide'>, ftp: number, lthr: number, zones?: Zone[]): number {
   if (ride.normalizedPower) return powerTss(ride.seconds, ride.normalizedPower, ride.ftpAtRide || ftp);
-  if (ride.averageHr) return hrTss(ride.seconds, ride.averageHr, lthr);
+  if (ride.averageHr) return hrTss(ride.seconds, ride.averageHr, lthr, zones);
   return 0;
 }
 

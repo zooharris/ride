@@ -30,12 +30,12 @@ export const GLOSSARY = {
   lthr: {
     term: 'Threshold heart rate',
     short: 'The heart rate that goes with FTP',
-    long: 'The heart rate that goes with FTP (sometimes written LTHR). Heart-rate zones are shares of it; walks use shares of max heart rate instead.',
+    long: 'The heart rate that goes with FTP (sometimes written LTHR). Runs and walks have their own, usually a few beats higher. Heart-rate zone tops are set in Settings, in beats per minute, and start out as shares of it; walk targets are shares of max heart rate.',
   },
   zones: {
     term: 'Zones',
     short: ZONE_KEY,
-    long: `Seven zones (${ZONE_NAMES.map((n, i) => `${i + 1} ${n}`).join(', ')}), by power as shares of FTP and by heart rate as shares of threshold heart rate, always in the same colours: grey, blue, green, yellow, orange, red, purple. Charts write them Z1 to Z7 with the key underneath. Intervals.icu may report heart-rate zones of its own on an activity; those are shown as it gives them.`,
+    long: `Seven zones (${ZONE_NAMES.map((n, i) => `${i + 1} ${n}`).join(', ')}), by power as shares of FTP and by heart rate as the zone tops set in Settings (on the bike, and on foot for runs and walks), always in the same colours: grey, blue, green, yellow, orange, red, purple. Charts write them Z1 to Z7 with the key underneath. Intervals.icu may report heart-rate zones of its own on an activity; those are shown as it gives them.`,
   },
   np: {
     term: 'Normalized power',

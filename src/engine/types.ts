@@ -6,9 +6,15 @@ export interface Profile {
   updatedAt?: string;       // set by the database on every write; drives the sync across devices
   name: string;
   ftp: number;          // watts
-  lthr: number;         // bpm, lactate threshold heart rate
+  lthr: number;         // bpm, lactate threshold heart rate on the bike
   maxHr: number;        // bpm
   restingHr: number;    // bpm
+  /** Top of heart-rate zones 1..6 in bpm on the bike (zone 7 runs to max). Absent: the standard shares of threshold. */
+  hrZoneTops?: number[];
+  /** Threshold heart rate on foot (runs and walks), a few beats above the bike's for most people. Absent: the bike's. */
+  footLthr?: number;
+  /** Top of heart-rate zones 1..6 in bpm on foot. Absent: the standard shares of the foot threshold. */
+  footHrZoneTops?: number[];
   weightKg: number;
   birthYear?: number;
   /** Threshold run pace, seconds per kilometre (shown per mile or km by units). Optional: runs are by heart rate; pace is a hint. */

@@ -4,7 +4,7 @@ import type { StreamSet } from '../data/db';
 import type { Analysis } from '../engine/analysis';
 import type { Profile, SessionKind } from '../engine/types';
 import { ZONE_VAR } from './Profile';
-import { hrZone, powerZone } from '../engine/zones';
+import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, type Zone } from '../engine/zones';
 import { clock } from '../engine/workout';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
@@ -58,7 +58,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   const panels = useMemo(() => {
     const list: Array<{ key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> }> = [];
     if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP; shaded bands are planned targets when the ride was from a plan.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
-    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: profile.lthr ? [{ v: profile.lthr, label: `threshold ${profile.lthr}` }] : [] });
+    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
     if (ride && samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     // A run reads as pace, minutes per mile or km (standing still has no pace, so it is a gap).
     if (run && samples.some((s) => s.speed != null)) list.push({ key: 'pace', title: 'Pace', unit: imperial ? 'min/mi' : 'min/km', color: 'var(--run)', get: (p) => (p.speed == null || p.speed < 1 ? undefined : (imperial ? 1609.344 : 1000) / p.speed / 60), explain: 'Minutes per ' + (imperial ? 'mile' : 'kilometre') + '; lower is faster. Pace drifts on hills and in heat at the same heart rate, which is why runs are set by heart rate.' });
@@ -66,7 +66,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
     if ((ride || onFoot) && samples.some((s) => s.alt != null)) list.push({ key: 'alt', title: 'Elevation', unit: imperial ? 'ft' : 'm', color: 'var(--ink-3)', get: (p) => (p.alt == null ? undefined : imperial ? p.alt * 3.28084 : p.alt), area: true, explain: 'Height above sea level along the route.' });
     if (samples.some((s) => s.temp != null)) list.push({ key: 'temp', title: 'Temperature', unit: imperial ? '°F' : '°C', color: 'var(--z1)', get: (p) => (p.temp == null ? undefined : imperial ? p.temp * 1.8 + 32 : p.temp), explain: 'As measured by the head unit; it lags the air by a few minutes.' });
     return list;
-  }, [samples, profile.ftp, profile.lthr, imperial, kind]);
+  }, [samples, profile.ftp, profile.lthr, profile.footLthr, imperial, kind]);
 
   if (samples.length < 2) return <div class="empty small">No recording to draw.</div>;
 
@@ -86,7 +86,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
       </div>
       <div class="stack" style="gap:4px">
         {panels.map((p, idx) => (
-          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={profile.lthr} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
+          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
         ))}
       </div>
     </div>
@@ -98,9 +98,9 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
  * compact height, so a wide window shows more of the ride rather than taller
  * charts, and the text stays the same size at any width.
  */
-function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, basis, showXAxis }: {
+function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, hrZones, basis, showXAxis }: {
   samples: Sample[]; panel: { title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> };
-  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; basis: 'power' | 'hr'; showXAxis: boolean;
+  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; hrZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
 }) {
   const [box, W] = useWidth(480);
   const H = showXAxis ? 86 : 66, padL = 34, padR = 6, padT = 6, padB = showXAxis ? 18 : 4;
@@ -147,7 +147,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
-          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1));
+          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1), hrZones);
           const x1 = byTime(s.startSec), x2 = byTime(s.endSec);
           return <rect key={s.index} x={x1} y={y(Math.min(hi, s.targetHigh))} width={Math.max(0.5, x2 - x1)} height={Math.max(2, y(s.targetLow) - y(Math.min(hi, s.targetHigh)))} fill={ZONE_VAR[zone - 1]} fill-opacity="0.28" />;
         })}

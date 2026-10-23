@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POWER_ZONES, hrZone, powerToHrFraction, powerZone, zoneTable } from './zones';
+import { POWER_ZONES, defaultHrZoneTops, footHrZones, footLthr, hrLadder, hrZone, powerToHrFraction, powerZone, rideHrZones, validTops, zoneTable } from './zones';
 import { flattenSteps, formatDuration, renderIntervalsText, workoutStats } from './workout';
 import { estimatedRideTss, fitnessSeries, hrIntensity, hrTss, looksLikeADrive, powerTss, rideIntensity, rideTss } from './load';
 import { hrToPowerFraction } from './zones';
@@ -49,6 +49,37 @@ describe('zones', () => {
     expect(powerToHrFraction(0.90)).toBeCloseTo(0.94, 3);
     // the top never explodes
     expect(powerToHrFraction(2.0)).toBeLessThan(1.15);
+  });
+  it('builds a ladder from the rider\'s own zone tops and falls back to the standard shares', () => {
+    const tops = [117, 132, 145, 157, 168, 176];   // bpm, threshold 154
+    const z = hrLadder(154, tops);
+    expect(z[1].high).toBeCloseTo(132 / 154, 3);
+    expect(z[3].low).toBeCloseTo(145 / 154, 3);
+    expect(hrZone(124 / 154, z)).toBe(2);        // 124 bpm is endurance on this rider's ladder
+    expect(hrZone(124 / 154)).toBe(1);           // but recovery on the standard shares (82% = 126)
+    expect(hrZone(150 / 154, z)).toBe(4);
+    expect(validTops([117, 132, 132, 157, 168, 176])).toBe(false);
+    expect(hrLadder(154, [117, 132])).toBe(hrLadder(154, undefined));
+    expect(defaultHrZoneTops(160)).toEqual([131, 142, 150, 160, 170, 176]);
+  });
+  it('renders and scores on the rider\'s ladder: threshold meets threshold whatever the tops', () => {
+    const z = hrLadder(154, [117, 132, 145, 157, 168, 176]);
+    expect(powerToHrFraction(0.75, z)).toBeCloseTo(132 / 154, 3);   // top of power Z2 lands on the top of HR Z2
+    expect(powerToHrFraction(1.0, z)).toBeGreaterThan(145 / 154);
+    expect(powerToHrFraction(1.0, z)).toBeLessThan(157 / 154);
+    expect(hrToPowerFraction(1, z)).toBe(1);
+    expect(hrToPowerFraction(132 / 154, z)).toBeCloseTo(0.75, 2);
+    let last = -1;
+    for (let h = 0; h <= 1.3; h += 0.01) { const p = hrToPowerFraction(h, z); expect(p).toBeGreaterThanOrEqual(last); last = p; }
+  });
+  it('keeps separate numbers on foot, with the bike\'s as the fallback', () => {
+    const p = { ...profile, lthr: 154, hrZoneTops: [117, 132, 145, 157, 168, 176] };
+    expect(footLthr(p)).toBe(154);
+    expect(footHrZones(p)).toBe(rideHrZones({ lthr: 154 }));   // no foot tops: standard shares of the bike threshold
+    const q = { ...p, footLthr: 158, footHrZoneTops: [120, 135, 148, 158, 170, 178] };
+    expect(footLthr(q)).toBe(158);
+    expect(hrZone(130 / 158, footHrZones(q))).toBe(2);
+    expect(zoneTable(q, 'hr')[1]).toMatchObject({ low: 117, high: 131 });   // the bike table is untouched
   });
   it('produces absolute boundaries from the profile', () => {
     const t = zoneTable(profile, 'power');

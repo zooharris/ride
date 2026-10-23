@@ -1,6 +1,7 @@
 // The numbers behind the Progress charts and the ride page's power charts.
 // Pure functions over rides, wellness and streams; nothing here touches storage.
 
+import { HR_ZONES, type Zone } from './zones';
 import type { Ride, SessionKind, Wellness } from './types';
 import { addDays } from './load';
 
@@ -109,14 +110,14 @@ export const MAX_STEADY_DRIFT = 15;
  * heart-rate zone 2) when it is not; with a drift reading that is plausible.
  * One rule, so the Plan page and the Progress page cannot disagree.
  */
-export function isSteadyAerobicRide(r: Ride, lthr?: number, isEndurance?: (r: Ride) => boolean | undefined): boolean {
+export function isSteadyAerobicRide(r: Ride, lthr?: number, isEndurance?: (r: Ride) => boolean | undefined, zones: Zone[] = HR_ZONES): boolean {
   if (r.sport !== 'ride' || r.seconds < 3600) return false;
   if (!(r.efficiencyFactor || r.decoupling != null)) return false;
   if (r.decoupling != null && Math.abs(r.decoupling) > MAX_STEADY_DRIFT) return false;
   const planned = isEndurance?.(r);
   if (planned != null) return planned;
   if (r.intensityFactor != null) return r.intensityFactor <= 0.78;
-  if (r.averageHr && lthr) return r.averageHr / lthr < 0.89;
+  if (r.averageHr && lthr) return r.averageHr / lthr < zones[1].high;
   return false;
 }
 
@@ -124,9 +125,9 @@ export function isSteadyAerobicRide(r: Ride, lthr?: number, isEndurance?: (r: Ri
  * Efficiency factor and heart-rate drift on steady rides of an hour or more:
  * the honest signal of a growing aerobic base.
  */
-export function aerobicPoints(rides: Ride[], isEndurance: (r: Ride) => boolean | undefined, lthr?: number): Array<{ date: string; ef?: number; drift?: number; name: string }> {
+export function aerobicPoints(rides: Ride[], isEndurance: (r: Ride) => boolean | undefined, lthr?: number, zones?: Zone[]): Array<{ date: string; ef?: number; drift?: number; name: string }> {
   return rides
-    .filter((r) => isSteadyAerobicRide(r, lthr, isEndurance))
+    .filter((r) => isSteadyAerobicRide(r, lthr, isEndurance, zones))
     .map((r) => ({ date: r.date, ef: r.efficiencyFactor, drift: r.decoupling, name: r.name }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }

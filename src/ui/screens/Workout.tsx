@@ -1,3 +1,4 @@
+import { footLthr } from '../../engine/zones';
 import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
@@ -11,7 +12,7 @@ import { go } from '../router';
 import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
-import { sendWorkout } from '../../sync/intervals';
+import { type HrProfile, sendWorkout } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
 import { runEvent, sessionSteps } from '../../sync/intervals';
 import { bandOf, hrBandWords, paceHint, timeWords } from '../../engine/run';
@@ -45,7 +46,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm quiet" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm quiet" onClick={() => setChange('replace')}>Replace</button></>;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ? { maxHr: data.profile.maxHr, lthr: data.profile.lthr, footLthr: data.profile.footLthr, hrZoneTops: data.profile.hrZoneTops, footHrZoneTops: data.profile.footHrZoneTops } : undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -118,7 +119,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, thresholdPace, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, hr, thresholdPace, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; hr?: HrProfile; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -128,7 +129,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
     if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     setSending(true);
     try {
-      const id = await sendWorkout(c, w, planned.date, basis, { maxHr, lthr });
+      const id = await sendWorkout(c, w, planned.date, basis, hr ?? { maxHr, lthr });
       await db.planned.update(planned.id, { status: 'sent', icuEventId: id });
       notify();
       setSendMsg({ ok: true, text: w.kind === 'strength' || w.kind === 'mobility' ? 'Sent. On the watch it is under Today\'s Workouts in an indoor-bike profile (Garmin only shows step names for rides); the recording is filed here as what it really was.' : 'Sent. It reaches your Garmin on its next phone sync.' });
@@ -210,8 +211,8 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
           {w.kind === 'run' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
-              <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>
-              <p class="faint small">Percentages are of your threshold heart rate ({lthr} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are shares of your maximum ({maxHr} bpm), converted.</p>
+              <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, hr ?? { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>
+              <p class="faint small">Percentages are of your threshold heart rate on foot ({footLthr(hr ?? { lthr })} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are shares of your maximum ({maxHr} bpm), converted.</p>
             </details>
           )}
           {w.kind !== 'walk' && w.kind !== 'run' && (

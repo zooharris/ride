@@ -4,7 +4,7 @@ import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
-import { changeKey, type Change, type Replan } from '../../engine/adapt';
+import { changeKey, changeKeys, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
@@ -16,6 +16,7 @@ import { WorkoutProfile } from '../Profile';
 import { go } from '../router';
 import { FAMILY_LABEL } from '../../library/workouts';
 import type { Fitness, SessionKind } from '../../engine/types';
+import type { CoachReview } from '../../coach/claude';
 import { KIND_ICON } from '../icons';
 import { FORM_BANDS, LineChart } from '../LineChart';
 import { PageHead } from '../PageHead';
@@ -104,7 +105,7 @@ export function Plan({ data }: { data: AppData }) {
     if (!check || !active) return;
     setBusy(true);
     try {
-      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.map(changeKey)), { planId: active.id });
+      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.flatMap(changeKeys)), { planId: active.id });
       setCheck(await replan(await freshData(data)));
     } finally { setBusy(false); }
   }
@@ -342,19 +343,50 @@ const GOAL_LABEL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO
 export const GOAL_LABEL_FULL: Record<string, string> = { ftp: 'Raise FTP', vo2max: 'Raise VO2max', endurance: 'Ride longer comfortably', weight: 'Lose weight', general: 'General fitness' };
 
 /**
+ * The coach's view of the rows on screen (Batch 6, C5). A row carries the
+ * coach's verdict only when the coach judged that very change (the review's
+ * signature lists it, and a verdict for its date and kind exists); a row the
+ * coach has not seen carries none. The headline is written here from those
+ * verdicts, so it can never disagree with the tags; the coach's own one-line
+ * reason is shown beneath it only when the coach judged exactly these rows. A
+ * review in the older form (no per-change verdicts) tags nothing.
+ */
+export function coachView(changes: Change[], review?: CoachReview | null): { tags: Map<string, { apply: boolean; why: string }>; headline?: string; reason?: string; recommend?: 'all' | 'some' | 'none' } {
+  const tags = new Map<string, { apply: boolean; why: string }>();
+  if (!review || review.failed || !review.verdicts?.length || review.changesSig == null) return { tags };
+  const judged = new Set(review.changesSig.split(';').filter(Boolean));
+  for (const c of changes) {
+    if (!judged.has(changeSig(c))) continue;
+    const v = review.verdicts.find((x) => x.date === c.date && x.kind === c.kind);
+    if (v) tags.set(changeSig(c), { apply: v.apply, why: v.why });
+  }
+  if (!tags.size) return { tags };
+  const applied = changes.filter((c) => tags.get(changeSig(c))?.apply);
+  const day = (c: Change) => fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' });
+  const names = (list: Change[]) => list.slice(0, 3).map((c) => `${day(c)} ${c.after ?? c.before}`).join(', ') + (list.length > 3 ? ` and ${list.length - 3} more` : '');
+  const n = tags.size;
+  const headline = !applied.length ? `The coach would leave ${n === 1 ? 'this change' : n === changes.length ? `all ${n} changes` : `the ${n} changes it reviewed`} alone.`
+    : applied.length === n ? `The coach would apply ${n === 1 ? 'this change' : n === changes.length ? `all ${n} changes` : `the ${n} changes it reviewed`}.`
+    : `The coach would apply ${applied.length} of the ${n} changes${n < changes.length ? ' it reviewed' : ''}: ${names(applied)}.`;
+  const exact = review.changesSig === changes.map(changeSig).sort().join(';');
+  const recommend = n < changes.length ? undefined : !applied.length ? 'none' : applied.length === n ? 'all' : 'some';
+  return { tags, headline, reason: exact && review.reason ? review.reason : undefined, recommend };
+}
+
+/**
  * The plan re-check's suggestions, one row each with Accept and Reject. An
  * accepted change goes on the calendar; a rejected one disappears and is not
  * offered again. Why the re-check suggests them, and how last week went, sit
  * above the list.
  */
-export function ReplanView({ check, onAccept, onReject, busy, coachSays, coachVerdict, coachSkip = [] }: { check: Replan; onAccept: (changes: Change[]) => void; onReject: (changes: Change[]) => void; busy: boolean; coachSays?: string; coachVerdict?: 'all' | 'some' | 'none'; coachSkip?: string[] }) {
-  // The coach's view of each change, beside it: skip when it said none, or some and named this date.
-  const coachOn = (c: Change) => !coachVerdict ? null : coachVerdict === 'none' || (coachVerdict === 'some' && coachSkip.includes(c.date)) ? 'skip' : 'apply';
+export function ReplanView({ check, onAccept, onReject, busy, coach }: { check: Replan; onAccept: (changes: Change[]) => void; onReject: (changes: Change[]) => void; busy: boolean; coach?: CoachReview | null }) {
+  const view = coachView(check.changes, coach);
+  const coachOn = (c: Change) => view.tags.get(changeSig(c));
   const r = check.review;
   const [all, setAll] = useState(false);
   const shown = all ? check.changes : check.changes.slice(0, 6);
   const sub = (t?: string) => (t ? <span class="faint small"> · {t}</span> : null);
-  const line = (c: Change) => c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
+  const line = (c: Change) => c.note === 'moved' ? <span>{c.after}{sub(c.afterSub)} <span class="faint">· moves here from {fmtDate(c.movedFrom!, { weekday: 'long' })}</span>{c.before !== c.after && <span class="faint"> (was {c.before})</span>}</span> : c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
   return (
     <div style="margin-top:12px">
       {(r.planned > 0 || r.lines.length > 0) && <>
@@ -364,12 +396,12 @@ export function ReplanView({ check, onAccept, onReject, busy, coachSays, coachVe
       </>}
       <div class="small"><b>Why the re-check suggests changes</b></div>
       {check.summary.map((l, i) => <div class="muted small" key={i} style="margin-top:3px">{l}</div>)}
-      {coachSays && <div class="small" style="margin-top:8px"><b>The coach:</b> <span class="muted">{coachSays}</span></div>}
+      {view.headline && <div class="small" style="margin-top:8px"><b>The coach:</b> <span class="muted">{view.headline}</span>{view.reason && <div class="muted" style="margin-top:3px">{view.reason}</div>}</div>}
       {check.changes.length > 0 ? (
         <div class="stack" style="margin-top:12px;gap:6px">
           {shown.map((c) => (
             <div class="row between wrap small" key={changeKey(c) + (c.before ?? '') + (c.after ?? '')} style="gap:8px;padding:6px 0;border-top:1px solid var(--line)">
-              <span style="flex:1;min-width:200px"><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {line(c)}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}</span>}{coachOn(c) && <span class="faint"> · coach: {coachOn(c)}</span>}</span>
+              <span style="flex:1;min-width:200px"><span class="faint">{fmtDate(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span> · {line(c)}{c.userEdited && <span class="faint"> · {c.userAdded ? 'you added this' : 'you changed this'}</span>}{coachOn(c) && <span class="faint" title={coachOn(c)!.why || undefined}> · coach: {coachOn(c)!.apply ? 'apply' : 'skip'}{coachOn(c)!.why ? ` · ${coachOn(c)!.why}` : ''}</span>}</span>
               <span class="row" style="gap:6px">
                 <button class="btn sm" onClick={() => onAccept([c])} disabled={busy}>Accept</button>
                 <button class="btn sm quiet" onClick={() => onReject([c])} disabled={busy}>Reject</button>
@@ -385,6 +417,7 @@ export function ReplanView({ check, onAccept, onReject, busy, coachSays, coachVe
           )}
         </div>
       ) : <div class="muted small" style="margin-top:8px">Nothing to change.</div>}
+      {(check.later?.length ?? 0) > 0 && <div class="faint small" style="margin-top:8px">{check.later!.length === 1 ? '1 later change' : `${check.later!.length} later changes`} will be reviewed as {check.later!.length === 1 ? 'it comes' : 'they come'} near: the plan re-checks itself every day, and nothing has happened yet that needs them now.</div>}
     </div>
   );
 }

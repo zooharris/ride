@@ -279,15 +279,26 @@ export interface ReviewContext {
   riderNotes: string[];
   plan?: CoachPlan;
   tomorrow?: string[];
+  /** The plan's own sentences on why it proposes changes (the re-check's summary). */
+  why?: string[];
 }
+
+/** The coach's view of one proposed change, keyed by its date and kind (Batch 6, C5). */
+export interface CoachVerdict { date: string; kind: string; apply: boolean; why: string }
 
 export interface CoachReview {
   date: string;
   text: string;
-  /** Claude's view on the planner's proposal: all of it, none of it, or all but the dates in `skip`. */
+  /** Claude's view of each proposed change. Reviews saved before 23 Oct 2026 have none; their view is in applyChanges and skip. */
+  verdicts?: CoachVerdict[];
+  /** Derived from the verdicts for older readers: all of it, none of it, or all but the dates in `skip`. */
   applyChanges: 'all' | 'some' | 'none';
   skip: string[];
   reason: string;
+  /** Which proposals the review judged: the app's signature of the change list it was shown. */
+  changesSig?: string;
+  /** 'sync' after new activities; 'recheck' for the plan's own daily re-check (C6). */
+  mode?: 'sync' | 'recheck';
   /** Set when the coach's reply could not be read: why, for troubleshooting. The text is then empty and never shown. */
   failed?: string;
 }
@@ -299,7 +310,7 @@ export interface CoachReview {
  */
 export function reviewPrompt(ctx: ReviewContext): string {
   const tomorrow = ctx.tomorrow?.length ? ctx.tomorrow.join('; ') : 'nothing planned';
-  return `${coachIntro(ctx.profile, ctx.date)} You are reviewing their new training data. Answer in the JSON form given. "text" is 4 to 7 plain sentences to the rider, in the second person: what the new activities show, what matters this week, and what you recommend; no headings, bullets or exclamation marks. "applyChanges" is "all" when every proposed change below should be applied as it stands, "none" when none should, "some" when most should: then list in "skip" the dates (YYYY-MM-DD) of the changes to leave out. "reason" is one sentence. When a new activity completed a planned session, judge it on its recorded duration against the planned duration. The verdict on-track / close / short is whether the plan reaches the fitness the goal needs by its date. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. ${SHARED_RULES}
+  return `${coachIntro(ctx.profile, ctx.date)} You are reviewing their new training data. Answer in the JSON form given. "text" is 4 to 7 plain sentences to the rider, in the second person: what the new activities show, what matters this week, and what you recommend; no headings, bullets or exclamation marks. ${VERDICT_RULES} When a new activity completed a planned session, judge it on its recorded duration against the planned duration. The verdict on-track / close / short is whether the plan reaches the fitness the goal needs by its date. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. ${SHARED_RULES}
 
 Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 ${planLine(ctx.plan)}
@@ -312,6 +323,29 @@ The app's proposed plan changes:\n${ctx.proposedChanges.map((n) => '- ' + n).joi
 The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') || '- none'}`;
 }
 
+/** How the coach judges the proposed changes, shared by both review prompts (Batch 6, C5). */
+const VERDICT_RULES = `"verdicts" has one entry for every proposed change listed below, no more and no fewer: its "date" (YYYY-MM-DD) and "kind" exactly as the change's line gives them, "apply" true when the rider should accept it as it stands and false when not, and "why" in twelve words or fewer. Every proposed change is a named workout from the rider's library; judge it as that workout. "reason" is one sentence on the changes as a whole, and must agree with the verdicts. Changes more than two weeks out are provisional: the plan re-checks itself every day and will review them again as they come near, so skipping one costs nothing.`;
+
+/**
+ * The plan re-checked itself this morning (Batch 6, C6): Claude reads the same
+ * evidence and the proposed changes and gives a view of each. No new activity
+ * is needed for this, and none is pretended.
+ */
+export function recheckPrompt(ctx: ReviewContext): string {
+  const tomorrow = ctx.tomorrow?.length ? ctx.tomorrow.join('; ') : 'nothing planned';
+  return `${coachIntro(ctx.profile, ctx.date)} The plan re-checked itself this morning against the rider's data and proposes the changes below. Answer in the JSON form given. "text" is 3 to 5 plain sentences to the rider, in the second person: whether the changes are worth making and why; "nothing to decide today" is a good answer when none of them matters yet. No headings, bullets or exclamation marks. ${VERDICT_RULES} A session the rider placed, moved or changed by hand is theirs and is never among these changes. The rider's own notes below explain the numbers and outrank them. ${SHARED_RULES}
+
+Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
+${planLine(ctx.plan)}
+Tomorrow: ${tomorrow}.
+Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}
+What the data say about the rider:\n${ctx.assessmentNotes.map((n) => '- ' + n).join('\n')}
+${ctx.newActivities.length ? `New activities:\n${ctx.newActivities.map((n) => '- ' + n).join('\n')}\n` : ''}Last week:\n${ctx.lastWeek.map((n) => '- ' + n).join('\n') || '- nothing to report'}
+Why the plan proposes changes:\n${ctx.why?.map((n) => '- ' + n).join('\n') || '- no reason given'}
+The proposed changes (date, kind, what):\n${ctx.proposedChanges.map((n) => '- ' + n).join('\n') || '- no changes proposed'}
+The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') || '- none'}`;
+}
+
 /**
  * After new activities arrive: Claude reads the same evidence the planner used,
  * plus the planner's proposed changes, and gives a view per change. It never
@@ -321,7 +355,7 @@ The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') |
  * (`type: 'enabled'` is a 400 on the Claude 5 models), so it thinks adaptively
  * at medium effort, with room for the thinking and the answer together.
  */
-export async function reviewAfterSync(apiKey: string, ctx: ReviewContext): Promise<CoachReview> {
+export async function reviewAfterSync(apiKey: string, ctx: ReviewContext, mode: 'sync' | 'recheck' = 'sync'): Promise<CoachReview> {
   // The answer comes back in a fixed JSON form (structured outputs). Sonnet 5.5 refuses a forced tool
   // call, which is how this was asked for before 20 Oct 2026.
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -331,28 +365,41 @@ export async function reviewAfterSync(apiKey: string, ctx: ReviewContext): Promi
       model: MODEL, max_tokens: 8000,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
-      messages: [{ role: 'user', content: reviewPrompt(ctx) }],
+      messages: [{ role: 'user', content: mode === 'recheck' ? recheckPrompt(ctx) : reviewPrompt(ctx) }],
     }),
   });
   if (!res.ok) throw new Error(await apiError(res));
-  return readReview(ctx.date, await res.json());
+  return { ...readReview(ctx.date, await res.json()), mode };
 }
 
 const REVIEW_SCHEMA = {
   type: 'object',
   properties: {
     text: { type: 'string', description: '4 to 7 plain sentences to the rider.' },
-    applyChanges: { type: 'string', enum: ['all', 'some', 'none'], description: "Whether to apply the app's proposed changes: all, some (all but the dates in skip) or none." },
-    skip: { type: 'array', items: { type: 'string' }, description: "When applyChanges is 'some': the dates (YYYY-MM-DD) of the changes to leave out. Otherwise empty." },
-    reason: { type: 'string', description: 'One sentence on why.' },
+    verdicts: {
+      type: 'array',
+      description: 'One entry per proposed change: its date and kind as given, whether to apply it, and why in twelve words or fewer.',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD, as the change gives it.' },
+          kind: { type: 'string', enum: ['ride', 'strength', 'walk', 'run', 'mobility', 'other'] },
+          apply: { type: 'boolean' },
+          why: { type: 'string' },
+        },
+        required: ['date', 'kind', 'apply', 'why'],
+        additionalProperties: false,
+      },
+    },
+    reason: { type: 'string', description: 'One sentence on the changes as a whole; it agrees with the verdicts.' },
   },
-  required: ['text', 'applyChanges', 'skip', 'reason'],
+  required: ['text', 'verdicts', 'reason'],
   additionalProperties: false,
 };
 
 /** The review out of Claude's reply, or a failed review that says why, never raw text. */
 export function readReview(date: string, data: { content?: Array<{ type: string; input?: unknown; text?: string }>; stop_reason?: string }): CoachReview {
-  type Answer = { text?: unknown; applyChanges?: unknown; skip?: unknown; reason?: unknown };
+  type Answer = { text?: unknown; applyChanges?: unknown; skip?: unknown; verdicts?: unknown; reason?: unknown };
   // The JSON form arrives as text; an older tool-call reply is read the same way.
   let use = data.content?.find((c) => c.type === 'tool_use')?.input as Answer | undefined;
   if (!use && data.stop_reason !== 'max_tokens') {
@@ -362,20 +409,32 @@ export function readReview(date: string, data: { content?: Array<{ type: string;
   if (use && typeof use.text === 'string' && use.text.trim()) {
     return { date, text: use.text.trim(), ...readVerdict(use), reason: typeof use.reason === 'string' ? use.reason : '' };
   }
-  return { date, text: '', applyChanges: 'none', skip: [], reason: '', failed: data.stop_reason === 'max_tokens' ? 'the reply was cut off before it finished' : use ? 'the reply was missing its text' : `no review in the reply (${data.stop_reason ?? 'unknown reason'})` };
+  return { date, text: '', verdicts: undefined, applyChanges: 'none', skip: [], reason: '', failed: data.stop_reason === 'max_tokens' ? 'the reply was cut off before it finished' : use ? 'the reply was missing its text' : `no review in the reply (${data.stop_reason ?? 'unknown reason'})` };
 }
 
 /**
- * The coach's verdict on the proposed changes, from this batch's form or the old
- * yes/no (a review saved before 21 Oct 2026 still renders): true is all, false none.
+ * The coach's verdict on the proposed changes. The form since 23 Oct 2026 is
+ * one verdict per change (date, kind, apply, why); the older fields are derived
+ * from it, so readers that only know "all / some / none" still work. A review
+ * saved in the older form (all / some with dates to skip, or before 21 Oct a
+ * plain yes/no) still reads, with no per-change verdicts.
  */
-export function readVerdict(v: { applyChanges?: unknown; skip?: unknown }): Pick<CoachReview, 'applyChanges' | 'skip'> {
+export function readVerdict(v: { applyChanges?: unknown; skip?: unknown; verdicts?: unknown }): Pick<CoachReview, 'applyChanges' | 'skip' | 'verdicts'> {
+  if (Array.isArray(v.verdicts)) {
+    const verdicts: CoachVerdict[] = v.verdicts
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .filter((x) => typeof x.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && typeof x.kind === 'string' && typeof x.apply === 'boolean')
+      .map((x) => ({ date: x.date as string, kind: (x.kind as string).toLowerCase(), apply: x.apply as boolean, why: typeof x.why === 'string' ? x.why : '' }));
+    const skip = [...new Set(verdicts.filter((x) => !x.apply).map((x) => x.date))];
+    const applyChanges = !verdicts.length || verdicts.every((x) => !x.apply) ? 'none' : verdicts.every((x) => x.apply) ? 'all' : 'some';
+    return { applyChanges, skip, verdicts };
+  }
   // Structured outputs do not promise the capitalisation of enum values, so compare lower-case.
   const a = typeof v.applyChanges === 'string' ? v.applyChanges.toLowerCase() : v.applyChanges;
   const skip = a === 'some' && Array.isArray(v.skip) ? v.skip.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
   // "Some" with no date named is all of them: the coach made no exception.
   const applyChanges = a === true || a === 'all' || (a === 'some' && !skip.length) ? 'all' : a === 'some' ? 'some' : 'none';
-  return { applyChanges, skip };
+  return { applyChanges, skip, verdicts: undefined };
 }
 
 /**

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, sessionHref, setCurrentEquipment } from '../store';
 import { applyPlan, buildPlan, cancelPlan, changeSig, freshData, getActivePlan, getPlans, plannedTss, putPlan, rejectChanges, renamePlan, replan, type ActivePlan, type PlanWeekSummary } from '../planService';
-import { changeKey, diffPlan, type Change, type Replan } from '../../engine/adapt';
+import { changeKeys, diffPlan, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, AwayRange, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal } from '../../engine/goals';
 import type { PlannedWorkout, Workout } from '../../engine/types';
@@ -69,7 +69,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
     if (!check) return;
     setBusy(true);
     try {
-      await applyPlan(data, check.plan, plan!.goal, plan!.availability, plan!.masters, new Set(changes.map(changeKey)), { planId: plan!.id });
+      await applyPlan(data, check.plan, plan!.goal, plan!.availability, plan!.masters, new Set(changes.flatMap(changeKeys)), { planId: plan!.id });
       setCheck(await replan(await freshData(data)));
       toast({ ok: true, text: changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.` });
     } finally { setBusy(false); }
@@ -228,7 +228,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
     try {
       const accepted = preview.changes.filter((c) => ticked.has(sig(c)));
       const declined = preview.changes.filter((c) => !ticked.has(sig(c)));
-      await applyPlan(data, preview.plan, goal, av, masters, new Set(accepted.map(changeKey)), { planId: plan.id, away });
+      await applyPlan(data, preview.plan, goal, av, masters, new Set(accepted.flatMap(changeKeys)), { planId: plan.id, away });
       // The settings are kept whatever was ticked, so tomorrow's re-check works from them.
       const saved = (await getPlans()).find((p) => p.id === plan.id);
       if (saved) await putPlan({ ...saved, goal, availability: av, masters, away, start: upcoming ? (preview.plan.weeks[0]?.sessions[0]?.date ?? startDate) : saved.start, goalDate: preview.plan.goalDate, projection: preview.plan.projection, requiredCtl: preview.plan.requiredCtl });
@@ -240,7 +240,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
   }
 
   const sub = (t?: string) => (t ? <span class="faint small"> · {t}</span> : null);
-  const line = (c: Change) => c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
+  const line = (c: Change) => c.note === 'moved' ? <span>{c.after}{sub(c.afterSub)} <span class="faint">· moves here from {fmtDate(c.movedFrom!, { weekday: 'long' })}</span>{c.before !== c.after && <span class="faint"> (was {c.before})</span>}</span> : c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
 
   return (
     <div>

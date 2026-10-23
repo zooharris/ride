@@ -85,9 +85,9 @@ describe('the review answers per change', () => {
     expect(r).toMatchObject({ text: 'This one.', applyChanges: 'all' });
   });
   it('proposed changes are written in words', () => {
-    expect(changeWords({ date: '2026-10-23', kind: 'ride', after: 'Oatlands', note: 'added' })).toBe('2026-10-23: add Oatlands');
-    expect(changeWords({ date: '2026-10-24', kind: 'ride', before: 'Reston', note: 'removed' })).toBe('2026-10-24: remove Reston');
-    expect(changeWords({ date: '2026-10-25', kind: 'ride', before: 'Reston', after: 'Vienna', note: 'changed', userEdited: true })).toBe('2026-10-25: replace Reston with Vienna [the rider changed this day by hand; offered, not pre-selected]');
+    expect(changeWords({ date: '2026-10-23', kind: 'ride', after: 'Oatlands', note: 'added' })).toBe('2026-10-23 ride: add Oatlands');
+    expect(changeWords({ date: '2026-10-24', kind: 'ride', before: 'Reston', note: 'removed' })).toBe('2026-10-24 ride: remove Reston');
+    expect(changeWords({ date: '2026-10-25', kind: 'ride', before: 'Reston', after: 'Vienna', note: 'changed', userEdited: true })).toBe('2026-10-25 ride: replace Reston with Vienna [the rider changed this day by hand; offered, not pre-selected]');
     expect(changeWords({ date: '2026-10-23', kind: 'ride', after: 'Oatlands', note: 'added' })).not.toMatch(/→/);
   });
 });

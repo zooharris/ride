@@ -3,10 +3,11 @@ import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
 import { activityLine, describeSession, durationWords, readVerdict, reviewAfterSync, type CoachPlan, type CoachReview } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
-import { diffPlan, reviewLastWeek, summarize, type Change, type Replan } from '../engine/adapt';
+import { diffPlan, reviewLastWeek, splitByHorizon, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
+import type { SessionType } from '../engine/generate';
 import { addDays, rideIntensity, today } from '../engine/load';
-import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase } from '../engine/planner';
+import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase, type QualityScores } from '../engine/planner';
 import { weeklyLoad } from '../engine/progress';
 import type { Basis, Equipment, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
@@ -37,7 +38,12 @@ export interface ActivePlan {
   away?: AwayRange[];
   /** The plan's weeks as built (phase and planned load), for the timeline and the calendar's recovery-week shading. Plans applied before this was kept have none. */
   weeks?: PlanWeekSummary[];
+  /** What decided the quality sessions when the plan was made; a re-check keeps them unless these move (Batch 6, C3). Plans made before have none until their first re-check. */
+  qualityScores?: QualityScores;
 }
+
+type PlanRequestKeep = { scores: QualityScores; byWeek: Record<string, SessionType[]> };
+const QUALITY_FAMILIES = new Set(['sweetspot', 'tempo', 'threshold', 'vo2max', 'anaerobic']);
 
 export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number }
 
@@ -169,7 +175,7 @@ export function overlapping(plans: ActivePlan[], start: string, end: string, exc
   return plans.find((p) => p.id !== exceptId && p.start <= end && p.goalDate >= start);
 }
 
-export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[], layout?: Array<{ start: string; phase: PlanPhase }>): Promise<Plan> {
+export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[], layout?: Array<{ start: string; phase: PlanPhase }>, keepQuality?: PlanRequestKeep): Promise<Plan> {
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
@@ -187,7 +193,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine) });
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality });
   }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine) });
 }
@@ -278,7 +284,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
-  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks };
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks, qualityScores: existingPlan?.qualityScores ?? plan.qualityScores };
   await putPlan(active);
   notify();
   if (c) autoBackup(c, true);
@@ -519,19 +525,39 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const active = await getActivePlan();
   if (!active) return null;
   if (active.goal.kind === 'event' && active.goal.date <= today()) return null;
-  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, await planLayout(data, active));
+  const layout = await planLayout(data, active);
   const workouts = new Map(data.mine.map((w) => [w.id, w]));
   for (const p of data.planned) { const w = findWorkout(data.mine, p.workoutId); if (w) workouts.set(w.id, w); }
+  // Batch 6, C3: the quality sessions already on the calendar, by plan week, and the scores they were chosen with.
+  // A plan made before the scores were kept gets them now, from today's data, so from here on it holds steady.
+  const byWeek: Record<string, SessionType[]> = {};
+  for (const p of data.planned) {
+    if (p.planId !== active.id || p.status === 'completed' || p.date < today()) continue;
+    const w = workouts.get(p.workoutId);
+    if (!w || w.kind !== 'ride' || !QUALITY_FAMILIES.has(w.family)) continue;
+    const wk = layout.find((l) => p.date >= l.start && p.date < addDays(l.start, 7))?.start;
+    if (wk) (byWeek[wk] ??= []).push(w.family as SessionType);
+  }
+  let scores = active.qualityScores;
+  if (!scores) {
+    scores = (await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, layout)).qualityScores;
+    await putPlan({ ...active, qualityScores: scores });
+  }
+  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, layout, { scores, byWeek });
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
   const review = reviewLastWeek(mine, workouts, data.rides);
   const rejected = await rejectedSigs();
   // From today: days already gone are history (done or missed), the days left respond to them.
-  const changes = diffPlan(mine, workouts, plan, today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
+  const all = diffPlan(mine, workouts, plan, today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
   const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;
-  const summary = summarize(review, changes, plan, fitnessNow, fitnessPlanned, active.projection);
-  return { review, plan, changes, summary, fitnessNow, fitnessPlanned };
+  // Batch 6, C2: the next two weeks' changes, and later ones only with a cause; the rest wait their turn.
+  const { now: changes, later } = splitByHorizon(all, review, fitnessNow, fitnessPlanned, today());
+  // The longest ride on the calendar from today, so "the longest planned is now …" is said only when it changes.
+  const calendarLongest = Math.max(0, ...mine.filter((p) => p.date >= today() && p.status !== 'completed').map((p) => workouts.get(p.workoutId)).filter((w): w is Workout => !!w && w.kind === 'ride').map((w) => workoutStats(w.blocks).seconds));
+  const summary = summarize(review, changes, plan, fitnessNow, fitnessPlanned, active.projection, calendarLongest);
+  return { review, plan, changes, later, summary, fitnessNow, fitnessPlanned };
 }
 
 /**
@@ -605,15 +631,58 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[], aske
     assessmentNotes: assessment.summary, goal,
     verdict: check?.plan.verdict ?? 'n/a', advice: check?.plan.advice ?? '',
     lastWeek: check?.review.lines ?? [],
-    proposedChanges: check ? [...check.summary, ...check.changes.map(changeWords)] : [],
+    why: check?.summary ?? [],
+    proposedChanges: check ? check.changes.map(changeWords) : [],
     newActivities: fresh,
     riderNotes: recentNoteLines(data.dayNotes, today(), 14),
     plan: coachPlan(active, today()),
     tomorrow: tomorrowLines(data, today()),
   });
-  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: newIds } as SavedReview);
+  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: newIds, changesSig: check ? changesSigOf(check.changes) : '' } as SavedReview);
   return { review, check };
 }
+
+/** The proposals a review judged, as one string: a review whose signature differs from the rows on screen judged other rows. */
+export const changesSigOf = (changes: Change[]) => changes.map(changeSig).sort().join(';');
+
+/**
+ * Batch 6, C6: the plan re-checked itself and proposes changes the coach has
+ * not seen. With the coach on (Settings) and a key present, Claude gives its
+ * view of each, once per set of changes (a failure is not retried for the same
+ * set until the app starts again). Nothing is applied here.
+ */
+export async function coachReviewRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
+  if (!check.changes.length) return null;
+  const on = await getSetting<boolean>('coachAuto', false);
+  const key = await getSetting<string>('claudeKey', '');
+  if (!on || !key) return null;
+  const sig = changesSigOf(check.changes);
+  const saved = await getSetting<SavedReview | null>('coachReview', null);
+  if (saved?.changesSig === sig && !saved.failed) return null;
+  if (recheckAsked.has(sig)) return null;
+  recheckAsked.add(sig);
+  const profile = data.profile as Profile;
+  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
+  const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
+  const active = await getActivePlan();
+  const series = fitnessFromRides(data.rides);
+  const review = await reviewAfterSync(key, {
+    profile, date: today(), fitness: fitnessOn(series, today()),
+    assessmentNotes: assessment.summary, goal: active ? goalWords(active.goal) : 'no active plan',
+    verdict: check.plan.verdict, advice: check.plan.advice,
+    lastWeek: check.review.lines, why: check.summary,
+    proposedChanges: check.changes.map(changeWords),
+    newActivities: [],
+    riderNotes: recentNoteLines(data.dayNotes, today(), 14),
+    plan: coachPlan(active, today()),
+    tomorrow: tomorrowLines(data, today()),
+  }, 'recheck');
+  // A failed re-check review is not kept: the rows simply show no coach view, and the next start asks again.
+  if (review.failed) return null;
+  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: [], changesSig: sig } as SavedReview);
+  return review;
+}
+const recheckAsked = new Set<string>();
 
 const EVENT_WORDS: Record<string, string> = { century: 'a century', 'gran-fondo': 'a gran fondo', climbing: 'a climbing event', 'time-trial': 'a time trial', 'group-ride': 'a group ride', 'multi-day': 'a multi-day event', other: 'an event' };
 
@@ -653,11 +722,11 @@ export function recentWeeks(data: AppData, date: string): number[] {
   return weeklyLoad(data.rides, addDays(weekStart(date), -21), date, (d) => weekStart(d)).slice(-4).map((w) => w.total);
 }
 
-/** A proposed change in words for the coach: "2026-10-23: add Oatlands", never "added  → Oatlands". */
+/** A proposed change in words for the coach: "2026-10-23 ride: add Oatlands", never "added  → Oatlands". The date and kind key the coach's verdict. */
 export function changeWords(c: Change): string {
   const b = `${c.before}${c.beforeSub ? ` (${c.beforeSub})` : ''}`, a = `${c.after}${c.afterSub ? ` (${c.afterSub})` : ''}`;
-  const what = c.note === 'added' ? `add ${a}` : c.note === 'removed' ? `remove ${b}` : `replace ${b} with ${a}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
-  return `${c.date}: ${what}${c.userEdited || c.userAdded ? ' [the rider changed this day by hand; offered, not pre-selected]' : ''}`;
+  const what = c.note === 'moved' ? `move ${a} here from ${c.movedFrom}${c.before !== c.after ? ` (it was ${b} there)` : ''}` : c.note === 'added' ? `add ${a}` : c.note === 'removed' ? `remove ${b}` : `replace ${b} with ${a}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
+  return `${c.date} ${c.kind}: ${what}${c.userEdited || c.userAdded ? ' [the rider changed this day by hand; offered, not pre-selected]' : ''}`;
 }
 
 /** The coach's review after a sync, kept until the rider dismisses it or a newer one replaces it. */

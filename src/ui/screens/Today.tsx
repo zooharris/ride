@@ -18,10 +18,10 @@ import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
-import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { KIND_LABEL, KindDot, ReplanView, coachView } from './Plan';
 import { StatusPill, statusOf } from '../StatusMark';
-import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan, type SavedReview } from '../planService';
-import { changeKey, type Change, type Replan } from '../../engine/adapt';
+import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, coachReviewRecheck, type ActivePlan, type SavedReview } from '../planService';
+import { changeKeys, type Change, type Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
 import type { ReadinessDriver } from '../../engine/readiness';
 import { toast } from '../Toast';
@@ -88,6 +88,8 @@ export function Today({ data }: { data: AppData }) {
         const r = await replan(data);
         if (alive) setCheck(r);
         if (a.lastCheck !== date) await markChecked();
+        // Batch 6, C6: with the coach on, it gives its view of changes it has not seen yet.
+        if (r?.changes.length) coachReviewRecheck(data, r).then(async (rev) => { if (rev && alive) setReview(await getCoachReview()); }).catch(() => { /* the rows simply show no coach view */ });
       } else if (alive) setCheck(null);
     })();
     return () => { alive = false; };
@@ -99,7 +101,7 @@ export function Today({ data }: { data: AppData }) {
     if (!check || !active) return;
     setChecking(true);
     try {
-      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.map(changeKey)), { planId: active.id });
+      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.flatMap(changeKeys)), { planId: active.id });
       setCheck(await replan(await freshData(data)));
       setMsg({ ok: true, text: changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.` });
     } finally { setChecking(false); }
@@ -217,11 +219,11 @@ export function Today({ data }: { data: AppData }) {
           </div>
           {check && check.changes.length > 0 && (
             <div class="row between wrap" style="gap:8px;margin-top:8px">
-              <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">to your plan{review && review.text ? (review.applyChanges === 'all' ? '; the coach recommends them' : review.applyChanges === 'some' ? '; the coach recommends most of them' : '; the coach suggests leaving the plan as it is') : ''}.</span></span>
+              <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">to your plan{(() => { const r = coachView(check.changes, review).recommend; return r === 'all' ? (check.changes.length === 1 ? '; the coach recommends it' : '; the coach recommends them') : r === 'some' ? '; the coach recommends some of them' : r === 'none' ? '; the coach suggests leaving the plan as it is' : ''; })()}.</span></span>
               <button class="btn sm" aria-expanded={showSuggestions} onClick={() => setShowSuggestions(!showSuggestions)}>{showSuggestions ? 'Hide' : 'Review'}</button>
             </div>
           )}
-          {check && check.changes.length > 0 && showSuggestions && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} coachSays={review?.reason || undefined} coachVerdict={review && !review.failed ? review.applyChanges : undefined} coachSkip={review?.skip} />}
+          {check && check.changes.length > 0 && showSuggestions && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} coach={review} />}
         </section>
       )}
 

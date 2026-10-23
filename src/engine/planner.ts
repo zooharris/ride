@@ -74,6 +74,11 @@ export interface PlanRequest {
   layout?: Array<{ start: string; phase: Phase }>;
   /** The rider's own saved workouts, offered to the planner alongside the Library (Batch 6, B1). The plan never adds to them. */
   ownWorkouts?: Workout[];
+  /**
+   * Re-checking: the quality types already on the calendar, by plan week (its Monday), and the scores
+   * the plan was made with. They are kept unless the scores have moved (Batch 6, C3).
+   */
+  keepQuality?: { scores: QualityScores; byWeek: Record<string, SessionType[]> };
   /** Build the sessions as generated, without the Library: plans as they were made before 23 Oct 2026 (tests of the move). */
   noSnap?: boolean;
   /** What the rider has actually done this week up to today, planned or not, so the days left can respond to it. */
@@ -81,6 +86,20 @@ export interface PlanRequest {
 }
 
 export type Phase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
+
+/**
+ * What decides a week's quality sessions: the goal's emphasis and the rider's
+ * limiters, as numbers. They are recomputed from the data every morning, so a
+ * value sitting near a line flips December between threshold and sweet spot
+ * from one re-check to the next (22 Oct 2026). Batch 6, C3: a re-check keeps
+ * the quality types already on the calendar unless one of these has moved by
+ * HOLD_QUALITY or more since the plan was made.
+ */
+export interface QualityScores { threshold: number; vo2max: number; anaerobic: number; limiterVo2: number; limiterTopEnd: number }
+export const HOLD_QUALITY = 0.15;
+export function qualityMoved(a: QualityScores, b: QualityScores): boolean {
+  return (Object.keys(a) as Array<keyof QualityScores>).some((k) => Math.abs((a[k] ?? 0) - (b[k] ?? 0)) >= HOLD_QUALITY - 1e-9);
+}
 
 export interface PlannedSession { date: string; kind: SessionKind; type: SessionType | 'strength' | 'mobility' | 'walk' | 'run'; workout: Workout; seconds: number; tss: number; reason: string }
 export interface PlanWeek { index: number; start: string; phase: Phase; label: string; targetTss: number; tss: number; hours: number; sessions: PlannedSession[]; note: string }
@@ -97,6 +116,8 @@ export interface Plan {
   verdict: 'on-track' | 'close' | 'short' | 'no-target';
   advice: string;
   decisions: string[];       // the reasoning, in sentences
+  /** The scores that decide each week's quality sessions, kept with the plan so a re-check holds them steady (Batch 6, C3). */
+  qualityScores: QualityScores;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.max(0, Math.min(1, t));
@@ -196,6 +217,16 @@ export function generatePlan(req: PlanRequest): Plan {
   decisions.push(`Fitness ${d.requiredCtl ? `needs to rise from ${Math.round(ctl0)} toward ${d.requiredCtl}` : `starts at ${Math.round(ctl0)}`}; the plan climbs about ${ramp.toFixed(1)} points a week (cap ${maxRamp}${maxRamp > (req.masters ? 4 : 6) ? ', raised because your recovery data look good' : ''}).`);
   if (needRamp > maxRamp) decisions.push(`The goal would want ${needRamp.toFixed(1)} a week, which is more than is safe; the verdict below says what that means.`);
 
+  const qualityScores: QualityScores = {
+    threshold: d.emphasis.threshold * 1.6 + (a.limiters[0] === 'threshold' ? 0.8 : 0),
+    vo2max: d.emphasis.vo2max,
+    anaerobic: d.emphasis.anaerobic,
+    limiterVo2: a.limiters.includes('vo2max') ? 1 : 0,
+    limiterTopEnd: a.limiters[0] === 'vo2max' || a.limiters[0] === 'anaerobic' ? 1 : 0,
+  };
+  const scoresMoved = req.keepQuality ? qualityMoved(req.keepQuality.scores, qualityScores) : true;
+  if (req.keepQuality && !scoresMoved) decisions.push('Quality sessions already on the calendar are kept: what decides them (the goal’s emphasis and your limiters) has not moved enough since the plan was made to justify a change.');
+
   const weeks: PlanWeek[] = [];
   let ctl = ctl0;
   let lastLoading = Math.max(a.weeklyTss.value, ctl0 * 7);
@@ -263,6 +294,9 @@ export function generatePlan(req: PlanRequest): Plan {
     }
     if (phase === 'peak') { quality.push(d.emphasis.anaerobic >= 0.8 ? 'anaerobic' : d.emphasis.vo2max >= 0.5 || a.limiters.includes('vo2max') ? 'vo2max' : 'threshold'); if (slotsThisWeek.length >= 4) quality.push('threshold'); }
     if (phase === 'taper') quality.push('openers');
+    // Batch 6, C3: hold the quality types already on the calendar for this week unless the evidence has moved.
+    const held = req.keepQuality && !scoresMoved ? req.keepQuality.byWeek[weekStart]?.filter((q) => q !== 'test') : undefined;
+    if (held?.length) for (let k = 0; k < quality.length && k < held.length; k++) quality[k] = held[k];
     if (isTest) quality[0] = 'test';
 
     // Long rides: as many as the slots and the evidence allow.
@@ -582,7 +616,7 @@ export function generatePlan(req: PlanRequest): Plan {
   let verdict: Plan['verdict'] = 'no-target';
   if (d.requiredCtl > 0) verdict = projectedCtl >= d.requiredCtl ? 'on-track' : projectedCtl >= d.requiredCtl * 0.9 ? 'close' : 'short';
   const advice = buildAdvice(verdict, d, projectedCtl, longestPlanned, formOnDay, goal, n, capTss, weeks);
-  return { weeks, demand: d, projection, goalDate, requiredCtl: d.requiredCtl, projectedCtl, formOnDay, longestPlanned, verdict, advice, decisions };
+  return { weeks, demand: d, projection, goalDate, requiredCtl: d.requiredCtl, projectedCtl, formOnDay, longestPlanned, verdict, advice, decisions, qualityScores };
 }
 
 function buildSessions(plan: Array<{ slot: number; intent: SessionIntent }>, weekStart: string): PlannedSession[] {

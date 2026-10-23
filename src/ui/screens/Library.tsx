@@ -5,7 +5,7 @@ import { runBandText } from '../../engine/run';
 import { WorkoutProfile } from '../Profile';
 import { clock, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
-import type { Family, SessionKind, Workout } from '../../engine/types';
+import type { Family, Profile, SessionKind, Workout } from '../../engine/types';
 import { KIND_LABEL, KindDot } from './Plan';
 import { KIND_ICON } from '../icons';
 import { today } from '../../engine/load';
@@ -63,7 +63,7 @@ export function Library({ data }: { data: AppData }) {
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
           <div class="grid">
-            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} />)}
+            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
           </div>
         </section>
       )}
@@ -81,7 +81,7 @@ export function Library({ data }: { data: AppData }) {
             {tab === 'walk' && 'Zone 2 on foot for days the bike is out: treadmill or outdoors, with or without a weighted pack. Add one to any date, or make your own with New workout.'}
             {tab === 'run' && 'Runs by heart rate, sent to your Garmin as running workouts: easy, long, strides, tempo and hills. Add one to any date, whether or not your plan schedules runs; the plan itself only ever places the easy ones. With a threshold pace in Settings, each run also shows the pace its bands imply, as a guide.'}
           </p>
-          <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} />)}</div>
+          <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}</div>
         </>
       )}
 
@@ -117,11 +117,11 @@ function Card({ w, mine = false, basis, onPick }: { w: Workout; mine?: boolean; 
   );
 }
 
-function SessionCard({ w, mine = false, onAdd }: { w: Workout; mine?: boolean; onAdd: () => void }) {
+function SessionCard({ w, mine = false, onAdd, profile }: { w: Workout; mine?: boolean; onAdd: () => void; profile?: Profile }) {
   const n = w.exercises?.length ?? 0;
   const detail = w.kind === 'walk'
     ? `${w.walk?.minutes ?? w.minutes} min · ${w.walk?.packKg ? `${Math.round(w.walk.packKg * 2.2)} lb pack` : 'no pack'} · ${w.setting === 'indoor' ? 'treadmill' : 'outdoors'}`
-    : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w)} · ${w.setting === 'indoor' ? 'treadmill' : 'outdoors'}`
+    : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w, profile)} · ${w.setting === 'indoor' ? 'treadmill' : 'outdoors'}`
     : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`;
   return (
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">

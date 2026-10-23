@@ -16,7 +16,7 @@ import { type HrProfile, sendWorkout } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
 import { runEvent, sessionSteps } from '../../sync/intervals';
 import { paceHint, timeWords } from '../../engine/run';
-import { bandBpm, bandKeyOf, bandZoneWords, hasNoFloor, recoveryBand, stepBand, walkBand } from '../../engine/foot';
+import { bandBpm, bandKeyOf, bandZoneWords, capFirst, hasNoFloor, recoveryBand, stepBand, walkBand } from '../../engine/foot';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
@@ -158,7 +158,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           <h2>The walk</h2>
           <div class="stats" style="margin-top:10px">
             <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
-            <div class="stat"><div class="v" style="text-transform:capitalize">{bandZoneWords(b)}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
+            <div class="stat"><div class="v">{capFirst(bandZoneWords(b))}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
             {bpm && <div class="stat"><div class="v">{noFloor ? 'up to ' : `${bpm.low}–`}{bpm.high}</div><div class="l">beats per minute (foot threshold {footLthr(hr ?? { lthr })})</div></div>}
             {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate band{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
             {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}

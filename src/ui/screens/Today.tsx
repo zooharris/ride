@@ -259,7 +259,7 @@ export function Today({ data }: { data: AppData }) {
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
                 <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
+                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}

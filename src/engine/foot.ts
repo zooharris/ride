@@ -92,14 +92,20 @@ export function bandBpm(b: FootBand, profile?: FootProfile): { low: number; high
 
 /** "zone 2", "upper zone 2 into lower zone 3", "up to zone 1". */
 export function bandZoneWords(b: FootBand): string {
+  // positions are read to the nearest half zone, so an older walk converted from shares of max reads cleanly
+  const half = (x: number) => Math.max(1, Math.min(7, Math.round(x * 2) / 2));
   const from = (a: number) => (a % 1 === 0 ? `zone ${a}` : `upper zone ${Math.floor(a)}`);
   const to = (z: number) => (z % 1 === 0 ? `zone ${z - 1}` : `lower zone ${Math.floor(z)}`);
-  if (hasNoFloor(b)) return `up to ${to(b.zoneHigh)}`.replace('up to zone', 'up to the top of zone');
-  const a = from(b.zoneLow), z = to(b.zoneHigh);
+  if (hasNoFloor(b)) return `up to ${to(half(b.zoneHigh))}`.replace('up to zone', 'up to the top of zone');
+  const a = from(half(b.zoneLow)), z = to(half(b.zoneHigh));
   if (a === z) return a;
-  if (a.startsWith('zone') && z.startsWith('zone')) return `zones ${b.zoneLow}–${Math.ceil(b.zoneHigh) - 1}`;
+  if (half(b.zoneLow) >= half(b.zoneHigh)) return a;
+  if (a.startsWith('zone') && z.startsWith('zone')) return `zones ${half(b.zoneLow)}–${Math.ceil(half(b.zoneHigh)) - 1}`;
   return `${a} into ${z}`;
 }
+
+/** First letter up, for a stat or a heading. */
+export function capFirst(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 /** "zone 2 (121–135 bpm)" with a rider, "zone 2" without. */
 export function bandWords(b: FootBand, profile?: FootProfile): string {

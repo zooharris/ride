@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { Exercise } from '../engine/types';
 import { picturesFor } from '../art/pictures';
 
 /**
@@ -51,3 +52,25 @@ export function PictureSheet({ name, exerciseId, cue, onClose }: { name: string;
     </div>
   );
 }
+
+/**
+ * A session's exercises as a strip of start pictures: the first `max` that have
+ * one, then a "+N" tile for the rest that have one. Exercises without a picture
+ * are skipped. `fill` shares the width equally (Library cards); otherwise the
+ * tiles are a fixed size (Today). `under` puts it on a line of its own under a
+ * calendar-style row, lined up with the row's text.
+ */
+export function PictureStrip({ exercises, max, fill = false, under = false }: { exercises: Pick<Exercise, 'name'>[]; max: number; fill?: boolean; under?: boolean }) {
+  const pics = exercises.map((e) => ({ name: e.name, src: picturesFor(e.name).a })).filter((p): p is { name: string; src: string } => !!p.src);
+  if (!pics.length) return null;
+  const more = pics.length - max;
+  return (
+    <div class={`ex-strip${fill ? ' fill' : ''}${under ? ' under' : ''}`}>
+      {pics.slice(0, max).map((p, i) => <span class="ex-tile" key={i} title={p.name}><img src={p.src} alt={p.name} width={80} height={80} loading="lazy" decoding="async" /></span>)}
+      {more > 0 && <span class="ex-tile ex-more" title={pics.slice(max).map((p) => p.name).join(', ')} aria-label={`and ${more} more`}>+{more}</span>}
+    </div>
+  );
+}
+
+/** How many of these exercises have a picture. */
+export const picturedCount = (exercises: Pick<Exercise, 'name'>[]): number => exercises.filter((e) => picturesFor(e.name).a).length;

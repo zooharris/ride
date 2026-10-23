@@ -13,6 +13,7 @@ import { fmtDate } from '../derived';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
+import { PictureStrip, picturedCount } from '../ExercisePictures';
 
 const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
@@ -128,7 +129,7 @@ function SessionCard({ w, mine = false, onAdd, profile }: { w: Workout; mine?: b
       <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} TSS, estimated` : ''}</span></div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
       <p class="muted small" style="margin:0">{detail}</p>
-      {w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}
+      {w.exercises && (w.kind === 'strength' || w.kind === 'mobility') && picturedCount(w.exercises) >= 2 ? <PictureStrip exercises={w.exercises} max={4} fill /> : w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}
       <div class="row" style="gap:6px;margin-top:auto"><button class="btn sm" onClick={onAdd}>Add to a date</button><a class="btn sm quiet" href={`#/workout/${w.id}?from=library`}>View</a></div>
     </div>
   );

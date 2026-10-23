@@ -821,3 +821,12 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .ex-big.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .ex-big.two figure { width: auto; }
 .ex-big .ex-tile { width: 100%; height: auto; aspect-ratio: 1; }
+.ex-strip { display: flex; gap: 6px; margin-top: 6px; }
+.ex-strip .ex-tile { width: 40px; height: 40px; border-radius: 8px; }
+.ex-strip .ex-more { display: flex; align-items: center; justify-content: center; background: var(--bg-3); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.ex-strip.fill { margin-top: 0; }
+.ex-strip.fill .ex-tile { flex: 1 1 0; min-width: 0; max-width: 25%; width: auto; height: auto; aspect-ratio: 1; }
+.ex-strip.fill .ex-more { font-size: 14px; }
+.ex-strip.under { flex: 0 0 100%; margin: 2px 0 2px 64px; max-width: calc(100% - 64px); }
+.cal-item > a.row:has(> .ex-strip.under) { flex-wrap: wrap; row-gap: 4px; }
+@media (max-width: 699px) { .ex-strip.under { margin-left: 0; max-width: 100%; } }

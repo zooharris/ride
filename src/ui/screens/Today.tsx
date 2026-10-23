@@ -29,6 +29,7 @@ import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
 import { Icon } from '../icons';
 import { ChangeSheet } from '../ChangeSheet';
+import { PictureStrip } from '../ExercisePictures';
 import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
 
@@ -264,6 +265,7 @@ export function Today({ data }: { data: AppData }) {
                 <KindDot kind={w!.kind} big />
                 <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
                 <StatusPill status={statusOf(p.status)} />
+                {(w!.kind === 'strength' || w!.kind === 'mobility') && w!.exercises && <PictureStrip exercises={w!.exercises} max={5} under />}
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}
               </div>

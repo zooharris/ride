@@ -63,7 +63,7 @@ export function Library({ data }: { data: AppData }) {
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
           <div class="grid">
-            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
+            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
           </div>
         </section>
       )}
@@ -71,7 +71,7 @@ export function Library({ data }: { data: AppData }) {
       {tab === 'ride' ? (
         <>
           {ready.length === 0 && mine.length === 0 && <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length, pick another type, or clear the search.</span></div>}
-          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} onPick={() => setAdding(w)} />)}</div>
+          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} />)}</div>
         </>
       ) : (
         <>
@@ -95,7 +95,7 @@ export function Library({ data }: { data: AppData }) {
  * and descriptive name, then length, load and intensity. On a laptop, hovering
  * shows Ride today and Pick a date; on a phone, the workout's page has both.
  */
-function Card({ w, mine = false, basis, onPick }: { w: Workout; mine?: boolean; basis: 'power' | 'hr'; onPick: () => void }) {
+function Card({ w, mine = false, basis, profile, onPick }: { w: Workout; mine?: boolean; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void }) {
   const s = workoutStats(w.blocks);
   return (
     <div class="wcard ride">
@@ -104,7 +104,7 @@ function Card({ w, mine = false, basis, onPick }: { w: Workout; mine?: boolean; 
           <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
           <span class="faint small">{mine ? 'mine' : w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
         </div>
-        <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} /></div>
+        <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} targets={profile ? { profile, basis } : undefined} /></div>
         <h3>{w.name}</h3>
         <p class="wc-sub small">{w.subtitle ?? '\u00a0'}</p>
         <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>

@@ -1,5 +1,5 @@
 import type { Basis, Profile, Workout, WorkoutBlock, WorkoutStats, WorkoutStep } from './types';
-import { powerToHrFraction, powerZone, rideLadders, type Ladders } from './zones';
+import { powerToHrFraction, powerZone, rideLadders, ridePowerZones, type Ladders } from './zones';
 
 /** Flatten repeats into a plain list of steps, in ride order. */
 export function flattenSteps(blocks: WorkoutBlock[]): WorkoutStep[] {
@@ -133,6 +133,38 @@ export function stepTargets(step: WorkoutStep, profile: Profile): { watts: strin
     watts: step.intensityHigh ? `${w(step.intensity)}–${w(step.intensityHigh)}` : `${w(step.intensity)}`,
     bpm: step.intensityHigh ? `${b(step.intensity)}–${b(step.intensityHigh)}` : `${b(step.intensity)}`,
   };
+}
+
+/** A step's share of FTP, as the steps table and the diagram's label both show it: "88–93%", "up to 55%". */
+export function stepShare(step: WorkoutStep): string {
+  const pct = (f: number) => Math.round(f * 100);
+  return step.noFloor ? `up to ${pct(step.intensityHigh ?? step.intensity)}%` : step.intensityHigh ? `${pct(step.intensity)}–${pct(step.intensityHigh)}%` : `${pct(step.intensity)}%`;
+}
+
+/** Where a step sits in a repeat: its set's label, which repeat it is, and how many there are. */
+export interface StepSet { label: string; rep: number; times: number }
+
+/** The steps in ride order, as `flattenSteps`, each with the set it belongs to (Batch 7, B3). */
+export function flattenStepsWithSets(blocks: WorkoutBlock[]): Array<{ step: WorkoutStep; set?: StepSet }> {
+  const out: Array<{ step: WorkoutStep; set?: StepSet }> = [];
+  for (const b of blocks) {
+    if (b.kind === 'step') out.push({ step: b });
+    else for (let i = 0; i < b.times; i++) for (const st of b.steps) out.push({ step: st, set: { label: b.label ?? 'Set', rep: i + 1, times: b.times } });
+  }
+  return out;
+}
+
+/**
+ * What the diagram's label shows for one step (Batch 7, B1): its name with its
+ * set and cadence, its time, its share of FTP, and its watts and heart rate
+ * from the rider's own tables, the same numbers as the steps table.
+ */
+export function stepTip(step: WorkoutStep, set: StepSet | undefined, profile: Profile): { title: string; time: string; share: string; watts: string; bpm: string; zone: number } {
+  const zone = powerZone(step.intensity, ridePowerZones(profile));
+  // A step with no name of its own inside a set takes the set's name: "Sweet spot · set 2 of 3".
+  const title = `${step.label ?? set?.label ?? `Zone ${zone}`}${set ? ` · set ${set.rep} of ${set.times}` : ''}${step.cadence ? ` · ${step.cadence} rpm` : ''}`;
+  const t = stepTargets(step, profile);
+  return { title, time: formatDuration(step.seconds), share: stepShare(step), watts: `${t.watts} W`, bpm: `${t.bpm} bpm`, zone };
 }
 
 export function newId(): string {

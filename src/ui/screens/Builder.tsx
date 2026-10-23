@@ -126,7 +126,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
           <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[fam]}</span>
           <span class="faint small">intensity as % of FTP {profile.ftp} W</span>
         </div>
-        <WorkoutProfile blocks={blocks} height={88} />
+        <WorkoutProfile blocks={blocks} height={88} targets={{ profile, basis: profile.basis, touch: true }} />
       </div>
 
       <div class="form" style="margin-top:16px">

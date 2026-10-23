@@ -8,6 +8,7 @@
   --ink: #E9EEF6;
   --ink-2: #A9B6C9;
   --ink-3: #6F7F98;
+  --tile: #D7DEE8; /* the light tile every exercise picture sits on: the figures' dark outlines vanish on navy */
   --sel-ink: var(--accent); /* text of a selected toggle (teal wash); darker in light so it reads on the wash */
 
   /* teal: the primary action, active nav, links, focus; orange: today and attention */
@@ -54,7 +55,7 @@
 :root[data-theme="light"] {
   --bg: #F4F6FA; --bg-2: #FFFFFF; --bg-3: #EAEEF5; --line: #DFE5EE; --line-2: #C9D2DF;
   --ink: #0B1A33; --ink-2: #44546C; --ink-3: #6B788B;
-  --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
+  --tile: #EEF2F7; --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
   --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
   --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
@@ -65,7 +66,7 @@
   :root:not([data-theme="dark"]) {
     --bg: #F4F6FA; --bg-2: #FFFFFF; --bg-3: #EAEEF5; --line: #DFE5EE; --line-2: #C9D2DF;
     --ink: #0B1A33; --ink-2: #44546C; --ink-3: #6B788B;
-    --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
+    --tile: #EEF2F7; --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
     --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
     --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
@@ -798,3 +799,25 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .profile-tip .pt-line { display: flex; gap: 12px; justify-content: space-between; font-variant-numeric: tabular-nums; }
 /* On a Library card the card clips what lies outside it, so the label sits just below the diagram. */
 .wcard .profile-tip { bottom: auto; top: calc(100% + 4px); }
+
+/* ---- exercise pictures (Batch 8) ---- */
+.ex-tile { display: block; width: 108px; height: 108px; border-radius: 10px; background: var(--tile); overflow: hidden; flex: 0 0 auto; }
+.ex-tile img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ex-tile-btn { padding: 0; border: 0; cursor: zoom-in; }
+.ex-tile-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ex-pics { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 auto; }
+.ex-pics figure, .ex-big figure { margin: 0; }
+.ex-pics figcaption, .ex-big figcaption { font-size: 11px; color: var(--ink-3); text-align: center; margin-top: 3px; line-height: 14px; }
+.ex-arrow { color: var(--ink-3); font-size: 16px; line-height: 108px; }
+.ex-panel { display: flex; flex-direction: column; gap: 10px; }
+.ex-text { flex: 1; min-width: 0; }
+@media (min-width: 700px) {
+  .ex-panel { flex-direction: row; align-items: flex-start; gap: 16px; }
+  .ex-pics .ex-tile { width: 120px; height: 120px; }
+  .ex-arrow { line-height: 120px; }
+}
+.ex-big { display: flex; justify-content: center; }
+.ex-big figure { width: min(100%, 320px); }
+.ex-big.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ex-big.two figure { width: auto; }
+.ex-big .ex-tile { width: 100%; height: auto; aspect-ratio: 1; }

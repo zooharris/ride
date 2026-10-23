@@ -25,6 +25,7 @@ import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
+import { ExercisePictures } from '../ExercisePictures';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -199,7 +200,9 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           <h2>{w.kind === 'strength' ? 'Exercises' : 'Stretches'}</h2>
           <div class="stack" style="margin-top:10px">
             {w.exercises.map((e, i) => (
-              <div class="panel" key={i} style="padding:12px 14px">
+              <div class="panel ex-panel" key={i} style="padding:12px 14px">
+                <ExercisePictures name={e.name} cue={e.cue} />
+                <div class="ex-text">
                 <div class="row between">
                   <b>{e.name}</b>
                   <span class="num small muted">{e.sets ? `${e.sets} × ` : ''}{e.reps ?? (e.holdSeconds ? `${e.holdSeconds} s${e.sets ? '' : ' hold'}` : '')}</span>
@@ -208,6 +211,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
                 {w.kind === 'strength' && planned?.status !== 'completed' && (() => { const last = lastDone(e.name, history, planned?.date ?? today()); return last ? <div class="small" style="margin-top:4px;color:var(--accent)">Last time: {weightText(last)} · {setsText(last)} · {fmtDate(last.date)}</div> : null; })()}
                 <div class="small" style="margin-top:6px;line-height:1.45">{e.cue}</div>
                 {e.why && <div class="faint small" style="margin-top:4px;line-height:1.4">{e.why}</div>}
+                </div>
               </div>
             ))}
           </div>

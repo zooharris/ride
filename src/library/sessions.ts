@@ -108,24 +108,33 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
     out.push({ id: `lib-mob-${r.id}`, name, kind: 'mobility', family: 'recovery', purpose: r.purpose, phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], exercises, estimatedTss: Math.max(1, Math.round(minutes / 60 * 8)), minutes, source: 'library' });
   }
 
-  // Walks
+  // Walks. Easy (no minimum, up to the top of zone 2) unless the session says otherwise: a walk on the
+  // flat rarely reaches a cyclist's zone 2 (23 Oct 2026). The zone 2 walks below get there by speed or grade.
   const where = eq.includes('treadmill') ? 'treadmill' : 'outdoor';
   const walk = (id: string, w: Workout, patch: Partial<Workout> = {}) => { const m = { ...fix(w, id), ...patch }; out.push({ ...m, estimatedTss: estimateSessionTss(m) }); };
-  walk('lib-walk-20-easy', generateWalk({ minutes: 20, where, reason: 'A recovery walk: easy, unhurried, blood through the legs the day after a hard ride.' }), { name: 'Recovery walk 20 min', walk: { minutes: 20, zoneLow: 0, zoneHigh: 2 } });
+  const zone2 = { zoneLow: 2, zoneHigh: 3 };
+  walk('lib-walk-20-easy', generateWalk({ minutes: 20, where, reason: 'A recovery walk: easy, unhurried, blood through the legs the day after a hard ride.', band: { zoneLow: 0, zoneHigh: 2 } }), { name: 'Recovery walk 20 min' });
   walk('lib-walk-30', generateWalk({ minutes: 30, where, reason: 'A short aerobic walk for a day the bike cannot be used.' }));
-  walk('lib-walk-45', generateWalk({ minutes: 45, where, reason: 'Forty-five minutes of zone 2 on foot.' }));
-  walk('lib-walk-45-pack', generateWalk({ minutes: 45, packKg: 9, where, reason: 'Zone 2 with a light pack: more work per minute and some load for the bones.' }));
+  walk('lib-walk-30-pack', generateWalk({ minutes: 30, packKg: 6.8, where, reason: 'Half an hour under a 15 lb pack: the legs and trunk carry the work while the heart stays easy.' }));
+  walk('lib-walk-45', generateWalk({ minutes: 45, where, reason: 'Forty-five easy minutes on foot: the heart rate drifts up as the walk goes on, and that is all it needs to do.' }));
+  walk('lib-walk-45-pack', generateWalk({ minutes: 45, packKg: 9, where, reason: 'An easy walk with a light pack: more work per minute for the legs and trunk, and some load for the bones.' }));
   walk('lib-walk-60-pack', generateWalk({ minutes: 60, packKg: 9, where, reason: 'An hour with a pack; a solid aerobic session with no fatigue to carry into tomorrow.' }));
   walk('lib-walk-60-heavy', generateWalk({ minutes: 60, packKg: 13.6, where, reason: 'An hour under a 30 lb pack: the legs and back work like a long seated climb, with the bone loading riding never gives.' }), { name: 'Weighted walk 1:00, heavy pack' });
-  walk('lib-walk-90', generateWalk({ minutes: 90, where, reason: 'A long walk in zone 2: ninety minutes of aerobic work that costs the legs very little.' }), { name: 'Long walk 1:30' });
-  if (where === 'treadmill') walk('lib-walk-incline', generateWalk({ minutes: 40, where, reason: 'Set the treadmill to a steady 8–12% grade and walk briskly without holding on: glutes and calves work like a climb and heart rate reaches zone 2 with no pack.' }), { name: 'Incline walk 40 min', walk: { minutes: 40, zoneLow: 2, zoneHigh: 3 } });
-  walk('lib-walk-brisk', generateWalk({ minutes: 30, where, reason: 'Thirty minutes at the top of zone 2 into low zone 3: a brisk walk with purpose, arms swinging, for a day with no time for more.' }), { name: 'Brisk walk 30 min', walk: { minutes: 30, zoneLow: 2.5, zoneHigh: 3.5 } });
+  walk('lib-walk-75', generateWalk({ minutes: 75, where, reason: 'An hour and a quarter on foot: the heart rate settles in the second half and the load adds up quietly.' }), { name: 'Long walk 1:15' });
+  walk('lib-walk-90', generateWalk({ minutes: 90, where, reason: 'A long easy walk: ninety minutes of aerobic work that costs the legs very little.' }), { name: 'Long walk 1:30' });
+  walk('lib-walk-120', generateWalk({ minutes: 120, where, reason: 'Two hours walking: a long-ride day for the feet, with fuel and water as on the bike.' }), { name: 'Long walk 2:00' });
+  if (where === 'treadmill') walk('lib-walk-incline', generateWalk({ minutes: 40, where, band: zone2, reason: 'Set the treadmill to a steady 8–12% grade and walk briskly without holding on: glutes and calves work like a climb and heart rate reaches zone 2 with no pack.' }), { name: 'Incline walk 40 min' });
+  walk('lib-walk-brisk', generateWalk({ minutes: 30, where, band: { zoneLow: 2.5, zoneHigh: 3.5 }, reason: 'Thirty minutes at the top of zone 2 into low zone 3: a brisk walk with purpose, arms swinging, for a day with no time for more.' }), { name: 'Brisk walk 30 min' });
+  walk('lib-walk-zone2-45', generateWalk({ minutes: 45, where, band: zone2, reason: 'A real zone 2 walk takes speed (4 mph or more) or a hill; on the flat with a pack the heart rate will not get there, and that is not a failure.' }), { name: 'Zone 2 walk 45 min' });
   // 21 Oct 2026 (Batch 5c)
-  walk('lib-walk-20-recovery', generateWalk({ minutes: 20, where, reason: 'The day after the long ride: a stroll with the legs moving and nothing asked of them.' }), { name: 'Recovery stroll 20 min', walk: { minutes: 20, zoneLow: 0, zoneHigh: 2 } });
-  walk('lib-walk-hills', generateWalk({ minutes: 45, where: 'outdoor', reason: 'Find the hills: forty-five minutes with real climbs, the heart rate allowed into low zone 3 on the way up.' }), { name: 'Hill walk 45 min', walk: { minutes: 45, zoneLow: 2, zoneHigh: 3.5 } });
+  walk('lib-walk-20-recovery', generateWalk({ minutes: 20, where, reason: 'The day after the long ride: a stroll with the legs moving and nothing asked of them.', band: { zoneLow: 0, zoneHigh: 2 } }), { name: 'Recovery stroll 20 min' });
+  walk('lib-walk-hills-30', generateWalk({ minutes: 30, where: 'outdoor', band: { zoneLow: 2, zoneHigh: 3.5 }, reason: 'Thirty minutes with real climbs; the heart rate reaches zone 2 on the way up and is allowed into low zone 3 near the top.' }), { name: 'Hill walk 30 min' });
+  walk('lib-walk-hills', generateWalk({ minutes: 45, where: 'outdoor', band: { zoneLow: 2, zoneHigh: 3.5 }, reason: 'Find the hills: forty-five minutes with real climbs, the heart rate allowed into low zone 3 on the way up.' }), { name: 'Hill walk 45 min' });
   walk('lib-walk-ruck-60', generateWalk({ minutes: 60, packKg: 9, where, reason: 'An hour under a 20 lb pack: posture, trunk and legs working together like a long seated climb, without the impact of a run.' }), { name: 'Ruck 60 min, 20 lb pack' });
-  if (where === 'treadmill') walk('lib-walk-incline-30', generateWalk({ minutes: 30, where, reason: 'Half an hour on a steady 8–12% grade: the quads and glutes at a climbing angle, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 30 min' });
-  walk('lib-walk-45-brisk', generateWalk({ minutes: 45, where, reason: 'Forty-five minutes at the top of zone 2: the pace of someone late for something.' }), { name: 'Brisk walk 45 min', walk: { minutes: 45, zoneLow: 2.5, zoneHigh: 3 } });
+  if (where === 'treadmill') walk('lib-walk-incline-30', generateWalk({ minutes: 30, where, band: zone2, reason: 'Half an hour on a steady 8–12% grade: the quads and glutes at a climbing angle, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 30 min' });
+  if (where === 'treadmill') walk('lib-walk-incline-45', generateWalk({ minutes: 45, where, band: zone2, reason: 'Forty-five minutes on a steady 8–12% grade: the grade, not a heavier pack, is what brings the heart rate into zone 2. Walk without holding on.' }), { name: 'Incline treadmill 45 min' });
+  if (where === 'treadmill') walk('lib-walk-incline-60', generateWalk({ minutes: 60, where, band: zone2, reason: 'An hour on a steady 8–12% grade: a long climb on foot, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 60 min' });
+  walk('lib-walk-45-brisk', generateWalk({ minutes: 45, where, band: { zoneLow: 2.5, zoneHigh: 3 }, reason: 'Forty-five minutes at the top of zone 2: the pace of someone late for something.' }), { name: 'Brisk walk 45 min' });
 
   // Runs: always built (so a run on the calendar is always found); the Library and the picker
   // show them only when the rider's week has runs on.

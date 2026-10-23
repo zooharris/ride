@@ -132,8 +132,8 @@ function shortName(w: Workout): string {
     .replace(/^Mobility: after strength \(\d+ min\)$/, 'Mobility')
     .replace(/^Mobility: (.+?) \(\d+ min\)$/, 'Mobility: $1')
     .replace(/^(Strength|Foundation|Build|Maintain|Light) ([AB]): .+$/, '$1 $2')
-    .replace(/^Zone 2 walk (\d+) min with a (\d+) lb pack$/, 'Walk · $2 lb pack')
-    .replace(/^Zone 2 walk (\d+) min$/, 'Walk')
+    .replace(/^(?:Zone 2|Easy) walk (\d+) min with a (\d+) lb pack$/, 'Walk · $2 lb pack')
+    .replace(/^(?:Zone 2|Easy) walk (\d+) min$/, 'Walk')
     .replace(/^Long Endurance /, 'Long ')
     .replace(/^Endurance (\d+|\d+:\d\d)$/, 'Endurance');
 }

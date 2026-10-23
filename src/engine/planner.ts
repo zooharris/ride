@@ -410,12 +410,12 @@ export function generatePlan(req: PlanRequest): Plan {
       const walkDays = daysThisWeek.filter((dw) => pinOf(dw) === 'walk' || (canWalk && !runDays.includes(dw) && !never(dw, 'walk') && footDay(dw)));
       const packKg = av.equipment.includes('treadmill') || av.equipment.includes('outdoor-walk') ? Math.round(Math.min(11, 7 + loadingProgress * 4)) : undefined;
       for (const dw of walkDays) {
-        const minutes = Math.min(60, Math.round(av.hours[dw] * 60));
-        const reason = pinOf(dw) === 'walk' ? 'Your standing walk day: zone 2 on foot.' : av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from a brisk walk instead of nothing.' : 'Too short a window for a ride worth doing; a zone 2 walk uses it well and adds the impact loading cycling lacks.';
+        const minutes = Math.min(120, Math.round(av.hours[dw] * 60));
+        const reason = pinOf(dw) === 'walk' ? 'Your standing walk day: easy aerobic work on foot.' : av.noBike?.[dw] ? 'No bike that day, so the aerobic work comes from an easy walk instead of nothing.' : 'Too short a window for a ride worth doing; an easy walk uses it well and adds the impact loading cycling lacks.';
         const w = generateWalk({ minutes, packKg, where: av.equipment.includes('treadmill') ? 'treadmill' : 'outdoor', reason });
         extra.push({ date: dateOf(dw), kind: 'walk', type: 'walk', workout: w, seconds: minutes * 60, tss: w.estimatedTss ?? 0, reason });
       }
-      if (i === 0 && walkDays.length) decisions.push(`Walks fill the ${walkDays.length === 1 ? 'day' : 'days'} a ride cannot use (${walkDays.map((dw) => DAY[dw]).join(', ')}): zone 2 by heart rate, with a light pack that grows through the block.`);
+      if (i === 0 && walkDays.length) decisions.push(`Walks fill the ${walkDays.length === 1 ? 'day' : 'days'} a ride cannot use (${walkDays.map((dw) => DAY[dw]).join(', ')}): easy, with no minimum heart rate and a ceiling at the top of zone 2 (a walk on the flat rarely reaches a cyclist’s zone 2, and does not need to), with a light pack that grows through the block.`);
     }
 
     // Mobility: short routines after the long ride and after strength.

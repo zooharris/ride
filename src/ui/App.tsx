@@ -4,6 +4,7 @@ import { notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
+import { retargetFootSessions } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -45,7 +46,24 @@ export function App() {
   // then bring this device's history level with theirs.
   useEffect(() => {
     let last = 0;
-    const run = async () => { if (Date.now() - last < 60_000) return; last = Date.now(); const c = await credentials(); if (c) { await syncDevices(c); void matchHistory(); } };
+    const run = async () => {
+      if (Date.now() - last < 60_000) return;
+      last = Date.now();
+      const c = await credentials();
+      if (c) { await syncDevices(c); void matchHistory(); }
+      // Batch 6: walks and runs on the calendar move to their new targets once, after the merge, so a
+      // device that already has another device's conversion does nothing.
+      try {
+        const r = await retargetFootSessions(c);
+        if (r.walks || r.runs) {
+          if (c) await syncDevices(c);
+          const parts = [r.walks ? `${r.walks} walk${r.walks === 1 ? '' : 's'} now easy (no minimum, up to the top of zone 2)` : '', r.runs ? `${r.runs} run${r.runs === 1 ? '' : 's'} now on your foot zones` : ''].filter(Boolean).join(' and ');
+          const sent = r.resent ? ` ${r.resent} re-sent to your Garmin with the new targets.` : '';
+          const failed = r.failed ? ` ${r.failed} could not be re-sent: use Send on the Calendar.` : '';
+          toast({ ok: !r.failed, text: `Updated your calendar: ${parts}.${sent}${failed}` });
+        }
+      } catch { /* the conversion runs again at the next start */ }
+    };
     const off = onHistoryMatched((r) => {
       notify();
       if (r.activities || r.wellness) toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness, so this device has the same history as your others.` });

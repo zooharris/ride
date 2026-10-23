@@ -305,7 +305,7 @@ describe('ready-made sessions', () => {
     expect(new Set(list.map((w) => w.id)).size).toBe(list.length);
     expect(list.filter((w) => w.kind === 'strength').length).toBe(21);   // 15 + 6 of Batch 5c's 8 (the kettlebell two need a kettlebell)
     expect(list.filter((w) => w.kind === 'mobility').length).toBe(17);
-    expect(list.filter((w) => w.kind === 'walk').length).toBe(14);
+    expect(list.filter((w) => w.kind === 'walk').length).toBe(21);   // 17 without a treadmill: the four incline sessions need one
     for (const w of list) if (w.kind !== 'walk' && w.kind !== 'run') expect((w.exercises ?? []).length).toBeGreaterThanOrEqual(4);
     expect(list.filter((w) => w.kind === 'run').length).toBe(10);   // built always; shown only when the week has runs on
     for (const w of list) { expect(w.minutes).toBeGreaterThan(0); expect(w.source).toBe('library'); }

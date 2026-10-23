@@ -10,7 +10,8 @@ import { generatePlan, type Availability, type AwayRange, type Plan, type Phase 
 import { weeklyLoad } from '../engine/progress';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
-import { deleteEvent } from '../sync/intervals';
+import { retargetWorkout } from '../engine/sessions';
+import { deleteEvent, sendWorkout, type HrProfile, type IntervalsCredentials } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './derived';
@@ -280,6 +281,70 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   notify();
   if (c) autoBackup(c, true);
   return { added, removed, kept };
+}
+
+/**
+ * Send a calendar entry to the Garmin (through Intervals.icu). An entry already
+ * sent has its old event deleted first, so "Send again" replaces the copy on
+ * the Garmin with the current version instead of adding a second one.
+ */
+export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w: Workout, profile?: HrProfile): Promise<number> {
+  if (p.icuEventId) { try { await deleteEvent(c, p.icuEventId); } catch { /* already gone: harmless */ } }
+  const id = await sendWorkout(c, w, p.date, p.basis, profile);
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id });
+  return id;
+}
+
+/**
+ * Batch 6, A6 and A7 (23 Oct 2026): walks the plan put on the calendar in the
+ * old "zone 2" band become easy walks, and runs still written as shares of max
+ * heart rate get foot-table bands. Runs at every start-up, after the merge with
+ * the other devices; it is idempotent (a converted session never qualifies
+ * again), so a device that has already received another device's conversion
+ * does nothing, and no version marker can hide a session that still needs it.
+ *
+ * Only sessions still to come: a workout any done session uses is history and
+ * is left alone. A walk the rider added or edited is theirs and is left alone.
+ * A converted session already on the Garmin is sent again, replacing the old
+ * copy; without Intervals.icu credentials on this device such a session waits
+ * for a device that has them. If the re-send fails, the session goes back to
+ * unsent so the Calendar's "Send N to Garmin" picks it up.
+ */
+export async function retargetFootSessions(c: IntervalsCredentials | null): Promise<{ walks: number; runs: number; resent: number; failed: number }> {
+  const out = { walks: 0, runs: 0, resent: 0, failed: 0 };
+  const profile = await db.profile.get('me');
+  const planned = await db.planned.toArray();
+  const t = today();
+  const usedByDone = new Set(planned.filter((p) => p.status === 'completed').map((p) => p.workoutId));
+  const workouts = new Map((await db.workouts.toArray()).map((w) => [w.id, w]));
+  const byWorkout = new Map<string, PlannedWorkout[]>();
+  for (const p of planned) if (p.status !== 'completed' && p.date >= t) byWorkout.set(p.workoutId, [...(byWorkout.get(p.workoutId) ?? []), p]);
+  const toResend: Array<{ p: PlannedWorkout; w: Workout }> = [];
+  for (const [id, entries] of byWorkout) {
+    const w = workouts.get(id);
+    if (!w || usedByDone.has(id)) continue;
+    if (w.kind === 'walk' && !entries.every((p) => p.planId && !p.userEdited)) continue;
+    // A session on the Garmin is only converted where it can be sent again.
+    if (!c && entries.some((p) => p.status === 'sent' && p.icuEventId)) continue;
+    const next = retargetWorkout(w, profile ?? undefined);
+    if (!next) continue;
+    await db.workouts.put(next);
+    if (w.kind === 'walk') out.walks += entries.length; else out.runs += entries.length;
+    for (const p of entries) if (p.status === 'sent' && p.icuEventId) toResend.push({ p, w: next });
+  }
+  if (c) for (const { p, w } of toResend) {
+    try { await sendPlanned(c, p, w, profile ?? undefined); out.resent++; }
+    catch {
+      try { await deleteEvent(c, p.icuEventId!); } catch { /* already gone */ }
+      await db.planned.update(p.id, { status: 'planned', icuEventId: undefined });
+      out.failed++;
+    }
+  }
+  if (out.walks || out.runs) {
+    await setSetting('retargetLog', { at: new Date().toISOString(), ...out });
+    notify();
+  }
+  return out;
 }
 
 /**

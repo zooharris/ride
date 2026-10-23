@@ -9,7 +9,6 @@ import { today } from '../../engine/load';
 import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
-import { sendWorkout } from '../../sync/intervals';
 import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { runBandText } from '../../engine/run';
@@ -21,7 +20,7 @@ import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
 import { StatusPill, statusOf } from '../StatusMark';
-import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, type ActivePlan, type SavedReview } from '../planService';
+import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan, type SavedReview } from '../planService';
 import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
 import type { ReadinessDriver } from '../../engine/readiness';
@@ -148,10 +147,10 @@ export function Today({ data }: { data: AppData }) {
     if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     setBusy('send');
     try {
-      const id = await sendWorkout(c, workout, plan.date, plan.basis, profile);
-      await db.planned.update(plan.id, { status: 'sent', icuEventId: id });
+      const again = plan.status === 'sent';
+      await sendPlanned(c, plan, workout, profile ?? undefined);
       notify();
-      setMsg({ ok: true, text: 'Sent. It will be on your Garmin after the next phone sync, under Training, Workouts.' });
+      setMsg({ ok: true, text: again ? 'Sent again: the copy on your Garmin is replaced with this version after its next phone sync.' : 'Sent. It will be on your Garmin after the next phone sync, under Training, Workouts.' });
     } catch (e) {
       setMsg({ ok: false, text: `Could not send: ${(e as Error).message}` });
     } finally { setBusy(null); }

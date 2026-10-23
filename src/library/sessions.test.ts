@@ -10,9 +10,9 @@ const NEW_STRENGTH = ['kb-swings-carries', 'kb-legs', 'heavy-legs', 'hotel-15', 
 const kinds = (eq: Equipment[]) => { const l = readyMadeSessions(eq); return { l, n: (k: string) => l.filter((w) => w.kind === k).length }; };
 
 describe('Library, Batch 5c', () => {
-  it('with everything ticked: 24 strength, 17 mobility, 14 walks, 10 runs, every id unique', () => {
+  it('with everything ticked: 24 strength, 17 mobility, 21 walks, 10 runs, every id unique', () => {
     const { l, n } = kinds(EVERYTHING);
-    expect([n('strength'), n('mobility'), n('walk'), n('run')]).toEqual([24, 17, 14, 10]);
+    expect([n('strength'), n('mobility'), n('walk'), n('run')]).toEqual([24, 17, 21, 10]);
     expect(new Set(l.map((w) => w.id)).size).toBe(l.length);
   });
   it('every new strength session fills every pattern for bodyweight, dumbbells and a bench, and a kettlebell', () => {

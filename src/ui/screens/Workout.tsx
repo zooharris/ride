@@ -12,14 +12,14 @@ import { go } from '../router';
 import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
-import { type HrProfile, sendWorkout } from '../../sync/intervals';
+import { type HrProfile } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
 import { runEvent, sessionSteps } from '../../sync/intervals';
 import { paceHint, timeWords } from '../../engine/run';
-import { bandBpm, bandKeyOf, bandZoneWords, capFirst, hasNoFloor, recoveryBand, stepBand, walkBand } from '../../engine/foot';
+import { bandBpm, bandKeyOf, bandZoneWords, capFirst, hasNoFloor, recoveryBand, stepBand, walkBand, walkZoneWords } from '../../engine/foot';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
-import { removePlanned } from '../planService';
+import { removePlanned, sendPlanned } from '../planService';
 import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
@@ -131,10 +131,10 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
     if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     setSending(true);
     try {
-      const id = await sendWorkout(c, w, planned.date, basis, hr ?? { maxHr, lthr });
-      await db.planned.update(planned.id, { status: 'sent', icuEventId: id });
+      const again = planned.status === 'sent';
+      await sendPlanned(c, { ...planned, basis }, w, hr ?? { maxHr, lthr });
       notify();
-      setSendMsg({ ok: true, text: w.kind === 'strength' || w.kind === 'mobility' ? 'Sent. On the watch it is under Today\'s Workouts in an indoor-bike profile (Garmin only shows step names for rides); the recording is filed here as what it really was.' : 'Sent. It reaches your Garmin on its next phone sync.' });
+      setSendMsg({ ok: true, text: again ? 'Sent again: the copy on your Garmin is replaced with this version after its next phone sync.' : w.kind === 'strength' || w.kind === 'mobility' ? 'Sent. On the watch it is under Today\'s Workouts in an indoor-bike profile (Garmin only shows step names for rides); the recording is filed here as what it really was.' : 'Sent. It reaches your Garmin on its next phone sync.' });
     } catch (e) { setSendMsg({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
     finally { setSending(false); }
   }
@@ -158,12 +158,12 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           <h2>The walk</h2>
           <div class="stats" style="margin-top:10px">
             <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
-            <div class="stat"><div class="v">{capFirst(bandZoneWords(b))}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
+            <div class="stat"><div class="v">{capFirst(walkZoneWords(w.walk, hr))}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
             {bpm && <div class="stat"><div class="v">{noFloor ? 'up to ' : `${bpm.low}–`}{bpm.high}</div><div class="l">beats per minute (foot threshold {footLthr(hr ?? { lthr })})</div></div>}
             {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate band{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
             {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
           </div>
-          <p class="muted small" style="margin-top:10px">{noFloor ? 'No minimum: stroll as casually as you like; the only rule is to slow down if the heart rate climbs past the ceiling.' : b.zoneLow >= 2.5 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the band, and back off if it drifts higher.</p>
+          <p class="muted small" style="margin-top:10px">{noFloor ? 'No minimum: walk at whatever pace feels steady; the only rule is to slow down if the heart rate climbs past the ceiling. On the flat it drifts up slowly over the walk and may stay in zone 1 the whole way, and that is the walk done right.' : <>{b.zoneLow >= 2.5 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. Speed and grade are what get the heart rate up, far more than a heavier pack: walk faster or find a hill (or raise the treadmill's grade) until it settles in the band, and back off if it drifts higher.</>}</p>
         </section>
         );
       })()}
@@ -219,6 +219,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           <h2>On the Garmin</h2>
           <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : w.kind === 'run' ? 'Sent: it is on your Garmin after its next phone sync, as a running workout with each step and its heart-rate band.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'run' ? 'Send it as a running workout: the watch shows each step with its heart-rate band and moves you on. The recording comes back through Intervals.icu and is matched to this session.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
           {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
+          {planned.status === 'sent' && <button class="btn" onClick={sendWalk} disabled={sending} title="Replaces the copy on your Garmin with this version">{sending ? 'Sending…' : 'Send again'}</button>}
           {w.kind === 'run' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, hr ?? { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>

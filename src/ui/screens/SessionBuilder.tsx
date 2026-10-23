@@ -1,4 +1,4 @@
-import { WALK_PRESETS, bandBpm, bandZoneWords, hasNoFloor, walkBand } from '../../engine/foot';
+import { EASY_WALK, WALK_PRESETS, bandBpm, bandZoneWords, hasNoFloor, walkBand } from '../../engine/foot';
 import { footLthr } from '../../engine/zones';
 import { useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
@@ -30,7 +30,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const [date, setDate] = useState(today());
   const [effort, setEffort] = useState<number>(source?.effort ?? 6);
   // The walk's band as zone positions on the foot table (an older walk's share-of-max target is converted on open).
-  const startBand = source?.walk ? walkBand(source.walk, data.profile ?? undefined) : { zoneLow: 2, zoneHigh: 3 };
+  const startBand = source?.walk ? walkBand(source.walk, data.profile ?? undefined) : EASY_WALK;
   const [hrLow, setHrLow] = useState(startBand.zoneLow);
   const [hrHigh, setHrHigh] = useState(startBand.zoneHigh);
   // Where the builder started, for Reset and for the leave-without-saving guard (as in the ride builder).
@@ -64,7 +64,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     if (!name.trim()) return;
     const w: Workout = {
       id: existing?.id ?? `mine-${newId()}`, name: name.trim(), kind, family: kind === 'walk' ? 'endurance' : 'recovery',
-      purpose: purpose.trim() || (kind === 'walk' ? 'A zone 2 walk.' : `Built in the app: ${exercises.length} ${kind === 'strength' ? 'exercises' : 'stretches'}.`),
+      purpose: purpose.trim() || (kind === 'walk' ? `A walk, heart rate ${bandZoneWords({ zoneLow: hrLow, zoneHigh: hrHigh })}.` : `Built in the app: ${exercises.length} ${kind === 'strength' ? 'exercises' : 'stretches'}.`),
       phases: ['any'], bases: ['power', 'hr'], setting: 'any', blocks: [], source: 'mine', minutes,
       exercises: kind === 'walk' ? undefined : exercises,
       walk: kind === 'walk' ? walkSpec : undefined,

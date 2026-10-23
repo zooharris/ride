@@ -28,10 +28,14 @@ export function footBand(key: FootBandKey) { return FOOT_BANDS.find((b) => b.key
 
 /** Walk presets, as the builder and the planner offer them. */
 export const WALK_PRESETS: Array<{ label: string; zoneLow: number; zoneHigh: number; blurb: string }> = [
+  { label: 'Easy', zoneLow: 0, zoneHigh: 3, blurb: 'no minimum, up to the top of zone 2; the default' },
   { label: 'Recovery', zoneLow: 0, zoneHigh: 2, blurb: 'no minimum: stroll, and slow down if the heart rate climbs out of zone 1' },
-  { label: 'Zone 2', zoneLow: 2, zoneHigh: 3, blurb: 'talk in full sentences; the default' },
+  { label: 'Zone 2', zoneLow: 2, zoneHigh: 3, blurb: 'a real zone 2 walk: fast (4 mph or more) or uphill' },
   { label: 'Brisk', zoneLow: 2.5, zoneHigh: 3.5, blurb: 'purposeful; upper zone 2 into lower zone 3' },
 ];
+
+/** The band every walk gets unless it asks for another: no minimum, up to the top of zone 2. */
+export const EASY_WALK: FootBand = { zoneLow: 0, zoneHigh: 3 };
 
 export const hasNoFloor = (b: FootBand) => b.zoneLow <= 1;
 
@@ -104,6 +108,34 @@ export function bandZoneWords(b: FootBand): string {
   return `${a} into ${z}`;
 }
 
+/**
+ * A walk's band in zone words. A walk written as zones reads to the nearest half
+ * zone (bandZoneWords). An older walk written as shares of max heart rate is
+ * read from where its beats actually fall on the rider's foot table, so a band
+ * of 113–130 bpm reads "top of zone 1 into zone 2", never "zone 2 into lower
+ * zone 2".
+ */
+export function walkZoneWords(w: WalkSpec, profile?: FootProfile): string {
+  const b = walkBand(w, profile);
+  if (w.zoneHigh != null || !profile) return bandZoneWords(b);
+  const n = (p: number) => Math.max(1, Math.min(7, Math.floor(p)));
+  const lowWords = (p: number) => (p - n(p) >= 0.75 ? `top of zone ${n(p)}` : `zone ${n(p)}`);
+  const highWords = (p: number) => (p - n(p) <= 0.25 && n(p) > 1 ? `top of zone ${n(p) - 1}` : `zone ${n(p)}`);
+  const hi = highWords(b.zoneHigh);
+  if (hasNoFloor(b)) return hi.startsWith('top') ? `up to the ${hi}` : `up to ${hi}`;
+  const lo = lowWords(b.zoneLow);
+  return lo === hi ? lo : `${lo} into ${hi}`;
+}
+
+/** A walk's band in full: zone words and beats. An older walk written as shares of max leads with its beats: "about 113–130 bpm (top of zone 1 into zone 2)". */
+export function walkBandWords(w: WalkSpec, profile?: FootProfile): string {
+  const b = walkBand(w, profile);
+  if (w.zoneHigh != null || !profile) return bandWords(b, profile);
+  const bpm = bandBpm(b, profile);
+  if (!bpm) return walkZoneWords(w, profile);
+  return `about ${hasNoFloor(b) ? `up to ${bpm.high}` : `${bpm.low}–${bpm.high}`} bpm (${walkZoneWords(w, profile)})`;
+}
+
 /** First letter up, for a stat or a heading. */
 export function capFirst(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 
@@ -118,11 +150,21 @@ export function bandWords(b: FootBand, profile?: FootProfile): string {
 /**
  * Training load an hour of a band costs, through the same heart-rate-to-power
  * mapping a recorded walk is scored with: the middle of the band as a share of
- * threshold, turned into a share of FTP, squared. No minimum counts as a
- * stroll low in zone 1.
+ * threshold, turned into a share of FTP, squared.
+ *
+ * A band with no minimum is walked where the walk settles, not at its ceiling.
+ * With a ceiling at or above the top of zone 2 (an easy walk) that is 0.73 of
+ * threshold, about 24 TSS an hour, which is what Todd's recorded walks score
+ * (23 Oct 2026: 104 bpm average on a 158 threshold, 8 TSS in 20 minutes). A
+ * lower ceiling (a recovery stroll) is walked between the middle of zone 1 and
+ * the ceiling, so it always costs less than an easy walk.
  */
 export function bandTssPerHour(b: FootBand): number {
-  const mid = hasNoFloor(b) ? Math.min(fractionAt(b.zoneHigh, HR_ZONES), 0.68) : (fractionAt(b.zoneLow, HR_ZONES) + fractionAt(b.zoneHigh, HR_ZONES)) / 2;
+  const top = fractionAt(b.zoneHigh, HR_ZONES);
+  const z1Mid = HR_ZONES[0].high / 2;
+  const mid = hasNoFloor(b)
+    ? (b.zoneHigh >= 3 ? 0.73 : Math.min(0.73, (z1Mid + top) / 2))
+    : (fractionAt(b.zoneLow, HR_ZONES) + top) / 2;
   const intensity = hrToPowerFraction(mid);
   return intensity * intensity * 100;
 }

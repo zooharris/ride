@@ -1,4 +1,4 @@
-import { bandWords, walkBand } from '../engine/foot';
+import { walkBandWords } from '../engine/foot';
 import { rideHrZones } from '../engine/zones';
 /**
  * Optional narrative layer. With an API key in Settings the app asks Claude for a
@@ -96,7 +96,7 @@ export function describeSession({ planned, workout, recorded }: TodaySession, wi
     if (workout.minutes) parts.push(`planned duration ${workout.minutes} min`);
     if (workout.estimatedTss != null) parts.push(`planned training load about ${workout.estimatedTss} TSS`);
     if (workout.kind === 'strength' && workout.effort) parts.push(`planned effort ${workout.effort}/10`);
-    if (workout.kind === 'walk' && workout.walk) parts.push(`heart rate ${bandWords(walkBand(workout.walk, profile), profile)}`);
+    if (workout.kind === 'walk' && workout.walk) parts.push(`heart rate ${walkBandWords(workout.walk, profile)}`);
     if (workout.kind === 'run' && workout.run?.steps.length) parts.push(`steps: ${runStepsLine(workout, profile)}`);
     if (workout.exercises?.length) parts.push(`${workout.exercises.length} exercises: ${workout.exercises.slice(0, 6).map((e) => e.name).join(', ')}${workout.exercises.length > 6 ? '…' : ''}`);
   }

@@ -1,6 +1,6 @@
-import type { Equipment, Exercise, RunStep, WalkSpec, Workout } from './types';
+import type { Equipment, Exercise, Profile, RunStep, WalkSpec, Workout } from './types';
 import { runMinutes, runSeconds } from './run';
-import { bandKeyOf, bandTssPerHour, recoveryBand, stepBand, walkBand } from './foot';
+import { EASY_WALK, bandKeyOf, bandTssPerHour, recoveryBand, stepBand, walkBand, type FootBand } from './foot';
 import { newId } from './workout';
 import { exercisesFor, firstFirst, lightLoad, type Pattern } from '../library/strength';
 import { mobilityFor, type Target } from '../library/mobility';
@@ -129,26 +129,76 @@ export interface WalkIntent {
   packKg?: number;
   where: 'treadmill' | 'outdoor';
   reason: string;
+  /** The heart-rate band; an easy walk (no minimum, up to the top of zone 2) unless given. A caller that passes one names the walk itself. */
+  band?: FootBand;
 }
 
+/** "Easy walk 30 min with a 15 lb pack": the name of a walk in the default band. */
+export function easyWalkName(minutes: number, packKg?: number): string {
+  return `Easy walk ${minutes} min${packKg ? ` with a ${Math.round(packKg * 2.2)} lb pack` : ''}`;
+}
+
+export const EASY_WALK_PHYSIOLOGY = "Easy aerobic work on foot, with the impact and bone loading cycling does not give. A walk on the flat rarely reaches a cyclist's zone 2 and does not need to: the heart rate drifts up over the walk while the legs, hips and back do the work. Far less fatigue than a ride of the same length.";
+
 export function generateWalk(intent: WalkIntent): Workout {
-  const pack = intent.packKg ? ` with a ${Math.round(intent.packKg * 2.2)} lb pack` : '';
+  const band = intent.band ?? EASY_WALK;
+  const walk: WalkSpec = { minutes: intent.minutes, zoneLow: band.zoneLow, zoneHigh: band.zoneHigh, packKg: intent.packKg };
   return {
     id: `gen-${newId()}`,
-    name: `Zone 2 walk ${intent.minutes} min${pack}`,
+    name: easyWalkName(intent.minutes, intent.packKg),
     kind: 'walk',
     family: 'endurance',
     purpose: intent.reason,
-    physiology: 'Aerobic work at zone 2 with impact and bone loading cycling does not give, and far less fatigue than a ride of the same length.',
+    physiology: intent.band ? 'Aerobic work on foot with the impact and bone loading cycling does not give, and far less fatigue than a ride of the same length.' : EASY_WALK_PHYSIOLOGY,
     phases: ['any'],
     bases: ['power', 'hr'],
     setting: intent.where === 'outdoor' ? 'outdoor' : 'indoor',
     blocks: [],
-    walk: { minutes: intent.minutes, zoneLow: 2, zoneHigh: 3, packKg: intent.packKg },
-    estimatedTss: estimateSessionTss({ kind: 'walk', walk: { minutes: intent.minutes, zoneLow: 2, zoneHigh: 3, packKg: intent.packKg } }),
+    walk,
+    estimatedTss: estimateSessionTss({ kind: 'walk', walk }),
     minutes: intent.minutes,
     source: 'generated',
   };
+}
+
+/**
+ * The one-time re-target of 23 Oct 2026 (Batch 6, A6), for one workout.
+ *  - A walk the planner wrote in its old default band (60–70% of max heart rate,
+ *    or zone 2) becomes an easy walk: no minimum, up to the top of zone 2, named
+ *    and described as one, its load re-estimated. Only for walks the plan made;
+ *    the caller decides that.
+ *  - A run whose steps are still written as shares of max heart rate gets the
+ *    nearest band on the foot table for each step, so no run depends on max
+ *    heart rate any more. The meaning is kept, so every such run converts.
+ * Returns the converted workout, or null when there is nothing to change.
+ */
+export function retargetWorkout(w: Workout, profile?: Pick<Profile, 'lthr' | 'maxHr'> & Partial<Profile>): Workout | null {
+  if (w.kind === 'walk' && w.walk) {
+    const v = w.walk;
+    const near = (a: number | undefined, b: number) => a != null && Math.abs(a - b) < 0.03;
+    const oldShareOfMax = v.zoneHigh == null && ((v.hrLow == null && v.hrHigh == null) || (near(v.hrLow, 0.6) && near(v.hrHigh, 0.7)));
+    const oldZone2 = v.zoneLow === 2 && v.zoneHigh === 3;
+    if (!oldShareOfMax && !oldZone2) return null;
+    const walk: WalkSpec = { minutes: v.minutes, zoneLow: EASY_WALK.zoneLow, zoneHigh: EASY_WALK.zoneHigh, ...(v.packKg ? { packKg: v.packKg } : {}) };
+    const purpose = w.purpose
+      .replace('a zone 2 walk uses it well', 'an easy walk uses it well')
+      .replace('Your standing walk day: zone 2 on foot.', 'Your standing walk day: easy aerobic work on foot.')
+      .replace('a brisk walk instead of nothing', 'an easy walk instead of nothing');
+    return { ...w, name: w.name.replace(/^Zone 2 walk/, 'Easy walk'), purpose, physiology: EASY_WALK_PHYSIOLOGY, walk, estimatedTss: estimateSessionTss({ kind: 'walk', walk }) };
+  }
+  if (w.kind === 'run' && w.run?.steps.some((s) => (!s.band && (s.hrLow != null || s.hrHigh != null)) || (!s.recoverBand && (s.recoverLow != null || s.recoverHigh != null)))) {
+    const steps: RunStep[] = w.run.steps.map((s) => {
+      const { hrLow, hrHigh, recoverLow, recoverHigh, ...rest } = s;
+      const out: RunStep = { ...rest, band: s.band ?? bandKeyOf(stepBand(s, profile)) };
+      if (s.recoverBand) out.recoverBand = s.recoverBand;
+      else if (recoverHigh != null || recoverLow != null) out.recoverBand = bandKeyOf(recoveryBand(s, profile));
+      void hrLow; void hrHigh;
+      return out;
+    });
+    const run = { ...w.run, steps };
+    return { ...w, run, estimatedTss: estimateSessionTss({ kind: 'run', run, minutes: w.minutes, walk: undefined, effort: w.effort }) };
+  }
+  return null;
 }
 
 /**

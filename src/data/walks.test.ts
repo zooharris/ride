@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { db } from './db';
+import { db, setSetting } from './db';
 import { bandTssPerHour, bandWords, walkBandWords, walkZoneWords } from '../engine/foot';
 import { generateWalk, retargetWorkout } from '../engine/sessions';
 import { readyMadeSessions } from '../library/sessions';
@@ -221,5 +221,57 @@ describe('Batch 6 B: plan sessions are stored as Library workouts', () => {
     expect((await db.planned.get('p5'))?.workoutId).toBe('g5');
     expect(await db.workouts.get('g1')).toBeUndefined();                          // the orphaned copy is pruned
     expect(await nameRideSessions()).toBe(0);                                     // idempotent
+  });
+});
+
+describe('Batch 7 A2/A4: waiting for the coach, and keeping its two reviews apart', () => {
+  beforeEach(async () => { vi.useRealTimers(); await db.delete(); await db.open(); vi.restoreAllMocks(); });
+
+  it('withTimeout gives the answer when it comes in time, and nothing after ten seconds', async () => {
+    const { withTimeout, COACH_WAIT_MS } = await import('../ui/planService');
+    vi.useFakeTimers();
+    const fast = withTimeout(Promise.resolve('yes'), COACH_WAIT_MS);
+    await expect(fast).resolves.toBe('yes');
+    const slow = withTimeout(new Promise<string>(() => {}), COACH_WAIT_MS);
+    vi.advanceTimersByTime(COACH_WAIT_MS - 1);
+    let done = false; void slow.then(() => { done = true; });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    vi.advanceTimersByTime(1);
+    await expect(slow).resolves.toBeNull();
+    const failing = withTimeout(Promise.reject(new Error('x')), COACH_WAIT_MS);
+    await expect(failing).resolves.toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('coach on but not answering: after the wait, the app’s own list, and it says it fell back', async () => {
+    const svc = await import('../ui/planService');
+    await setSetting('coachAuto', true);
+    await setSetting('claudeKey', 'k');
+    const coach = await import('../coach/claude');
+    vi.spyOn(coach, 'reviewAfterSync').mockImplementation(() => new Promise(() => {}));   // never answers
+    const change = { date: today(), kind: 'ride', before: 'A', after: 'B', note: 'changed' };
+    const check = { review: { from: '', to: '', planned: 0, completed: 0, missed: 0, lines: [] }, plan: { verdict: 'no-target', advice: '' } as never, changes: [change], summary: ['own'], fitnessNow: 0 };
+    let waited = false;
+    const data = { profile: { ...todd }, rides: [], wellness: [], planned: [], dayNotes: [], mine: [] } as never;
+    expect(svc.COACH_WAIT_MS).toBe(10_000);
+    const r = await svc.recommendFor(data, check, () => { waited = true; }, false, 30);   // the same path, with a 30 ms wait
+    expect(waited).toBe(true);
+    expect(r).toMatchObject({ byCoach: false, fellBack: true });
+    expect(r.changes).toEqual([change]);
+    // and when told not to wait again (the view already gave up), straight to the app's list
+    const again = await svc.recommendFor(data, check, () => { throw new Error('must not wait'); }, true);
+    expect(again.fellBack).toBe(true);
+  });
+
+  it('the coach card shows only the review of synced activities; the coach’s plan verdicts stay on this device', async () => {
+    const { getCoachReview, RECHECK_KEY } = await import('../ui/planService');
+    const { localDoc } = await import('./devicesync');
+    await setSetting('coachReview', { date: today(), text: 'On the plan', reason: '', applyChanges: 'all', skip: [], mode: 'recheck' });
+    expect(await getCoachReview()).toBeNull();
+    await setSetting('coachReview', { date: today(), text: 'Your ride today', reason: '', applyChanges: 'all', skip: [], mode: 'sync' });
+    expect((await getCoachReview())?.text).toBe('Your ride today');
+    await setSetting(RECHECK_KEY, { date: today(), text: 't', reason: '', applyChanges: 'all', skip: [] });
+    expect((await localDoc()).settings.some((x) => x.key === RECHECK_KEY)).toBe(false);
   });
 });

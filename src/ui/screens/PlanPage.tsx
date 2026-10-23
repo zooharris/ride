@@ -15,6 +15,7 @@ import { Empty, PageHead } from '../PageHead';
 import { go } from '../router';
 import { toast } from '../Toast';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { useRecommended } from '../useRecommended';
 import { AwayFields, GOAL_KIND_LABEL, GoalFields, WeekFields } from '../PlanForm';
 import { NameSheet } from '../NameSheet';
 
@@ -27,6 +28,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   const [plan, setPlan] = useState<ActivePlan | null | undefined>(undefined);
   const [isActive, setIsActive] = useState(false);
   const [check, setCheck] = useState<Replan | null>(null);
+  const { rec, checking: coachChecking } = useRecommended(data, check);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -96,13 +98,14 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
         <p class="muted small" style="margin-top:12px">Away: {plan.away.map((r) => `${range(r)}${r.note ? ` (${r.note})` : ''}`).join('; ')}.</p>
       )}
 
-      {isActive && check && check.changes.length > 0 && (
+      {isActive && check && coachChecking && <section class="panel small muted row" style="margin-top:14px;padding:12px 16px;gap:8px"><span class="spinner" aria-hidden="true" />Checking your plan…</section>}
+      {isActive && check && !coachChecking && rec && rec.changes.length > 0 && (
         <section class="panel" style="margin-top:14px;padding:12px 16px">
           <div class="row between wrap" style="gap:8px">
-            <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">from today's re-check.</span></span>
+            <span class="small"><b>{rec.changes.length === 1 ? '1 recommended change' : `${rec.changes.length} recommended changes`}</b> <span class="muted">to this plan.</span></span>
             <button class="btn sm" aria-expanded={showSuggestions} onClick={() => setShowSuggestions(!showSuggestions)}>{showSuggestions ? 'Hide' : 'Review'}</button>
           </div>
-          {showSuggestions && <ReplanView check={check} onAccept={accept} onReject={reject} busy={busy} />}
+          {showSuggestions && <ReplanView check={check} rec={rec} onAccept={accept} onReject={reject} busy={busy} />}
         </section>
       )}
 

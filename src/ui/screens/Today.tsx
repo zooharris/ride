@@ -18,9 +18,10 @@ import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
-import { KIND_LABEL, KindDot, ReplanView, coachView } from './Plan';
+import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { useRecommended } from '../useRecommended';
 import { StatusPill, statusOf } from '../StatusMark';
-import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, coachReviewRecheck, type ActivePlan, type SavedReview } from '../planService';
+import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan, type SavedReview } from '../planService';
 import { changeKeys, type Change, type Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
 import type { ReadinessDriver } from '../../engine/readiness';
@@ -61,6 +62,8 @@ export function Today({ data }: { data: AppData }) {
     wellnessToday: data.wellness.some((w) => w.date === date), band: ready.band, plan: coachPlan(active, date),
   });
   const [check, setCheck] = useState<Replan | null>(null);
+  // Batch 7, A2: one voice. With the coach on, the list waits for it ("Checking your plan…"), then shows only what it recommends.
+  const { rec, checking: coachChecking } = useRecommended(data, check);
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<SavedReview | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -88,8 +91,6 @@ export function Today({ data }: { data: AppData }) {
         const r = await replan(data);
         if (alive) setCheck(r);
         if (a.lastCheck !== date) await markChecked();
-        // Batch 6, C6: with the coach on, it gives its view of changes it has not seen yet.
-        if (r?.changes.length) coachReviewRecheck(data, r).then(async (rev) => { if (rev && alive) setReview(await getCoachReview()); }).catch(() => { /* the rows simply show no coach view */ });
       } else if (alive) setCheck(null);
     })();
     return () => { alive = false; };
@@ -217,13 +218,14 @@ export function Today({ data }: { data: AppData }) {
           <div class="row between">
             <a class="small plain-link" href={`#/plan/${active.id}`} title="Open the plan"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null} <span class="faint">›</span></a>
           </div>
-          {check && check.changes.length > 0 && (
+          {coachChecking && <div class="small muted row" style="gap:8px;margin-top:8px"><span class="spinner" aria-hidden="true" />Checking your plan…</div>}
+          {!coachChecking && check && rec && rec.changes.length > 0 && (
             <div class="row between wrap" style="gap:8px;margin-top:8px">
-              <span class="small"><b>{check.changes.length === 1 ? '1 suggested change' : `${check.changes.length} suggested changes`}</b> <span class="muted">to your plan{(() => { const r = coachView(check.changes, review).recommend; return r === 'all' ? (check.changes.length === 1 ? '; the coach recommends it' : '; the coach recommends them') : r === 'some' ? '; the coach recommends some of them' : r === 'none' ? '; the coach suggests leaving the plan as it is' : ''; })()}.</span></span>
+              <span class="small"><b>{rec.changes.length === 1 ? '1 recommended change' : `${rec.changes.length} recommended changes`}</b> <span class="muted">to your plan.</span></span>
               <button class="btn sm" aria-expanded={showSuggestions} onClick={() => setShowSuggestions(!showSuggestions)}>{showSuggestions ? 'Hide' : 'Review'}</button>
             </div>
           )}
-          {check && check.changes.length > 0 && showSuggestions && <ReplanView check={check} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} coach={review} />}
+          {!coachChecking && check && rec && rec.changes.length > 0 && showSuggestions && <ReplanView check={check} rec={rec} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} />}
         </section>
       )}
 

@@ -169,7 +169,7 @@ export function notePrompt(ctx: CoachContext): string {
   return `${coachIntro(ctx.profile, ctx.date)} Write one short note for today${name === 'the rider' ? '' : `, addressed to ${name} by first name`}. Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. ${SHARED_RULES} ${NOTE_ONLY_RULES}\n\n${dayFacts(ctx)}`;
 }
 
-const ANSWER_RULES = "Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks; speak to the rider in the second person. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's suggested changes.";
+const ANSWER_RULES = "Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks; speak to the rider in the second person. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's recommended changes.";
 
 export function questionSystem(ctx: CoachContext, earlier: string[] = []): string {
   const weeks = ctx.recentWeeks?.length ? `\nWeekly training load, last ${ctx.recentWeeks.length} weeks, oldest first: ${ctx.recentWeeks.map((w) => Math.round(w)).join(' / ')} TSS` : '';

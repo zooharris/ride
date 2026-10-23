@@ -105,7 +105,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
 
         {review && (
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-            <div class="row between"><b class="small">{review.mode === 'recheck' ? `On the plan's suggested changes${review.at ? `, ${time(review.at)}` : ''}` : review.at ? `Review of the activities synced at ${time(review.at)}` : 'Review of the latest synced activities'}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
+            <div class="row between"><b class="small">{review.at ? `Review of the activities synced at ${time(review.at)}` : 'Review of the latest synced activities'}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
             {review.failed ? (
               <div class="row between wrap" style="gap:8px;margin-top:6px">
                 <span class="muted small">The coach's review couldn't be read ({review.failed}).</span>
@@ -131,7 +131,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
             <input style="flex:1" value={question} placeholder="Ask the coach a question" onInput={(e) => setQuestion((e.target as HTMLInputElement).value)} disabled={asking} aria-label="Question for the coach" />
             <button class="btn sm" type="submit" disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
           </form>
-          <p class="faint small" style="margin-top:6px">The coach answers from today's numbers, calendar and your notes. It cannot change the plan; suggested changes appear with the plan above.</p>
+          <p class="faint small" style="margin-top:6px">The coach answers from today's numbers, calendar and your notes. It cannot change the plan; recommended changes appear with the plan above.</p>
         </div>
       </div>
     </section>

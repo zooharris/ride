@@ -638,7 +638,10 @@ export async function coachReviewAfterSync(data: AppData, newIds: string[], aske
     plan: coachPlan(active, today()),
     tomorrow: tomorrowLines(data, today()),
   });
-  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: newIds, changesSig: check ? changesSigOf(check.changes) : '' } as SavedReview);
+  const saved = { ...review, at: new Date().toISOString(), ids: newIds, changesSig: check ? changesSigOf(check.changes) : '' } as SavedReview;
+  await setSetting('coachReview', saved);
+  // Batch 7, A4: its verdicts on the plan's changes decide the recommended list too, with no second call.
+  if (check?.changes.length && !review.failed && review.verdicts?.length) await setSetting(RECHECK_KEY, saved);
   return { review, check };
 }
 
@@ -651,14 +654,25 @@ export const changesSigOf = (changes: Change[]) => changes.map(changeSig).sort()
  * view of each, once per set of changes (a failure is not retried for the same
  * set until the app starts again). Nothing is applied here.
  */
-export async function coachReviewRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
+export function coachReviewRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
+  // One request per set of changes: a screen that asks again while the first is in flight waits for the same answer.
+  const sig = changesSigOf(check.changes);
+  const inFlight = recheckInFlight.get(sig);
+  if (inFlight) return inFlight;
+  const p = askRecheck(data, check).finally(() => recheckInFlight.delete(sig));
+  recheckInFlight.set(sig, p);
+  return p;
+}
+const recheckInFlight = new Map<string, Promise<CoachReview | null>>();
+
+async function askRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
   if (!check.changes.length) return null;
   const on = await getSetting<boolean>('coachAuto', false);
   const key = await getSetting<string>('claudeKey', '');
   if (!on || !key) return null;
   const sig = changesSigOf(check.changes);
-  const saved = await getSetting<SavedReview | null>('coachReview', null);
-  if (saved?.changesSig === sig && !saved.failed) return null;
+  const saved = await getSetting<SavedReview | null>(RECHECK_KEY, null);
+  if (saved && !saved.failed && judgedAll(check.changes, saved)) return null;
   if (recheckAsked.has(sig)) return null;
   recheckAsked.add(sig);
   const profile = data.profile as Profile;
@@ -679,10 +693,96 @@ export async function coachReviewRecheck(data: AppData, check: Replan): Promise<
   }, 'recheck');
   // A failed re-check review is not kept: the rows simply show no coach view, and the next start asks again.
   if (review.failed) return null;
-  await setSetting('coachReview', { ...review, at: new Date().toISOString(), ids: [], changesSig: sig } as SavedReview);
+  await setSetting(RECHECK_KEY, { ...review, at: new Date().toISOString(), ids: [], changesSig: sig } as SavedReview);
   return review;
 }
 const recheckAsked = new Set<string>();
+
+/**
+ * Batch 7, A4: the coach's verdicts on the plan's changes are kept apart from
+ * its review of synced activities (`coachReview`, shown on the coach card), so
+ * one never hides the other. Local to this device.
+ */
+export const RECHECK_KEY = 'coachRecheck';
+
+/** Whether the coach is reviewing plan changes on this device: the switch on and a key present. */
+export async function coachIsOn(): Promise<boolean> {
+  return !!(await getSetting<boolean>('coachAuto', false)) && !!(await getSetting<string>('claudeKey', '')).trim();
+}
+
+/** The coach's saved verdicts on the plan's changes, if any. */
+export async function getRecheckReview(): Promise<SavedReview | null> {
+  const r = await getSetting<SavedReview | null>(RECHECK_KEY, null);
+  return r ? { ...r, ...readVerdict(r) } : null;
+}
+
+/** Whether a review judged every one of these changes (each is in the set it was shown, and has a verdict). */
+function judgedAll(changes: Change[], review: SavedReview): boolean {
+  const judged = new Set((review.changesSig ?? '').split(';').filter(Boolean));
+  return changes.every((c) => judged.has(changeSig(c)) && !!review.verdicts?.some((v) => v.date === c.date && v.kind === c.kind));
+}
+
+export interface Recommended {
+  changes: Change[];
+  /** The coach's few words on each recommended change, by its signature. Empty when the list is the app's own. */
+  reasons: Map<string, string>;
+  status: 'ready' | 'waiting';
+  /** True when the coach chose the list; then `reason` is its one sentence on the changes. */
+  byCoach: boolean;
+  reason?: string;
+}
+
+/**
+ * Batch 7, A1: what the rider is shown, in one voice. With the coach off, the
+ * plan's own changes. With the coach on and its verdicts covering every change
+ * on screen, only the ones it would apply, each with its reason; the ones it set
+ * aside are not returned anywhere. With the coach on and no such verdicts yet,
+ * "waiting": the caller holds the list behind "Checking your plan…".
+ */
+export function recommendedChanges(check: Replan, review: SavedReview | null, coachOn: boolean): Recommended {
+  if (!coachOn) return { changes: check.changes, reasons: new Map(), status: 'ready', byCoach: false };
+  if (!check.changes.length) return { changes: [], reasons: new Map(), status: 'ready', byCoach: true };
+  if (!review || review.failed || !review.verdicts?.length || !judgedAll(check.changes, review)) return { changes: [], reasons: new Map(), status: 'waiting', byCoach: true };
+  const reasons = new Map<string, string>();
+  const changes = check.changes.filter((c) => {
+    const v = review.verdicts!.find((x) => x.date === c.date && x.kind === c.kind);
+    if (v?.apply) reasons.set(changeSig(c), v.why);
+    return !!v?.apply;
+  });
+  return { changes, reasons, status: 'ready', byCoach: true, reason: review.reason || undefined };
+}
+
+/** The app's own list, when the coach did not answer in time: same heading, no coach in it. */
+export const ownRecommendation = (check: Replan): Recommended => ({ changes: check.changes, reasons: new Map(), status: 'ready', byCoach: false });
+
+/** How long the list waits for the coach before showing the app's own (Batch 7, A2). */
+export const COACH_WAIT_MS = 10_000;
+
+/** A promise, or null after `ms`: the coach's answer, or nothing if it takes too long. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
+  });
+}
+
+/**
+ * Batch 7, A2: the recommended list for a re-check, waiting for the coach when
+ * it is on and has not judged these changes, up to COACH_WAIT_MS; then the
+ * app's own list, with no error. `onWaiting` is called when the wait starts, so
+ * the screen can show "Checking your plan…". An answer that comes after the
+ * wait is saved and used next time.
+ */
+export async function recommendFor(data: AppData, check: Replan, onWaiting?: () => void, noWait = false, waitMs = COACH_WAIT_MS): Promise<Recommended & { fellBack?: boolean }> {
+  const on = await coachIsOn();
+  const first = recommendedChanges(check, await getRecheckReview(), on);
+  if (first.status === 'ready') return first;
+  if (noWait) return { ...ownRecommendation(check), fellBack: true };
+  onWaiting?.();
+  await withTimeout(coachReviewRecheck(data, check), waitMs);
+  const after = recommendedChanges(check, await getRecheckReview(), on);
+  return after.status === 'ready' ? after : { ...ownRecommendation(check), fellBack: true };
+}
 
 const EVENT_WORDS: Record<string, string> = { century: 'a century', 'gran-fondo': 'a gran fondo', climbing: 'a climbing event', 'time-trial': 'a time trial', 'group-ride': 'a group ride', 'multi-day': 'a multi-day event', other: 'an event' };
 
@@ -735,7 +835,8 @@ export type SavedReview = CoachReview & { at?: string; dismissed?: boolean; ids?
 /** Today's review, unless dismissed. */
 export async function getCoachReview(): Promise<SavedReview | null> {
   const r = await getSetting<SavedReview | null>('coachReview', null);
-  if (!r || r.date !== today() || r.dismissed) return null;
+  // Batch 7, A4: the card shows only the review of synced activities; the coach's view of plan changes lives with the list.
+  if (!r || r.date !== today() || r.dismissed || r.mode === 'recheck') return null;
   // Older builds kept an unreadable reply as raw text; show it as a failed review instead.
   if (!r.failed && r.text.trim().startsWith('{')) return { ...r, text: '', failed: 'the reply could not be read', ...readVerdict(r) };
   // A review saved before 21 Oct 2026 said yes or no for all the changes; read it as all or none.

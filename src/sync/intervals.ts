@@ -132,6 +132,9 @@ function footSettings(athlete: Record<string, unknown>): Array<Record<string, un
   return [...run, ...other];
 }
 
+/** Intervals.icu wants a name per zone whenever a table is written, the same count as the table. */
+const HR_ZONE_NAMES = ['Recovery', 'Endurance', 'Tempo', 'Threshold', 'VO2max', 'Anaerobic', 'Neuromuscular'];
+
 /**
  * Push FTP, LTHR and max HR to Intervals.icu. This matters: Intervals.icu turns
  * the app's "% of FTP" into watts with ITS FTP before the workout reaches Garmin,
@@ -145,13 +148,13 @@ export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: num
   if (n.ftp) { body.ftp = n.ftp; body.indoor_ftp = n.ftp; }
   if (n.lthr) body.lthr = n.lthr;
   if (n.maxHr) body.max_hr = n.maxHr;
-  if (validTops(n.hrZoneTops) && n.maxHr) body.hr_zones = [...n.hrZoneTops, n.maxHr];
+  if (validTops(n.hrZoneTops) && n.maxHr) { body.hr_zones = [...n.hrZoneTops, n.maxHr]; body.hr_zone_names = HR_ZONE_NAMES; }
   if (Object.keys(body).length) await call(c, `/athlete/${c.athleteId}/sport-settings/${sport.id}`, { method: 'PUT', body: JSON.stringify(body) });
   // Runs and walks: their own threshold and table, written to every entry that governs them.
   const foot: Record<string, unknown> = {};
   if (n.footLthr) foot.lthr = n.footLthr;
   if (n.maxHr) foot.max_hr = n.maxHr;
-  if (validTops(n.footHrZoneTops) && n.maxHr) foot.hr_zones = [...n.footHrZoneTops, n.maxHr];
+  if (validTops(n.footHrZoneTops) && n.maxHr) { foot.hr_zones = [...n.footHrZoneTops, n.maxHr]; foot.hr_zone_names = HR_ZONE_NAMES; }
   if (!n.footLthr && !validTops(n.footHrZoneTops)) return;
   for (const s of footSettings(a)) {
     if (s.id == null) continue;

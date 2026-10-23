@@ -33,7 +33,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // webp: the exercise pictures, so they show offline in a gym.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webp}'],
         navigateFallback: '/ride/index.html',
         // Map tiles already seen stay available offline for a month.
         runtimeCaching: [{

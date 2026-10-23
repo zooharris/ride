@@ -1,0 +1,308 @@
+{
+ "ankle-rocks": [
+  "a"
+ ],
+ "back-squat": [
+  "a",
+  "b"
+ ],
+ "band-face-pull": [
+  "a",
+  "b"
+ ],
+ "band-good-morning": [
+  "a",
+  "b"
+ ],
+ "band-lat-pulldown": [
+  "a",
+  "b"
+ ],
+ "band-pull-apart": [
+  "a",
+  "b"
+ ],
+ "band-row": [
+  "a",
+  "b"
+ ],
+ "band-woodchop": [
+  "a",
+  "b"
+ ],
+ "bb-deadlift": [
+  "a",
+  "b"
+ ],
+ "bb-good-morning": [
+  "a",
+  "b"
+ ],
+ "bb-row": [
+  "a",
+  "b"
+ ],
+ "bench-dip": [
+  "a",
+  "b"
+ ],
+ "bent-row": [
+  "a",
+  "b"
+ ],
+ "bird-dog": [
+  "a"
+ ],
+ "bw-squat": [
+  "a",
+  "b"
+ ],
+ "calf-raise": [
+  "a",
+  "b"
+ ],
+ "calf-wall": [
+  "a"
+ ],
+ "cat-cow": [
+  "a",
+  "b"
+ ],
+ "child-pose": [
+  "a"
+ ],
+ "clamshell": [
+  "a"
+ ],
+ "couch-stretch": [
+  "a"
+ ],
+ "db-bench": [
+  "a",
+  "b"
+ ],
+ "db-deadlift": [
+  "a",
+  "b"
+ ],
+ "db-front-squat": [
+  "a",
+  "b"
+ ],
+ "db-overhead": [
+  "a",
+  "b"
+ ],
+ "db-pullover": [
+  "a",
+  "b"
+ ],
+ "db-rdl": [
+  "a",
+  "b"
+ ],
+ "db-swing": [
+  "a",
+  "b"
+ ],
+ "dead-bug": [
+  "a",
+  "b"
+ ],
+ "dip": [
+  "a",
+  "b"
+ ],
+ "doorway-pec": [
+  "a"
+ ],
+ "downward-dog": [
+  "a"
+ ],
+ "farmer-carry": [
+  "a"
+ ],
+ "figure-four": [
+  "a"
+ ],
+ "floor-press": [
+  "a",
+  "b"
+ ],
+ "frog": [
+  "a"
+ ],
+ "glute-bridge": [
+  "a",
+  "b"
+ ],
+ "goblet-squat": [
+  "a",
+  "b"
+ ],
+ "half-kneel-hip": [
+  "a"
+ ],
+ "hamstring-strap": [
+  "a"
+ ],
+ "hip-thrust": [
+  "a",
+  "b"
+ ],
+ "hollow-hold": [
+  "a"
+ ],
+ "kb-deadlift": [
+  "a",
+  "b"
+ ],
+ "kb-get-up": [
+  "a",
+  "b"
+ ],
+ "kb-goblet-squat": [
+  "a",
+  "b"
+ ],
+ "kb-halo": [
+  "a",
+  "b"
+ ],
+ "kb-press": [
+  "a",
+  "b"
+ ],
+ "kb-rack-carry": [
+  "a"
+ ],
+ "kb-rack-lunge": [
+  "a",
+  "b"
+ ],
+ "kb-row": [
+  "a",
+  "b"
+ ],
+ "kb-sl-rdl": [
+  "a"
+ ],
+ "kb-suitcase-carry": [
+  "a"
+ ],
+ "kb-swing": [
+  "a",
+  "b"
+ ],
+ "knee-to-chest": [
+  "a"
+ ],
+ "lat-stretch": [
+  "a"
+ ],
+ "lateral-lunge": [
+  "a",
+  "b"
+ ],
+ "lying-it-band": [
+  "a"
+ ],
+ "monster-walk": [
+  "a"
+ ],
+ "neck-stretch": [
+  "a"
+ ],
+ "ninety-ninety": [
+  "a"
+ ],
+ "one-arm-row": [
+  "a",
+  "b"
+ ],
+ "overhead-carry": [
+  "a"
+ ],
+ "pallof": [
+  "a",
+  "b"
+ ],
+ "pigeon": [
+  "a"
+ ],
+ "plank": [
+  "a"
+ ],
+ "pull-up": [
+  "a",
+  "b"
+ ],
+ "pushup": [
+  "a",
+  "b"
+ ],
+ "quad-stretch": [
+  "a"
+ ],
+ "reverse-fly": [
+  "a",
+  "b"
+ ],
+ "reverse-lunge": [
+  "a",
+  "b"
+ ],
+ "russian-twist": [
+  "a",
+  "b"
+ ],
+ "seated-twist": [
+  "a"
+ ],
+ "shoulder-rolls": [
+  "a"
+ ],
+ "side-lying-leg-raise": [
+  "a"
+ ],
+ "side-plank": [
+  "a"
+ ],
+ "single-leg-bridge": [
+  "a",
+  "b"
+ ],
+ "single-leg-rdl": [
+  "a",
+  "b"
+ ],
+ "split-squat": [
+  "a",
+  "b"
+ ],
+ "standing-hamstring": [
+  "a"
+ ],
+ "step-up": [
+  "a",
+  "b"
+ ],
+ "suitcase-carry": [
+  "a"
+ ],
+ "thoracic-extension": [
+  "a"
+ ],
+ "thoracic-rotation": [
+  "a"
+ ],
+ "walking-lunge": [
+  "a"
+ ],
+ "wall-angel": [
+  "a"
+ ],
+ "wall-sit": [
+  "a"
+ ]
+}

@@ -61,6 +61,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
           <Li><b>Optionally, an Anthropic API key</b> if you want a written daily note, reviews and answers from Claude. The app does everything else without it.</Li>
         </ul>
         <P>Every screen has a <b>?</b> at the top that opens this page at its own section; the search box above finds anything on the page.</P>
+        <P>Green is the one thing a screen is for. A pale teal shows what is selected; red outline means something will be removed, and asks first.</P>
       </>
     ),
   },

@@ -198,7 +198,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
         <button class="btn" onClick={() => save('today')} disabled={!name.trim() || rows.length === 0}>Save and ride today</button>
         <button class="btn quiet" onClick={reset} disabled={!dirty}>Reset</button>
         <button class="btn quiet" onClick={cancel}>Cancel</button>
-        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
+        {existing && <button class="btn danger" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
       </div>
     </div>
   );

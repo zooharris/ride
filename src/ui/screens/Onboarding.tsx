@@ -87,7 +87,7 @@ export function Onboarding() {
             <div class="panel accent" style="margin-bottom:14px">
               <b>A backup from another device was found</b>
               <p class="muted small" style="margin-top:4px">Saved {new Date(backup.exportedAt).toLocaleString()} in your Intervals.icu account: profile, settings, workouts and plan.</p>
-              <button class="btn primary sm" style="margin-top:10px" onClick={async () => { await restoreBackup(backup.text); notify(); location.hash = '/today'; location.reload(); }}>Restore it and continue</button>
+              <button class="btn sm" style="margin-top:10px" onClick={async () => { await restoreBackup(backup.text); notify(); location.hash = '/today'; location.reload(); }}>Restore it and continue</button>
             </div>
           )}
           {missing.length > 0 && <div class="msg err" style="margin-bottom:14px">Intervals.icu has no {missing.join(' or ')} set for cycling. Enter a best guess below, or set it on intervals.icu and it will be picked up on the next connect.</div>}

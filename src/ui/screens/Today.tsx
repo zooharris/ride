@@ -357,7 +357,7 @@ function DayNoteEditor({ date, note, hasWellness }: { date: string; note?: DayNo
     return (
       <div class="row between" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);gap:10px;align-items:flex-start">
         <div class="small"><span class="muted">Your note:</span> {note.text || <span class="faint">no text</span>}{note.badWellness ? <span class="faint"> · wellness set aside</span> : null}</div>
-        <button class="btn sm quiet" onClick={() => setOpen(true)}>Edit</button>
+        <button class="btn sm" onClick={() => setOpen(true)}>Edit</button>
       </div>
     );
   }

@@ -92,7 +92,7 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
     <section class="section">
       <div class="row between">
         <h2>Coach</h2>
-        <button class="btn sm quiet" onClick={() => refresh(key)} disabled={updating}>{updating ? 'Writing…' : 'Fresh note'}</button>
+        <button class="btn sm" onClick={() => refresh(key)} disabled={updating}>{updating ? 'Writing…' : 'Fresh note'}</button>
       </div>
       <div class="panel" style="margin-top:8px;padding:14px 16px">
         {note ? (

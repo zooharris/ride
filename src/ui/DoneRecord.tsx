@@ -171,7 +171,7 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
       {draft.exercises && <button class="btn sm quiet" style="margin-left:-8px;align-self:flex-start" onClick={add}>+ Add an exercise</button>}
       <div class="row wrap" style="gap:8px;margin-top:12px">
         <button class="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-        <button class="btn" onClick={onClose} disabled={busy}>Cancel</button>
+        <button class="btn quiet" onClick={onClose} disabled={busy}>Cancel</button>
         {plannedRec && <button class="btn quiet" disabled={busy} onClick={() => setDraft(clone(plannedRec))} title="Start again from the session as it was planned">Reset to planned</button>}
       </div>
     </div>

@@ -46,7 +46,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   // Move, replace or remove this session; the page follows a move to its new date.
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
-  const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm quiet" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm quiet" onClick={() => setChange('replace')}>Replace</button></>;
+  const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm" style="margin-left:6px" onClick={() => setChange('replace')}>Replace</button></>;
   if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
@@ -80,7 +80,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <div class="row wrap" style="margin:18px 0;gap:8px">
         <button class="btn primary" onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
-        {w.source === 'mine' ? <a class="btn quiet" href={`#/build/${w.id}`}>Edit</a> : <a class="btn quiet" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
+        {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         <label class="btn" style="position:relative;overflow:hidden">Pick a date
           <input type="date" min={today()} style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) schedule(v); }} />
@@ -145,7 +145,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
-      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn sm quiet" onClick={onRemove}>Remove from the calendar</button>}</p>}
+      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 
@@ -243,7 +243,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
 
       <div class="row wrap" style="margin-top:22px;gap:8px">
         {!planned && <button class="btn primary" onClick={() => setAdding(true)}>Add to a date</button>}
-        {w.source === 'mine' ? <a class="btn quiet" href={`#/build/${w.id}`}>Edit</a> : <a class="btn quiet" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
+        {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
       </div>
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}

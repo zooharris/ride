@@ -110,7 +110,7 @@ function Card({ w, mine = false, basis, profile, onPick }: { w: Workout; mine?: 
         <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
-        <button class="btn sm primary" onClick={async () => { await scheduleWorkout(w, today(), basis); toast({ ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
+        <button class="btn sm" onClick={async () => { await scheduleWorkout(w, today(), basis); toast({ ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
         <button class="btn sm" onClick={onPick}>Pick a date</button>
       </div>
     </div>

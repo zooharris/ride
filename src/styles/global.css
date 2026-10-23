@@ -8,6 +8,7 @@
   --ink: #E9EEF6;
   --ink-2: #A9B6C9;
   --ink-3: #6F7F98;
+  --sel-ink: var(--accent); /* text of a selected toggle (teal wash); darker in light so it reads on the wash */
 
   /* teal: the primary action, active nav, links, focus; orange: today and attention */
   --accent: #20D6B5;
@@ -53,7 +54,7 @@
 :root[data-theme="light"] {
   --bg: #F4F6FA; --bg-2: #FFFFFF; --bg-3: #EAEEF5; --line: #DFE5EE; --line-2: #C9D2DF;
   --ink: #0B1A33; --ink-2: #44546C; --ink-3: #6B788B;
-  --accent: #0A806C; --accent-ink: #FFFFFF; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
+  --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
   --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
   --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
@@ -64,7 +65,7 @@
   :root:not([data-theme="dark"]) {
     --bg: #F4F6FA; --bg-2: #FFFFFF; --bg-3: #EAEEF5; --line: #DFE5EE; --line-2: #C9D2DF;
     --ink: #0B1A33; --ink-2: #44546C; --ink-3: #6B788B;
-    --accent: #0A806C; --accent-ink: #FFFFFF; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
+    --accent: #0A806C; --accent-ink: #FFFFFF; --sel-ink: #08705E; --today: #C25E00; --info: #1F6FE0; --aqua: #1098B5;
     --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
     --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
@@ -166,7 +167,22 @@ p { margin: 0; }
 .stat .v { font-size: 22px; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; }
 .stat .l { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 
-/* controls */
+/* controls
+ * One rule for buttons and toggles (Batch 7 D, approved 23 Oct, option C):
+ *   Green fill       .btn.primary   the one action the screen exists for; at most one per screen
+ *                                   (per sheet or panel when a sheet is open)
+ *   Bordered         .btn           any other action that does something: Open, Rename, Sync,
+ *                                   Send again, Accept, Review, Edit plan, Add to a date
+ *   Plain text       .btn.quiet     backing out or revealing only: Cancel, Dismiss, Hide, Show all,
+ *                                   Back, Discard changes, and Reject as the "no" of Accept/Reject
+ *   Red outline      .btn.danger    destructive, always behind "are you sure?": Remove from the
+ *                                   calendar, Cancel plan, Delete, Disconnect
+ *   Teal wash        .seg button.on, .chip.on   selected, in every toggle: a pale wash of the accent,
+ *                                   accent text, bold, a 1px inset ring; never a solid fill
+ *                                   (solid green stays the main action)
+ *   Red tint         .chip.on.never a third state, "never"
+ *   Plain link       .plain-link    navigation inside a sentence or heading only
+ */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 11px 16px; border-radius: var(--radius-s); border: 1px solid var(--line-2);
@@ -190,12 +206,12 @@ p { margin: 0; }
 .form { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--radius-s); overflow: hidden; }
 .seg button { padding: 7px 12px; background: transparent; border: 0; color: var(--ink-2); cursor: pointer; }
-.seg button.on { background: var(--bg-3); color: var(--ink); }
+.seg button.on { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 .seg button { display: inline-flex; align-items: center; gap: 6px; }
 .seg button svg { opacity: .8; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 13px; background: transparent; color: var(--ink-2); cursor: pointer; }
-.chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip.on { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 .tag { --c: var(--ink-3); display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--c) 16%, transparent); color: color-mix(in srgb, var(--c) 78%, var(--ink)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line-2); color: var(--ink-2); }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
@@ -315,7 +331,6 @@ p { margin: 0; }
 .msg.ok { border-color: color-mix(in srgb, var(--good) 30%, transparent); }
 .msg.err { border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
 .seg { background: var(--bg-2); }
-.seg button.on { background: var(--bg-3); box-shadow: inset 0 0 0 1px var(--line-2); }
 .chips .chip { transition: background .12s ease, color .12s ease; }
 
 /* Today on a laptop: the session on the left, the numbers on the right */
@@ -378,7 +393,7 @@ p { margin: 0; }
 /* Never: a line of small chips under the day's controls; a ticked one is struck through in the bad colour. */
 .week-never { grid-column: 3 / -1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: -2px; }
 .chip.sm { padding: 3px 9px; font-size: 12px; min-height: 26px; }
-.chip.on.never { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); text-decoration: line-through; }
+.chip.on.never { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); text-decoration: line-through; box-shadow: none; font-weight: 400; }
 @media (max-width: 599px) {
   .week-head { display: none; }
   .week-row { grid-template-columns: 36px 60px 1fr; grid-template-areas: "day hours where" "day hours pin" "day hours never"; row-gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }

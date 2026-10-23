@@ -84,7 +84,7 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
             </div>
           </div>
           <button class="btn" style="justify-content:flex-start" onClick={() => setMode('replace')}>Replace with another session<span class="faint small" style="margin-left:auto">any kind</span></button>
-          <button class="btn quiet" style="justify-content:flex-start;color:var(--bad)" onClick={remove}>Remove from the calendar</button>
+          <button class="btn danger" style="justify-content:flex-start" onClick={remove}>Remove from the calendar</button>
         </div>
         {planned.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Moving or replacing takes it off the Garmin; send the new one when you are ready.</p>}
         {planned.planId && <p class="faint small" style="margin:8px 0 0">The plan keeps your change. The daily re-check may still suggest something for this day, which you can accept or ignore.</p>}

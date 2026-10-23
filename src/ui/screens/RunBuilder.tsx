@@ -137,7 +137,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
         <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date to put it on" />
         <button class="btn quiet" onClick={reset} disabled={!dirty}>Reset</button>
         <button class="btn quiet" onClick={cancel}>Cancel</button>
-        {existing && <button class="btn quiet" style="color:var(--bad)" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
+        {existing && <button class="btn danger" onClick={async () => { if (await deleteWorkoutEverywhere(existing)) go('library'); }}>Delete</button>}
       </div>
     </div>
   );

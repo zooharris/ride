@@ -89,9 +89,9 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
       <PageHead back={{ label: 'Plans', href: '#/plan' }} eyebrow={`${status} · ${goalLine(plan)} · ${fmtDate(plan.start, { month: 'short', day: 'numeric' })} to ${fmtDate(plan.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}`} title={plan.name} />
       <div class="row wrap" style="gap:8px;margin-top:-4px">
         {status !== 'finished' && <a class="btn primary sm" href={`#/plan/${plan.id}/edit`}>Edit plan</a>}
-        <button class="btn sm quiet" onClick={() => setRenaming(true)}>Rename</button>
-        <a class="btn sm quiet" href={`#/print/${plan.id}`}>Print</a>
-        {status !== 'finished' && <button class="btn sm quiet" onClick={cancel} disabled={busy}>Cancel plan</button>}
+        <button class="btn sm" onClick={() => setRenaming(true)}>Rename</button>
+        <a class="btn sm" href={`#/print/${plan.id}`}>Print</a>
+        {status !== 'finished' && <button class="btn danger sm" onClick={cancel} disabled={busy}>Cancel plan</button>}
       </div>
 
       {plan.away && plan.away.length > 0 && (
@@ -270,7 +270,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">
-        <button class="btn primary" style="flex:1" onClick={makePreview} disabled={busy || av.hours.reduce((s, h) => s + (h || 0), 0) < 2}>{busy && !preview ? 'Working…' : 'Preview changes'}</button>
+        <button class="btn" style="flex:1" onClick={makePreview} disabled={busy || av.hours.reduce((s, h) => s + (h || 0), 0) < 2}>{busy && !preview ? 'Working…' : 'Preview changes'}</button>
         <a class="btn quiet" href={`#/plan/${plan.id}`}>Cancel</a>
       </div>
 

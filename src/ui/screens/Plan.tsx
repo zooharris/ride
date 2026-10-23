@@ -149,9 +149,9 @@ export function Plan({ data }: { data: AppData }) {
                     <div class="row wrap" style="gap:6px">
                       {isActive && status === 'current' && <button class="btn sm" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Check the plan'}</button>}
                       <a class="btn sm" href={`#/plan/${p.id}`}>Open</a>
-                      <button class="btn sm quiet" onClick={() => setRenaming(p)} disabled={busy}>Rename</button>
-                      <a class="btn sm quiet" href={`#/print/${p.id}`}>Print</a>
-                      {status !== 'finished' && <button class="btn sm quiet" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
+                      <button class="btn sm" onClick={() => setRenaming(p)} disabled={busy}>Rename</button>
+                      <a class="btn sm" href={`#/print/${p.id}`}>Print</a>
+                      {status !== 'finished' && <button class="btn danger sm" onClick={() => cancel(p)} disabled={busy}>Cancel plan</button>}
                     </div>
                   </div>
                   {p.weeks && p.weeks.length > 0 && <div style="margin-top:12px"><PlanTimeline weeks={p.weeks} goalDate={p.goalDate} event={p.goal.kind === 'event' ? (p.goal.name || 'Event') : undefined} /></div>}

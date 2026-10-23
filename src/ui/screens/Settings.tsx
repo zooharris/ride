@@ -149,7 +149,7 @@ export function Settings({ data }: { data: AppData }) {
         </div>
         <div class="row wrap" style="margin-top:12px">
           <button class="btn" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Checking…' : 'Connect'}</button>
-          <button class="btn quiet" onClick={disconnect}>Disconnect</button>
+          <button class="btn danger" onClick={disconnect}>Disconnect</button>
           <button class="btn quiet" onClick={runChecks} disabled={testing || !creds.athleteId || !creds.apiKey} style="margin-left:auto">{testing ? 'Running checks…' : 'Run connection checks'}</button>
         </div>
         {checks.length > 0 && (
@@ -255,8 +255,8 @@ export function Settings({ data }: { data: AppData }) {
         <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
         <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping; unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
-          <button class="btn quiet" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
-          <label class="btn quiet" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
+          <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
+          <label class="btn" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
         </div>
       </section>
 
@@ -356,7 +356,7 @@ function NoteLock({ devices, onChange, busy, setBusy, setMsg }: { devices: Devic
           {mode === 'change' ? form : (
             <div class="row wrap" style="margin-top:10px;gap:8px">
               <button class="btn" onClick={() => setMode('change')} disabled={busy}>Change passphrase or question</button>
-              <button class="btn quiet" onClick={turnOff} disabled={busy}>Turn off</button>
+              <button class="btn danger" onClick={turnOff} disabled={busy}>Turn off</button>
             </div>
           )}
         </div>

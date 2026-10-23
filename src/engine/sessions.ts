@@ -1,5 +1,6 @@
-import type { Equipment, Exercise, RunStep, Workout } from './types';
-import { bandOf, runMinutes, runSeconds } from './run';
+import type { Equipment, Exercise, RunStep, WalkSpec, Workout } from './types';
+import { runMinutes, runSeconds } from './run';
+import { bandKeyOf, bandTssPerHour, recoveryBand, stepBand, walkBand } from './foot';
 import { newId } from './workout';
 import { exercisesFor, firstFirst, lightLoad, type Pattern } from '../library/strength';
 import { mobilityFor, type Target } from '../library/mobility';
@@ -143,8 +144,8 @@ export function generateWalk(intent: WalkIntent): Workout {
     bases: ['power', 'hr'],
     setting: intent.where === 'outdoor' ? 'outdoor' : 'indoor',
     blocks: [],
-    walk: { minutes: intent.minutes, hrLow: 0.6, hrHigh: 0.7, packKg: intent.packKg },
-    estimatedTss: estimateSessionTss({ kind: 'walk', walk: { minutes: intent.minutes, hrLow: 0.6, hrHigh: 0.7, packKg: intent.packKg } }),
+    walk: { minutes: intent.minutes, zoneLow: 2, zoneHigh: 3, packKg: intent.packKg },
+    estimatedTss: estimateSessionTss({ kind: 'walk', walk: { minutes: intent.minutes, zoneLow: 2, zoneHigh: 3, packKg: intent.packKg } }),
     minutes: intent.minutes,
     source: 'generated',
   };
@@ -153,20 +154,16 @@ export function generateWalk(intent: WalkIntent): Workout {
 /**
  * Training stress per hour for a non-ride session, so the calendar, the planner
  * and the builders all estimate the same way.
- *  - Walks go by the heart-rate target: the same heart-rate TSS Intervals.icu
- *    would credit a recorded walk with (threshold taken as 92% of max), plus a
- *    little for a weighted pack.
+ *  - Walks go by the heart-rate band: the same heart-rate TSS a recorded walk
+ *    is scored with, plus a little for a weighted pack.
  *  - Strength goes by planned effort (RPE 1–10), the same curve used when a
  *    session is logged with an effort rating.
  *  - Mobility is a flat, small amount.
  */
-export function sessionTssPerHour(kind: Workout['kind'], opts: { hrLow?: number; hrHigh?: number; packKg?: number; effort?: number } = {}): number {
+export function sessionTssPerHour(kind: Workout['kind'], opts: Partial<WalkSpec> & { effort?: number } = {}): number {
   if (kind === 'walk') {
-    const lo = opts.hrLow ?? 0.6, hi = opts.hrHigh ?? 0.7;
-    // No minimum (lo = 0): assume a stroll, around half of max heart rate, never above the ceiling.
-    const mid = lo > 0 ? (lo + hi) / 2 : Math.min(hi, 0.5);
-    const intensity = mid / 0.92;
-    return intensity * intensity * 100 + (opts.packKg ?? 0) * 0.5;
+    const b = walkBand({ minutes: 0, ...opts });
+    return bandTssPerHour(b) + (opts.packKg ?? 0) * 0.5;
   }
   if (kind === 'mobility') return 8;
   if (kind === 'run') { const e = opts.effort ?? 4; return e <= 4 ? 55 : e === 5 ? 60 : e === 6 ? 68 : e === 7 ? 75 : 80; }
@@ -198,8 +195,8 @@ export function runStepsTss(steps: RunStep[]): number {
   let tss = 0;
   for (const s of steps) {
     const n = Math.max(1, s.repeat ?? 1);
-    tss += (s.seconds * n) / 3600 * RUN_TSS_PER_HOUR[bandOf(s.hrLow, s.hrHigh)];
-    if (n > 1 && s.recoverSeconds) tss += (s.recoverSeconds * (n - 1)) / 3600 * RUN_TSS_PER_HOUR[bandOf(s.recoverLow ?? 0.65, s.recoverHigh ?? 0.75)];
+    tss += (s.seconds * n) / 3600 * RUN_TSS_PER_HOUR[bandKeyOf(stepBand(s))];
+    if (n > 1 && s.recoverSeconds) tss += (s.recoverSeconds * (n - 1)) / 3600 * RUN_TSS_PER_HOUR[bandKeyOf(recoveryBand(s))];
   }
   return Math.round(tss);
 }
@@ -207,7 +204,7 @@ export function runStepsTss(steps: RunStep[]): number {
 export type RunKind = 'easy' | 'long' | 'strides' | 'tempo' | 'hills' | 'fartlek' | 'progression' | 'run-walk';
 export interface RunIntent { kind: RunKind; minutes: number; where: 'outdoor' | 'treadmill'; reason: string }
 
-const EASY = { hrLow: 0.65, hrHigh: 0.75 };
+const EASY = { band: 'easy' as const };
 const RUN_NAME: Record<RunKind, (m: number) => string> = {
   easy: (m) => `Reston easy run ${m} min`, long: (m) => `Vienna long run ${m} min`, strides: (m) => `Strides at Herndon ${m} min`,
   tempo: (m) => `Tempo on the trail ${m} min`, hills: (m) => `Hills at Difficult Run ${m} min`,
@@ -232,33 +229,33 @@ export function generateRun(intent: RunIntent): Workout {
   let steps: RunStep[];
   if (intent.kind === 'strides') steps = [
     { seconds: Math.max(10, intent.minutes - 9) * 60, ...EASY, label: 'easy' },   // + 6 strides and their recoveries (7 min) + 2 min easy = the minutes asked
-    { seconds: 20, hrLow: 0.85, hrHigh: 0.95, label: 'stride: fast but relaxed, not a sprint', repeat: 6, recoverSeconds: 60, recoverLow: 0, recoverHigh: 0.7 },
+    { seconds: 20, band: 'hard', label: 'stride: fast but relaxed, not a sprint', repeat: 6, recoverSeconds: 60, recoverBand: 'walk' },
     { seconds: 2 * 60, ...EASY, label: 'easy' },
   ];
   else if (intent.kind === 'tempo') steps = [
     { seconds: 10 * 60, ...EASY, label: 'warm-up' },
-    { seconds: 8 * 60, hrLow: 0.85, hrHigh: 0.9, label: 'tempo', repeat: 3, recoverSeconds: 3 * 60, recoverLow: 0.65, recoverHigh: 0.75 },
+    { seconds: 8 * 60, band: 'tempo', label: 'tempo', repeat: 3, recoverSeconds: 3 * 60, recoverBand: 'easy' },
     { seconds: 5 * 60, ...EASY, label: 'cool-down' },
   ];
   else if (intent.kind === 'hills') steps = [
     { seconds: 10 * 60, ...EASY, label: 'warm-up' },
-    { seconds: 60, hrLow: 0.88, hrHigh: 0.95, label: 'uphill, strong', repeat: 6, recoverSeconds: 90, recoverLow: 0, recoverHigh: 0.7 },
+    { seconds: 60, band: 'hard', label: 'uphill, strong', repeat: 6, recoverSeconds: 90, recoverBand: 'walk' },
     { seconds: 5 * 60, ...EASY, label: 'cool-down' },
   ];
   else if (intent.kind === 'fartlek') steps = [
     { seconds: 10 * 60, ...EASY, label: 'warm-up' },
-    { seconds: 60, hrLow: 0.85, hrHigh: 0.9, label: 'pick it up', repeat: 8, recoverSeconds: 2 * 60, recoverLow: 0.65, recoverHigh: 0.75 },
+    { seconds: 60, band: 'tempo', label: 'pick it up', repeat: 8, recoverSeconds: 2 * 60, recoverBand: 'easy' },
     { seconds: 3 * 60, ...EASY, label: 'easy' },
   ];
   else if (intent.kind === 'progression') steps = [
     { seconds: 15 * 60, ...EASY, label: 'easy' },
-    { seconds: 10 * 60, hrLow: 0.75, hrHigh: 0.85, label: 'steady' },
-    { seconds: 10 * 60, hrLow: 0.85, hrHigh: 0.9, label: 'strong' },
+    { seconds: 10 * 60, band: 'steady', label: 'steady' },
+    { seconds: 10 * 60, band: 'tempo', label: 'strong' },
     { seconds: 5 * 60, ...EASY, label: 'cool-down' },
   ];
   else if (intent.kind === 'run-walk') steps = [
     { seconds: 2 * 60, ...EASY, label: 'run', repeat: 10, recoverSeconds: 60, recoverLow: 0, recoverHigh: 0.7 },
-    { seconds: 60, hrLow: 0, hrHigh: 0.7, label: 'walk' },
+    { seconds: 60, band: 'walk', label: 'walk' },
   ];
   else steps = [{ seconds: intent.minutes * 60, ...EASY, label: intent.kind === 'long' ? 'long and easy' : 'easy' }];
   const run = { steps, where: intent.where };

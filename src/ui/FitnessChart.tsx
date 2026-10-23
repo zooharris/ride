@@ -131,7 +131,7 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
     // Efficiency and drift: steady rides only, as dots, with the 5-ride average as a line once there are three.
     if (has('efficiency') || has('drift')) {
       const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
-      const pts = aerobicPoints(data.rides.filter((r) => r.date >= first && r.date <= dates[n - 1]), isEndurance, data.lthr, data.hr?.zones);
+      const pts = aerobicPoints(data.rides.filter((r) => r.date >= first && r.date <= dates[n - 1]), isEndurance, data.lthr, data.hr?.ladders?.hr);
       const place = (vals: Array<number | null | undefined>) => { const out: Array<number | null> = Array(all.length).fill(null); pts.forEach((p, k) => { const i = dates.indexOf(p.date); const v = vals[k]; if (i >= 0 && i < n && v != null) out[i] = Math.round(v * 100) / 100; }); return out; };
       const aero = (key: OverlayKey, label: string, color: string, get: (p: typeof pts[number]) => number | undefined, unit: string, format: (v: number) => string) => {
         const raw = pts.map(get);

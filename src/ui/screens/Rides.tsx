@@ -1,4 +1,4 @@
-import { footHrZones, footLthr, rideHrZones } from '../../engine/zones';
+import { footHrZones, footLthr, rideHrZones, ridePowerZones } from '../../engine/zones';
 import type { AppData } from '../store';
 import { doneHistory, findWorkout, notify } from '../store';
 import { clock } from '../../engine/workout';
@@ -302,14 +302,14 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         <section class="section">
           <h2>Power distribution</h2>
           <p class="faint small" style="margin:4px 0 10px">Minutes spent in each 25-watt band, coloured by zone. A steady endurance ride is one tall hump; intervals show two.</p>
-          <div class="panel"><PowerDistribution streams={streams} ftp={r.ftpAtRide ?? profile.ftp} /></div>
+          <div class="panel"><PowerDistribution streams={streams} ftp={r.ftpAtRide ?? profile.ftp} powerZones={ridePowerZones(profile)} /></div>
         </section>
       ) : null}
       {streams?.intervals?.length ? (
         <section class="section">
           <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
           <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold as the watch split it, in order.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
-          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
+          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
         </section>
       ) : null}
       <section class="section">

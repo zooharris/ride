@@ -1,3 +1,5 @@
+import { WALK_PRESETS, bandBpm, bandZoneWords, hasNoFloor, walkBand } from '../../engine/foot';
+import { footLthr } from '../../engine/zones';
 import { useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout, getCurrentEquipment, notify } from '../store';
@@ -27,9 +29,10 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const [equipment, setEquipment] = useState<Equipment[]>(getCurrentEquipment());
   const [date, setDate] = useState(today());
   const [effort, setEffort] = useState<number>(source?.effort ?? 6);
-  const [hrLow, setHrLow] = useState(Math.round((source?.walk?.hrLow ?? 0.6) * 100));
-  const [hrHigh, setHrHigh] = useState(Math.round((source?.walk?.hrHigh ?? 0.7) * 100));
-  const maxHr = data.profile?.maxHr ?? 0;
+  // The walk's band as zone positions on the foot table (an older walk's share-of-max target is converted on open).
+  const startBand = source?.walk ? walkBand(source.walk, data.profile ?? undefined) : { zoneLow: 2, zoneHigh: 3 };
+  const [hrLow, setHrLow] = useState(startBand.zoneLow);
+  const [hrHigh, setHrHigh] = useState(startBand.zoneHigh);
   // Where the builder started, for Reset and for the leave-without-saving guard (as in the ride builder).
   const snapshot = () => JSON.stringify({ name, purpose, exercises, minutes, packLb, effort, hrLow, hrHigh });
   const initial = useRef(snapshot());
@@ -43,13 +46,13 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
     go('library');
   }
-  const walkSpec = { minutes, hrLow: hrLow / 100, hrHigh: hrHigh / 100, packKg: packLb ? packLb / 2.2 : undefined };
+  const walkSpec = { minutes, zoneLow: hrLow, zoneHigh: hrHigh, packKg: packLb ? packLb / 2.2 : undefined };
   const tss = estimateSessionTss({ kind, minutes, walk: kind === 'walk' ? walkSpec : undefined, effort: kind === 'strength' ? effort : undefined });
-  const WALK_TARGETS: Array<[string, number, number, string]> = [
-    ['Recovery', 0, 60, 'no minimum: stroll, and slow down if the heart rate climbs'],
-    ['Zone 2', 60, 70, 'talk in full sentences; the default'],
-    ['Brisk', 68, 78, 'purposeful; top of zone 2 into zone 3'],
-  ];
+  /** The ends a custom walk band can have, as positions on the foot table. */
+  const LOW_ENDS: Array<[number, string]> = [[0, 'no minimum'], [2, 'bottom of zone 2'], [2.5, 'middle of zone 2'], [3, 'bottom of zone 3'], [3.5, 'middle of zone 3']];
+  const HIGH_ENDS: Array<[number, string]> = [[2, 'top of zone 1'], [2.5, 'middle of zone 2'], [3, 'top of zone 2'], [3.5, 'middle of zone 3'], [4, 'top of zone 3'], [5, 'top of zone 4']];
+  const bandNow = { zoneLow: hrLow, zoneHigh: hrHigh };
+  const bpmNow = bandBpm(bandNow, data.profile ?? undefined);
 
   const pool = kind === 'strength' ? EXERCISES.filter((e) => e.equipment.some((q) => equipment.includes(q))) : [];
   const add = (e: Exercise) => setExercises([...exercises, e]);
@@ -95,16 +98,16 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
 
       {kind === 'walk' && (
         <section class="section">
-          <h2>Heart-rate target</h2>
-          <p class="muted small" style="margin:6px 0 10px;max-width:64ch">Walks go by heart rate, not power: there is no power meter on foot, and a treadmill’s readout is not comparable to a bike’s. The target is a share of your maximum heart rate.</p>
+          <h2>Heart-rate band</h2>
+          <p class="muted small" style="margin:6px 0 10px;max-width:64ch">Walks go by heart rate, not power: there is no power meter on foot, and a treadmill’s readout is not comparable to a bike’s. The band is a zone on your foot table, so it follows the table if you change your numbers later.</p>
           <div class="chips" style="margin-bottom:10px">
-            {WALK_TARGETS.map(([l, lo, hi, d]) => <button key={l} class={`chip${hrLow === lo && hrHigh === hi ? ' on' : ''}`} title={d} onClick={() => { setHrLow(lo); setHrHigh(hi); }}>{l} {lo ? `${lo}–${hi}` : `up to ${hi}`}%</button>)}
+            {WALK_PRESETS.map((t) => <button key={t.label} class={`chip${hrLow === t.zoneLow && hrHigh === t.zoneHigh ? ' on' : ''}`} title={t.blurb} onClick={() => { setHrLow(t.zoneLow); setHrHigh(t.zoneHigh); }}>{t.label} · {bandZoneWords(t)}</button>)}
           </div>
           <div class="form">
-            <div class="field"><label>Low (% of max heart rate; 0 for no minimum)</label><input type="number" min="0" max="95" value={hrLow} onInput={(e) => setHrLow(Math.min(95, Math.max(0, Number((e.target as HTMLInputElement).value) || 0)))} /></div>
-            <div class="field"><label>High (% of max heart rate)</label><input type="number" min="45" max="100" value={hrHigh} onInput={(e) => setHrHigh(Math.min(100, Math.max(45, Number((e.target as HTMLInputElement).value) || 70)))} /></div>
+            <div class="field"><label>Low end</label><select value={hrLow} onChange={(e) => setHrLow(Number((e.target as HTMLSelectElement).value))}>{LOW_ENDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+            <div class="field"><label>High end</label><select value={hrHigh} onChange={(e) => setHrHigh(Number((e.target as HTMLSelectElement).value))}>{HIGH_ENDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           </div>
-          <p class="small" style="margin-top:10px">{maxHr ? <>That is <b>{hrLow ? `${Math.round(maxHr * hrLow / 100)}–` : 'up to '}{Math.round(maxHr * hrHigh / 100)} bpm</b> for your max of {maxHr}.{hrLow ? '' : ' No minimum: a casual stroll counts, even if the heart rate stays near resting.'}</> : 'Set your max heart rate in Settings to see this in beats per minute.'}{hrHigh <= hrLow && <span style="color:var(--bad)"> The high end must be above the low end.</span>}</p>
+          <p class="small" style="margin-top:10px">{bpmNow ? <>That is <b>{hasNoFloor(bandNow) ? 'up to ' : `${bpmNow.low}–`}{bpmNow.high} bpm</b> on your foot table (threshold {footLthr(data.profile!)}).{hasNoFloor(bandNow) ? ' No minimum: a casual stroll counts, even if the heart rate stays near resting.' : ''}</> : 'Set your threshold heart rate in Settings to see this in beats per minute.'}{hrHigh <= hrLow && <span style="color:var(--bad)"> The high end must be above the low end.</span>}</p>
         </section>
       )}
 

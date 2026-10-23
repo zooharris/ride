@@ -1,30 +1,20 @@
-import type { RunSpec, RunStep, Workout } from './types';
+import type { Profile, RunSpec, RunStep, Workout } from './types';
+import { FOOT_BANDS, bandWords, footBand, hasNoFloor, recoveryBand, stepBand, type FootBandKey } from './foot';
+
+type FootProfile = Pick<Profile, 'lthr' | 'maxHr'> & Partial<Profile>;
 
 /**
- * Runs: steps on time with a heart-rate band as a share of max heart rate, the
- * way walks are. Pace is only ever a hint, and only when the rider has set a
+ * Runs: steps on time with a heart-rate band named by zone on the rider's foot
+ * table, the way walks are. Pace is only ever a hint, and only when the rider has set a
  * threshold pace. Everything that counts a run's minutes or describes its steps
  * goes through here, so the builder, the calendar, the coach and the Garmin
  * text agree.
  */
 
-/** The bands a run step can use, as the builder offers them. */
-export const RUN_BANDS = [
-  { key: 'easy', label: 'Easy', low: 0.65, high: 0.75, paceFrom: 60, paceTo: 90 },
-  { key: 'steady', label: 'Steady', low: 0.75, high: 0.85, paceFrom: 30, paceTo: 60 },
-  { key: 'tempo', label: 'Tempo', low: 0.85, high: 0.9, paceFrom: 10, paceTo: 25 },
-  { key: 'hard', label: 'Hard', low: 0.88, high: 0.95, paceFrom: -15, paceTo: -5 },
-  { key: 'walk', label: 'Walk', low: 0, high: 0.7, paceFrom: undefined, paceTo: undefined },
-] as const;
-export type RunBandKey = typeof RUN_BANDS[number]['key'];
-
-/** The band a step's heart-rate range is closest to (for the builder's select). */
-export function bandOf(low: number, high: number): RunBandKey {
-  let best: RunBandKey = 'easy', d = Infinity;
-  for (const b of RUN_BANDS) { const e = Math.abs(b.low - low) + Math.abs(b.high - high); if (e < d) { d = e; best = b.key; } }
-  return best;
-}
-export function band(key: RunBandKey) { return RUN_BANDS.find((b) => b.key === key)!; }
+/** The bands a run step can use, as the builder offers them: zones on the foot table (see foot.ts). */
+export const RUN_BANDS = FOOT_BANDS;
+export type RunBandKey = FootBandKey;
+export const band = footBand;
 
 /** A step's total seconds: its work times its repeats, plus a recovery between repeats. */
 export function stepSeconds(s: RunStep): number {
@@ -39,35 +29,30 @@ export function runMinutes(spec: RunSpec | undefined): number {
   return Math.round(runSeconds(spec) / 60);
 }
 
-const pct = (f: number) => Math.round(f * 100);
-/** "65–75% of max HR", or "up to 70% of max HR" for a walk band. */
-export function hrBandWords(low: number, high: number): string {
-  return low > 0 ? `${pct(low)}–${pct(high)}% of max HR` : `up to ${pct(high)}% of max HR`;
-}
 /** Time in words: "8 min", "20 s", "1 min 30 s". */
 export function timeWords(sec: number): string {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
   return m && s ? `${m} min ${s} s` : m ? `${m} min` : `${s} s`;
 }
-/** One step in words: "3 × 8 min at 85–90% of max HR, 3 min easy between". */
-export function stepWords(s: RunStep): string {
+/** One step in words: "3 × 8 min at upper zone 3 to threshold (142–158 bpm) (tempo), 3 min easy between". */
+export function stepWords(s: RunStep, profile?: FootProfile): string {
   const n = Math.max(1, s.repeat ?? 1);
-  const main = `${n > 1 ? `${n} × ` : ''}${timeWords(s.seconds)} at ${hrBandWords(s.hrLow, s.hrHigh)}${s.label ? ` (${s.label})` : ''}`;
-  const rec = n > 1 && s.recoverSeconds ? `, ${timeWords(s.recoverSeconds)} ${s.recoverLow === 0 ? 'walking' : 'easy'} between` : '';
+  const main = `${n > 1 ? `${n} × ` : ''}${timeWords(s.seconds)} at ${bandWords(stepBand(s, profile), profile)}${s.label ? ` (${s.label})` : ''}`;
+  const rec = n > 1 && s.recoverSeconds ? `, ${timeWords(s.recoverSeconds)} ${hasNoFloor(recoveryBand(s, profile)) ? 'walking' : 'easy'} between` : '';
   return main + rec;
 }
 /** The whole run in one line, for the coach and lists. */
-export function runStepsLine(w: Pick<Workout, 'run'>): string {
-  return (w.run?.steps ?? []).map(stepWords).join('; ');
+export function runStepsLine(w: Pick<Workout, 'run'>, profile?: FootProfile): string {
+  return (w.run?.steps ?? []).map((s) => stepWords(s, profile)).join('; ');
 }
 /**
- * The run's working band, for a list row: "65–75% of max HR" for an easy run,
- * "85–90% of max HR" for a tempo run (its hardest step, not the warm-up).
+ * The run's working band, for a list row: "zone 2" for an easy run, "upper
+ * zone 3 to threshold" for a tempo run (its hardest step, not the warm-up).
  */
-export function runBandText(w: Pick<Workout, 'run'>): string {
-  const steps = (w.run?.steps ?? []).filter((x) => x.hrLow > 0);
-  const s = steps.length ? steps.reduce((a, b) => (b.hrHigh > a.hrHigh ? b : a)) : w.run?.steps?.[0];
-  return s ? hrBandWords(s.hrLow, s.hrHigh) : 'by heart rate';
+export function runBandText(w: Pick<Workout, 'run'>, profile?: FootProfile): string {
+  const steps = (w.run?.steps ?? []).map((s) => stepBand(s, profile)).filter((b) => !hasNoFloor(b));
+  const b = steps.length ? steps.reduce((a, x) => (x.zoneHigh > a.zoneHigh ? x : a)) : (w.run?.steps?.[0] && stepBand(w.run.steps[0], profile));
+  return b ? bandWords(b, profile) : 'by heart rate';
 }
 
 /** "9:40–10:10 per mile": the pace a band implies from a threshold pace (sec/km), as a hint only. */

@@ -1,6 +1,6 @@
 import type { Profile, Workout, WorkoutStep } from './types';
 import { flattenSteps } from './workout';
-import { powerToHrFraction, rideHrZones } from './zones';
+import { powerToHrFraction, rideLadders } from './zones';
 
 /**
  * Planned-versus-actual analysis of a ride from its streams. The planned
@@ -40,9 +40,9 @@ export function analyseRide(workout: Workout, profile: Profile, basis: 'power' |
     const startSec = t;
     const endSec = t + s.seconds;
     t = endSec;
-    const ladder = rideHrZones(profile);
-    const lo = basis === 'power' ? s.intensity * profile.ftp : powerToHrFraction(s.intensity, ladder) * profile.lthr;
-    const hi = basis === 'power' ? (s.intensityHigh ?? s.intensity) * profile.ftp : powerToHrFraction(s.intensityHigh ?? s.intensity, ladder) * profile.lthr;
+    const ladder = rideLadders(profile);
+    const lo = basis === 'power' ? s.intensity * profile.ftp : powerToHrFraction(s.intensity, ladder.hr, ladder.power) * profile.lthr;
+    const hi = basis === 'power' ? (s.intensityHigh ?? s.intensity) * profile.ftp : powerToHrFraction(s.intensityHigh ?? s.intensity, ladder.hr, ladder.power) * profile.lthr;
     // average over the window
     let sum = 0, count = 0, hsum = 0, hcount = 0;
     if (series && n) {

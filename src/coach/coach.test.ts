@@ -21,7 +21,7 @@ describe('the coach sees the whole calendar', () => {
     expect(line).not.toMatch(/placed on the calendar by the rider/);
   });
   it('gives a done session its recorded duration, named, so it cannot be confused with the training load', () => {
-    const walk = { ...strength, name: 'Recovery walk', kind: 'walk', minutes: 30, estimatedTss: 12, exercises: undefined, walk: { hrLow: 0, hrHigh: 0.7 } } as Workout;
+    const walk = { ...strength, name: 'Recovery walk', kind: 'walk', minutes: 30, estimatedTss: 12, exercises: undefined, walk: { zoneLow: 0, zoneHigh: 2.5 } } as Workout;
     const rec = { id: 'a', date: '2026-10-19', startTime: '', name: 'Recovery walk', type: 'Walk', sport: 'walk', seconds: 1839, tss: 16, averageHr: 92 } as Ride;
     const line = describeSession({ planned: planned({ status: 'completed', planId: 'plan', activityId: 'a' }), workout: walk, recorded: rec });
     expect(line).toMatch(/planned duration 30 min/);

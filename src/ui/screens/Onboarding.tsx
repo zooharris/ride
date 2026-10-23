@@ -3,7 +3,7 @@ import { DEFAULT_PROFILE, saveProfile, setSetting } from '../../data/db';
 import type { Basis, Profile } from '../../engine/types';
 import { notify } from '../store';
 import { Logo } from '../Brand';
-import { testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
+import { applyAthleteNumbers, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
 import { fetchAutoBackup, restoreBackup } from '../../data/backup';
 
@@ -31,7 +31,7 @@ export function Onboarding() {
       await setSetting('intervals', c);
       setFound(a);
       try { setBackup(await fetchAutoBackup(c)); } catch { /* none, or unreadable */ }
-      setP({ ...p, name: a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, hrZoneTops: a.hrZoneTops ?? p.hrZoneTops, footLthr: a.footLthr ?? p.footLthr, footHrZoneTops: a.footHrZoneTops ?? p.footHrZoneTops });
+      setP(applyAthleteNumbers({ ...p, name: a.name }, a));
       setStep('review');
     } catch (e) {
       setErr((e as Error).message);

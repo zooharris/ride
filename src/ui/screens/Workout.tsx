@@ -15,7 +15,8 @@ import { SessionLog } from '../SessionLog';
 import { type HrProfile, sendWorkout } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
 import { runEvent, sessionSteps } from '../../sync/intervals';
-import { bandOf, hrBandWords, paceHint, timeWords } from '../../engine/run';
+import { paceHint, timeWords } from '../../engine/run';
+import { bandBpm, bandKeyOf, bandZoneWords, hasNoFloor, recoveryBand, stepBand, walkBand } from '../../engine/foot';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
 import { removePlanned } from '../planService';
@@ -46,7 +47,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm quiet" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm quiet" onClick={() => setChange('replace')}>Replace</button></>;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ? { maxHr: data.profile.maxHr, lthr: data.profile.lthr, footLthr: data.profile.footLthr, hrZoneTops: data.profile.hrZoneTops, footHrZoneTops: data.profile.footHrZoneTops } : undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -90,7 +91,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       )}
 
       <section class="section">
-        <h2>Steps · {basis === 'power' ? `watts at FTP ${profile.ftp}` : `beats per minute, threshold ${profile.lthr}`}</h2>
+        <h2>Steps</h2>
+        <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}; the other column is there to read.</p>
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
@@ -147,40 +149,48 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 
-      {w.walk && (
+      {w.walk && (() => {
+        const b = walkBand(w.walk, hr);
+        const bpm = bandBpm(b, hr);
+        const noFloor = hasNoFloor(b);
+        return (
         <section class="section">
           <h2>The walk</h2>
           <div class="stats" style="margin-top:10px">
             <div class="stat"><div class="v">{w.walk.minutes}<span class="faint small" style="font-weight:400"> min</span></div><div class="l">Duration</div></div>
-            <div class="stat"><div class="v">{w.walk.hrLow ? `${Math.round(w.walk.hrLow * 100)}–` : 'up to '}{Math.round(w.walk.hrHigh * 100)}%</div><div class="l">of max heart rate{w.walk.hrLow ? '' : ' · no minimum'}</div></div>
-            {maxHr > 0 && <div class="stat"><div class="v">{w.walk.hrLow ? `${Math.round(maxHr * w.walk.hrLow)}–` : 'up to '}{Math.round(maxHr * w.walk.hrHigh)}</div><div class="l">beats per minute (your max {maxHr})</div></div>}
-            {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate target{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
+            <div class="stat"><div class="v" style="text-transform:capitalize">{bandZoneWords(b)}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
+            {bpm && <div class="stat"><div class="v">{noFloor ? 'up to ' : `${bpm.low}–`}{bpm.high}</div><div class="l">beats per minute (foot threshold {footLthr(hr ?? { lthr })})</div></div>}
+            {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate band{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
             {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
           </div>
-          <p class="muted small" style="margin-top:10px">{w.walk.hrLow === 0 ? 'No minimum: stroll as casually as you like; the only rule is to slow down if the heart rate climbs past the ceiling.' : w.walk.hrHigh <= 0.6 ? 'Very easy: this is recovery, so if the heart rate climbs, slow down.' : w.walk.hrLow >= 0.68 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the target, and back off if it drifts higher.</p>
+          <p class="muted small" style="margin-top:10px">{noFloor ? 'No minimum: stroll as casually as you like; the only rule is to slow down if the heart rate climbs past the ceiling.' : b.zoneLow >= 2.5 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. On a flat treadmill the pack or the incline is what gets the heart rate up; raise speed, grade or weight until it settles in the band, and back off if it drifts higher.</p>
         </section>
-      )}
+        );
+      })()}
 
       {w.run && (
         <section class="section">
           <h2>The run</h2>
           <table class="steps" style="margin-top:8px">
-            <tr><td class="faint small">Step</td><td class="faint small">Time</td><td class="faint small">Heart rate</td>{maxHr > 0 && <td class="faint small r">bpm</td>}{thresholdPace ? <td class="faint small r">Pace, as a guide</td> : null}</tr>
+            <tr><td class="faint small">Step</td><td class="faint small">Time</td><td class="faint small">Heart-rate band</td><td class="faint small r">bpm</td>{thresholdPace ? <td class="faint small r">Pace, as a guide</td> : null}</tr>
             {w.run.steps.flatMap((s, i) => {
               const n = Math.max(1, s.repeat ?? 1);
-              const row = (key: string, label: string, sec: number, lo: number, hi: number) => (
+              const row = (key: string, label: string, sec: number, b: ReturnType<typeof stepBand>) => {
+                const bpm = bandBpm(b, hr);
+                return (
                 <tr key={key}>
-                  <td style="white-space:nowrap">{label}</td><td class="num" style="white-space:nowrap">{n > 1 && key.endsWith('w') ? `${n} × ` : ''}{timeWords(sec)}</td><td>{hrBandWords(lo, hi)}</td>
-                  {maxHr > 0 && <td class="r num">{lo ? `${Math.round(maxHr * lo)}–` : 'up to '}{Math.round(maxHr * hi)}</td>}
-                  {thresholdPace ? <td class="r num">{paceHint(bandOf(lo, hi), thresholdPace, units === 'imperial') ?? '–'}</td> : null}
+                  <td style="white-space:nowrap">{label}</td><td class="num" style="white-space:nowrap">{n > 1 && key.endsWith('w') ? `${n} × ` : ''}{timeWords(sec)}</td><td>{bandZoneWords(b)}</td>
+                  <td class="r num">{bpm ? `${hasNoFloor(b) ? 'up to ' : `${bpm.low}–`}${bpm.high}` : '–'}</td>
+                  {thresholdPace ? <td class="r num">{paceHint(bandKeyOf(b), thresholdPace, units === 'imperial') ?? '–'}</td> : null}
                 </tr>
-              );
-              const out = [row(`${i}w`, s.label ? s.label.charAt(0).toUpperCase() + s.label.slice(1) : `Step ${i + 1}`, s.seconds, s.hrLow, s.hrHigh)];
-              if (n > 1 && s.recoverSeconds) out.push(row(`${i}r`, `  between: ${s.recoverLow === 0 ? 'walk' : 'easy'}`, s.recoverSeconds, s.recoverLow ?? 0.65, s.recoverHigh ?? 0.75));
+                );
+              };
+              const out = [row(`${i}w`, s.label ? s.label.charAt(0).toUpperCase() + s.label.slice(1) : `Step ${i + 1}`, s.seconds, stepBand(s, hr))];
+              if (n > 1 && s.recoverSeconds) { const rb = recoveryBand(s, hr); out.push(row(`${i}r`, `  between: ${hasNoFloor(rb) ? 'walk' : 'easy'}`, s.recoverSeconds, rb)); }
               return out;
             })}
           </table>
-          <p class="muted small" style="margin-top:10px">Runs go by heart rate: the Garmin holds you in each band. {thresholdPace ? 'The pace column comes from your threshold pace and is only a guide; on hills, heat or tired legs, follow the heart rate.' : 'Set a threshold run pace in Settings to see the pace each band implies.'} Easy means easy: if the heart rate climbs past the band, slow down or walk.</p>
+          <p class="muted small" style="margin-top:10px">Runs go by heart rate, each band a zone on your foot table (threshold {footLthr(hr ?? { lthr })} bpm): the Garmin holds you in it. {thresholdPace ? 'The pace column comes from your threshold pace and is only a guide; on hills, heat or tired legs, follow the heart rate.' : 'Set a threshold run pace in Settings to see the pace each band implies.'} Easy means easy: if the heart rate climbs past the band, slow down or walk.</p>
         </section>
       )}
 

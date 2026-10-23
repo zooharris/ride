@@ -1,7 +1,7 @@
 import type { Fitness, PlannedWorkout, Profile, Ride, Wellness } from './types';
 import { addDays, fitnessSeries, historyStart, rideIntensity } from './load';
 import { isSteadyAerobicRide } from './progress';
-import { rideHrZones } from './zones';
+import { rideHrZones, rideLadders } from './zones';
 
 /**
  * What the data say about this rider. Every number carries a confidence and a
@@ -129,7 +129,7 @@ export function assess(inp: AssessmentInput): Assessment {
   const afterL = penaltyAfter((d) => longDates.has(d));
   const afterLongRide = ev(afterL.value, afterL.n, 4, afterL.n ? (afterL.value < 0.15 ? 'You bounce back from long rides; two long days in a row is on the table.' : afterL.value < 0.4 ? 'Long rides leave a small dent the next morning; back-to-back long days are fine with the second one easier.' : 'Long rides leave a clear dent the next morning; the plan spaces them out.') : 'No wellness data after long rides yet; assuming they cost a little.');
 
-  const hardDates = new Set(rides.filter((r) => (rideIntensity(r, inp.profile.lthr, rideHrZones(inp.profile)) ?? 0) >= 0.85 && r.seconds >= 2400).map((r) => r.date));
+  const hardDates = new Set(rides.filter((r) => (rideIntensity(r, inp.profile.lthr, rideLadders(inp.profile)) ?? 0) >= 0.85 && r.seconds >= 2400).map((r) => r.date));
   const afterH = penaltyAfter((d) => hardDates.has(d));
   const afterHardRide = ev(afterH.value, afterH.n, 4, afterH.n ? (afterH.value < 0.15 ? 'Hard rides do not show in the next morning; two hard days back to back are possible.' : afterH.value < 0.4 ? 'Hard rides leave a small dent the next morning; the plan prefers a gap between them.' : 'Hard rides leave a clear dent the next morning; the plan spaces them well apart.') : 'No wellness data after hard rides yet; assuming a day between them is best.');
 
@@ -138,7 +138,7 @@ export function assess(inp: AssessmentInput): Assessment {
   // use, is what makes a test worth its place.
   const recentEst = rides.filter((r) => r.date >= addDays(today, -42) && r.eftp).map((r) => r.eftp!);
   const bestEst = recentEst.length ? Math.max(...recentEst) : 0;
-  const hardRecent = rides.filter((r) => r.date >= addDays(today, -42) && (rideIntensity(r, inp.profile.lthr, rideHrZones(inp.profile)) ?? 0) >= 0.9).length;
+  const hardRecent = rides.filter((r) => r.date >= addDays(today, -42) && (rideIntensity(r, inp.profile.lthr, rideLadders(inp.profile)) ?? 0) >= 0.9).length;
   let ftpStatus: Assessment['ftpStatus'];
   if (!rides.length) ftpStatus = none('stale', 'No rides yet, so a test early on sets the numbers the plan is built on.');
   else if (bestEst && bestEst >= inp.profile.ftp * 1.03) ftpStatus = ev('likely-higher', recentEst.length, 2, `Intervals.icu's estimate from recent rides is about ${Math.round(bestEst)} W against ${inp.profile.ftp} W in use; a test would likely raise the number.`);

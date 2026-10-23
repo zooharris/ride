@@ -49,7 +49,8 @@ describe('runs: the generator', () => {
     const t = tempo.run!.steps.find((x) => x.repeat)!;
     expect([t.repeat, t.seconds]).toEqual([3, 480]);
     expect(runSeconds(tempo.run)).toBe((10 + 24 + 6 + 5) * 60);
-    expect(runStepsLine(tempo)).toMatch(/3 × 8 min at 85–90% of max HR \(tempo\), 3 min easy between/);
+    expect(runStepsLine(tempo)).toMatch(/3 × 8 min at upper zone 3 into zone 4 \(tempo\), 3 min easy between/);
+    expect(runStepsLine(tempo, { lthr: 154, maxHr: 186, footLthr: 158, footHrZoneMode: 'abs', footHrZoneTops: [120, 135, 148, 158, 170, 178] })).toMatch(/8 min at upper zone 3 into zone 4 \(142–158 bpm\)/);
   });
   it('pace is a hint from the threshold pace, in the rider’s units', () => {
     const t = parsePace('8:00', true)!;            // 8:00 a mile
@@ -61,14 +62,17 @@ describe('runs: the generator', () => {
 });
 
 describe('runs: to the Garmin', () => {
-  it('one line per step, repeats as a block, percentages of threshold heart rate from max', () => {
+  it('one line per step, repeats as a block, bands as shares of the foot threshold read off the foot table', () => {
     const w = generateRun({ kind: 'tempo', minutes: 44, where: 'outdoor', reason: 'Tempo.' });
-    const ev = runEvent(w, '2026-10-25', { maxHr: 180, lthr: 160 });
+    const ev = runEvent(w, '2026-10-25', { maxHr: 180, lthr: 160 });   // no foot table: the standard shares
     expect(ev.type).toBe('Run');
-    expect(ev.description).toMatch(/- 10m 73-84% LTHR/);           // 65–75% of 180 = 117–135 bpm = 73–84% of 160
-    expect(ev.description).toMatch(/tempo 3x\n- 8m 96-101% LTHR\n- 3m 73-84% LTHR/);
+    expect(ev.description).toMatch(/- 10m 82-89% LTHR/);           // easy = zone 2 = 82–89% of threshold
+    expect(ev.description).toMatch(/tempo 3x\n- 8m 92-100% LTHR\n- 3m 82-89% LTHR/);
     const strides = runEvent(generateRun({ kind: 'strides', minutes: 35, where: 'outdoor', reason: 'S.' }), '2026-10-25', { maxHr: 180, lthr: 160 });
-    expect(strides.description).toMatch(/stride 6x\n- 20s 96-107% LTHR\n- 1m 20-79% LTHR/);
+    expect(strides.description).toMatch(/stride 6x\n- 20s 100-106% LTHR\n- 1m 20-86% LTHR/);
+    // with a foot table of the rider's own, the shares come from it: zone 2 = 121–135 of 158
+    const own = runEvent(w, '2026-10-25', { maxHr: 186, lthr: 154, footLthr: 158, footHrZoneMode: 'abs', footHrZoneTops: [120, 135, 148, 158, 170, 178] });
+    expect(own.description).toMatch(/- 10m 76-85% LTHR/);
   });
 });
 

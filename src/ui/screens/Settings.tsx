@@ -7,8 +7,8 @@ import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { autoBackup, downloadBackup, restoreBackup } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
-import { defaultHrZoneTops, footLthr as footThreshold, validTops, zoneTable } from '../../engine/zones';
-import { pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
+import { footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, tableOf, validTops, type Zone, type ZoneMode } from '../../engine/zones';
+import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
 import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
@@ -61,13 +61,13 @@ export function Settings({ data }: { data: AppData }) {
     setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim());
     notify();
     const before = data.profile!;
-    const numbers = (x: Profile) => JSON.stringify([x.ftp, x.lthr, x.maxHr, x.footLthr, x.hrZoneTops, x.footHrZoneTops]);
+    const numbers = (x: Profile) => JSON.stringify(numbersToPush(x));
     const changed = numbers(p) !== numbers(before);
     const c = await getSetting<IntervalsCredentials | null>('intervals', null);
     if (changed && c?.apiKey) {
       try {
-        await pushAthleteNumbers(c, { ftp: p.ftp, lthr: p.lthr, maxHr: p.maxHr, hrZoneTops: bikeTops(p), footLthr: footThreshold(p), footHrZoneTops: footTops(p) });
-        setMsg({ ok: true, text: `Saved, and sent to Intervals.icu: FTP ${p.ftp} W, threshold heart rate ${p.lthr} bpm on the bike and ${footThreshold(p)} on foot, max ${p.maxHr}, and both zone tables. Garmin workouts and Intervals.icu now use these numbers.` });
+        await pushAthleteNumbers(c, numbersToPush(p));
+        setMsg({ ok: true, text: `Saved, and sent to Intervals.icu: FTP ${p.ftp} W, threshold heart rate ${p.lthr} bpm on the bike and ${footThreshold(p)} on foot, max ${p.maxHr}, and all three zone tables. Garmin workouts and Intervals.icu now use these numbers.` })
       } catch (e) {
         setMsg({ ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to Garmin use the numbers Intervals.icu has.` });
       }
@@ -82,7 +82,7 @@ export function Settings({ data }: { data: AppData }) {
       const c = { athleteId: creds.athleteId.trim(), apiKey: creds.apiKey.trim() };
       const a = await testConnection(c);
       await setSetting('intervals', c);
-      const next = { ...p, name: p.name || a.name, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, hrZoneTops: a.hrZoneTops ?? p.hrZoneTops, footLthr: a.footLthr ?? p.footLthr, footHrZoneTops: a.footHrZoneTops ?? p.footHrZoneTops };
+      const next = applyAthleteNumbers({ ...p, name: p.name || a.name }, a);
       setP(next);
       await saveProfile(next);
       notify();
@@ -196,7 +196,7 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Thresholds and zones</h2>
-        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same heart-rate zones on the Garmin itself once (it keeps its own copy), and all three agree. Watts follow FTP; heart-rate zone tops are yours to set, in beats per minute. Threshold heart rate on foot is usually a few beats above the bike's, so runs and walks have their own.</p>
+        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same zones on the Garmin itself once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them. Threshold heart rate on foot is usually a few beats above the bike's, so runs and walks have their own.</p>
 
         <h3 class="small" style="margin:0 0 8px">On the bike</h3>
         <div class="form">
@@ -204,7 +204,14 @@ export function Settings({ data }: { data: AppData }) {
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
           <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
         </div>
-        <ZoneEditor tops={bikeTops(p)} custom={!!p.hrZoneTops} maxHr={p.maxHr} watts={zoneTable(p, 'power')} onChange={(t) => upd('hrZoneTops', t)} />
+        <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
+          onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
+          onPcts={(v) => setP({ ...p, powerZoneMode: 'pct', powerZonePcts: v })} onAbs={(v) => setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: v })}
+          onStandard={() => setP({ ...p, powerZoneMode: undefined, powerZonePcts: undefined, powerZoneWatts: undefined })} />
+        <ZoneEditor title="Heart-rate zones" unit="bpm" threshold={p.lthr} max={p.maxHr} zones={rideHrZones(p)} mode={p.hrZoneMode ?? (p.hrZoneTops ? 'abs' : 'pct')} custom={!!(p.hrZonePcts || p.hrZoneTops)}
+          onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
+          onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
+          onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
 
         <h3 class="small" style="margin:18px 0 8px">On foot: runs and walks</h3>
         <div class="form">
@@ -212,7 +219,10 @@ export function Settings({ data }: { data: AppData }) {
             {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
           <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
         </div>
-        <ZoneEditor tops={footTops(p)} custom={!!p.footHrZoneTops} maxHr={p.maxHr} onChange={(t) => upd('footHrZoneTops', t)} />
+        <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
+          onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
+          onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
+          onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />
       </section>
 
       <section class="section">
@@ -431,7 +441,7 @@ function UpdateCheck() {
 /** Profile fields the coach is told about: a change to any of them means the day's note is out of date. */
 export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'ftp', 'lthr', 'footLthr', 'hoursPerWeek', 'basis'] as const;
 export function coachFieldsChanged(before: Profile, after: Profile): boolean {
-  return COACH_FIELDS.some((k) => before[k] !== after[k]) || JSON.stringify(before.hrZoneTops) !== JSON.stringify(after.hrZoneTops);
+  return COACH_FIELDS.some((k) => before[k] !== after[k]) || JSON.stringify(numbersToPush(before)) !== JSON.stringify(numbersToPush(after));
 }
 
 /**
@@ -449,47 +459,50 @@ function PaceField({ value, imperial, onChange }: { value?: number; imperial: bo
   );
 }
 
-/** The bike's zone tops as shown: the rider's own, else the standard shares of threshold. */
-function bikeTops(p: Profile): number[] {
-  return validTops(p.hrZoneTops) ? p.hrZoneTops : defaultHrZoneTops(p.lthr);
-}
-
-function footTops(p: Profile): number[] {
-  return validTops(p.footHrZoneTops) ? p.footHrZoneTops : defaultHrZoneTops(footThreshold(p));
-}
-
 const ZONE_NAMES = ['Recovery', 'Endurance', 'Tempo', 'Threshold', 'VO2max', 'Anaerobic', 'Neuromuscular'];
 
 /**
- * A heart-rate zone table the rider can type into: the top of zones 1 to 6 in
- * beats per minute, zone 7 running to max. "Standard" puts back the usual
- * shares of threshold, after which the tops follow the threshold again.
+ * One zone table the rider can type into: the top of zones 1 to 6, zone 7 open
+ * (to max heart rate, or upwards for power). A switch chooses whether the tops
+ * are entered as shares of the threshold or as absolute numbers; the table
+ * always shows both. "Standard" puts back the usual shares.
  */
-function ZoneEditor({ tops, custom, maxHr, watts, onChange }: { tops: number[]; custom: boolean; maxHr: number; watts?: ReturnType<typeof zoneTable>; onChange: (tops: number[] | undefined) => void }) {
-  const ok = validTops(tops) && tops[5] < maxHr;
-  const set = (i: number, v: number) => { const next = [...tops]; next[i] = v; onChange(next); };
+function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, onPcts, onAbs, onStandard }: {
+  title: string; unit: 'W' | 'bpm'; threshold: number; max?: number; zones: Zone[]; mode: ZoneMode; custom: boolean;
+  onMode: (m: ZoneMode) => void; onPcts: (v: number[]) => void; onAbs: (v: number[]) => void; onStandard: () => void;
+}) {
+  const pcts = ladderPcts(zones), tops = ladderTops(zones, threshold);
+  const rows = tableOf(zones, threshold);
+  const ok = validTops(mode === 'pct' ? pcts : tops) && (unit === 'W' || !max || tops[5] < max);
+  const set = (i: number, v: number) => { const next = [...(mode === 'pct' ? pcts : tops)]; next[i] = v; (mode === 'pct' ? onPcts : onAbs)(next); };
+  const absLabel = unit === 'W' ? 'Watts' : 'Beats per minute';
   return (
-    <div style="margin-top:10px">
+    <div style="margin-top:14px">
+      <div class="row between wrap" style="align-items:center;gap:10px;margin-bottom:6px">
+        <b class="small">{title}</b>
+        <div class="seg"><button class={mode === 'pct' ? 'on' : ''} onClick={() => onMode('pct')}>% of threshold</button><button class={mode === 'abs' ? 'on' : ''} onClick={() => onMode('abs')}>{absLabel}</button></div>
+      </div>
       <table class="steps">
-        <tr><td /><td class="faint small">Zone</td>{watts && <td class="r faint small">Watts</td>}<td class="r faint small">Heart rate</td><td class="r faint small">Top (bpm)</td></tr>
+        <tr><td /><td class="faint small">Zone</td><td class="r faint small">% of threshold</td><td class="r faint small">{unit === 'W' ? 'Watts' : 'Heart rate'}</td><td class="r faint small">Top ({mode === 'pct' ? '%' : unit})</td></tr>
         {ZONE_NAMES.map((name, i) => {
-          const low = i === 0 ? 0 : tops[i - 1] + 1;
-          const high = i < 6 ? tops[i] : maxHr;
+          const r = rows[i];
+          const pctText = i < 6 ? `${i === 0 ? 'up to ' : `${pcts[i - 1] + 1}–`}${pcts[i]}%` : `${pcts[5] + 1}%+`;
+          const absText = i < 6 ? `${i === 0 ? 'up to ' : `${r.low}–`}${r.high}` : unit === 'bpm' && max ? `${r.low}–${max}` : `${r.low}+`;
           return (
             <tr key={i}>
               <td><span class="z" style={`background:${ZONE_VAR[i]}`} /></td>
               <td>Z{i + 1} {name}</td>
-              {watts && <td class="r num">{watts[i].low}{watts[i].high != null ? `–${watts[i].high}` : '+'}</td>}
-              <td class="r num">{i === 0 ? `up to ${high}` : `${low}–${high}`}</td>
-              <td class="r">{i < 6 ? <input type="number" class="num" style="width:72px;text-align:right" value={tops[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">max</span>}</td>
+              <td class="r num muted">{pctText}</td>
+              <td class="r num">{absText}</td>
+              <td class="r">{i < 6 ? <input type="number" class="num" style="width:72px;text-align:right" value={mode === 'pct' ? pcts[i] : tops[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">{unit === 'bpm' ? 'max' : 'open'}</span>}</td>
             </tr>
           );
         })}
       </table>
       <div class="row wrap" style="margin-top:8px;gap:12px;align-items:center">
-        {!ok && <span class="small" style="color:var(--bad)">Each top must be higher than the one before and below max heart rate; until it is, the standard shares of threshold are used.</span>}
-        {custom && <button class="btn sm quiet" style="margin-left:auto" onClick={() => onChange(undefined)}>Back to standard shares</button>}
-        {!custom && <span class="faint small">Standard shares of threshold heart rate; type in any top to make the table your own.</span>}
+        {!ok && <span class="small" style="color:var(--bad)">Each top must be higher than the one before{unit === 'bpm' ? ' and below max heart rate' : ''}; until it is, the standard shares are used.</span>}
+        <span class="faint small">{mode === 'pct' ? 'Shares of the threshold: change the threshold and these move with it.' : `${absLabel}: these stay where you put them when the threshold changes.`}</span>
+        {custom && <button class="btn sm quiet" style="margin-left:auto" onClick={onStandard}>Back to standard shares</button>}
       </div>
     </div>
   );

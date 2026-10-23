@@ -55,7 +55,7 @@ export async function runSelfTest(c: IntervalsCredentials, onStep: (r: CheckResu
   });
   await step('Pushing your numbers to Intervals.icu', async () => {
     if (!numbers) return 'Skipped: could not read them first.';
-    await pushAthleteNumbers(c, { ftp: numbers.ftp, lthr: numbers.lthr, maxHr: numbers.maxHr, hrZoneTops: numbers.hrZoneTops, footLthr: numbers.footLthr, footHrZoneTops: numbers.footHrZoneTops });
+    await pushAthleteNumbers(c, { ftp: numbers.ftp, lthr: numbers.lthr, maxHr: numbers.maxHr, powerZonePcts: numbers.powerZonePcts, hrZoneTops: numbers.hrZoneTops, footLthr: numbers.footLthr, footHrZoneTops: numbers.footHrZoneTops });
     return `Wrote FTP, threshold HR, max HR and the zone tables back unchanged; Intervals.icu accepted them.${numbers.hrZoneTops ? '' : ' (It holds no full cycling zone table yet; Save in Settings will give it one.)'}`;
   });
   await step('Calendar event: create and delete', async () => {

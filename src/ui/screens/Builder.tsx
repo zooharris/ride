@@ -3,7 +3,7 @@ import type { AppData } from '../store';
 import { findWorkout, notify } from '../store';
 import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { clock, newId, stepTargets, workoutStats } from '../../engine/workout';
-import { powerZone, zonesFor } from '../../engine/zones';
+import { powerZone, ridePowerZones } from '../../engine/zones';
 import type { Family, Workout, WorkoutBlock, WorkoutStep } from '../../engine/types';
 import { db } from '../../data/db';
 import { go } from '../router';
@@ -73,7 +73,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   const blocks = toBlocks(rows);
   const stats = workoutStats(blocks);
   const fam = family === 'auto' ? guessFamily(blocks) : family;
-  const zones = zonesFor('power');
+  const zones = ridePowerZones(profile);
 
   const update = (rid: number, patch: Partial<Row>) => setRows(rows.map((r, i) => i === rid ? { ...r, ...patch } as Row : r));
   const updateSub = (rid: number, sid: number, patch: Partial<Row & { minutes: number }>) =>
@@ -115,7 +115,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   const labelField = (value: string, on: (v: string) => void) => (
     <input value={value} placeholder="step name, e.g. Warm-up" onInput={(e) => on((e.target as HTMLInputElement).value)} style="flex:1;min-width:90px" />
   );
-  const zoneDot = (pct: number) => <span class="z" style={`background:${ZONE_VAR[powerZone(pct / 100) - 1]};display:inline-block;width:10px;height:10px;border-radius:2px;flex:0 0 10px`} />;
+  const zoneDot = (pct: number) => <span class="z" style={`background:${ZONE_VAR[powerZone(pct / 100, zones) - 1]};display:inline-block;width:10px;height:10px;border-radius:2px;flex:0 0 10px`} />;
 
   return (
     <div>

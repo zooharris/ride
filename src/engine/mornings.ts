@@ -1,9 +1,9 @@
 import type { Ride, Wellness } from './types';
 import { addDays, rideIntensity } from './load';
-import type { Zone } from './zones';
+import type { Ladders } from './zones';
 
 /** The rider's heart-rate numbers a day is judged by: the bike ladder for rides, the foot threshold for runs. */
-export interface HrNumbers { zones?: Zone[]; footLthr?: number }
+export interface HrNumbers { ladders?: Ladders; footLthr?: number }
 
 /**
  * What kind of training day a date was, for "the morning after": a long ride
@@ -20,7 +20,7 @@ export function dayKind(onDay: Ride[], lthr: number, hr: HrNumbers = {}): DayKin
   if (!onDay.length) return 'rest';
   const rides = onDay.filter((r) => r.sport === 'ride');
   if (rides.some((r) => r.seconds >= 9000)) return 'long';
-  if (rides.some((r) => r.seconds >= 2400 && (rideIntensity(r, lthr, hr.zones) ?? 0) >= 0.85)) return 'hard';
+  if (rides.some((r) => r.seconds >= 2400 && (rideIntensity(r, lthr, hr.ladders) ?? 0) >= 0.85)) return 'hard';
   // A run of 30 minutes or more at 85% of threshold heart rate or above is a hard day like a hard ride.
   if (onDay.some((r) => r.sport === 'run' && r.seconds >= 1800 && (hr.footLthr || lthr) > 0 && (r.averageHr ?? 0) / (hr.footLthr || lthr) >= 0.85)) return 'hard';
   if (onDay.some((r) => r.sport === 'strength')) return 'strength';

@@ -1,3 +1,4 @@
+import { bandWords, walkBand } from '../engine/foot';
 import { rideHrZones } from '../engine/zones';
 /**
  * Optional narrative layer. With an API key in Settings the app asks Claude for a
@@ -86,7 +87,7 @@ export function planLine(plan: CoachPlan | undefined): string {
 const KIND_WORD: Record<Workout['kind'], string> = { ride: 'ride', strength: 'strength session', mobility: 'mobility session', walk: 'walk', run: 'run', other: 'session' };
 
 /** One line per session on the day, with what it is, how big it is, and whether it is done. */
-export function describeSession({ planned, workout, recorded }: TodaySession, withStatus = true): string {
+export function describeSession({ planned, workout, recorded }: TodaySession, withStatus = true, profile?: Profile): string {
   const parts: string[] = [`${workout.name} (${KIND_WORD[workout.kind]})`];
   if (workout.kind === 'ride') {
     const s = workoutStats(workout.blocks);
@@ -95,8 +96,8 @@ export function describeSession({ planned, workout, recorded }: TodaySession, wi
     if (workout.minutes) parts.push(`planned duration ${workout.minutes} min`);
     if (workout.estimatedTss != null) parts.push(`planned training load about ${workout.estimatedTss} TSS`);
     if (workout.kind === 'strength' && workout.effort) parts.push(`planned effort ${workout.effort}/10`);
-    if (workout.kind === 'walk' && workout.walk) parts.push(workout.walk.hrLow > 0 ? `heart rate ${Math.round(workout.walk.hrLow * 100)}–${Math.round(workout.walk.hrHigh * 100)}% of max` : `no minimum heart rate, up to ${Math.round(workout.walk.hrHigh * 100)}% of max`);
-    if (workout.kind === 'run' && workout.run?.steps.length) parts.push(`steps: ${runStepsLine(workout)}`);
+    if (workout.kind === 'walk' && workout.walk) parts.push(`heart rate ${bandWords(walkBand(workout.walk, profile), profile)}`);
+    if (workout.kind === 'run' && workout.run?.steps.length) parts.push(`steps: ${runStepsLine(workout, profile)}`);
     if (workout.exercises?.length) parts.push(`${workout.exercises.length} exercises: ${workout.exercises.slice(0, 6).map((e) => e.name).join(', ')}${workout.exercises.length > 6 ? '…' : ''}`);
   }
   if (workout.purpose) parts.push(workout.purpose);
@@ -138,7 +139,7 @@ export function driverWords(d: ReadinessDriver): string {
 /** The day as the coach sees it: readiness, plan, notes, calendar, tomorrow, recent activities. Shared by the daily note and questions. */
 export function dayFacts(ctx: CoachContext, activities = 7): string {
   const rides = ctx.recentRides.slice(0, activities).map(activityLine).join('\n');
-  const sessions = ctx.todaySessions.map((s) => '- ' + describeSession(s)).join('\n');
+  const sessions = ctx.todaySessions.map((s) => '- ' + describeSession(s, true, ctx.profile)).join('\n');
   const tomorrow = ctx.tomorrow?.length ? ctx.tomorrow.join('; ') : 'nothing planned';
   return `Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
 Readiness ${ctx.wellnessSetAside ? `not scored from wellness today: the rider set today's HRV, sleep and resting heart rate aside as wrong (${ctx.readiness.score}/100 from form alone)` : `${ctx.readiness.score}/100 (${ctx.readiness.band}); drivers: ${ctx.readiness.drivers.map(driverWords).join('; ')}`}.

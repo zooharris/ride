@@ -1,3 +1,4 @@
+import { bandZoneWords, walkBand } from '../engine/foot';
 import { useState } from 'preact/hooks';
 import type { ActivityEdit, DoneExercise, DoneRecord, PlannedWorkout, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, exerciseIdFor, isHold, lastDone, setsText, unitOf, weightText } from '../engine/record';
@@ -179,7 +180,7 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
 
 /** The planned exercises or stretches as a compact list, for "What was planned". */
 export function PlannedList({ workout }: { workout: Workout }) {
-  if (workout.walk) return <p class="small">{workout.walk.minutes} min walk{workout.walk.packKg ? ` with a ${Math.round(workout.walk.packKg * LB_PER_KG)} lb pack` : ''}, heart rate {workout.walk.hrLow ? `${Math.round(workout.walk.hrLow * 100)}–` : 'up to '}{Math.round(workout.walk.hrHigh * 100)}% of max.</p>;
+  if (workout.walk) return <p class="small">{workout.walk.minutes} min walk{workout.walk.packKg ? ` with a ${Math.round(workout.walk.packKg * LB_PER_KG)} lb pack` : ''}, heart rate {bandZoneWords(walkBand(workout.walk))}.</p>;
   return (
     <div>
       {(workout.exercises ?? []).map((e, i) => (

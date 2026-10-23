@@ -1,8 +1,8 @@
-import { footLthr, rideHrZones } from '../../engine/zones';
+import { footLthr, rideLadders } from '../../engine/zones';
 import type { HrNumbers } from '../../engine/mornings';
 import type { Profile } from '../../engine/types';
 /** The heart-rate numbers a day or a ride is judged by. */
-function hrNumbers(p?: Profile | null): HrNumbers { return p ? { zones: rideHrZones(p), footLthr: footLthr(p) } : {}; }
+function hrNumbers(p?: Profile | null): HrNumbers { return p ? { ladders: rideLadders(p), footLthr: footLthr(p) } : {}; }
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout } from '../store';
@@ -223,7 +223,7 @@ function PowerCurveCard({ rides, from, ftp, weightKg }: { rides: Ride[]; from: s
 /** Efficiency factor and heart-rate drift on steady rides of an hour or more, as two panels on one time axis. */
 function AerobicCard({ data, rides }: { data: AppData; rides: Ride[] }) {
   const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
-  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr, hrNumbers(data.profile).zones);
+  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr, hrNumbers(data.profile).ladders?.hr);
   if (pts.length < 2) {
     return <Card title="Aerobic fitness" explain="Efficiency factor (normalized power per heartbeat) and heart-rate drift on steady rides of an hour or more."><div class="empty small">Two or more steady rides of an hour or longer in this range draw here: endurance rides with power and heart rate, at or under 78% of FTP (or zone 2 by heart rate), whose drift reading is believable.</div></Card>;
   }
@@ -383,7 +383,7 @@ function overlayAvailability(data: AppData, from: string, to: string): Record<Ov
   const well = data.wellness.filter((w) => w.date >= from && w.date <= to);
   const days = (get: (w: AppData['wellness'][number]) => number | undefined) => well.filter((w) => (get(w) ?? 0) > 0).length;
   const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
-  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr, hrNumbers(data.profile).zones);
+  const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr, hrNumbers(data.profile).ladders?.hr);
   return {
     fitness: true, fatigue: true, form: true,
     load: new Set(rides.filter((r) => (r.tss ?? 0) > 0).map((r) => r.date)).size >= 3,
@@ -427,7 +427,7 @@ function chartFacts(on: OverlayKey[], from: string, to: string, series: Fitness[
   wl('weight', 'Weight', imperial ? 'lb' : 'kg', (w) => (w.weightKg ? (imperial ? w.weightKg * 2.20462 : w.weightKg) : undefined), (v) => v.toFixed(1));
   if (on.includes('efficiency') || on.includes('drift')) {
     const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
-    const pts = aerobicPoints(rides, isEndurance, lthr, hrNumbers(data.profile).zones);
+    const pts = aerobicPoints(rides, isEndurance, lthr, hrNumbers(data.profile).ladders?.hr);
     const ae = (key: OverlayKey, label: string, unit: string, get: (p: typeof pts[number]) => number | undefined) => {
       if (!on.includes(key)) return;
       const ps = pts.map((p) => ({ d: p.date, v: get(p) })).filter((p): p is { d: string; v: number } => p.v != null);

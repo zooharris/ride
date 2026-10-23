@@ -14,7 +14,9 @@
  */
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
-import { defaultHrZoneTops, footLthr as footThreshold, rideHrZones, validTops } from '../engine/zones';
+import { defaultHrZoneTops, defaultZonePcts, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, rideLadders, ridePowerZones, validTops } from '../engine/zones';
+import type { Profile } from '../engine/types';
+import { bandFractions, hasNoFloor, recoveryBand, stepBand, walkBand, type FootBand } from '../engine/foot';
 
 const BASE = 'https://intervals.icu/api/v1';
 
@@ -60,15 +62,44 @@ export interface AthleteNumbers {
   maxHr?: number;
   restingHr?: number;
   weight?: number;
-  /** Top of heart-rate zones 1..6 on the bike, when Intervals.icu holds a full table. */
+  /** Top of power zones 1..6 as whole percent of FTP, as Intervals.icu keeps them. */
+  powerZonePcts?: number[];
+  /** Top of heart-rate zones 1..6 on the bike in bpm, as Intervals.icu keeps them. */
   hrZoneTops?: number[];
   /** Threshold heart rate and zone tops on foot (Intervals.icu's Run settings). */
   footLthr?: number;
   footHrZoneTops?: number[];
 }
 
-/** The rider's heart-rate numbers a workout is sent with, so targets land on the right ladder. */
-export type HrProfile = { maxHr: number; lthr: number; footLthr?: number; hrZoneTops?: number[]; footHrZoneTops?: number[] };
+/**
+ * Fold the numbers Intervals.icu holds into the profile. Thresholds come across
+ * as they are. A zone table comes across only when it differs from what the
+ * profile already says, so a table the rider keeps as shares of threshold is
+ * not turned into fixed numbers by every sync; when it does differ, the
+ * rider changed it in Intervals.icu, and it arrives in Intervals.icu's unit.
+ */
+export function applyAthleteNumbers(p: Profile, a: AthleteNumbers): Profile {
+  const next: Profile = { ...p, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, footLthr: a.footLthr ?? p.footLthr };
+  const same = (x?: number[], y?: number[]) => !!x && !!y && x.length === y.length && x.every((v, i) => Math.abs(v - y[i]) <= 1);
+  if (a.powerZonePcts && !same(a.powerZonePcts, ladderPcts(ridePowerZones(next)))) { next.powerZoneMode = 'pct'; next.powerZonePcts = a.powerZonePcts; }
+  if (a.hrZoneTops && !same(a.hrZoneTops, ladderTops(rideHrZones(next), next.lthr))) { next.hrZoneMode = 'abs'; next.hrZoneTops = a.hrZoneTops; }
+  if (a.footHrZoneTops && !same(a.footHrZoneTops, ladderTops(footHrZones(next), footThreshold(next)))) { next.footHrZoneMode = 'abs'; next.footHrZoneTops = a.footHrZoneTops; }
+  return next;
+}
+
+/** What Save sends: thresholds, and each table in the unit Intervals.icu keeps it in. */
+export function numbersToPush(p: Profile): Parameters<typeof pushAthleteNumbers>[1] {
+  return {
+    ftp: p.ftp, lthr: p.lthr, maxHr: p.maxHr,
+    powerZonePcts: ladderPcts(ridePowerZones(p)),
+    hrZoneTops: ladderTops(rideHrZones(p), p.lthr),
+    footLthr: footThreshold(p),
+    footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)),
+  };
+}
+
+/** The rider's numbers a workout is sent with, so targets land on the right ladders. */
+export type HrProfile = Pick<Profile, 'maxHr' | 'lthr'> & Partial<Profile>;
 
 /**
  * The athlete's numbers as Intervals.icu holds them. FTP, LTHR and max HR live in
@@ -86,6 +117,7 @@ export async function testConnection(c: IntervalsCredentials): Promise<AthleteNu
     maxHr: num(sport?.max_hr),
     restingHr: num(a.icu_resting_hr),
     weight: num(a.icu_weight) ?? num(a.weight),
+    powerZonePcts: zonePcts(sport?.power_zones),
     hrZoneTops: zoneTops(sport?.hr_zones, num(sport?.lthr)),
     footLthr: num(foot?.lthr),
     footHrZoneTops: zoneTops(foot?.hr_zones, num(foot?.lthr)),
@@ -98,6 +130,16 @@ export async function testConnection(c: IntervalsCredentials): Promise<AthleteNu
  * Garmin's five zones in, say) keeps the tops it has and fills the rest from the
  * standard shares of threshold, kept increasing; Save writes the full seven back.
  */
+/** Intervals.icu keeps power zones as the top of each zone in percent of FTP, with an open last entry (999). */
+function zonePcts(v: unknown): number[] | undefined {
+  if (!Array.isArray(v) || v.length < 3) return undefined;
+  const given = v.slice(0, -1).map((x) => Math.round(Number(x))).slice(0, 6);
+  const standard = defaultZonePcts('power');
+  const pcts: number[] = [];
+  for (let i = 0; i < 6; i++) pcts.push(i < given.length ? given[i] : Math.max(standard[i], (pcts[i - 1] ?? 0) + 1));
+  return validTops(pcts) ? pcts : undefined;
+}
+
 function zoneTops(v: unknown, lthr: number | undefined): number[] | undefined {
   if (!Array.isArray(v) || v.length < 3 || !lthr) return undefined;
   const given = v.slice(0, -1).map((x) => Number(x)).slice(0, 6);
@@ -140,7 +182,7 @@ const HR_ZONE_NAMES = ['Recovery', 'Endurance', 'Tempo', 'Threshold', 'VO2max', 
  * the app's "% of FTP" into watts with ITS FTP before the workout reaches Garmin,
  * so the two must agree. Only the fields given are changed.
  */
-export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: number; lthr?: number; maxHr?: number; hrZoneTops?: number[]; footLthr?: number; footHrZoneTops?: number[] }): Promise<void> {
+export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: number; lthr?: number; maxHr?: number; powerZonePcts?: number[]; hrZoneTops?: number[]; footLthr?: number; footHrZoneTops?: number[] }): Promise<void> {
   const a = await call<Record<string, unknown>>(c, `/athlete/${c.athleteId}`);
   const sport = rideSettings(a);
   if (!sport || sport.id == null) throw new IntervalsError('Intervals.icu has no cycling sport settings to update; open its Settings page once and save, then try again.');
@@ -149,6 +191,7 @@ export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: num
   if (n.lthr) body.lthr = n.lthr;
   if (n.maxHr) body.max_hr = n.maxHr;
   if (validTops(n.hrZoneTops) && n.maxHr) { body.hr_zones = [...n.hrZoneTops, n.maxHr]; body.hr_zone_names = HR_ZONE_NAMES; }
+  if (validTops(n.powerZonePcts)) { body.power_zones = [...n.powerZonePcts, 999]; body.power_zone_names = HR_ZONE_NAMES; }
   if (Object.keys(body).length) await call(c, `/athlete/${c.athleteId}/sport-settings/${sport.id}`, { method: 'PUT', body: JSON.stringify(body) });
   // Runs and walks: their own threshold and table, written to every entry that governs them.
   const foot: Record<string, unknown> = {};
@@ -341,7 +384,7 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
 
 function rideEvent(workout: Workout, date: string, basis: Basis, profile?: HrProfile) {
   const stats = workoutStats(workout.blocks);
-  const zones = profile ? rideHrZones(profile) : undefined;
+  const zones = profile?.ftp ? rideLadders({ ...profile, ftp: profile.ftp }) : undefined;
   return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,
@@ -470,13 +513,13 @@ let lastWeightOf: (name: string) => string | undefined = () => undefined;
 export function setLastWeightLookup(fn: (name: string) => string | undefined): void { lastWeightOf = fn; }
 
 function walkEvent(workout: Workout, date: string, profile?: HrProfile) {
-  const w = workout.walk ?? { minutes: workout.minutes ?? 30, hrLow: 0.6, hrHigh: 0.7 };
-  const toLthr = toFootLthr(profile);
+  const w = workout.walk ?? { minutes: workout.minutes ?? 30, zoneLow: 2, zoneHigh: 3 };
+  const b = walkBand(w, profile);
   const pack = w.packKg ? ` with a ${Math.round(w.packKg * 2.2)} lb pack` : '';
   const lines = [
     `${workout.purpose}${pack ? ` Walk${pack}.` : ''}`,
     '',
-    `- ${w.minutes}m ${w.hrLow > 0 ? toLthr(w.hrLow) : Math.round(NO_FLOOR.hr * 100)}-${toLthr(w.hrHigh)}% LTHR`,
+    `- ${w.minutes}m ${footTarget(b, profile)}`,
   ];
   return {
     category: 'WORKOUT',
@@ -490,32 +533,31 @@ function walkEvent(workout: Workout, date: string, profile?: HrProfile) {
 }
 
 /**
- * Shares of max heart rate as shares of the threshold Intervals.icu applies to a walk
- * or run: the foot threshold, which is the Run and Other settings' number, not the bike's.
+ * A band on the foot table as the "% LTHR" target Intervals.icu takes: shares of
+ * the threshold it applies to a Walk or a Run, which is the foot threshold (the
+ * Run and Other settings' number), read straight off the rider's foot table.
  */
-function toFootLthr(profile?: HrProfile): (f: number) => number {
-  const lthr = profile ? footThreshold(profile) : 0;
-  return (f: number) => (profile && lthr > 0 ? Math.round((f * profile.maxHr / lthr) * 100) : Math.round(f * 100 / 0.92));
+function footTarget(b: FootBand, profile?: HrProfile): string {
+  const f = bandFractions(b, profile);
+  const lo = hasNoFloor(b) ? Math.round(NO_FLOOR.hr * 100) : Math.round(f.low * 100);
+  return `${lo}-${Math.round(f.high * 100)}% LTHR`;
 }
 
 /**
- * A run goes to the Garmin as a Run workout with heart-rate steps. Like a walk, the app's
- * bands are shares of max heart rate, converted here to shares of threshold heart rate
- * with the rider's numbers. A repeated step is an Intervals.icu repeat block: the work
- * and its recovery, "6x". (Intervals repeats the recovery after the last one too, a
- * minute the app's own count leaves out.)
+ * A run goes to the Garmin as a Run workout with heart-rate steps, each a band on
+ * the rider's foot table. A repeated step is an Intervals.icu repeat block: the
+ * work and its recovery, "6x". (Intervals repeats the recovery after the last
+ * one too, a minute the app's own count leaves out.)
  */
 export function runEvent(workout: Workout, date: string, profile?: HrProfile) {
-  const toLthr = toFootLthr(profile);
-  const band = (lo: number, hi: number) => `${lo > 0 ? toLthr(lo) : Math.round(NO_FLOOR.hr * 100)}-${toLthr(hi)}% LTHR`;
   const dur = (sec: number) => { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m && s ? `${m}m${s}s` : m ? `${m}m` : `${s}s`; };
   const lines: string[] = [workout.purpose, ''];
   for (const s of workout.run?.steps ?? []) {
     const n = Math.max(1, s.repeat ?? 1);
-    const step = `- ${dur(s.seconds)} ${band(s.hrLow, s.hrHigh)}`;
+    const step = `- ${dur(s.seconds)} ${footTarget(stepBand(s, profile), profile)}`;
     if (n === 1) { lines.push(step); continue; }
     lines.push('', `${s.label ? s.label.split(':')[0] : 'Set'} ${n}x`, step);
-    if (s.recoverSeconds) lines.push(`- ${dur(s.recoverSeconds)} ${band(s.recoverLow ?? 0.65, s.recoverHigh ?? 0.75)}`);
+    if (s.recoverSeconds) lines.push(`- ${dur(s.recoverSeconds)} ${footTarget(recoveryBand(s, profile), profile)}`);
     lines.push('');
   }
   return {

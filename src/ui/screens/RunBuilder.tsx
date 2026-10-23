@@ -5,7 +5,9 @@ import type { RunStep, Workout } from '../../engine/types';
 import { db } from '../../data/db';
 import { newId } from '../../engine/workout';
 import { runStepsTss } from '../../engine/sessions';
-import { RUN_BANDS, band, bandOf, paceHint, runMinutes, runSeconds, type RunBandKey } from '../../engine/run';
+import { RUN_BANDS, band, paceHint, runMinutes, runSeconds, type RunBandKey } from '../../engine/run';
+import { bandBpm, bandKeyOf, bandZoneWords, recoveryBand, stepBand } from '../../engine/foot';
+import { footLthr } from '../../engine/zones';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { go } from '../router';
@@ -17,14 +19,13 @@ import { toast } from '../Toast';
 interface Row { min: number; sec: number; band: RunBandKey; label: string; repeat: number; recMin: number; recSec: number; recBand: RunBandKey }
 
 const toRow = (s: RunStep): Row => ({
-  min: Math.floor(s.seconds / 60), sec: s.seconds % 60, band: bandOf(s.hrLow, s.hrHigh), label: s.label ?? '',
+  min: Math.floor(s.seconds / 60), sec: s.seconds % 60, band: bandKeyOf(stepBand(s)), label: s.label ?? '',
   repeat: s.repeat ?? 1, recMin: Math.floor((s.recoverSeconds ?? 0) / 60), recSec: (s.recoverSeconds ?? 0) % 60,
-  recBand: s.recoverHigh != null ? bandOf(s.recoverLow ?? 0, s.recoverHigh) : 'easy',
+  recBand: bandKeyOf(recoveryBand(s)),
 });
 const toStep = (r: Row): RunStep => {
-  const b = band(r.band), rb = band(r.recBand);
-  const step: RunStep = { seconds: Math.max(5, r.min * 60 + r.sec), hrLow: b.low, hrHigh: b.high, ...(r.label.trim() ? { label: r.label.trim() } : {}) };
-  if (r.repeat > 1) Object.assign(step, { repeat: r.repeat, recoverSeconds: r.recMin * 60 + r.recSec, recoverLow: rb.low, recoverHigh: rb.high });
+  const step: RunStep = { seconds: Math.max(5, r.min * 60 + r.sec), band: r.band, ...(r.label.trim() ? { label: r.label.trim() } : {}) };
+  if (r.repeat > 1) Object.assign(step, { repeat: r.repeat, recoverSeconds: r.recMin * 60 + r.recSec, recoverBand: r.recBand });
   return step;
 };
 const DEFAULT_ROWS: Row[] = [
@@ -44,7 +45,6 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
   const [date, setDate] = useState(today());
   const profile = data.profile!;
   const imperial = profile.units === 'imperial';
-  const maxHr = profile.maxHr;
 
   const snapshot = () => JSON.stringify({ name, purpose, where, rows });
   const initial = useRef(snapshot());
@@ -67,13 +67,13 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
   const remove = (i: number) => setRows(rows.filter((_, k) => k !== i));
   const move = (i: number, d: -1 | 1) => { const j = i + d; if (j < 0 || j >= rows.length) return; const n = [...rows]; [n[i], n[j]] = [n[j], n[i]]; setRows(n); };
   const addStep = () => setRows([...rows, { min: 5, sec: 0, band: 'easy', label: '', repeat: 1, recMin: 0, recSec: 0, recBand: 'easy' }]);
-  const bpm = (k: RunBandKey) => { const b = band(k); return maxHr ? `${b.low ? `${Math.round(maxHr * b.low)}–` : 'up to '}${Math.round(maxHr * b.high)} bpm` : ''; };
-  const bandLine = (k: RunBandKey) => { const b = band(k); const p = paceHint(k, profile.thresholdPaceSec, imperial); return `${b.label} ${b.low ? `${Math.round(b.low * 100)}–` : 'up to '}${Math.round(b.high * 100)}%${p ? ` · about ${p}` : ''}`; };
+  const bpm = (k: RunBandKey) => { const x = bandBpm(band(k), profile); return x ? `${band(k).zoneLow <= 1 ? 'up to ' : `${x.low}–`}${x.high} bpm on your foot table` : ''; };
+  const bandLine = (k: RunBandKey) => { const b = band(k); const p = paceHint(k, profile.thresholdPaceSec, imperial); return `${b.label} · ${bandZoneWords(b)}${p ? ` · about ${p}` : ''}`; };
 
   async function save(then: 'date' | 'library') {
     if (!name.trim() || !steps.length) return;
     const w: Workout = {
-      id: existing?.id ?? `mine-${newId()}`, name: name.trim(), kind: 'run', family: steps.some((s) => s.hrLow >= 0.85) ? 'tempo' : 'endurance',
+      id: existing?.id ?? `mine-${newId()}`, name: name.trim(), kind: 'run', family: steps.some((s) => s.band === 'tempo' || s.band === 'hard') ? 'tempo' : 'endurance',
       purpose: purpose.trim() || 'A run built in the app, by heart rate.',
       phases: ['any'], bases: ['power', 'hr'], setting: where === 'outdoor' ? 'outdoor' : 'indoor', blocks: [], source: 'mine',
       run: spec, minutes, estimatedTss: tss,
@@ -96,7 +96,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
 
       <section class="section">
         <h2>Steps <span class="muted" style="font-weight:400">· {rows.length}</span></h2>
-        <p class="muted small" style="margin:6px 0 10px;max-width:68ch">Each step is a time and a heart-rate band, a share of your maximum heart rate ({maxHr || '–'} bpm); the Garmin holds you in it. A repeated step runs its recovery between repeats.{profile.thresholdPaceSec ? ' The pace beside each band comes from your threshold pace and is a guide only.' : ' Set a threshold run pace in Settings to see the pace each band implies.'}</p>
+        <p class="muted small" style="margin:6px 0 10px;max-width:68ch">Each step is a time and a heart-rate band, named by zone on your foot table (threshold {footLthr(profile)} bpm); the Garmin holds you in it. A repeated step runs its recovery between repeats.{profile.thresholdPaceSec ? ' The pace beside each band comes from your threshold pace and is a guide only.' : ' Set a threshold run pace in Settings to see the pace each band implies.'}</p>
         <div class="stack">
           {rows.map((r, i) => (
             <div class="panel" key={i} style="padding:10px 12px">

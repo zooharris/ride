@@ -1,5 +1,5 @@
 import type { Basis, Profile, Workout, WorkoutBlock, WorkoutStats, WorkoutStep } from './types';
-import { powerToHrFraction, powerZone, rideHrZones, type Zone } from './zones';
+import { powerToHrFraction, powerZone, rideLadders, type Ladders } from './zones';
 
 /** Flatten repeats into a plain list of steps, in ride order. */
 export function flattenSteps(blocks: WorkoutBlock[]): WorkoutStep[] {
@@ -65,15 +65,15 @@ export function dominantZone(zoneSeconds: number[]): number {
  * these to the athlete's current numbers when it builds the Garmin workout, so
  * the file is right on the day FTP changes.
  */
-export function renderIntervalsText(workout: Workout, basis: Basis, zones?: Zone[]): string {
+export function renderIntervalsText(workout: Workout, basis: Basis, ladders?: Ladders): string {
   const lines: string[] = [];
   for (const b of workout.blocks) {
     if (b.kind === 'step') {
-      lines.push(renderStep(b, basis, zones));
+      lines.push(renderStep(b, basis, ladders));
     } else {
       lines.push('');
       lines.push(`${b.label ?? 'Set'} ${b.times}x`);
-      for (const st of b.steps) lines.push(renderStep(st, basis, zones));
+      for (const st of b.steps) lines.push(renderStep(st, basis, ladders));
       lines.push('');
     }
   }
@@ -87,11 +87,11 @@ export function renderIntervalsText(workout: Workout, basis: Basis, zones?: Zone
  */
 export const NO_FLOOR: Record<Basis, number> = { power: 0.1, hr: 0.2 };
 
-function renderStep(step: WorkoutStep, basis: Basis, zones?: Zone[]): string {
-  const lo = step.noFloor ? NO_FLOOR[basis] : basis === 'power' ? step.intensity : powerToHrFraction(step.intensity, zones);
+function renderStep(step: WorkoutStep, basis: Basis, ladders?: Ladders): string {
+  const lo = step.noFloor ? NO_FLOOR[basis] : basis === 'power' ? step.intensity : powerToHrFraction(step.intensity, ladders?.hr, ladders?.power);
   const hi = step.intensityHigh
-    ? (basis === 'power' ? step.intensityHigh : powerToHrFraction(step.intensityHigh, zones))
-    : step.noFloor ? (basis === 'power' ? step.intensity : powerToHrFraction(step.intensity, zones)) : undefined;
+    ? (basis === 'power' ? step.intensityHigh : powerToHrFraction(step.intensityHigh, ladders?.hr, ladders?.power))
+    : step.noFloor ? (basis === 'power' ? step.intensity : powerToHrFraction(step.intensity, ladders?.hr, ladders?.power)) : undefined;
   const pct = (f: number) => Math.round(f * 100);
   const target = hi ? `${pct(lo)}-${pct(hi)}%` : `${pct(lo)}%`;
   const unit = basis === 'power' ? '' : ' LTHR';
@@ -123,7 +123,8 @@ export function clock(seconds: number): string {
 /** Targets shown in the app for a step, in the athlete's numbers. */
 export function stepTargets(step: WorkoutStep, profile: Profile): { watts: string; bpm: string } {
   const w = (f: number) => Math.round(f * profile.ftp);
-  const b = (f: number) => Math.round(powerToHrFraction(f, rideHrZones(profile)) * profile.lthr);
+  const l = rideLadders(profile);
+  const b = (f: number) => Math.round(powerToHrFraction(f, l.hr, l.power) * profile.lthr);
   if (step.noFloor) {
     const top = step.intensityHigh ?? step.intensity;
     return { watts: `up to ${w(top)}`, bpm: `up to ${b(top)}` };

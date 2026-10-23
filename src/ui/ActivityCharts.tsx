@@ -4,7 +4,7 @@ import type { StreamSet } from '../data/db';
 import type { Analysis } from '../engine/analysis';
 import type { Profile, SessionKind } from '../engine/types';
 import { ZONE_VAR } from './Profile';
-import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, type Zone } from '../engine/zones';
+import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, type Zone } from '../engine/zones';
 import { clock } from '../engine/workout';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
@@ -86,7 +86,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
       </div>
       <div class="stack" style="gap:4px">
         {panels.map((p, idx) => (
-          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
+          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
         ))}
       </div>
     </div>
@@ -98,9 +98,9 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
  * compact height, so a wide window shows more of the ride rather than taller
  * charts, and the text stays the same size at any width.
  */
-function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, hrZones, basis, showXAxis }: {
+function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, hrZones, powerZones, basis, showXAxis }: {
   samples: Sample[]; panel: { title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> };
-  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; hrZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
+  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
 }) {
   const [box, W] = useWidth(480);
   const H = showXAxis ? 86 : 66, padL = 34, padR = 6, padT = 6, padB = showXAxis ? 18 : 4;
@@ -147,7 +147,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
-          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1), hrZones);
+          const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp, powerZones) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1), hrZones);
           const x1 = byTime(s.startSec), x2 = byTime(s.endSec);
           return <rect key={s.index} x={x1} y={y(Math.min(hi, s.targetHigh))} width={Math.max(0.5, x2 - x1)} height={Math.max(2, y(s.targetLow) - y(Math.min(hi, s.targetHigh)))} fill={ZONE_VAR[zone - 1]} fill-opacity="0.28" />;
         })}

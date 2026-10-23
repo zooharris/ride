@@ -9,11 +9,27 @@ export interface Profile {
   lthr: number;         // bpm, lactate threshold heart rate on the bike
   maxHr: number;        // bpm
   restingHr: number;    // bpm
-  /** Top of heart-rate zones 1..6 in bpm on the bike (zone 7 runs to max). Absent: the standard shares of threshold. */
+  /**
+   * The rider's zone tables. Each has a mode: 'pct' (shares of the threshold,
+   * which move when the threshold changes) or 'abs' (watts or bpm, which stay
+   * put). Both representations may be filled; the mode says which one is the
+   * rider's. Absent: the standard shares.
+   */
+  powerZoneMode?: 'pct' | 'abs';
+  /** Top of power zones 1..6 as whole percent of FTP. */
+  powerZonePcts?: number[];
+  /** Top of power zones 1..6 in watts. */
+  powerZoneWatts?: number[];
+  hrZoneMode?: 'pct' | 'abs';
+  /** Top of heart-rate zones 1..6 as whole percent of the bike threshold. */
+  hrZonePcts?: number[];
+  /** Top of heart-rate zones 1..6 in bpm on the bike (zone 7 runs to max). */
   hrZoneTops?: number[];
   /** Threshold heart rate on foot (runs and walks), a few beats above the bike's for most people. Absent: the bike's. */
   footLthr?: number;
-  /** Top of heart-rate zones 1..6 in bpm on foot. Absent: the standard shares of the foot threshold. */
+  footHrZoneMode?: 'pct' | 'abs';
+  footHrZonePcts?: number[];
+  /** Top of heart-rate zones 1..6 in bpm on foot. */
   footHrZoneTops?: number[];
   weightKg: number;
   birthYear?: number;
@@ -79,13 +95,29 @@ export type Equipment = 'bodyweight' | 'dumbbells' | 'kettlebell' | 'bench' | 'b
 
 export interface WalkSpec {
   minutes: number;
-  hrLow: number;            // fraction of max HR; 0 means no minimum (a stroll counts)
-  hrHigh: number;
+  /**
+   * The heart-rate band as zone positions on the rider's foot table (see engine/foot.ts):
+   * 2.0 is the bottom of zone 2, 3.0 its top. zoneLow at or below 1 means no minimum.
+   */
+  zoneLow?: number;
+  zoneHigh?: number;
+  /** Older walks: the band as a share of max heart rate; 0 low means no minimum. Still honoured; new walks use zones. */
+  hrLow?: number;
+  hrHigh?: number;
   packKg?: number;          // weighted pack, if any
 }
 
-/** One step of a run: time, a heart-rate band as a fraction of max HR (as walks), and optionally repeats with a recovery. */
-export interface RunStep { seconds: number; hrLow: number; hrHigh: number; label?: string; repeat?: number; recoverSeconds?: number; recoverLow?: number; recoverHigh?: number }
+/** One step of a run: time, a heart-rate band by name (zones on the foot table), and optionally repeats with a recovery. */
+export interface RunStep {
+  seconds: number;
+  band?: 'walk' | 'easy' | 'steady' | 'tempo' | 'hard';
+  recoverBand?: 'walk' | 'easy' | 'steady' | 'tempo' | 'hard';
+  label?: string;
+  repeat?: number;
+  recoverSeconds?: number;
+  /** Older runs: bands as shares of max heart rate. Still honoured; new runs use band names. */
+  hrLow?: number; hrHigh?: number; recoverLow?: number; recoverHigh?: number;
+}
 export interface RunSpec { steps: RunStep[]; where?: 'outdoor' | 'treadmill' }
 
 export interface Workout {

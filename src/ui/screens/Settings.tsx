@@ -441,7 +441,9 @@ function UpdateCheck() {
 /** Profile fields the coach is told about: a change to any of them means the day's note is out of date. */
 export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'ftp', 'lthr', 'footLthr', 'hoursPerWeek', 'basis'] as const;
 export function coachFieldsChanged(before: Profile, after: Profile): boolean {
-  return COACH_FIELDS.some((k) => before[k] !== after[k]) || JSON.stringify(numbersToPush(before)) !== JSON.stringify(numbersToPush(after));
+  // The coach is told the zone tops too, so a changed table rewrites its note; max HR alone is not something it reads.
+  const tops = (p: Profile) => JSON.stringify([ladderTops(rideHrZones(p), p.lthr), ladderPcts(ridePowerZones(p))]);
+  return COACH_FIELDS.some((k) => before[k] !== after[k]) || tops(before) !== tops(after);
 }
 
 /**

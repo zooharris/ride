@@ -6,13 +6,9 @@
  * toward Washington; indoor rides take the loops near home, shortest first.
  * Tests keep their plain names. The descriptive name becomes the subtitle.
  *
- * Unused names, for rides added later (miles out from Herndon in brackets):
- *   west trail: Sterling (2.5), Church Road (5), Ashburn (7), Broad Run (8), Belmont Ridge (9.5)
- *   west roads: One Loudoun (8), Lansdowne (10), Lucketts (20), Philomont (29), Lovettsville (29),
- *               Point of Rocks (26), Upperville (31), Taylorstown (24), Unison (27)
- *   east: Lake Fairfax (4), Reston Town Center (3), Tysons Corner, Bluemont Junction (17), Ballston (17),
- *         Rosslyn (19), Georgetown (20), Shirlington (20), Gravelly Point (23), Jones Point (27)
- *   local: Elden Street, Floris, Fox Mill, Dulles, Claude Moore, Potomac Falls, Herndon Centennial
+ * Unused names (23 Oct 2026, after Batch 6): Sterling (2.5) and Ashburn (7) on the west trail;
+ * Shirlington (20) and Jones Point (27) east. They are kept in SPARE_NAMES below for the rides a plan
+ * adds to the Library. More names are needed for more rides.
  */
 export const RIDE_NAMES: Record<string, string> = {
   // West, long rides on the trail
@@ -97,4 +93,25 @@ export const RIDE_NAMES: Record<string, string> = {
   'in-ss-2x30': 'Potomac Falls',
   'in-tempo-60': 'Floris',
   'in-recovery-30': 'Elden Street',
+  // 23 Oct 2026 (Batch 6, B6)
+  'lib-z2-105': 'Belmont Ridge',
+  'lib-ss-2x12': 'One Loudoun',
+  'lib-tempo-2x12': 'Lansdowne',
+  'lib-thr-3x6': 'Broad Run',
+  'in-recovery-60': 'Fox Mill',
+  'in-ss-3x8': 'Dulles',
+  'in-vo2-5x2': 'Church Road',
+};
+
+/**
+ * Names not yet used, for the rides a plan adds to the Library when nothing
+ * there is close enough (Batch 6, B1), by the same rule: long and endurance
+ * rides take trail towns west, interval rides the roads and landmarks, easy
+ * rides the local loops. When a group runs out the others are used, and when
+ * all are used the ride keeps its descriptive name.
+ */
+export const SPARE_NAMES: { long: string[]; interval: string[]; easy: string[] } = {
+  long: ['Ashburn', 'Sterling'],
+  interval: ['Shirlington', 'Jones Point'],
+  easy: [],
 };

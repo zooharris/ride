@@ -96,4 +96,18 @@ export const INDOOR: Workout[] = [
     purpose: 'Forty-five minutes of zone 2 on the trainer with a cadence change every ten minutes. The ride that replaces a walk or a rained-out day; no heroics.',
     physiology: 'Aerobic maintenance.',
     blocks: [warm(5), step(10, 0.65, { cadence: 85 }), step(10, 0.65, { cadence: 95 }), step(10, 0.65, { cadence: 90 }), step(5, 0.65, { cadence: 100 }), cool(5)] }),
+
+  // 23 Oct 2026 (Batch 6, B6)
+  lib({ id: 'in-recovery-60', name: 'Recovery 60', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
+    purpose: 'An hour on the trainer at recovery pace: for a day with the time but no reason to add load.',
+    physiology: 'Circulation; very little training stress.',
+    blocks: [step(20, 0.45, { intensityHigh: 0.55, cadence: 90 }), step(20, 0.5, { cadence: 100 }), step(20, 0.45, { intensityHigh: 0.55, cadence: 90 })] }),
+  lib({ id: 'in-ss-3x8', name: 'Sweet Spot 3 x 8', family: 'sweetspot', phases: ['base', 'build'], bases: ['power', 'hr'],
+    purpose: 'Three eight-minute sweet spot efforts in forty-five minutes: the shortest sweet spot session worth doing.',
+    physiology: 'FTP development in a short window.',
+    blocks: [warm(8), rep(3, 'Sweet spot', step(8, 0.88, { intensityHigh: 0.93 }), step(3, 0.5)), cool(4)] }),
+  lib({ id: 'in-vo2-5x2', name: 'VO2max 5 x 2', family: 'vo2max', phases: ['build', 'peak'], bases: ['power'],
+    purpose: 'Five two-minute efforts above threshold in forty minutes: a short dose of top end. Power only.',
+    physiology: 'Maximal oxygen uptake.',
+    blocks: [warm(12), rep(5, 'VO2max', step(2, 1.12, { intensityHigh: 1.2 }), step(2, 0.5)), cool(8)] }),
 ];

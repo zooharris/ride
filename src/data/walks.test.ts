@@ -142,3 +142,57 @@ describe('Batch 6 A6/A7: the calendar is converted once, and what was on the Gar
     expect(p?.icuEventId).toBeUndefined();
   });
 });
+
+describe('Batch 6 B: plan sessions are stored as Library workouts', () => {
+  beforeEach(async () => { await db.delete(); await db.open(); vi.restoreAllMocks(); });
+
+  it('a Library ride by id; a ready-made walk as a copy; a session the Library lacks as one reusable plan-made entry; strength as generated', async () => {
+    const { storeSessionWorkout } = await import('../ui/planService');
+    const { LIBRARY } = await import('../library/workouts');
+    const { generateSession } = await import('../engine/generate');
+    const { generateStrength } = await import('../engine/sessions');
+    const own: Workout[] = [];
+    const lib = LIBRARY.find((w) => w.id === 'trail-long-180')!;
+    expect(await storeSessionWorkout(lib, own)).toBe('trail-long-180');
+    expect(await db.workouts.count()).toBe(0);                                   // never copied
+    const ready = readyMadeSessions(['bodyweight']).find((w) => w.id === 'lib-walk-30')!;
+    const copy = await storeSessionWorkout(ready, own);
+    expect(copy).toMatch(/^gen-/);
+    expect((await db.workouts.get(copy))?.name).toBe('Easy walk 30 min');
+    const big = generateSession({ type: 'threshold', minutes: 240, progression: 0.5, outdoor: true, reason: 'r' });
+    const id1 = await storeSessionWorkout(big, own);
+    const id2 = await storeSessionWorkout(generateSession({ type: 'threshold', minutes: 240, progression: 0.5, outdoor: true, reason: 'r' }), own);
+    expect(id1).toMatch(/^lib-gen-threshold-/);
+    expect(id2).toBe(id1);
+    expect(await db.workouts.get(id1)).toMatchObject({ source: 'mine', planMade: true });
+    const str = generateStrength({ level: 'build', minutes: 40, equipment: ['bodyweight'], variant: 'A', weekInBlock: 2, reason: 'r' });
+    expect(await storeSessionWorkout(str, own)).toBe(str.id);
+    expect((await db.workouts.get(str.id))?.source).toBe('generated');
+  });
+
+  it('the calendar’s generated plan rides take their Library names once; edited, moved, done and hand-added ones stay', async () => {
+    const { nameRideSessions } = await import('../ui/planService');
+    const { generateSession } = await import('../engine/generate');
+    const t = today();
+    const long = generateSession({ type: 'long', minutes: 180, progression: 0.5, outdoor: true, reason: 'r' });
+    const mk = (id: string) => ({ ...long, id });
+    await db.workouts.bulkPut([mk('g1'), mk('g2'), mk('g3'), mk('g4'), mk('g5')]);
+    await db.planned.bulkPut([
+      { id: 'p1', date: t, workoutId: 'g1', basis: 'power', status: 'sent', icuEventId: 7, planId: 'plan' },
+      { id: 'p2', date: t, workoutId: 'g2', basis: 'power', status: 'planned', planId: 'plan', userEdited: true },
+      { id: 'p3', date: t, workoutId: 'g3', basis: 'power', status: 'planned', planId: 'plan', movedFrom: addDays(t, -1) },
+      { id: 'p4', date: addDays(t, -1), workoutId: 'g4', basis: 'power', status: 'completed', planId: 'plan' },
+      { id: 'p5', date: t, workoutId: 'g5', basis: 'power', status: 'planned' },
+    ]);
+    expect(await nameRideSessions()).toBe(1);
+    const p1 = await db.planned.get('p1');
+    expect(p1?.workoutId).not.toBe('g1');
+    expect(p1?.icuEventId).toBe(7);                                              // the Garmin copy is left alone
+    expect((await db.planned.get('p2'))?.workoutId).toBe('g2');
+    expect((await db.planned.get('p3'))?.workoutId).toBe('g3');
+    expect((await db.planned.get('p4'))?.workoutId).toBe('g4');
+    expect((await db.planned.get('p5'))?.workoutId).toBe('g5');
+    expect(await db.workouts.get('g1')).toBeUndefined();                          // the orphaned copy is pruned
+    expect(await nameRideSessions()).toBe(0);                                     // idempotent
+  });
+});

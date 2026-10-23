@@ -153,6 +153,24 @@ const CORE: Workout[] = [
     purpose: 'Thirty minutes at the hardest pace you can hold evenly, alone. Press lap at ten minutes: the average heart rate of the final twenty minutes is your lactate threshold heart rate. The test to run when you are training by heart rate.',
     physiology: 'LTHR estimate (Friel protocol).',
     blocks: [warm(15), step(30, 1.0, { label: 'Test, lap at 10 min' }), cool(10)] }),
+
+  // 23 Oct 2026 (Batch 6, B6): lengths the planner asks for that the Library lacked, so plans can be built from named rides.
+  lib({ id: 'lib-z2-105', name: 'Foundation 105', family: 'endurance', phases: ['base', 'build', 'any'], bases: ['power', 'hr'],
+    purpose: 'An hour and three quarters of steady zone 2: longer than a midweek ride, shorter than the weekend one. Fuel from the first half hour.',
+    physiology: 'Aerobic base and durability.',
+    blocks: [warm(10), step(90, 0.62, { intensityHigh: 0.72, label: 'Steady' }), cool(5)] }),
+  lib({ id: 'lib-ss-2x12', name: 'Sweet Spot 2 x 12', family: 'sweetspot', phases: ['base', 'build'], bases: ['power', 'hr'],
+    purpose: 'Two twelve-minute sweet spot efforts in fifty minutes: a full session for a short window.',
+    physiology: 'FTP development with manageable fatigue.',
+    blocks: [warm(10), rep(2, 'Sweet spot', step(12, 0.88, { intensityHigh: 0.93 }), step(4, 0.5)), cool(8)] }),
+  lib({ id: 'lib-tempo-2x12', name: 'Tempo 2 x 12', family: 'tempo', phases: ['base', 'build'], bases: ['power', 'hr'],
+    purpose: 'Two twelve-minute blocks of tempo in forty-five minutes: brisk, steady and over quickly.',
+    physiology: 'Muscular endurance at a sustainable intensity.',
+    blocks: [warm(10), rep(2, 'Tempo', step(12, 0.8, { intensityHigh: 0.86 }), step(4, 0.5)), cool(3)] }),
+  lib({ id: 'lib-thr-3x6', name: 'Threshold 3 x 6', family: 'threshold', phases: ['build'], bases: ['power', 'hr'],
+    purpose: 'Three six-minute efforts at FTP in forty-five minutes: the short way into threshold work.',
+    physiology: 'Lactate threshold; raises FTP directly.',
+    blocks: [warm(10), rep(3, 'Threshold', step(6, 0.95, { intensityHigh: 1.0 }), step(3, 0.5)), cool(8)] }),
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */

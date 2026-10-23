@@ -3,7 +3,7 @@ import type { Plan, PlannedSession } from './planner';
 import { scoreRide } from './compliance';
 import { addDays, today } from './load';
 import { hm } from './assessment';
-import { workoutStats } from './workout';
+import { sameWithin } from './snap';
 
 /**
  * Adaptation is the planner run again from today, plus an honest account of
@@ -29,6 +29,9 @@ export interface Change {
   userEdited?: boolean;
   /** The session on this date and kind was added by hand, not by the plan. */
   userAdded?: boolean;
+  /** What a named Library workout is ("Long Endurance 3:00" for "Purcellville"), shown beside the name. */
+  beforeSub?: string;
+  afterSub?: string;
 }
 export const changeKey = (c: { date: string; kind: string }) => `${c.date}|${c.kind}`;
 
@@ -66,29 +69,18 @@ export function reviewLastWeek(planned: PlannedWorkout[], workouts: Map<string, 
   return { from, to: addDays(date, -1), planned: past.length, completed: completed.length, missed: missed.length, lines };
 }
 
-/** A ride's name without its length ("Long Endurance 2:23" -> "Long Endurance"). */
-const baseName = (n: string) => n.replace(/\s+\d+(:\d\d)?\s*(min)?$/i, '').trim();
-
-function size(w: Workout): { minutes: number; tss: number } {
-  if (w.kind === 'ride' && w.blocks?.length) { const s = workoutStats(w.blocks); return { minutes: s.seconds / 60, tss: s.tss }; }
-  return { minutes: w.walk?.minutes ?? w.minutes ?? 0, tss: w.estimatedTss ?? 0 };
-}
-
 /**
  * Whether a regenerated session is, for the rider, the same session: the same
- * ride (same name apart from its length, same family) changed by less than
- * 10 minutes and 10% in length and by less than 5 TSS and 10% in load. The
- * re-check rebuilds the plan from each morning's data, which moves rides by a
- * few minutes; offering those as changes is noise. Strength, mobility and walks
- * count as changed whenever the session itself differs (their names say which).
+ * workout, the same name, or the same kind of session (a ride of the same
+ * family; a walk in the same band with the same pack; the same run or routine)
+ * within 12% (rides) or 15% (others) in length and load, with floors of 10
+ * minutes and 8 TSS (Batch 6, B4; was 10 min/10% and 5 TSS, which let a
+ * 47 → 54 minute endurance ride through as a change). With library-first plans
+ * this is also what lets the calendar's older generated rides ("Long Endurance
+ * 3:00") match the named Library ride the plan now picks ("Purcellville").
  */
 export function sameSession(before: Workout, after: Workout): boolean {
-  if (before.name === after.name) return true;
-  if (before.kind !== 'ride' || after.kind !== 'ride') return false;
-  if (before.family !== after.family || baseName(before.name) !== baseName(after.name)) return false;
-  const b = size(before), a = size(after);
-  const dMin = Math.abs(a.minutes - b.minutes), dTss = Math.abs(a.tss - b.tss);
-  return dMin < Math.max(10, b.minutes * 0.1) && dTss < Math.max(5, b.tss * 0.1);
+  return sameWithin(before, after);
 }
 
 /** Compare the current calendar (from today) with a freshly generated plan. Only changes that matter are listed. */
@@ -142,9 +134,11 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
     const userEdited = edited.has(k) || undefined;
     const userAdded = added.has(k) || undefined;
     if (userEdited && !opts.includeEdited) continue;
-    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), note: 'added', userEdited, userAdded });
-    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), note: 'removed', userEdited, userAdded });
-    else changes.push({ date, kind, before: bNames.join(', '), after: aNames.join(', '), note: 'changed', userEdited, userAdded });
+    const beforeSub = b.map((w) => w.subtitle).filter(Boolean).join(', ') || undefined;
+    const afterSub = a.map((x) => x.workout.subtitle).filter(Boolean).join(', ') || undefined;
+    if (!b.length) changes.push({ date, kind, after: aNames.join(', '), afterSub, note: 'added', userEdited, userAdded });
+    else if (!a.length) changes.push({ date, kind, before: bNames.join(', '), beforeSub, note: 'removed', userEdited, userAdded });
+    else changes.push({ date, kind, before: bNames.join(', '), beforeSub, after: aNames.join(', '), afterSub, note: 'changed', userEdited, userAdded });
   }
   return changes;
 }

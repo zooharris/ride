@@ -6,6 +6,7 @@ import { generateMobility, generateRun, generateStrength, generateWalk, type Str
 import { addDays, fitnessSeries } from './load';
 import type { Basis, Equipment, Fitness, Profile, SessionKind, Workout } from './types';
 import { workoutStats } from './workout';
+import { sizeOf, snap } from './snap';
 
 /**
  * The planner: an assessment of the rider and a model of the goal go in; a
@@ -71,6 +72,10 @@ export interface PlanRequest {
    * every phase as the weeks go by.
    */
   layout?: Array<{ start: string; phase: Phase }>;
+  /** The rider's own saved sessions and the plan-made Library entries, offered to the planner alongside the Library (Batch 6, B1). */
+  ownWorkouts?: Workout[];
+  /** Build the sessions as generated, without the Library: plans as they were made before 23 Oct 2026 (tests of the move). */
+  noSnap?: boolean;
   /** What the rider has actually done this week up to today, planned or not, so the days left can respond to it. */
   done?: Array<{ date: string; tss: number; seconds: number; intensity?: number; kind?: SessionKind }>;
 }
@@ -518,6 +523,24 @@ export function generatePlan(req: PlanRequest): Plan {
       total = sessions.reduce((s, x) => s + x.tss, 0);
     }
     sessions.sort((x, y) => x.date.localeCompare(y.date) || KIND_ORDER[x.kind] - KIND_ORDER[y.kind]);
+
+    // Library first (Batch 6, B1–B3, B7): each session is carried out by the nearest Library workout
+    // within the tolerance, so the calendar shows named workouts; the planner's sentence stays. What
+    // the Library cannot carry stays as generated (and is added to the Library when the plan is applied).
+    // The week's load is recomputed from what was chosen; there is no second fit against the Library.
+    const before = total;
+    for (let k = 0; k < sessions.length && !req.noSnap; k++) {
+      const x = sessions[k];
+      const lib = snap(x.workout, { basis: req.basis, extra: req.ownWorkouts, equipment: av.equipment });
+      if (!lib) continue;
+      const size = sizeOf(lib);
+      sessions[k] = { ...x, workout: lib, seconds: Math.round(size.minutes * 60), tss: Math.round(size.tss) };
+    }
+    total = sessions.reduce((s, x) => s + x.tss, 0);
+    if (!refit && targetTss > 0 && Math.abs(total - targetTss) / targetTss > 0.1 && Math.abs(before - targetTss) / targetTss <= 0.1) {
+      const pct = Math.round(Math.abs(total - targetTss) / targetTss * 100);
+      decisions.push(`Week of ${new Date(weekStart + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} lands ${pct}% ${total < targetTss ? 'under' : 'over'} its target because the Library's nearest rides are ${total < targetTss ? 'shorter' : 'longer'}; the long ride carries the difference next week.`);
+    }
     if (sessions.length === 0 && awayDays === 0) return;   // a first week already over; a week away stays, empty, so the timeline keeps its shape
     for (const s of sessions) if (s.type === 'long' && s.seconds > longestPlanned) longestPlanned = s.seconds;
 

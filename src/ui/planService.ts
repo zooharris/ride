@@ -11,6 +11,7 @@ import { weeklyLoad } from '../engine/progress';
 import type { Basis, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { retargetWorkout } from '../engine/sessions';
+import { planMadeEntry, snap } from '../engine/snap';
 import { deleteEvent, sendWorkout, type HrProfile, type IntervalsCredentials } from '../sync/intervals';
 import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
@@ -186,9 +187,9 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done });
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: data.mine.filter((w) => w.source === 'mine') });
   }
-  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away });
+  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: data.mine.filter((w) => w.source === 'mine') });
 }
 
 /**
@@ -270,8 +271,10 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     await db.planned.delete(p.id);
     removed++;
   }
-  await db.workouts.bulkPut(toAdd.map((x) => x.s.workout));
-  await db.planned.bulkAdd(toAdd.map((x) => ({ id: newId(), date: x.s.date, workoutId: x.s.workout.id, basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name })));
+  const own = data.mine.filter((w) => w.source === 'mine');
+  const rows: PlannedWorkout[] = [];
+  for (const x of toAdd) rows.push({ id: newId(), date: x.s.date, workoutId: await storeSessionWorkout(x.s.workout, own), basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name });
+  await db.planned.bulkAdd(rows);
   added = toAdd.length;
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
@@ -281,6 +284,61 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   notify();
   if (c) autoBackup(c, true);
   return { added, removed, kept };
+}
+
+/**
+ * Batch 6, B4 (23 Oct 2026): rides a plan put on the calendar before plans were
+ * built from the Library are generated ("Long Endurance 3:00"). Each is
+ * relabelled to the Library ride it snaps to, or made into a plan-made Library
+ * entry, so the calendar carries names from day one and the first re-check
+ * finds nothing to change. Only rides still to come, made by a plan and not
+ * edited or moved by the rider. A copy already on the Garmin is left as it is
+ * (its content is the same within the tolerance); nothing is re-sent for a
+ * name. Runs at start-up after the walk re-target (A6); idempotent, since a
+ * relabelled ride is no longer a generated one.
+ */
+export async function nameRideSessions(): Promise<number> {
+  const t = today();
+  const planned = (await db.planned.toArray()).filter((p) => p.planId && !p.userEdited && !p.movedFrom && p.status !== 'completed' && p.date >= t);
+  if (!planned.length) return 0;
+  const workouts = await db.workouts.toArray();
+  const byId = new Map(workouts.map((w) => [w.id, w]));
+  const own = workouts.filter((w) => w.source === 'mine');
+  let n = 0;
+  for (const p of planned) {
+    const w = byId.get(p.workoutId);
+    if (!w || w.source !== 'generated' || w.kind !== 'ride') continue;
+    const lib = snap(w, { basis: p.basis, extra: own });
+    let id: string;
+    if (lib) id = lib.id;
+    else {
+      const { entry, isNew } = planMadeEntry(w, own);
+      if (isNew) { await db.workouts.put(entry); own.push(entry); }
+      id = entry.id;
+    }
+    await db.planned.update(p.id, { workoutId: id });
+    n++;
+  }
+  if (n) { await pruneOrphanWorkouts(); notify(); }
+  return n;
+}
+
+/**
+ * Where a plan session's workout lives (Batch 6, B1): a Library ride and the
+ * rider's own or plan-made workouts are used by id, never copied; a ready-made
+ * walk, run or mobility routine is stored as its own copy (as when it is added
+ * by hand, so the entry keeps what was chosen if the equipment changes); a
+ * generated session the Library could not carry becomes a plan-made Library
+ * entry, reused by later sessions and plans; strength is stored as generated
+ * (its exercises rotate week by week). `own` gains any entry made here.
+ */
+export async function storeSessionWorkout(w: Workout, own: Workout[]): Promise<string> {
+  if (w.source === 'mine' || (w.source === 'library' && w.kind === 'ride')) return w.id;
+  if (w.source === 'library') { const id = `gen-${newId()}`; await db.workouts.put({ ...w, id, source: 'generated' }); return id; }
+  if (w.kind === 'strength') { await db.workouts.put(w); return w.id; }
+  const { entry, isNew } = planMadeEntry(w, own);
+  if (isNew) { await db.workouts.put(entry); own.push(entry); }
+  return entry.id;
 }
 
 /**
@@ -564,7 +622,8 @@ export function recentWeeks(data: AppData, date: string): number[] {
 
 /** A proposed change in words for the coach: "2026-10-23: add Oatlands", never "added  → Oatlands". */
 export function changeWords(c: Change): string {
-  const what = c.note === 'added' ? `add ${c.after}` : c.note === 'removed' ? `remove ${c.before}` : `replace ${c.before} with ${c.after}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
+  const b = `${c.before}${c.beforeSub ? ` (${c.beforeSub})` : ''}`, a = `${c.after}${c.afterSub ? ` (${c.afterSub})` : ''}`;
+  const what = c.note === 'added' ? `add ${a}` : c.note === 'removed' ? `remove ${b}` : `replace ${b} with ${a}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
   return `${c.date}: ${what}${c.userEdited || c.userAdded ? ' [the rider changed this day by hand; offered, not pre-selected]' : ''}`;
 }
 

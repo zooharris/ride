@@ -239,7 +239,8 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
     } finally { setBusy(false); }
   }
 
-  const line = (c: Change) => c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}</span> : <span>{c.before} <span class="faint">→</span> {c.after}</span>;
+  const sub = (t?: string) => (t ? <span class="faint small"> · {t}</span> : null);
+  const line = (c: Change) => c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
 
   return (
     <div>

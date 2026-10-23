@@ -4,7 +4,7 @@ import { notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
-import { retargetFootSessions } from './planService';
+import { nameRideSessions, retargetFootSessions } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -63,6 +63,9 @@ export function App() {
           toast({ ok: !r.failed, text: `Updated your calendar: ${parts}.${sent}${failed}` });
         }
       } catch { /* the conversion runs again at the next start */ }
+      // Batch 6 B4: rides the plan put on the calendar before plans were built from the Library take
+      // their Library names, after the walk re-target above.
+      try { if (await nameRideSessions() && c) await syncDevices(c); } catch { /* runs again at the next start */ }
     };
     const off = onHistoryMatched((r) => {
       notify();

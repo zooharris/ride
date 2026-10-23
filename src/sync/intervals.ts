@@ -14,7 +14,7 @@
  */
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
-import { footLthr as footThreshold, rideHrZones, validTops } from '../engine/zones';
+import { defaultHrZoneTops, footLthr as footThreshold, rideHrZones, validTops } from '../engine/zones';
 
 const BASE = 'https://intervals.icu/api/v1';
 
@@ -86,16 +86,27 @@ export async function testConnection(c: IntervalsCredentials): Promise<AthleteNu
     maxHr: num(sport?.max_hr),
     restingHr: num(a.icu_resting_hr),
     weight: num(a.icu_weight) ?? num(a.weight),
-    hrZoneTops: zoneTops(sport?.hr_zones),
+    hrZoneTops: zoneTops(sport?.hr_zones, num(sport?.lthr)),
     footLthr: num(foot?.lthr),
-    footHrZoneTops: zoneTops(foot?.hr_zones),
+    footHrZoneTops: zoneTops(foot?.hr_zones, num(foot?.lthr)),
   };
 }
 
-/** Intervals.icu keeps a zone table as the top of each zone in bpm, seven long with max HR last; the app keeps the first six. */
-function zoneTops(v: unknown): number[] | undefined {
-  if (!Array.isArray(v) || v.length < 6) return undefined;
-  const tops = v.slice(0, 6).map((x) => Number(x));
+/**
+ * Intervals.icu keeps a zone table as the top of each zone in bpm, max HR last.
+ * The app keeps the top of zones 1 to 6. A shorter table (a rider who typed the
+ * Garmin's five zones in, say) keeps the tops it has and fills the rest from the
+ * standard shares of threshold, kept increasing; Save writes the full seven back.
+ */
+function zoneTops(v: unknown, lthr: number | undefined): number[] | undefined {
+  if (!Array.isArray(v) || v.length < 3 || !lthr) return undefined;
+  const given = v.slice(0, -1).map((x) => Number(x)).slice(0, 6);
+  const standard = defaultHrZoneTops(lthr);
+  const tops: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const t = i < given.length ? given[i] : Math.max(standard[i], (tops[i - 1] ?? 0) + 1);
+    tops.push(t);
+  }
   return validTops(tops) ? tops : undefined;
 }
 

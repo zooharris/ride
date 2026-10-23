@@ -51,6 +51,9 @@ export function Settings({ data }: { data: AppData }) {
   async function save() {
     setFirstDay(p.weekStartsOn === 0 ? 0 : 1);
     await saveProfile(p);
+    // The database stamps the profile on every write; take the stored copy so the page reads as saved.
+    const stored = await db.profile.get('me');
+    if (stored) setP(stored);
     await setSetting('claudeKey', claudeKey.trim());
     await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
     // The day's note is rewritten only when something the coach reads changed.

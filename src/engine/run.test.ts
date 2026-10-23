@@ -50,7 +50,7 @@ describe('runs: the generator', () => {
     expect([t.repeat, t.seconds]).toEqual([3, 480]);
     expect(runSeconds(tempo.run)).toBe((10 + 24 + 6 + 5) * 60);
     expect(runStepsLine(tempo)).toMatch(/3 × 8 min at upper zone 3 into zone 4 \(tempo\), 3 min easy between/);
-    expect(runStepsLine(tempo, { lthr: 154, maxHr: 186, footLthr: 158, footHrZoneMode: 'abs', footHrZoneTops: [120, 135, 148, 158, 170, 178] })).toMatch(/8 min at upper zone 3 into zone 4 \(142–158 bpm\)/);
+    expect(runStepsLine(tempo, { lthr: 154, maxHr: 186, footLthr: 158, footHrZoneMode: 'abs', footHrZoneTops: [120, 135, 148, 158, 170, 178] })).toMatch(/8 min at upper zone 3 into zone 4 \(143–158 bpm\)/);
   });
   it('pace is a hint from the threshold pace, in the rider’s units', () => {
     const t = parsePace('8:00', true)!;            // 8:00 a mile
@@ -72,7 +72,7 @@ describe('runs: to the Garmin', () => {
     expect(strides.description).toMatch(/stride 6x\n- 20s 100-106% LTHR\n- 1m 20-86% LTHR/);
     // with a foot table of the rider's own, the shares come from it: zone 2 = 121–135 of 158
     const own = runEvent(w, '2026-10-25', { maxHr: 186, lthr: 154, footLthr: 158, footHrZoneMode: 'abs', footHrZoneTops: [120, 135, 148, 158, 170, 178] });
-    expect(own.description).toMatch(/- 10m 76-85% LTHR/);
+    expect(own.description).toMatch(/- 10m 76-86% LTHR/);
   });
 });
 

@@ -63,9 +63,17 @@ export function validTops(tops?: number[]): tops is number[] {
 export function ladderFromFractions(standard: Zone[], fractions: number[]): Zone[] {
   return standard.map((z, i) => ({
     ...z,
-    low: i === 0 ? 0 : round3(fractions[i - 1]),
-    high: i < 6 ? round3(fractions[i]) : Infinity,
+    low: i === 0 ? 0 : round5(fractions[i - 1]),
+    high: i < 6 ? round5(fractions[i]) : Infinity,
   }));
+}
+
+/**
+ * An absolute top is inclusive (a zone whose top is 116 bpm holds 116 and hands
+ * 117 to the next), so as a fraction it sits half a unit above the number.
+ */
+function absFractions(tops: number[], threshold: number): number[] {
+  return tops.map((t) => (t + 0.5) / threshold);
 }
 
 /**
@@ -76,16 +84,21 @@ export function ladderFromFractions(standard: Zone[], fractions: number[]): Zone
  */
 export function ladderFor(standard: Zone[], threshold: number, mode: ZoneMode | undefined, pcts: number[] | undefined, tops: number[] | undefined): Zone[] {
   if (mode === 'pct' && validTops(pcts)) return ladderFromFractions(standard, pcts.map((p) => p / 100));
-  if (mode !== 'pct' && validTops(tops) && threshold > 0) return ladderFromFractions(standard, tops.map((t) => t / threshold));
+  if (mode !== 'pct' && validTops(tops) && threshold > 0) return ladderFromFractions(standard, absFractions(tops, threshold));
   // the other representation, if that is the one that is filled in
   if (validTops(pcts)) return ladderFromFractions(standard, pcts.map((p) => p / 100));
-  if (validTops(tops) && threshold > 0) return ladderFromFractions(standard, tops.map((t) => t / threshold));
+  if (validTops(tops) && threshold > 0) return ladderFromFractions(standard, absFractions(tops, threshold));
   return standard;
 }
 
-/** The zone tops of a ladder in the threshold's unit (watts or bpm), rounded. */
+/** The inclusive top of a zone in the threshold's unit: the last whole watt or beat that is still inside it. */
+export function topOf(zone: Zone, threshold: number): number {
+  return Math.floor(zone.high * threshold + 1e-6);
+}
+
+/** The zone tops of a ladder in the threshold's unit (watts or bpm), inclusive. */
 export function ladderTops(zones: Zone[], threshold: number): number[] {
-  return zones.slice(0, 6).map((z) => Math.round(z.high * threshold));
+  return zones.slice(0, 6).map((z) => topOf(z, threshold));
 }
 
 /** The zone tops of a ladder in whole percent of threshold. */
@@ -214,10 +227,10 @@ export interface ZoneRow { zone: Zone; low: number; high: number | null }
 
 /** Absolute zone boundaries of a ladder for a threshold, in that threshold's unit. */
 export function tableOf(zones: Zone[], threshold: number): ZoneRow[] {
-  return zones.map((zone) => ({
+  return zones.map((zone, i) => ({
     zone,
-    low: Math.round(zone.low * threshold),
-    high: isFinite(zone.high) ? Math.round(zone.high * threshold) - 1 : null,
+    low: i === 0 ? 0 : topOf(zones[i - 1], threshold) + 1,
+    high: isFinite(zone.high) ? topOf(zone, threshold) : null,
   }));
 }
 
@@ -241,4 +254,8 @@ export function bpmFor(profile: Profile, powerIntensity: number): number {
 
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+function round5(n: number): number {
+  return Math.round(n * 100000) / 100000;
 }

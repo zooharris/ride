@@ -82,12 +82,12 @@ export function bandFractions(b: FootBand, profile?: FootProfile): { low: number
   return { low: hasNoFloor(b) ? 0 : fractionAt(b.zoneLow, zones), high: fractionAt(b.zoneHigh, zones) };
 }
 
-/** A band in beats per minute on the rider's foot table; undefined without a rider. */
+/** A band in whole beats per minute on the rider's foot table (first beat inside to last beat inside); undefined without a rider. */
 export function bandBpm(b: FootBand, profile?: FootProfile): { low: number; high: number } | undefined {
   const { lthr } = ladderOf(profile);
   if (!lthr) return undefined;
   const f = bandFractions(b, profile);
-  return { low: Math.round(f.low * lthr), high: Math.round(f.high * lthr) };
+  return { low: Math.ceil(f.low * lthr - 1e-6), high: Math.floor(f.high * lthr - 1e-6) };
 }
 
 /** "zone 2", "upper zone 2 into lower zone 3", "up to zone 1". */

@@ -54,8 +54,8 @@ describe('zones', () => {
   it('builds a ladder from the rider\'s own zone tops and falls back to the standard shares', () => {
     const tops = [117, 132, 145, 157, 168, 176];   // bpm, threshold 154
     const z = ladderFor(HR_ZONES, 154, 'abs', undefined, tops);
-    expect(z[1].high).toBeCloseTo(132 / 154, 3);
-    expect(z[3].low).toBeCloseTo(145 / 154, 3);
+    expect(z[1].high).toBeCloseTo(132.5 / 154, 3);   // a top is inclusive: 132 is still zone 2, 133 is zone 3
+    expect(z[3].low).toBeCloseTo(145.5 / 154, 3);
     expect(hrZone(124 / 154, z)).toBe(2);        // 124 bpm is endurance on this rider's ladder
     expect(hrZone(124 / 154)).toBe(1);           // but recovery on the standard shares (82% = 126)
     expect(hrZone(150 / 154, z)).toBe(4);
@@ -65,28 +65,28 @@ describe('zones', () => {
   });
   it('percent mode moves with the threshold; absolute mode stays put', () => {
     const pct = { lthr: 154, hrZoneMode: 'pct' as const, hrZonePcts: [76, 86, 94, 102, 109, 114] };
-    expect(ladderTops(rideHrZones(pct), 154)).toEqual([117, 132, 145, 157, 168, 176]);
-    expect(ladderTops(rideHrZones({ ...pct, lthr: 160 }), 160)).toEqual([122, 138, 150, 163, 174, 182]);
+    expect(ladderTops(rideHrZones(pct), 154)).toEqual([117, 132, 144, 157, 167, 175]);   // whole percents, floored to the last beat inside
+    expect(ladderTops(rideHrZones({ ...pct, lthr: 160 }), 160)).toEqual([121, 137, 150, 163, 174, 182]);
     const abs = { lthr: 154, hrZoneMode: 'abs' as const, hrZoneTops: [117, 132, 145, 157, 168, 176] };
     expect(ladderTops(rideHrZones({ ...abs, lthr: 160 }), 160)).toEqual([117, 132, 145, 157, 168, 176]);
-    expect(ladderPcts(rideHrZones(abs))).toEqual([76, 86, 94, 102, 109, 114]);
+    expect(ladderPcts(rideHrZones(abs))).toEqual([76, 86, 94, 102, 109, 115]);
     // power: watts mode keeps the watts when FTP changes; percent mode keeps the shares
     const w = { ftp: 210, powerZoneMode: 'abs' as const, powerZoneWatts: [115, 157, 189, 220, 252, 315] };
     expect(ladderTops(ridePowerZones({ ...w, ftp: 230 }), 230)).toEqual([115, 157, 189, 220, 252, 315]);
-    expect(ladderTops(ridePowerZones({ ftp: 230, powerZoneMode: 'pct', powerZonePcts: [55, 75, 90, 105, 120, 150] }), 230)).toEqual([127, 173, 207, 242, 276, 345]);
+    expect(ladderTops(ridePowerZones({ ftp: 230, powerZoneMode: 'pct', powerZonePcts: [55, 75, 90, 105, 120, 150] }), 230)).toEqual([126, 172, 207, 241, 276, 345]);   // floored: 55% of 230 is 126.5, so 126 is the last watt inside
     expect(powerZone(0.72, ridePowerZones({ ftp: 200, powerZoneMode: 'pct', powerZonePcts: [55, 70, 90, 105, 120, 150] }))).toBe(3);
   });
   it('renders and scores on the rider\'s ladders: threshold meets threshold whatever the tops', () => {
     const z = ladderFor(HR_ZONES, 154, 'abs', undefined, [117, 132, 145, 157, 168, 176]);
-    expect(powerToHrFraction(0.75, z)).toBeCloseTo(132 / 154, 3);   // top of power Z2 lands on the top of HR Z2
+    expect(powerToHrFraction(0.75, z)).toBeCloseTo(132.5 / 154, 3);   // top of power Z2 lands on the top of HR Z2
     expect(powerToHrFraction(1.0, z)).toBeGreaterThan(145 / 154);
     expect(powerToHrFraction(1.0, z)).toBeLessThan(157 / 154);
     expect(hrToPowerFraction(1, z)).toBe(1);
-    expect(hrToPowerFraction(132 / 154, z)).toBeCloseTo(0.75, 2);
+    expect(hrToPowerFraction(132.5 / 154, z)).toBeCloseTo(0.75, 2);
     // a rider's own power ladder is honoured too: Z2 ending at 70% of FTP maps to the top of HR Z2
     const pz = ladderFor(POWER_ZONES, 200, 'pct', [55, 70, 90, 105, 120, 150], undefined);
-    expect(powerToHrFraction(0.70, z, pz)).toBeCloseTo(132 / 154, 3);
-    expect(hrToPowerFraction(132 / 154, z, pz)).toBeCloseTo(0.70, 2);
+    expect(powerToHrFraction(0.70, z, pz)).toBeCloseTo(132.5 / 154, 3);
+    expect(hrToPowerFraction(132.5 / 154, z, pz)).toBeCloseTo(0.70, 2);
     let last = -1;
     for (let h = 0; h <= 1.3; h += 0.01) { const p = hrToPowerFraction(h, z, pz); expect(p).toBeGreaterThanOrEqual(last); last = p; }
   });
@@ -97,18 +97,18 @@ describe('zones', () => {
     const q = { ...p, footLthr: 158, footHrZoneMode: 'abs' as const, footHrZoneTops: [120, 135, 148, 158, 170, 178] };
     expect(footLthr(q)).toBe(158);
     expect(hrZone(130 / 158, footHrZones(q))).toBe(2);
-    expect(zoneTable(q, 'hr')[1]).toMatchObject({ low: 117, high: 131 });   // the bike table is untouched
+    expect(zoneTable(q, 'hr')[1]).toMatchObject({ low: 118, high: 132 });   // the bike table is untouched; 117 is the last beat of zone 1
   });
   it('walks and runs are bands on the foot table, resolved to beats at the moment they are shown', () => {
     const q = { ...profile, lthr: 154, maxHr: 186, footLthr: 158, footHrZoneMode: 'abs' as const, footHrZoneTops: [120, 135, 148, 158, 170, 178] };
     expect(bandZoneWords({ zoneLow: 2, zoneHigh: 3 })).toBe('zone 2');
     expect(bandZoneWords({ zoneLow: 2.5, zoneHigh: 3.5 })).toBe('upper zone 2 into lower zone 3');
     expect(bandZoneWords({ zoneLow: 0, zoneHigh: 2 })).toBe('up to the top of zone 1');
-    expect(bandBpm({ zoneLow: 2, zoneHigh: 3 }, q)).toEqual({ low: 120, high: 135 });        // zone 2 on this rider's foot table
+    expect(bandBpm({ zoneLow: 2, zoneHigh: 3 }, q)).toEqual({ low: 121, high: 135 });        // zone 2 on this rider's foot table: zone 1 ends at 120
     expect(bandBpm({ zoneLow: 2.5, zoneHigh: 3.5 }, q)).toEqual({ low: 128, high: 142 });
     expect(bandFractions({ zoneLow: 0, zoneHigh: 2 }, q).low).toBe(0);
     // a change to the foot table moves the beats, not the walk
-    expect(bandBpm({ zoneLow: 2, zoneHigh: 3 }, { ...q, footHrZoneTops: [118, 132, 148, 158, 170, 178] })).toEqual({ low: 118, high: 132 });
+    expect(bandBpm({ zoneLow: 2, zoneHigh: 3 }, { ...q, footHrZoneTops: [118, 132, 148, 158, 170, 178] })).toEqual({ low: 119, high: 132 });
     // an older walk written as a share of max still resolves, through the rider's numbers
     const old = walkBand({ minutes: 30, hrLow: 0.6, hrHigh: 0.7 }, q);   // 112–130 bpm at max 186
     expect(old.zoneLow).toBeLessThan(2); expect(old.zoneHigh).toBeGreaterThan(2); expect(old.zoneHigh).toBeLessThan(3);

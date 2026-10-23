@@ -54,9 +54,19 @@ export interface CoachContext {
 /** The plan in one line's worth of facts. */
 export interface CoachPlan { name: string; goal: string; phase?: string; recoveryWeek?: boolean; daysToGo?: number; eventName?: string }
 
-/** The rider's first name, or "the rider". */
-export function firstName(profile: Pick<Profile, 'name'>): string {
-  return profile.name?.trim().split(/\s+/)[0] || 'the rider';
+/**
+ * The rider's name exactly as set, whole, or "the rider" when none is set.
+ * Never a guessed first name: "zooharris" (an Intervals.icu username) was being
+ * shortened to "zoo" (23 Oct 2026, Batch 7 C4).
+ */
+export function riderName(profile: Pick<Profile, 'name'>): string {
+  return profile.name?.trim() || 'the rider';
+}
+
+/** How the coach must use the name, in every prompt. */
+export function nameRule(profile: Pick<Profile, 'name'>): string {
+  const name = riderName(profile);
+  return name === 'the rider' ? 'No name is set: address the rider without one.' : `The rider's name is exactly "${name}"; use it exactly as written when you address them, never shortened, split or changed, and never a guessed first name. If it does not read like a name, address them without one.`;
 }
 
 /**
@@ -65,15 +75,14 @@ export function firstName(profile: Pick<Profile, 'name'>): string {
  */
 export function riderLine(profile: Profile, date: string): string {
   const age = profile.birthYear ? Number(date.slice(0, 4)) - profile.birthYear : undefined;
-  const name = firstName(profile);
-  const who = name === 'the rider' ? 'The rider' : name;
+  const name = riderName(profile);
+  const who = name === 'the rider' ? 'The rider' : `The rider ("${name}")`;
   return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${profile.units} units, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm on the bike${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm), workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
 }
 
 /** The opening of every prompt: whose coach, and who they are. */
 function coachIntro(profile: Profile, date: string): string {
-  const name = firstName(profile);
-  return `You are ${name === 'the rider' ? "the rider's" : `${name}'s`} cycling coach. ${riderLine(profile, date)}`;
+  return `You are the rider's cycling coach. ${riderLine(profile, date)} ${nameRule(profile)}`;
 }
 
 /** The plan line (and its absence), shared by the note, questions and the review. */
@@ -158,15 +167,14 @@ export const MEDICAL_RULE = "You are not a doctor. If the rider's notes or quest
 export const SCALE = 'Fitness and fatigue are 42-day and 7-day weighted averages of daily training load (TSS); form is fitness minus fatigue. Form between −30 and −10 is a normal training build; below −30 is overreaching; between −10 and +5 is fresh enough for quality work; above +5 is fresh (tapered or rested). Readiness 0–100 is the app\'s morning score from HRV, sleep, resting heart rate and form against the rider\'s own 2-week normal.';
 
 /** Rules for everything the coach writes: the note, answers, chart answers and the review. */
-export const SHARED_RULES = `Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar is the rider's plan, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one. Never describe who placed a session on the calendar or how it was recorded or synced; notes in brackets are background for you, not things to say. Do not invent numbers. ${MEDICAL_RULE} ${SCALE}`;
+export const SHARED_RULES = `Use the rider's name only exactly as given above, never shortened or guessed. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar is the rider's plan, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one. Never describe who placed a session on the calendar or how it was recorded or synced; notes in brackets are background for you, not things to say. Do not invent numbers. ${MEDICAL_RULE} ${SCALE}`;
 
 /** Rules for the daily note only: an answer about form need not walk through today's calendar. */
 export const NOTE_ONLY_RULES = 'Speak to every session listed for today; do not describe the day as empty when something is listed, and do not tell the rider to do a session that is marked already done. If nothing is on the calendar, say so in one sentence and give one sentence of advice.';
 
 /** Built prompts, separate from the calls so they can be tested. */
 export function notePrompt(ctx: CoachContext): string {
-  const name = firstName(ctx.profile);
-  return `${coachIntro(ctx.profile, ctx.date)} Write one short note for today${name === 'the rider' ? '' : `, addressed to ${name} by first name`}. Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. ${SHARED_RULES} ${NOTE_ONLY_RULES}\n\n${dayFacts(ctx)}`;
+  return `${coachIntro(ctx.profile, ctx.date)} Write one short note for today, addressed to the rider. Be specific, warm, and brief: 3 to 5 sentences, no headings, no bullet points, no exclamation marks. ${SHARED_RULES} ${NOTE_ONLY_RULES}\n\n${dayFacts(ctx)}`;
 }
 
 const ANSWER_RULES = "Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks; speak to the rider in the second person. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's recommended changes.";
@@ -441,8 +449,8 @@ export function readVerdict(v: { applyChanges?: unknown; skip?: unknown; verdict
  * What the day's note was written from: the sessions (with their status and recording), the
  * rider's note and wellness flag, and the readiness band once the morning's wellness is in. The
  * note is rewritten when this changes: when the watch syncs and moves the band, not when only
- * a name in Settings changes.
+ * a name in Settings changes. v5 (23 Oct 2026): the note is rewritten once, so it uses the rider's name exactly as set.
  */
 export function noteSignature(d: { sessions: string[]; noteText?: string; badWellness?: boolean; wellnessToday: boolean; band: Readiness['band']; plan?: CoachPlan }): string {
-  return `v4|${d.sessions.join(',')}|${d.noteText ?? ''}|${d.badWellness ? 'bad' : ''}|${d.wellnessToday ? d.band : 'nowellness'}|${d.plan ? `${d.plan.name}:${d.plan.phase ?? ''}` : ''}`;
+  return `v5|${d.sessions.join(',')}|${d.noteText ?? ''}|${d.badWellness ? 'bad' : ''}|${d.wellnessToday ? d.band : 'nowellness'}|${d.plan ? `${d.plan.name}:${d.plan.phase ?? ''}` : ''}`;
 }

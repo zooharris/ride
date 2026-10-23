@@ -223,7 +223,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
           {w.kind === 'run' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, hr ?? { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>
-              <p class="faint small">Percentages are of your threshold heart rate on foot ({footLthr(hr ?? { lthr })} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are shares of your maximum ({maxHr} bpm), converted.</p>
+              <p class="faint small">Percentages are of your threshold heart rate on foot ({footLthr(hr ?? { lthr })} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are zones on your foot table, so the percentages come straight from it.</p>
             </details>
           )}
           {w.kind !== 'walk' && w.kind !== 'run' && (

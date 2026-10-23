@@ -573,7 +573,14 @@ export function generatePlan(req: PlanRequest): Plan {
       const what = x.workout.name === 'Openers' ? 'openers ride' : x.kind === 'ride' ? `${FAMILY_WORDS[x.workout.family] ?? x.workout.family} ride` : x.kind;
       if (!lib) {
         // B2.3: no candidate at all (a heart-rate rider and a family with no ride that works by heart rate).
-        if (!saidNoCandidate.has(what)) { saidNoCandidate.add(what); decisions.push(`The Library has no ${what} that works by heart rate, so the plan builds its own for those days (${x.workout.name}). Adding one to the Library would let the plan use it.`); }
+        if (!saidNoCandidate.has(what)) {
+          saidNoCandidate.add(what);
+          // Batch 7, C1: only a ride lacks a candidate because of heart rate; any other kind lacks one like it.
+          const kindWords = x.kind === 'mobility' ? 'mobility routine' : x.kind;
+          decisions.push(x.kind === 'ride'
+            ? `The Library has no ${what} that works by heart rate, so the plan builds its own for those days (${x.workout.name}). Adding one to the Library would let the plan use it.`
+            : `The Library has no ${kindWords} like '${x.workout.name}', so the plan builds its own for those days. Adding one to the Library would let the plan use it.`);
+        }
         continue;
       }
       const size = sizeOf(lib);

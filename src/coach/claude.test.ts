@@ -21,9 +21,9 @@ const chart = { profile: todd, date: '2026-10-21', from: '2026-09-10', to: '2026
 
 describe('one rider, one voice', () => {
   it('describes the rider from the profile', () => {
-    expect(riderLine(todd, '2026-10-21')).toMatch(/^Todd is a 60-year-old road cyclist training on a masters recovery rhythm, imperial units/);
+    expect(riderLine(todd, '2026-10-21')).toMatch(/^The rider \("Todd Harris"\) is a 60-year-old road cyclist training on a masters recovery rhythm, imperial units/);
     const a = riderLine(angie, '2026-10-21');
-    expect(a).toMatch(/^Angie is a road cyclist, metric units/);
+    expect(a).toMatch(/^The rider \("Angie"\) is a road cyclist, metric units/);
     expect(a).not.toMatch(/year-old|masters/);
     expect(a).toMatch(/workouts sent by heart rate/);
     expect(riderLine({ ...todd, name: '  ' }, '2026-10-21')).toMatch(/^The rider is a/);
@@ -35,12 +35,25 @@ describe('one rider, one voice', () => {
       expect(p).toMatch(/not a doctor/);
       expect(p).toMatch(/Form between −30 and −10 is a normal training build/);
     }
-    expect(notePrompt(ctx())).toMatch(/^You are Todd's cycling coach\. Todd is a 60-year-old/);
-    expect(reviewPrompt(review)).toMatch(/^You are Angie's cycling coach\. Angie is a road cyclist/);
+    expect(notePrompt(ctx())).toMatch(/^You are the rider's cycling coach\. The rider \("Todd Harris"\) is a 60-year-old/);
+    expect(reviewPrompt(review)).toMatch(/^You are the rider's cycling coach\. The rider \("Angie"\) is a road cyclist/);
+  });
+  it('uses the rider’s name exactly as set, in every prompt, and never asks for a first name (Batch 7, C4)', () => {
+    const zoo = { ...todd, name: 'zooharris' };
+    const prompts = [notePrompt(ctx({ profile: zoo } as never)), questionSystem(ctx({ profile: zoo } as never)), chartSystem({ ...chart, profile: zoo }), reviewPrompt({ ...review, profile: zoo })];
+    for (const p of prompts) {
+      expect(p).toContain(`The rider's name is exactly "zooharris"; use it exactly as written`);
+      expect(p).toMatch(/never a guessed first name/);
+      expect(p).not.toMatch(/by first name/);
+      expect(p).toMatch(/Use the rider's name only exactly as given above/);
+    }
+    const none = notePrompt(ctx({ profile: { ...todd, name: '' } } as never));
+    expect(none).toMatch(/No name is set: address the rider without one\./);
+    expect(none).toMatch(/^You are the rider's cycling coach\. The rider is a/);
   });
   it('gives the note-only rules to the note alone', () => {
     expect(notePrompt(ctx())).toMatch(/Speak to every session listed/);
-    expect(notePrompt(ctx())).toMatch(/addressed to Todd by first name/);
+    expect(notePrompt(ctx())).toMatch(/addressed to the rider/);
     for (const p of [questionSystem(ctx()), chartSystem(chart), reviewPrompt(review)]) expect(p).not.toMatch(/Speak to every session/);
   });
 });

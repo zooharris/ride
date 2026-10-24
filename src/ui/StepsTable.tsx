@@ -2,6 +2,7 @@ import type { Basis, Profile, WorkoutBlock, WorkoutStep } from '../engine/types'
 import { formatDuration, stepShare, stepTargets } from '../engine/workout';
 import { powerZone, ridePowerZones } from '../engine/zones';
 import { ZONE_VAR } from './Profile';
+import { ZoneKey } from './ZoneKey';
 
 /** A ride's steps with their targets in watts or bpm; sets show as a heading over the steps they repeat. */
 export function StepsTable({ blocks, basis, profile }: { blocks: WorkoutBlock[]; basis: Basis; profile: Profile }) {
@@ -12,6 +13,7 @@ export function StepsTable({ blocks, basis, profile }: { blocks: WorkoutBlock[];
   }
   const ladder = ridePowerZones(profile);
   return (
+    <>
     <table class="steps">
       <tr><td /><td class="faint small">Step</td><td class="r faint small">Time</td><td class="r faint small">% of FTP</td><td class={`r faint small${basis === 'power' ? '' : ' muted basis-off'}`}>Watts</td><td class={`r faint small${basis === 'hr' ? '' : ' muted basis-off'}`}>Heart rate</td></tr>
       {rows.map(({ step, set }, i) => {
@@ -33,5 +35,7 @@ export function StepsTable({ blocks, basis, profile }: { blocks: WorkoutBlock[];
         );
       })}
     </table>
+    <ZoneKey style="margin-top:8px" />
+    </>
   );
 }

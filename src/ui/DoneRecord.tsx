@@ -8,6 +8,7 @@ import { getCurrentEquipment, notify } from './store';
 import { saveActivityEffort, saveActivityRecord, saveEffort, saveRecord } from '../sync/records';
 import { fmtDate } from './derived';
 import { toast } from './Toast';
+import { ExThumb } from './ExercisePictures';
 
 const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', 'single-leg': 'Lunge and single leg', hinge: 'Hinge', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };
 const LB_PER_KG = 2.2046;
@@ -41,7 +42,7 @@ export function RecordPanel({ rec, rpe, kind, date, units, history, plannedRec, 
             )}
             {(rec.exercises ?? []).map((e, i) => (
               <div class={`done-row${e.skipped ? ' skipped' : ''}`} key={i}>
-                <b>{e.name}</b>
+                <span class="row" style="gap:10px;min-width:0"><ExThumb name={e.name} exerciseId={e.exerciseId} size={36} /><b>{e.name}</b></span>
                 <span class="num">{e.skipped ? 'skipped' : [setsText(e), weightText(e, unit)].filter(Boolean).join(' · ')}</span>
               </div>
             ))}
@@ -145,6 +146,7 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
         return (
           <div class={`done-edit${e.skipped ? ' skipped' : ''}`} key={i}>
             <div class="row" style="gap:8px;align-items:flex-end">
+              <ExThumb name={e.name} exerciseId={e.exerciseId} size={44} />
               <div class="field" style="flex:1;min-width:0">
                 <label>{kind === 'mobility' ? 'Stretch' : 'Exercise'}</label>
                 <select value={key} onChange={(ev) => { const v = (ev.target as HTMLSelectElement).value; const lib = fromLibrary(v); if (lib) set(i, { ...lib, holdSeconds: lib.holdSeconds ?? e.holdSeconds }); }}>

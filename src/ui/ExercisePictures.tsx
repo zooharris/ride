@@ -74,3 +74,10 @@ export function PictureStrip({ exercises, max, fill = false, under = false }: { 
 
 /** How many of these exercises have a picture. */
 export const picturedCount = (exercises: Pick<Exercise, 'name'>[]): number => exercises.filter((e) => picturesFor(e.name).a).length;
+
+/** A small start-pose tile for a list row (builder, done record); nothing when the exercise has no picture. */
+export function ExThumb({ name, exerciseId, size }: { name: string; exerciseId?: string; size: 36 | 44 }) {
+  const a = picturesFor(name, exerciseId).a;
+  if (!a) return null;
+  return <span class="ex-tile ex-thumb" style={`width:${size}px;height:${size}px`}><img src={a} alt="" width={size} height={size} loading="lazy" decoding="async" /></span>;
+}

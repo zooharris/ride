@@ -15,6 +15,7 @@ import { go } from '../router';
 import { deleteWorkoutEverywhere } from '../planService';
 import { KIND_LABEL } from './Plan';
 import { PageHead } from '../PageHead';
+import { ExThumb } from '../ExercisePictures';
 import { toast } from '../Toast';
 
 /** Build a strength, mobility or walk session by hand. */
@@ -131,7 +132,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
           <div class="stack" style="margin-top:8px">
             {exercises.map((e, i) => (
               <div class="panel" key={i} style="padding:10px 12px">
-                <div class="row between"><b>{e.name}</b>
+                <div class="row between"><span class="row" style="gap:10px;min-width:0"><ExThumb name={e.name} size={44} /><b>{e.name}</b></span>
                   <span class="row" style="gap:2px"><button class="btn sm quiet" onClick={() => move(i, -1)}>↑</button><button class="btn sm quiet" onClick={() => move(i, 1)}>↓</button><button class="btn sm quiet" onClick={() => remove(i)}>×</button></span></div>
                 <div class="row wrap" style="gap:8px;margin-top:6px">
                   {kind === 'strength' ? (
@@ -174,7 +175,7 @@ function Picker({ items, label, onAdd }: { items: Array<{ name: string; group: s
       {groups.map((g) => (
         <div key={g} style="margin-top:10px">
           <div class="faint small" style="margin-bottom:4px">{g}</div>
-          <div class="chips">{items.filter((i) => i.group === g).map((i) => <button key={i.name} class="chip" onClick={() => onAdd(i.make())}>+ {i.name}</button>)}</div>
+          <div class="chips">{items.filter((i) => i.group === g).map((i) => <button key={i.name} class="chip has-pic" onClick={() => onAdd(i.make())}><ExThumb name={i.name} size={44} /><span>+ {i.name}</span></button>)}</div>
         </div>
       ))}
     </details>

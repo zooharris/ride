@@ -830,3 +830,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .ex-strip.under { flex: 0 0 100%; margin: 2px 0 2px 64px; max-width: calc(100% - 64px); }
 .cal-item > a.row:has(> .ex-strip.under) { flex-wrap: wrap; row-gap: 4px; }
 @media (max-width: 699px) { .ex-strip.under { margin-left: 0; max-width: 100%; } }
+.ex-thumb { border-radius: 8px; }
+.chip.has-pic { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 12px; }
+.done-row:has(> span > .ex-thumb) { align-items: center; }

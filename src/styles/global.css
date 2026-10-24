@@ -836,15 +836,17 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 
 /* ---- fitting a phone (23 Oct) ---- */
 .narrow-only { display: none; }
+.laps .lap-z { display: none; margin-top: 0; }
 .zone-ed .zone-top { width: 72px; }
 @media (max-width: 520px) {
   .wide-only { display: none; }
   .narrow-only { display: inline; }
-  .laps td { padding: 8px 4px; font-size: 13px; }
-  .laps .lap-num { display: none; }
+  .laps td { padding: 8px 3px; font-size: 13px; }
+  .laps .lap-pct { width: auto; }
   .laps .lap-barcol { width: auto; min-width: 0; text-align: right; }
   .laps .lap-cell { justify-content: flex-end; gap: 5px; }
   .laps .lap-bar { display: none; }
+  .laps .lap-z { display: inline-block; }
   .zone-ed.mode-pct .zone-pct, .zone-ed.mode-abs .zone-abs { display: none; }
   .zone-ed td { padding: 8px 4px; }
   .zone-ed .zone-top { width: 60px; }
@@ -853,10 +855,3 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 }
 @media (max-width: 520px) { .laps tr:first-child td { white-space: normal; } }
 @media (max-width: 520px) { .zone-ed .zone-top { width: 64px; padding-left: 6px; padding-right: 6px; } }
-
-/* the key to the zone colours, and a lap's zone */
-.zone-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; }
-.zone-key span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.zone-key i, .lap-zone i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; flex: 0 0 9px; }
-.lap-zone { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
-@media (max-width: 520px) { .laps .lap-cell { flex-direction: column; align-items: flex-end; gap: 1px; } }

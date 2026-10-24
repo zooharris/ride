@@ -38,12 +38,17 @@ if (!srcArg) {
 const srcDir = existsSync(join(srcArg, 'exercises')) ? join(srcArg, 'exercises') : srcArg;
 const POSE_FILE = /^(.+)-(a|b)\.png$/;
 
+// Pictures the app does not use, whatever the folder holds. The calf raise's finish
+// differs from its start by a heel lift that does not read at tile size (24 Oct).
+const SKIP = new Set(['calf-raise-b']);
+
 /** id → { a?: path, b?: path } for every PNG in the source folder. */
 const sources = new Map();
 for (const f of readdirSync(srcDir)) {
   const m = POSE_FILE.exec(f);
   if (!m) continue;
   const [, id, pose] = m;
+  if (SKIP.has(`${id}-${pose}`)) continue;
   if (!sources.has(id)) sources.set(id, {});
   sources.get(id)[pose] = join(srcDir, f);
 }

@@ -25,8 +25,7 @@ import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
 import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
 import { ZONE_VAR } from '../Profile';
-import { GLOSSARY, ZONE_NAMES } from '../glossary';
-import { ZoneKey } from '../ZoneKey';
+import { GLOSSARY, ZONE_KEY, ZONE_NAMES } from '../glossary';
 import { KindStack } from '../Glance';
 import { hoursLabel, type WeekSummary } from '../week';
 
@@ -296,7 +295,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
           </div>
           {[isRide ? coverage(r.powerZoneSeconds, r.seconds, 'power') : null, coverage(r.hrZoneSeconds, r.seconds, 'heart rate')].filter(Boolean).map((t) => <p class="faint small" key={t!} style="margin-top:6px">{t}</p>)}
-          <ZoneKey style="margin-top:6px" />
+          <p class="faint small" style="margin-top:6px">{ZONE_KEY}</p>
         </section>
       )}
       {isRide && streams?.watts?.length ? (

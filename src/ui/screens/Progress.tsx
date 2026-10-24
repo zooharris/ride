@@ -24,7 +24,7 @@ import { buildPowerCurves } from '../powerCurves';
 import { getActivePlan, type ActivePlan } from '../planService';
 import type { Ride, SessionKind } from '../../engine/types';
 import { ZONE_VAR } from '../Profile';
-import { ZoneKey } from '../ZoneKey';
+import { ZONE_KEY } from '../glossary';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -176,7 +176,7 @@ function ZonesCard({ rides, from, to }: { rides: Ride[]; from: string; to: strin
         height={180}
         readout={(i) => { const w = weeks[i]; const tot = w.seconds.reduce((a, b) => a + b, 0) || 1; return `Week of ${short(w.start)} · ${w.seconds.map((s, z) => s > 0 ? `Z${z + 1} ${share ? `${Math.round((s / tot) * 100)}%` : `${hours(s)} h`}` : null).filter(Boolean).join(' · ') || 'no ride time'}`; }}
       />
-      <ZoneKey style="margin-top:6px" />
+      <p class="faint small" style="margin-top:6px">{ZONE_KEY}</p>
     </Card>
   );
 }

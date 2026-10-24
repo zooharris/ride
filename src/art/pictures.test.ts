@@ -15,8 +15,10 @@ describe('the exercise pictures', () => {
     for (const id of Object.keys(poses)) expect(known.has(id), id).toBe(true);
     expect(Object.keys(poses)).toHaveLength(86);
   });
-  it('has 48 finish pictures', () => {
-    expect(Object.values(poses).filter((p) => p.includes('b'))).toHaveLength(48);
+  it('has 47 finish pictures', () => {
+    // 48 drawn; the calf raise's finish is left out (a heel lift does not read at tile size).
+    expect(Object.values(poses).filter((p) => p.includes('b'))).toHaveLength(47);
+    expect(poses['calf-raise']).toEqual(['a']);
   });
 });
 

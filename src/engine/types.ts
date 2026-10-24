@@ -266,6 +266,8 @@ export interface Ride {
   efficiencyFactor?: number;
   decoupling?: number;
   powerZoneSeconds?: number[];
+  /** Intervals.icu's sweet-spot time: a band straddling zones 3 and 4, already counted inside them, so never a zone of its own. */
+  sweetSpotSeconds?: number;
   hrZoneSeconds?: number[];
   ftpAtRide?: number;
   eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one

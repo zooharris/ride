@@ -294,6 +294,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             {isRide && r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
             {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
           </div>
+          {isRide && r.sweetSpotSeconds && r.powerZoneSeconds?.length ? <p class="small" style="margin-top:8px" title="Sweet spot is the band from high tempo into low threshold, as Intervals.icu measures it. This time is already counted in zones 3 and 4 above.">Sweet spot time: <b class="num">{clock(r.sweetSpotSeconds)}</b> <span class="faint">(high tempo to low threshold; already counted in zones 3 and 4)</span></p> : null}
           {[isRide ? coverage(r.powerZoneSeconds, r.seconds, 'power') : null, coverage(r.hrZoneSeconds, r.seconds, 'heart rate')].filter(Boolean).map((t) => <p class="faint small" key={t!} style="margin-top:6px">{t}</p>)}
           <p class="faint small" style="margin-top:6px">{ZONE_KEY}</p>
         </section>

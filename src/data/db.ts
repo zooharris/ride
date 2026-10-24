@@ -89,6 +89,14 @@ class RideDb extends Dexie {
     this.version(8).stores({}).upgrade((tx) => tx.table('rides').toCollection().modify((r: { intensityFactor?: number }) => {
       if (r.intensityFactor != null && r.intensityFactor > 3) r.intensityFactor = Math.round(r.intensityFactor) / 100;
     }));
+    // Intervals.icu's sweet-spot time was stored as an eighth power zone; it is time already inside zones 3 and 4.
+    this.version(9).stores({}).upgrade((tx) => tx.table('rides').toCollection().modify((r: { powerZoneSeconds?: number[]; sweetSpotSeconds?: number }) => {
+      if (r.powerZoneSeconds && r.powerZoneSeconds.length > 7) {
+        const ss = r.powerZoneSeconds[7];
+        if (ss > 0) r.sweetSpotSeconds = ss;
+        r.powerZoneSeconds = r.powerZoneSeconds.slice(0, 7);
+      }
+    }));
   }
 }
 

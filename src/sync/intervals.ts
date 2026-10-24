@@ -292,6 +292,7 @@ function toRide(a: IcuActivity): Ride {
     efficiencyFactor: a.icu_efficiency_factor,
     decoupling: a.decoupling,
     powerZoneSeconds: zoneSeconds(a.icu_zone_times),
+    sweetSpotSeconds: sweetSpotSeconds(a.icu_zone_times),
     hrZoneSeconds: a.icu_hr_zone_times,
     ftpAtRide: a.icu_ftp,
     eftp: a.icu_eftp,
@@ -317,10 +318,24 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function zoneSeconds(z: IcuActivity['icu_zone_times']): number[] | undefined {
-  if (!z) return undefined;
-  if (typeof z[0] === 'number') return z as number[];
-  return (z as Array<{ secs: number }>).map((x) => x.secs);
+/**
+ * Seconds in power zones 1 to 7. Intervals.icu labels each entry ("Z1".."Z7")
+ * and adds a sweet-spot entry ("SS") whose time is already inside zones 3 and 4;
+ * read by label, so that extra entry never shows up as a zone 8.
+ */
+export function zoneSeconds(z: IcuActivity['icu_zone_times']): number[] | undefined {
+  if (!z?.length) return undefined;
+  if (typeof z[0] === 'number') return (z as number[]).slice(0, 7);
+  const byId = new Map((z as Array<{ id: string; secs: number }>).map((x) => [String(x.id).toUpperCase(), x.secs]));
+  const out = [1, 2, 3, 4, 5, 6, 7].map((n) => byId.get(`Z${n}`) ?? 0);
+  return out.some((s) => s > 0) ? out : undefined;
+}
+
+/** Intervals.icu's sweet-spot time for the activity, when it reports one. */
+export function sweetSpotSeconds(z: IcuActivity['icu_zone_times']): number | undefined {
+  if (!z?.length || typeof z[0] === 'number') return undefined;
+  const ss = (z as Array<{ id: string; secs: number }>).find((x) => String(x.id).toUpperCase() === 'SS');
+  return ss && ss.secs > 0 ? ss.secs : undefined;
 }
 
 /**

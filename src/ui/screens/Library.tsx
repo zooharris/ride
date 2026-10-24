@@ -64,7 +64,7 @@ export function Library({ data }: { data: AppData }) {
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
           <div class="grid">
-            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} mine basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} mine onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
+            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
           </div>
         </section>
       )}
@@ -96,14 +96,14 @@ export function Library({ data }: { data: AppData }) {
  * and descriptive name, then length, load and intensity. On a laptop, hovering
  * shows Ride today and Pick a date; on a phone, the workout's page has both.
  */
-function Card({ w, mine = false, basis, profile, onPick }: { w: Workout; mine?: boolean; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void }) {
+function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void }) {
   const s = workoutStats(w.blocks);
   return (
     <div class="wcard ride">
       <a class="wcard-main" href={`#/workout/${w.id}?from=library`}>
         <div class="row between">
           <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
-          <span class="faint small">{mine ? 'mine' : w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
+          <span class="faint small">{w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
         </div>
         <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} targets={profile ? { profile, basis } : undefined} /></div>
         <h3>{w.name}</h3>
@@ -118,7 +118,7 @@ function Card({ w, mine = false, basis, profile, onPick }: { w: Workout; mine?: 
   );
 }
 
-function SessionCard({ w, mine = false, onAdd, profile }: { w: Workout; mine?: boolean; onAdd: () => void; profile?: Profile }) {
+function SessionCard({ w, onAdd, profile }: { w: Workout; onAdd: () => void; profile?: Profile }) {
   const n = w.exercises?.length ?? 0;
   const detail = w.kind === 'walk'
     ? `${w.walk?.minutes ?? w.minutes} min · ${w.walk?.packKg ? `${Math.round(w.walk.packKg * 2.2)} lb pack` : 'no pack'} · ${w.setting === 'indoor' ? 'treadmill' : 'outdoors'}`
@@ -126,7 +126,7 @@ function SessionCard({ w, mine = false, onAdd, profile }: { w: Workout; mine?: b
     : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`;
   return (
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">
-      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{mine ? 'mine' : w.estimatedTss ? `≈ ${w.estimatedTss} TSS, estimated` : ''}</span></div>
+      <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{w.estimatedTss ? `≈ ${w.estimatedTss} TSS, estimated` : ''}</span></div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
       <p class="muted small" style="margin:0">{detail}</p>
       {w.exercises && (w.kind === 'strength' || w.kind === 'mobility') && picturedCount(w.exercises) >= 2 ? <PictureStrip exercises={w.exercises} max={4} fill /> : w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}

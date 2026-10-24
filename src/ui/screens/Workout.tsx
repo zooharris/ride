@@ -93,7 +93,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       <section class="section">
         <h2>Steps</h2>
-        <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}; the other column is there to read.</p>
+        <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}<span class="wide-only">; the other column is there to read</span><span class="narrow-only">; on a phone only that column shows{w.bases.length > 1 ? `, and ${basis === 'power' ? 'Heart rate' : 'Power'} at the top switches to the other` : ''}</span>.</p>
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 

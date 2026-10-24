@@ -495,8 +495,8 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
         <b class="small">{title}</b>
         <div class="seg"><button class={mode === 'pct' ? 'on' : ''} onClick={() => onMode('pct')}>% of threshold</button><button class={mode === 'abs' ? 'on' : ''} onClick={() => onMode('abs')}>{absLabel}</button></div>
       </div>
-      <table class="steps">
-        <tr><td /><td class="faint small">Zone</td><td class="r faint small">% of threshold</td><td class="r faint small">{unit === 'W' ? 'Watts' : 'Heart rate'}</td><td class="r faint small">Top ({mode === 'pct' ? '%' : unit})</td></tr>
+      <table class={`steps zone-ed mode-${mode}`}>
+        <tr><td /><td class="faint small">Zone</td><td class="r faint small zone-pct">% of threshold</td><td class="r faint small zone-abs">{unit === 'W' ? 'Watts' : 'Heart rate'}</td><td class="r faint small">Top ({mode === 'pct' ? '%' : unit})</td></tr>
         {ZONE_NAMES.map((name, i) => {
           const r = rows[i];
           const pctText = i < 6 ? `${i === 0 ? 'up to ' : `${pcts[i - 1] + 1}–`}${pcts[i]}%` : `${pcts[5] + 1}%+`;
@@ -505,9 +505,9 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
             <tr key={i}>
               <td><span class="z" style={`background:${ZONE_VAR[i]}`} /></td>
               <td>Z{i + 1} {name}</td>
-              <td class="r num muted">{pctText}</td>
-              <td class="r num">{absText}</td>
-              <td class="r">{i < 6 ? <input type="number" class="num" style="width:72px;text-align:right" value={mode === 'pct' ? pcts[i] : tops[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">{unit === 'bpm' ? 'max' : 'open'}</span>}</td>
+              <td class="r num muted zone-pct">{pctText}</td>
+              <td class="r num zone-abs">{absText}</td>
+              <td class="r">{i < 6 ? <input type="number" class="num zone-top" style="text-align:right" value={mode === 'pct' ? pcts[i] : tops[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">{unit === 'bpm' ? 'max' : 'open'}</span>}</td>
             </tr>
           );
         })}

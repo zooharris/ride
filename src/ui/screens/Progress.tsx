@@ -1,3 +1,4 @@
+import { useWidth } from '../useWidth';
 import { footLthr, rideLadders } from '../../engine/zones';
 import type { HrNumbers } from '../../engine/mornings';
 import type { Profile } from '../../engine/types';
@@ -270,14 +271,16 @@ function WellnessCard({ data, from, to }: { data: AppData; from: string; to: str
 /** A year of days as a grid, coloured by training load; with the active-week streak beside it. */
 function ConsistencyCard({ rides }: { rides: Ride[] }) {
   const [hover, setHover] = useState<{ date: string; x: number; y: number } | null>(null);
+  const [box, boxW] = useWidth(758);
   const t = today();
   const end = addDays(weekStart(t), 6);
-  const start = addDays(weekStart(t), -51 * 7);
   const load = dailyLoad(rides);
   const steps = [1, 40, 80, 130, 200];
   const level = (tss: number) => (tss <= 0 ? 0 : steps.filter((s) => tss >= s).length);
   const C = 12, G = 2;
-  const cols = 52;
+  // A year of weeks where there is room; on a phone, the most recent weeks that fit.
+  const cols = Math.max(8, Math.min(52, Math.floor((boxW - 30) / (C + G))));
+  const start = addDays(weekStart(t), -(cols - 1) * 7);
   const months: Array<{ i: number; label: string }> = [];
   for (let c = 0; c < cols; c++) { const d = addDays(start, c * 7); if (c === 0 || d.slice(8) <= '07') { if (months.length && c - months[months.length - 1].i < 3) months.pop(); months.push({ i: c, label: new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short' }) }); } }
   const yearStart = `${t.slice(0, 4)}-01-01`;
@@ -287,12 +290,12 @@ function ConsistencyCard({ rides }: { rides: Ride[] }) {
   const dowLabel = (r: number) => new Date(addDays(start, r) + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'narrow' });
   const hl = hover ? load.get(hover.date) : undefined;
   return (
-    <Card title="Consistency" explain="Every day of the last year, darker for more training load. Gaps are rest days, or days nothing was recorded.">
+    <Card title="Consistency" explain={`Every day of the last ${cols >= 52 ? 'year' : `${cols} weeks`}, darker for more training load. Gaps are rest days, or days nothing was recorded.`}>
       <div class="row wrap" style="gap:12px 28px;margin-bottom:12px">
         <div class="stat"><div class="v">{streak}</div><div class="l">week training streak</div></div>
         <div class="stat"><div class="v">{activeDays}</div><div class="l">active days so far this year</div></div>
       </div>
-      <div style="overflow-x:auto;position:relative" onMouseLeave={() => setHover(null)}>
+      <div ref={box} style="position:relative" onMouseLeave={() => setHover(null)}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block" role="img" aria-label="Training load by day over the last year">
           {months.map((m) => <text key={m.i} x={30 + m.i * (C + G)} y={10} font-size="9" fill="var(--ink-3)">{m.label}</text>)}
           {[1, 3, 5].map((r) => <text key={r} x={0} y={16 + r * (C + G) + 9} font-size="9" fill="var(--ink-3)">{dowLabel(r)}</text>)}

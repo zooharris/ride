@@ -11,6 +11,7 @@ import type { PlannedWorkout, Workout } from '../engine/types';
 import { KIND_LABEL, KindDot } from './screens/Plan';
 import { movePlanned, removePlanned, replacePlanned } from './planService';
 import { toast } from './Toast';
+import { applyFilters, FilterBar, useFilters } from './LibraryFilters';
 
 /**
  * Move a session to another day and say so. If the day already has a session of
@@ -100,6 +101,9 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
 export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind }: { data: AppData; title: string; onPick: (w: Workout) => void; onClose: () => void; onBack?: () => void; startKind?: 'ride' | 'strength' | 'mobility' | 'walk' | 'run' }) {
   const [kind, setKind] = useState<'ride' | 'strength' | 'mobility' | 'walk' | 'run'>(startKind ?? 'ride');
   const kinds = ['ride', 'strength', 'mobility', 'walk', 'run'] as const;
+  // The Library's filters, so a shorter ride is a length filter away (Batch 10 C). Kept while the sheet is open.
+  const [f, setF] = useFilters();
+  const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === kind && w.source !== 'generated'), f, kind);
   return (
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
@@ -110,9 +114,10 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
         <div class="seg" style="margin-bottom:12px">
           {kinds.map((k) => <button key={k} class={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : k === 'run' ? 'Runs' : KIND_LABEL[k]}</button>)}
         </div>
-        <p class="faint small" style="margin:0 0 10px">Or <a href="#/build">make a new workout</a>.</p>
+        <FilterBar kind={kind} f={f} set={setF} />
+        <p class="faint small" style="margin:0 0 10px">{list.length === 0 ? 'Nothing matches: widen the length or clear the search. ' : ''}Or <a href="#/build">make a new workout</a>.</p>
         <div class="stack">
-          {allWorkouts(data.mine).filter((w) => w.kind === kind && w.source !== 'generated').map((w) => {
+          {list.map((w) => {
             const s = workoutStats(w.blocks);
             const n = w.exercises?.length ?? 0;
             return (

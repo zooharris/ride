@@ -5,7 +5,7 @@ import { runBandText } from '../../engine/run';
 import { WorkoutProfile } from '../Profile';
 import { clock, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
-import type { Family, Profile, SessionKind, Workout } from '../../engine/types';
+import type { Profile, SessionKind, Workout } from '../../engine/types';
 import { KIND_LABEL, KindDot } from './Plan';
 import { KIND_ICON } from '../icons';
 import { today } from '../../engine/load';
@@ -14,30 +14,16 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
+import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
 
-const ORDER: Family[] = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'];
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks'], ['run', 'Runs']];
-type Duration = 'all' | 'u60' | '60-90' | '90-120' | '120-180' | '180-240' | '240+';
-const DURATIONS: Array<[Duration, string, [number, number]]> = [
-  ['all', 'Any', [0, 1e9]], ['u60', 'Under 1 h', [0, 60]], ['60-90', '1–1½ h', [60, 90]], ['90-120', '1½–2 h', [90, 120]], ['120-180', '2–3 h', [120, 180]], ['180-240', '3–4 h', [180, 240]], ['240+', '4 h and up', [240, 1e9]],
-];
 
 export function Library({ data }: { data: AppData }) {
   const [tab, setTab] = useState<Tab>('ride');
-  const [family, setFamily] = useState<Family | 'all'>('all');
   const [adding, setAdding] = useState<Workout | null>(null);
-  const [duration, setDuration] = useState<Duration>('all');
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<'family' | 'short' | 'long'>('family');
-  const [menu, setMenu] = useState<'type' | 'length' | 'sort' | null>(null);
-  const q = query.trim().toLowerCase();
-  const minutesOf = (w: Workout) => (w.kind === 'ride' ? workoutStats(w.blocks).seconds / 60 : (w.minutes ?? 0));
-  const inDuration = (w: Workout) => { const m = minutesOf(w); const [lo, hi] = DURATIONS.find((d) => d[0] === duration)![2]; return m >= lo && m < hi; };
-  const matches = (w: Workout) => !q || `${w.name} ${w.subtitle ?? ''} ${FAMILY_LABEL[w.family]} ${w.purpose}`.toLowerCase().includes(q);
-  const all = allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated').filter(inDuration).filter(matches);
-  const ordered = sort === 'family' ? all : [...all].sort((a, b) => (sort === 'short' ? minutesOf(a) - minutesOf(b) : minutesOf(b) - minutesOf(a)));
-  const list = tab === 'ride' ? ordered.filter((w) => family === 'all' || w.family === family) : ordered;
+  const [f, setF] = useFilters();
+  const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated'), f, tab);
   const mine = list.filter((w) => w.source === 'mine');
   const ready = list.filter((w) => w.source === 'library');
   return (
@@ -50,16 +36,7 @@ export function Library({ data }: { data: AppData }) {
           {TABS.map(([t, l]) => <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{KIND_ICON[t]({ size: 15 })}<span>{l}</span></button>)}
         </div>
       </div>
-      <div class="filterbar">
-        <input value={query} placeholder="Search" onInput={(e) => setQuery((e.target as HTMLInputElement).value)} aria-label="Search the library" />
-        {tab === 'ride' && <Menu label={family === 'all' ? 'All types' : FAMILY_LABEL[family]} active={family !== 'all'} open={menu === 'type'} onOpen={() => setMenu(menu === 'type' ? null : 'type')} onClose={() => setMenu(null)} title="Type"
-          options={[['all', 'All types'], ...ORDER.map((f) => [f, FAMILY_LABEL[f]] as [string, string])]} value={family} onPick={(v) => setFamily(v as Family | 'all')} />}
-        <Menu label={duration === 'all' ? 'Any length' : DURATIONS.find((d) => d[0] === duration)![1]} active={duration !== 'all'} open={menu === 'length'} onOpen={() => setMenu(menu === 'length' ? null : 'length')} onClose={() => setMenu(null)} title="Length"
-          options={DURATIONS.map(([d, l]) => [d, l] as [string, string])} value={duration} onPick={(v) => setDuration(v as Duration)} />
-        <Menu label={sort === 'family' ? 'By type' : sort === 'short' ? 'Shortest first' : 'Longest first'} active={false} open={menu === 'sort'} onOpen={() => setMenu(menu === 'sort' ? null : 'sort')} onClose={() => setMenu(null)} title="Sort"
-          options={[['family', 'By type'], ['short', 'Shortest first'], ['long', 'Longest first']]} value={sort} onPick={(v) => setSort(v as 'family' | 'short' | 'long')} />
-        {(family !== 'all' || duration !== 'all' || q) && <button class="btn sm quiet" onClick={() => { setFamily('all'); setDuration('all'); setQuery(''); }}>Clear</button>}
-      </div>
+      <FilterBar kind={tab} f={f} set={setF} />
       {mine.length > 0 && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
@@ -158,20 +135,3 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
   );
 }
 
-/** A filter menu: a button that names the current choice; the options open as a dropdown on a laptop and a sheet on a phone. */
-function Menu({ label, active, open, onOpen, onClose, title, options, value, onPick }: { label: string; active: boolean; open: boolean; onOpen: () => void; onClose: () => void; title: string; options: Array<[string, string]>; value: string; onPick: (v: string) => void }) {
-  return (
-    <div class="menu">
-      <button class={`btn sm${active ? '' : ' quiet'} menu-btn`} aria-haspopup="listbox" aria-expanded={open} onClick={onOpen}>{label}<span class="caret">▾</span></button>
-      {open && (
-        <>
-          <div class="menu-bg" onClick={onClose} />
-          <div class="menu-list" role="listbox">
-            <div class="menu-title">{title}</div>
-            {options.map(([v, l]) => <button key={v} role="option" aria-selected={v === value} class={v === value ? 'on' : ''} onClick={() => { onPick(v); onClose(); }}><span>{l}</span>{v === value && <span class="tick">✓</span>}</button>)}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}

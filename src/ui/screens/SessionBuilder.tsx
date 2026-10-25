@@ -2,7 +2,7 @@ import { EASY_WALK, WALK_PRESETS, bandBpm, bandZoneWords, hasNoFloor, walkBand }
 import { footLthr } from '../../engine/zones';
 import { useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { findWorkout, getCurrentEquipment, notify } from '../store';
+import { alreadyText, findWorkout, getCurrentEquipment, notify, scheduleWorkout } from '../store';
 import type { Equipment, Exercise, SessionKind, Workout } from '../../engine/types';
 import { EXERCISES, lightLoad, type Pattern } from '../../library/strength';
 import { MOBILITY, type Target } from '../../library/mobility';
@@ -73,8 +73,8 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
       estimatedTss: tss,
     };
     await db.workouts.put(w);
-    if (then === 'date') await db.planned.put({ id: newId(), date, workoutId: w.id, basis: data.profile!.basis, status: 'planned' });
-    notify(); toast({ ok: true, text: 'Saved to My Workouts.' });
+    const added = then === 'date' ? await scheduleWorkout(w, date, data.profile!.basis) : undefined;
+    notify(); toast({ ok: true, text: `Saved to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, date)}` : ''}` });
     go(then === 'date' ? 'calendar' : 'library');
   }
 

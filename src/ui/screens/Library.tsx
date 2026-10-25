@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { allWorkouts, scheduleWorkout } from '../store';
+import { allWorkouts, alreadyText, scheduleWorkout } from '../store';
 import { runBandText } from '../../engine/run';
 import { WorkoutProfile } from '../Profile';
 import { clock, workoutStats } from '../../engine/workout';
@@ -111,7 +111,7 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
         <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
-        <button class="btn sm" onClick={async () => { await scheduleWorkout(w, today(), basis); toast({ ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
+        <button class="btn sm" onClick={async () => { const r = await scheduleWorkout(w, today(), basis); toast(r === 'already' ? { ok: false, text: alreadyText(w.name, today()) } : { ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
         <button class="btn sm" onClick={onPick}>Pick a date</button>
       </div>
     </div>
@@ -149,7 +149,7 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
         ) : (
           <div class="row wrap" style="gap:8px;align-items:center">
             <input type="date" value={date} min={today()} onInput={(e) => setDate((e.target as HTMLInputElement).value || today())} style="width:auto" aria-label="Date" />
-            <button class="btn primary" onClick={async () => { await scheduleWorkout(w, date, basis); setDone(true); }}>Add to {date === today() ? 'today' : fmtDate(date)}</button>
+            <button class="btn primary" onClick={async () => { if (await scheduleWorkout(w, date, basis) === 'already') toast({ ok: false, text: alreadyText(w.name, date) }); else setDone(true); }}>Add to {date === today() ? 'today' : fmtDate(date)}</button>
             <button class="btn quiet" onClick={onClose}>Cancel</button>
           </div>
         )}

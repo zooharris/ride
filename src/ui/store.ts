@@ -4,7 +4,7 @@ import type { ActivityEdit, DayNote, Equipment, PlannedWorkout, Profile, Ride, W
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
-import { setFirstDay } from './derived';
+import { dayPossessive, setFirstDay } from './derived';
 import { onDeviceSync, schedulePush } from '../data/devicesync';
 import { credentials, onSyncRunning, recheckMatches, syncRunning } from '../sync/syncService';
 import { setLastWeightLookup } from '../sync/intervals';
@@ -113,7 +113,9 @@ export function findWorkout(mine: Workout[], id: string): Workout | undefined {
  * first, so the calendar entry keeps exactly what was chosen even if the
  * rider's equipment changes later.
  */
-export async function scheduleWorkout(w: Workout, date: string, basis: 'power' | 'hr'): Promise<void> {
+export async function scheduleWorkout(w: Workout, date: string, basis: 'power' | 'hr'): Promise<'added' | 'already'> {
+  // The same workout cannot go on a day twice while its first entry there is still to do (Batch 10 B).
+  if (await alreadyOnDay(w, date)) return 'already';
   let id = w.id;
   if (w.source === 'library' && w.kind !== 'ride') {
     id = `gen-${newId()}`;
@@ -121,6 +123,29 @@ export async function scheduleWorkout(w: Workout, date: string, basis: 'power' |
   }
   await db.planned.put({ id: newId(), date, workoutId: id, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned' });
   notify();
+  return 'added';
+}
+
+/**
+ * Whether this workout is already on `date` and not yet done: the same workout, or (for a
+ * ready-made strength, mobility, walk or run session, which goes on the calendar as a copy)
+ * a copy with the same name and kind. A different workout, or one already done, does not count.
+ * `except` leaves out one entry: the one being replaced.
+ */
+export async function alreadyOnDay(w: Workout, date: string, except?: string): Promise<boolean> {
+  const entries = (await db.planned.where('date').equals(date).toArray()).filter((p) => p.status !== 'completed' && p.id !== except);
+  if (entries.some((p) => p.workoutId === w.id)) return true;
+  if (w.source !== 'library' || w.kind === 'ride') return false;
+  for (const p of entries) {
+    const c = await db.workouts.get(p.workoutId);
+    if (c && c.source === 'generated' && c.kind === w.kind && c.name === w.name) return true;
+  }
+  return false;
+}
+
+/** The message when a workout is already on that day. */
+export function alreadyText(name: string, date: string): string {
+  return `${name} is already on ${dayPossessive(date)} calendar.`;
 }
 
 /** Save the rider's note for a date; an empty note with nothing flagged is removed. */

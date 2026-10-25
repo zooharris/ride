@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { findWorkout, notify } from '../store';
+import { alreadyText, findWorkout, notify, scheduleWorkout } from '../store';
 import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { clock, newId, stepTargets, workoutStats } from '../../engine/workout';
 import { powerZone, ridePowerZones } from '../../engine/zones';
@@ -96,12 +96,10 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
       phases: ['any'], bases: stats.dominantZone >= 5 ? ['power'] : ['power', 'hr'], blocks, source: 'mine', setting: 'any', kind: 'ride',
     };
     await db.workouts.put(w);
-    if (then === 'today') {
-      await db.planned.put({ id: newId(), date: today(), workoutId: w.id, basis: profile.basis, status: 'planned' });
-    }
+    const added = then === 'today' ? await scheduleWorkout(w, today(), profile.basis) : undefined;
     notify();
     setSaved(w.id);
-    toast({ ok: true, text: `Saved “${w.name}” to My Workouts.` });
+    toast({ ok: true, text: `Saved “${w.name}” to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, today())}` : ''}` });
     if (then === 'today') go('today');
     if (then === 'library') go('library');
   }

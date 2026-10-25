@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppData } from './store';
-import { allWorkouts, findWorkout } from './store';
+import { allWorkouts, alreadyText, findWorkout } from './store';
 import { runBandText } from '../engine/run';
 import { WorkoutProfile } from './Profile';
 import { clock, workoutStats } from '../engine/workout';
@@ -54,7 +54,10 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
   }
   async function replace(nw: Workout) {
     setBusy(true);
-    try { await replacePlanned(planned, nw, basis); toast({ ok: true, text: `${fmtDate(planned.date)}: ${nw.name} instead of ${w?.name ?? 'the session'}.` }); onClose(); onDone?.('replaced', planned); }
+    try {
+      if (await replacePlanned(planned, nw, basis) === 'already') { toast({ ok: false, text: alreadyText(nw.name, planned.date) }); return; }
+      toast({ ok: true, text: `${fmtDate(planned.date)}: ${nw.name} instead of ${w?.name ?? 'the session'}.` }); onClose(); onDone?.('replaced', planned);
+    }
     finally { setBusy(false); }
   }
   async function remove() {

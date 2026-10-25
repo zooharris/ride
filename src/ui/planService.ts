@@ -18,7 +18,7 @@ import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './derived';
 import type { AppData } from './store';
-import { findWorkout, notify } from './store';
+import { alreadyOnDay, findWorkout, notify } from './store';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
@@ -449,7 +449,9 @@ export async function retargetFootSessions(c: IntervalsCredentials | null): Prom
  * entry's slot, date and plan membership are kept; if it was already on the
  * Garmin the old event is removed and the new one waits to be sent.
  */
-export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis): Promise<void> {
+export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis): Promise<'replaced' | 'already'> {
+  // Replacing with a workout that is already another entry on that day would make a duplicate (Batch 10 B).
+  if (await alreadyOnDay(w, p.date, p.id)) return 'already';
   const c = await credentials();
   if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* harmless */ } }
   let workoutId = w.id;
@@ -457,6 +459,7 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
   await db.planned.put({ ...p, workoutId, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned', icuEventId: undefined, activityId: undefined, userEdited: p.planId ? true : p.userEdited });
   await pruneOrphanWorkouts();
   notify();
+  return 'replaced';
 }
 
 /**

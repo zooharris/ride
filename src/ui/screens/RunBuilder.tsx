@@ -1,6 +1,6 @@
 import { useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
-import { findWorkout, notify } from '../store';
+import { alreadyText, findWorkout, notify, scheduleWorkout } from '../store';
 import type { RunStep, Workout } from '../../engine/types';
 import { db } from '../../data/db';
 import { newId } from '../../engine/workout';
@@ -79,8 +79,8 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
       run: spec, minutes, estimatedTss: tss,
     };
     await db.workouts.put(w);
-    if (then === 'date') await db.planned.put({ id: newId(), date, workoutId: w.id, basis: profile.basis, status: 'planned' });
-    notify(); toast({ ok: true, text: 'Saved to My Workouts.' });
+    const added = then === 'date' ? await scheduleWorkout(w, date, profile.basis) : undefined;
+    notify(); toast({ ok: true, text: `Saved to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, date)}` : ''}` });
     go(then === 'date' ? 'calendar' : 'library');
   }
 

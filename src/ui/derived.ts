@@ -133,3 +133,11 @@ export function splitToday<T extends { p: { status: string }; w?: { kind: string
   const ordered = [...rest.filter((x) => x.w?.kind === 'ride'), ...rest.filter((x) => x.w?.kind !== 'ride')];
   return { hero, rest: ordered, rideCount: rides.length };
 }
+
+/** "today's", "tomorrow's", or "Thu 29 Oct's": for "… is already on today's calendar." */
+export function dayPossessive(date: string, from = today()): string {
+  if (date === from) return "today's";
+  if (date === addDays(from, 1)) return "tomorrow's";
+  const d = new Date(date + 'T00:00:00');
+  return `${WEEKDAY[d.getDay()]} ${d.getDate()} ${MONTH[d.getMonth()]}'s`;
+}

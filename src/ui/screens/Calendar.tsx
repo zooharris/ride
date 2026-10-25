@@ -4,7 +4,7 @@ import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
-import { findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
+import { alreadyText, findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, workoutStats } from '../../engine/workout';
@@ -79,8 +79,8 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   const dnd = useDragMove((id, date) => { const p = data.planned.find((x) => x.id === id); if (p) moveSession(data, p, date); });
   const movable = (p: PlannedWorkout) => p.status !== 'completed';
   async function add(date: string, w: Workout) {
-    if (picking?.replace) await replacePlanned(picking.replace, w, profile.basis);
-    else await scheduleWorkout(w, date, profile.basis);
+    const r = picking?.replace ? await replacePlanned(picking.replace, w, profile.basis) : await scheduleWorkout(w, date, profile.basis);
+    if (r === 'already') { toast({ ok: false, text: alreadyText(w.name, picking?.replace?.date ?? date) }); return; }
     setPicking(null);
   }
 

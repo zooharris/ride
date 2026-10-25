@@ -2,12 +2,11 @@ import { footLthr } from '../../engine/zones';
 import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
-import { doneHistory, findWorkout, notify } from '../store';
+import { alreadyText, doneHistory, findWorkout, notify, scheduleWorkout } from '../store';
 import { WorkoutProfile } from '../Profile';
-import { clock, newId, renderIntervalsText, workoutStats } from '../../engine/workout';
+import { clock, renderIntervalsText, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
-import { db } from '../../data/db';
 import { go } from '../router';
 import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
 import { fmtDate } from '../derived';
@@ -52,8 +51,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
-    await db.planned.put({ id: newId(), date, workoutId: w!.id, basis, status: 'planned' });
-    notify();
+    // Through the one adding function, so the duplicate check (and the library-copy step) apply here too.
+    if (await scheduleWorkout(w!, date, basis) === 'already') { toast({ ok: false, text: alreadyText(w!.name, date) }); return; }
     go('calendar');
   }
 

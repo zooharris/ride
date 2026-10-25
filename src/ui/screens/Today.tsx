@@ -6,10 +6,10 @@ import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday, weekStart } from '../derived';
+import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday, syncLine, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
-import { notify, saveDayNote, sessionHref, trustedWellness } from '../store';
+import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from '../store';
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { runBandText } from '../../engine/run';
 import { CoachPanel } from '../CoachPanel';
@@ -68,7 +68,10 @@ export function Today({ data }: { data: AppData }) {
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<SavedReview | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  useEffect(() => { getCoachReview().then(setReview); }, []);
+  // Re-read on every data change: an automatic pull may have saved a review of new activities.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { getCoachReview().then(setReview); }, [data]);
+  const syncState = useSyncState();
   const [tourDone, setTourDone] = useState<boolean | null>(null);
   const [showSteps, setShowSteps] = useState(false);
   const [changing, setChanging] = useState<PlannedWorkout | null>(null);
@@ -183,12 +186,16 @@ export function Today({ data }: { data: AppData }) {
   const projection = last && projEnd ? projectFitness(last, data.planned, data.mine, projEnd > addDays(date, 180) ? addDays(date, 180) : projEnd) : [];
   const events = active && active.goal.kind === 'event' ? [{ date: active.goalDate, label: 'event' }] : [];
 
+  const line = syncLine(syncState, new Date());
   const bandText = readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
 
   return (
     <div>
       <PageHead help="today" eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
-        <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || connected === false}><Icon.sync size={15} />{busy === 'sync' ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
+        <div class="sync-stack">
+          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || syncState.running || connected === false}><Icon.sync size={15} />{busy === 'sync' || syncState.running ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
+          {connected && <span class={`sync-when${line.failed ? ' failed' : ''}`}>{line.text}</span>}
+        </div>
       </PageHead>
 
       <WeekStrip week={weekSummary(weekStart(date), data.planned, data.rides, data.mine)} />

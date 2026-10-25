@@ -14,13 +14,88 @@ export async function credentials(): Promise<IntervalsCredentials | null> {
   return c && c.athleteId && c.apiKey ? c : null;
 }
 
+export type SyncResult = { rides: number; wellness: number; newIds: string[] };
+
+let inFlight: Promise<SyncResult> | null = null;
+const runningListeners = new Set<() => void>();
+const emitRunning = () => { for (const l of runningListeners) l(); };
+/** Told when a pull from Intervals.icu starts or ends (pressed or automatic), so "Syncing…" and "Last synced" stay true. */
+export function onSyncRunning(fn: () => void): () => void {
+  runningListeners.add(fn);
+  return () => { runningListeners.delete(fn); };
+}
+/** True while a pull from Intervals.icu is running on this device. */
+export const syncRunning = (): boolean => inFlight != null;
+
 /**
- * Pull rides and wellness. First sync goes back 120 days (enough to seed the
+ * Pull rides and wellness. One pull at a time: a second call while one runs
+ * gets the same answer (the Sync button pressed during an automatic pull, say).
+ * A failure is recorded with its time, so Today can say the latest attempt failed.
+ */
+export function syncAll(): Promise<SyncResult> {
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    try { return await pullAll(); }
+    catch (e) { await recordSyncError(e); throw e; }
+    finally { inFlight = null; emitRunning(); }
+  })();
+  emitRunning();
+  return inFlight;
+}
+
+async function recordSyncError(e: unknown): Promise<void> {
+  try {
+    const prev = await db.sync.get('intervals');
+    const c = await credentials();
+    await db.sync.put({ ...(prev ?? { key: 'intervals', athleteId: c?.athleteId ?? '' }), key: 'intervals', lastError: (e as Error)?.message ?? String(e), lastErrorAt: new Date().toISOString() });
+  } catch { /* nothing more to do */ }
+}
+
+/** When this device last pulled from Intervals.icu successfully (ISO), or undefined before the first pull. */
+export async function lastSyncAt(): Promise<string | undefined> {
+  return (await db.sync.get('intervals'))?.lastActivitySync;
+}
+
+/** An automatic pull waits this long after the last successful one. */
+export const AUTO_SYNC_GAP_MS = 10 * 60 * 1000;
+
+/** Whether opening the app (or bringing it back) should pull now. Pure, for tests. */
+export function autoSyncDue(o: { connected: boolean; running: boolean; online: boolean; last?: string; now: number }): boolean {
+  if (!o.connected || o.running || !o.online) return false;
+  if (!o.last) return true;
+  const t = Date.parse(o.last);
+  return !Number.isFinite(t) || o.now - t >= AUTO_SYNC_GAP_MS;
+}
+
+/**
+ * The pull that happens by itself when the app opens or comes back to the front,
+ * if the last one is ten minutes old or more. Silent: the rider did not ask, so
+ * a failure shows only as "the latest attempt failed" on Today. `afterNew` runs
+ * when new activities arrived (the coach's review, which checks its own setting).
+ */
+export async function autoSync(afterNew?: (newIds: string[]) => Promise<unknown>): Promise<boolean> {
+  try {
+    const due = autoSyncDue({
+      connected: !!(await credentials()),
+      running: syncRunning(),
+      online: typeof navigator === 'undefined' || navigator.onLine !== false,
+      last: await lastSyncAt(),
+      now: Date.now(),
+    });
+    if (!due) return false;
+    const r = await syncAll();
+    if (r.newIds.length && afterNew) { try { await afterNew(r.newIds); } catch { /* the coach card offers a retry */ } }
+    return true;
+  } catch { return true; }
+}
+
+/**
+ * The pull itself. First sync goes back 120 days (enough to seed the
  * fitness model); later syncs go back 14 days to catch late uploads and edits.
  * Rides are re-scored with the engine's TSS every time, so a changed FTP
  * updates history consistently.
  */
-export async function syncAll(): Promise<{ rides: number; wellness: number; newIds: string[] }> {
+async function pullAll(): Promise<SyncResult> {
   const c = await credentials();
   if (!c) throw new Error('Connect Intervals.icu in Settings first.');
   const state = await db.sync.get('intervals');
@@ -73,7 +148,7 @@ export async function syncAll(): Promise<{ rides: number; wellness: number; newI
   await db.wellness.bulkPut(wellness);
   if (first) await noteLoadedFrom(oldest);
 
-  await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined });
+  await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined, lastErrorAt: undefined });
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
   // A new device catches up to the history the rider's other devices hold, in the background.

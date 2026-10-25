@@ -1,10 +1,10 @@
 import { APP_NAME } from '../appName';
 import { useRoute } from './router';
-import { notify, useAppData } from './store';
+import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
-import { credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
-import { nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
+import { autoSync, credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
+import { coachReviewAfterSync, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -73,8 +73,14 @@ export function App() {
       notify();
       if (r.activities || r.wellness) toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness, so this device has the same history as your others.` });
     });
+    // Pull from Intervals.icu when the app opens and whenever it comes back to the front, if the last
+    // pull is ten minutes old or more (Batch 9 A1). The coach reviews new activities only when its
+    // setting is on; coachReviewAfterSync checks that itself, as it does after the Sync button.
+    const pull = () => autoSync(async (ids) => { notify(); await coachReviewAfterSync(await loadAppData(), ids); })
+      .then((ran) => { if (ran) notify(); });
     run();
-    const onVis = () => { if (document.visibilityState === 'visible') run(); };
+    pull();
+    const onVis = () => { if (document.visibilityState === 'visible') { run(); pull(); } };
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); off(); };
   }, []);

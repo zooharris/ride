@@ -6,7 +6,7 @@ import { readyMadeSessions } from '../library/sessions';
 import { newId } from '../engine/workout';
 import { setFirstDay } from './derived';
 import { onDeviceSync, schedulePush } from '../data/devicesync';
-import { credentials, recheckMatches } from '../sync/syncService';
+import { credentials, onSyncRunning, recheckMatches, syncRunning } from '../sync/syncService';
 import { setLastWeightLookup } from '../sync/intervals';
 import { lastDone, weightText } from '../engine/record';
 import { today } from '../engine/load';
@@ -51,25 +51,31 @@ export function trustedWellness(wellness: Wellness[], notes: DayNote[]): Wellnes
 
 let rechecked = false;
 
+/** Everything the screens read, as it is in storage now. Also used by the automatic pull to give the coach the same picture. */
+export async function loadAppData(): Promise<AppData> {
+  const [profile, planned, ridesAll, wellnessAll, mine, dayNotes, edits] = await Promise.all([
+    loadProfile(),
+    db.planned.toArray(),
+    db.rides.orderBy('date').reverse().toArray(),
+    db.wellness.orderBy('date').toArray(),
+    db.workouts.toArray(),
+    db.dayNotes.toArray(),
+    db.activityEdits.toArray(),
+  ]);
+  setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
+  // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
+  const history = doneHistory(planned, edits);
+  setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });
+  return { profile, planned, rides: ridesAll.filter((r) => !r.notTraining), ridesAll, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, edits, loaded: true };
+}
+
 export function useAppData(): AppData {
   const [data, setData] = useState<AppData>({ profile: null, planned: [], rides: [], ridesAll: [], wellness: [], wellnessAll: [], dayNotes: [], mine: [], edits: [], loaded: false });
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [profile, planned, ridesAll, wellnessAll, mine, dayNotes, edits] = await Promise.all([
-        loadProfile(),
-        db.planned.toArray(),
-        db.rides.orderBy('date').reverse().toArray(),
-        db.wellness.orderBy('date').toArray(),
-        db.workouts.toArray(),
-        db.dayNotes.toArray(),
-        db.activityEdits.toArray(),
-      ]);
-      setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
-      // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
-      const history = doneHistory(planned, edits);
-      setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });
-      if (alive) setData({ profile, planned, rides: ridesAll.filter((r) => !r.notTraining), ridesAll, wellness: trustedWellness(wellnessAll, dayNotes), wellnessAll, dayNotes, mine, edits, loaded: true });
+      const next = await loadAppData();
+      if (alive) setData(next);
     };
     load();
     listeners.add(load);
@@ -133,4 +139,21 @@ export async function saveDayNote(date: string, note: { text?: string; badWellne
 export function sessionHref(p: { status: string; activityId?: string }, workoutId: string, from: string, date: string, rides: Array<{ id: string }>): string {
   if (p.status === 'completed' && p.activityId && rides.some((r) => r.id === p.activityId)) return `#/rides/${p.activityId}`;
   return `#/workout/${workoutId}?from=${from}&date=${date}`;
+}
+
+/** This device's pull from Intervals.icu: when it last succeeded, when it last failed, and whether one is running now. */
+export function useSyncState(): { last?: string; errorAt?: string; running: boolean } {
+  const [state, setState] = useState<{ last?: string; errorAt?: string; running: boolean }>({ running: syncRunning() });
+  useEffect(() => {
+    let alive = true;
+    const read = async () => {
+      const s = await db.sync.get('intervals');
+      if (alive) setState({ last: s?.lastActivitySync, errorAt: s?.lastErrorAt, running: syncRunning() });
+    };
+    read();
+    listeners.add(read);
+    const off = onSyncRunning(read);
+    return () => { alive = false; listeners.delete(read); off(); };
+  }, []);
+  return state;
 }

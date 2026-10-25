@@ -44,6 +44,8 @@ export interface SyncState {
   lastActivitySync?: string;   // ISO
   lastWellnessSync?: string;
   lastError?: string;
+  /** When the latest failed pull happened (ISO); "Last synced" says it failed when this is newer than the last success. */
+  lastErrorAt?: string;
 }
 
 /**

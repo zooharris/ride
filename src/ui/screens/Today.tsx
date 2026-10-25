@@ -6,7 +6,7 @@ import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, syncLine, weekStart } from '../derived';
+import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from '../store';
@@ -43,8 +43,9 @@ export function Today({ data }: { data: AppData }) {
   const wellnessSetAside = !!todayNote?.badWellness && data.wellnessAll.some((w) => w.date === date);
   const plans = plannedOn(data.planned, date, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
   const withW = plans.map((p) => ({ p, w: findWorkout(data.mine, p.workoutId) })).filter((x) => x.w);
-  const ridePlan = withW.find((x) => x.w!.kind === 'ride');
-  const others = withW.filter((x) => x.w!.kind !== 'ride');
+  // Every session on the day is shown: the first undone ride as the card, the rest (other rides included) below.
+  const { hero: ridePlan, rest, rideCount } = splitToday(withW);
+  const rideNo = (p: PlannedWorkout) => withW.filter((x) => x.w!.kind === 'ride').findIndex((x) => x.p.id === p.id) + 1;
   const plan = ridePlan?.p;
   const workout = ridePlan?.w;
   const stats = workout ? workoutStats(workout.blocks) : undefined;
@@ -227,7 +228,7 @@ export function Today({ data }: { data: AppData }) {
       {active && (
         <section class="panel" style="margin-bottom:14px;padding:12px 16px">
           <div class="row between">
-            <a class="small plain-link" href={`#/plan/${active.id}`} title="Open the plan"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : others[0]?.p.note ? <span class="muted"> · {others[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null} <span class="faint">›</span></a>
+            <a class="small plain-link" href={`#/plan/${active.id}`} title="Open the plan"><b>{active.name}</b>{active.start > date ? <span class="muted"> · starts {fmtDate(active.start, { month: 'short', day: 'numeric' })}</span> : null}{plan?.note ? <span class="muted"> · {plan.note}</span> : rest[0]?.p.note ? <span class="muted"> · {rest[0].p.note}</span> : null}{active.goal.kind === 'event' ? <span class="muted"> · {Math.ceil((Date.parse(active.goalDate) - Date.parse(date)) / 864e5)} days to go</span> : null} <span class="faint">›</span></a>
           </div>
           {coachChecking && <div class="small muted row" style="gap:8px;margin-top:8px"><span class="spinner" aria-hidden="true" />Checking your plan…</div>}
           {!coachChecking && check && rec && rec.changes.length > 0 && (
@@ -243,7 +244,7 @@ export function Today({ data }: { data: AppData }) {
       {workout && plan && stats ? (
         <section class="panel accent" style="padding:18px 18px 16px">
           <div class="row between">
-            <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>
+            <span class="row" style="gap:8px"><span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[workout.family]}</span>{rideCount > 1 && <span class="faint small">Ride {rideNo(plan)} of {rideCount}</span>}</span>
             <StatusPill status={statusOf(plan.status)} />
           </div>
           <h2 style="font-size:28px;line-height:32px;font-weight:700;letter-spacing:-0.02em;margin:12px 0 2px">{workout.name}</h2>
@@ -261,25 +262,25 @@ export function Today({ data }: { data: AppData }) {
           </div>
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>
-      ) : others.length === 0 ? (
+      ) : rest.length === 0 ? (
         <Empty title="Nothing planned today." action={<a class="btn primary sm" href="#/library">Choose a workout</a>}>Pick something from the library, build a plan, or take the day.</Empty>
       ) : null}
 
-      {others.length > 0 && (
+      {rest.length > 0 && (
         <section class="section" style={workout ? '' : 'margin-top:0'}>
           <h2>{workout ? 'Also today' : 'Today'}</h2>
           <div class="stack" style="margin-top:8px">
-            {others.map(({ p, w }) => (
+            {rest.map(({ p, w }) => { const rs = w!.kind === 'ride' ? workoutStats(w!.blocks) : undefined; return (
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
-                <KindDot kind={w!.kind} big />
-                <div class="t"><b>{w!.name}</b><span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span></div>
+                {rs ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
+                <div class="t"><b>{w!.name}</b>{rs ? <span>{clock(rs.seconds)} · {rs.tss} TSS · {w!.subtitle ?? FAMILY_LABEL[w!.family]}{p.status === 'completed' ? ' · done' : ''}{rideCount > 1 ? ` · Ride ${rideNo(p)} of ${rideCount}` : ''}</span> : <span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span>}</div>
                 <StatusPill status={statusOf(p.status)} />
                 {(w!.kind === 'strength' || w!.kind === 'mobility') && w!.exercises && <PictureStrip exercises={w!.exercises} max={5} under />}
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}
               </div>
-            ))}
+            ); })}
           </div>
         </section>
       )}

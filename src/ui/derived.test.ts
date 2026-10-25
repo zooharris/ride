@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missingText, quickMoveDays, quickMoveLabel, syncLine, whenText } from './derived';
+import { missingText, splitToday, quickMoveDays, quickMoveLabel, syncLine, whenText } from './derived';
 
 describe('quick moves', () => {
   it("moving today's session offers tomorrow onward, never today", () => {
@@ -44,4 +44,24 @@ describe('the readiness panel says what the score rests on', () => {
   it('two missing', () => expect(missingText({ missing: ['HRV', 'Sleep'], formOnly: false }, false)).toBe("HRV and sleep haven't arrived yet; the score uses the rest."));
   it('all three: form alone', () => expect(missingText({ missing: ['HRV', 'Sleep', 'Resting HR'], formOnly: true }, false)).toBe("This morning's HRV, sleep and resting heart rate haven't arrived yet. This score is from form alone."));
   it('set aside by the rider', () => expect(missingText({ missing: ['HRV', 'Sleep', 'Resting HR'], formOnly: true }, true)).toBe("Today's numbers are set aside (your note). This score is from form alone."));
+});
+
+describe('how Today lays out the day', () => {
+  const x = (id: string, kind: string, status = 'planned') => ({ id, p: { status }, w: { kind } });
+  it('a ride and a strength session: the ride is the card', () => {
+    const r = splitToday([x('a', 'ride'), x('b', 'strength')]);
+    expect(r.hero?.id).toBe('a'); expect(r.rest.map((y) => y.id)).toEqual(['b']); expect(r.rideCount).toBe(1);
+  });
+  it('two rides and mobility: the first undone ride is the card, the other ride heads the rest', () => {
+    const r = splitToday([x('a', 'ride', 'completed'), x('m', 'mobility'), x('b', 'ride')]);
+    expect(r.hero?.id).toBe('b'); expect(r.rest.map((y) => y.id)).toEqual(['a', 'm']); expect(r.rideCount).toBe(2);
+  });
+  it('two rides, both done: the first is the card', () => {
+    const r = splitToday([x('a', 'ride', 'completed'), x('b', 'ride', 'completed')]);
+    expect(r.hero?.id).toBe('a'); expect(r.rest.map((y) => y.id)).toEqual(['b']);
+  });
+  it('no rides: no card, everything below', () => {
+    const r = splitToday([x('s', 'strength'), x('w', 'walk')]);
+    expect(r.hero).toBeUndefined(); expect(r.rest).toHaveLength(2); expect(r.rideCount).toBe(0);
+  });
 });

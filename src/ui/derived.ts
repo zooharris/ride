@@ -120,3 +120,16 @@ export function missingText(r: { missing: Array<'HRV' | 'Sleep' | 'Resting HR'>;
   if (r.formOnly) return `This morning's ${listWords(words)} ${verb} arrived yet. This score is from form alone.`;
   return `${capital(listWords(words))} ${verb} arrived yet; the score uses the rest.`;
 }
+
+/**
+ * How Today lays out the day: the first undone ride as the big card (the first ride when every
+ * ride is done), and everything else, other rides first, under Also today. `rideCount` lets the
+ * page say "Ride 1 of 2" when there is more than one.
+ */
+export function splitToday<T extends { p: { status: string }; w?: { kind: string } }>(withW: T[]): { hero?: T; rest: T[]; rideCount: number } {
+  const rides = withW.filter((x) => x.w?.kind === 'ride');
+  const hero = rides.find((x) => x.p.status !== 'completed') ?? rides[0];
+  const rest = withW.filter((x) => x !== hero);
+  const ordered = [...rest.filter((x) => x.w?.kind === 'ride'), ...rest.filter((x) => x.w?.kind !== 'ride')];
+  return { hero, rest: ordered, rideCount: rides.length };
+}

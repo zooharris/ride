@@ -240,6 +240,36 @@ describe('readiness', () => {
     expect(r.score).toBeGreaterThanOrEqual(0);
     expect(r.drivers).toHaveLength(1);
   });
+  it('lists nothing missing when every input has arrived', () => {
+    const r = readiness({ date: '2026-10-10', hrv: 50, sleepSeconds: 7 * 3600, restingHr: 50 }, base, -5);
+    expect(r.missing).toEqual([]);
+    expect(r.formOnly).toBe(false);
+  });
+  it('lists the one input that has not arrived, and scores on the rest', () => {
+    const r = readiness({ date: '2026-10-10', hrv: 50, restingHr: 50 }, base, -5);
+    expect(r.missing).toEqual(['Sleep']);
+    expect(r.formOnly).toBe(false);
+    expect(r.drivers.map((d) => d.name)).toEqual(['HRV', 'Resting HR', 'Form']);
+  });
+  it('before the morning arrives: all three missing, the score is from form alone', () => {
+    const r = readiness(undefined, base, 2.7);
+    expect(r.missing).toEqual(['HRV', 'Sleep', 'Resting HR']);
+    expect(r.formOnly).toBe(true);
+    expect(r.score).toBe(75);   // the iPhone's 75 of 25 Oct: form +3 alone
+  });
+  it('an input the rider never has is not missing (no HRV device)', () => {
+    const noHrv = base.map(({ hrv: _h, ...w }) => w);
+    const r = readiness({ date: '2026-10-10', sleepSeconds: 7 * 3600, restingHr: 50 }, noHrv, -5);
+    expect(r.missing).toEqual([]);
+    const waiting = readiness(undefined, noHrv, -5);
+    expect(waiting.missing).toEqual(['Sleep', 'Resting HR']);
+    expect(waiting.formOnly).toBe(true);
+  });
+  it('a rider with no overnight data at all is not told anything is missing', () => {
+    const r = readiness(undefined, [], 0);
+    expect(r.missing).toEqual([]);
+    expect(r.formOnly).toBe(false);
+  });
 });
 
 describe('library', () => {

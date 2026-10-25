@@ -115,7 +115,11 @@ export const BAND_WORD: Record<Band, string> = { go: 'Ready', ease: 'Ease off a 
 const BAND_LINES: Record<Band, string[]> = { go: ['Ready'], ease: ['Ease off', 'a little'], easy: ['Keep it', 'easy'], rest: ['Rest'] };
 
 /** The readiness score as the brand's dial: a 270° gauge open at the bottom, filled to the score in the band's colour. */
-export function ReadinessDial({ score, band, size = 156 }: { score: number; band: Band; size?: number }) {
+/**
+ * `waiting`: the score rests on form alone because the morning's numbers have not arrived (or were
+ * set aside). The dial goes grey and says Waiting, so it does not read as a real verdict.
+ */
+export function ReadinessDial({ score, band, size = 156, waiting = false }: { score: number; band: Band; size?: number; waiting?: boolean }) {
   const r = 40, cx = 50, cy = 50, sweep = 270, start = 135;   // degrees, measured clockwise from 3 o'clock
   const arc = (from: number, to: number) => {
     const a0 = (from * Math.PI) / 180, a1 = (to * Math.PI) / 180;
@@ -125,14 +129,15 @@ export function ReadinessDial({ score, band, size = 156 }: { score: number; band
   const end = start + (sweep * Math.max(0, Math.min(100, score))) / 100;
   const ticks = [55, 75].map((v) => start + (sweep * v) / 100);
   // The band word must fit inside the ring: anything longer than one short word goes on two lines.
-  const lines = BAND_LINES[band];
+  const lines = waiting ? ['Waiting'] : BAND_LINES[band];
+  const arcColour = waiting ? 'var(--ink-3)' : BAND_ARC[band];
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`Readiness ${score} of 100: ${BAND_WORD[band]}`} style="display:block;flex:0 0 auto">
+    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={waiting ? `Readiness ${score} of 100, from form alone: waiting for this morning's numbers` : `Readiness ${score} of 100: ${BAND_WORD[band]}`} style="display:block;flex:0 0 auto">
       <path d={arc(start, start + sweep)} fill="none" stroke="var(--bg-3)" stroke-width="9" stroke-linecap="round" />
-      {score > 0 && <path d={arc(start, Math.max(start + 0.5, end))} fill="none" stroke={BAND_ARC[band]} stroke-width="9" stroke-linecap="round" class="dial-fill" />}
+      {score > 0 && <path d={arc(start, Math.max(start + 0.5, end))} fill="none" stroke={arcColour} stroke-width="9" stroke-linecap="round" class="dial-fill" opacity={waiting ? 0.35 : undefined} />}
       {ticks.map((a) => { const t = (a * Math.PI) / 180; return <line key={a} x1={cx + 33 * Math.cos(t)} y1={cy + 33 * Math.sin(t)} x2={cx + 36 * Math.cos(t)} y2={cy + 36 * Math.sin(t)} stroke="var(--ink-3)" stroke-width="1" />; })}
-      <text x="50" y={lines.length > 1 ? 50 : 53} text-anchor="middle" font-size="25" font-weight="700" fill="var(--ink)" style="letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{score}</text>
-      <text x="50" y={lines.length > 1 ? 61 : 66} text-anchor="middle" font-size="6.4" font-weight="600" fill={BAND_COLOR[band]} style="text-transform:uppercase;letter-spacing:.05em">
+      <text x="50" y={lines.length > 1 ? 50 : 53} text-anchor="middle" font-size="25" font-weight="700" fill={waiting ? 'var(--ink-3)' : 'var(--ink)'} style="letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{score}</text>
+      <text x="50" y={lines.length > 1 ? 61 : 66} text-anchor="middle" font-size="6.4" font-weight="600" fill={waiting ? 'var(--ink-3)' : BAND_COLOR[band]} style="text-transform:uppercase;letter-spacing:.05em">
         {lines.map((l, i) => <tspan key={i} x="50" dy={i ? 7.4 : 0}>{l}</tspan>)}
       </text>
       <text x="50" y="92" text-anchor="middle" font-size="6" fill="var(--ink-3)">of 100</text>

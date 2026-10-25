@@ -102,3 +102,21 @@ export function syncLine(s: { last?: string; errorAt?: string; running: boolean 
   if (!when) return { text: failed ? 'Not synced yet · the latest attempt failed' : 'Not synced yet', failed };
   return { text: `Last synced ${when}${failed ? ' · the latest attempt failed' : ''}`, failed };
 }
+
+const MISSING_WORD: Record<'HRV' | 'Sleep' | 'Resting HR', string> = { HRV: 'HRV', Sleep: 'sleep', 'Resting HR': 'resting heart rate' };
+const listWords = (xs: string[]) => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+/**
+ * The sentence the readiness panel shows when the score does not rest on every input:
+ * set aside by the rider's note, waiting for the morning's numbers, or missing some of them.
+ * Undefined when nothing is missing.
+ */
+export function missingText(r: { missing: Array<'HRV' | 'Sleep' | 'Resting HR'>; formOnly: boolean }, setAside: boolean): string | undefined {
+  if (setAside) return "Today's numbers are set aside (your note). This score is from form alone.";
+  if (!r.missing.length) return undefined;
+  const words = r.missing.map((m) => MISSING_WORD[m]);
+  const verb = words.length === 1 ? "hasn't" : "haven't";
+  if (r.formOnly) return `This morning's ${listWords(words)} ${verb} arrived yet. This score is from form alone.`;
+  return `${capital(listWords(words))} ${verb} arrived yet; the score uses the rest.`;
+}

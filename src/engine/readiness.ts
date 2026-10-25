@@ -4,6 +4,14 @@ export interface Readiness {
   score: number;            // 0..100
   band: 'go' | 'ease' | 'easy' | 'rest';
   drivers: ReadinessDriver[];
+  /**
+   * The overnight inputs the rider normally has (a two-week normal exists) that have no value
+   * this morning: not yet arrived, or set aside by the rider. An input the rider's devices never
+   * send has no normal and is not listed, so a rider without HRV is never told HRV is missing.
+   */
+  missing: Array<'HRV' | 'Sleep' | 'Resting HR'>;
+  /** True when none of the rider's overnight inputs is in today's score: it rests on form alone. */
+  formOnly: boolean;
 }
 
 /**
@@ -28,11 +36,13 @@ export interface ReadinessDriver {
  */
 export function readiness(todayW: Wellness | undefined, baseline: Wellness[], tsb: number): Readiness {
   const drivers: ReadinessDriver[] = [];
+  const missing: Readiness['missing'] = [];
   const count = (k: 'hrv' | 'sleepSeconds' | 'restingHr') => baseline.filter((w) => typeof w[k] === 'number' && (w[k] as number) > 0).length;
   let score = 0;
   let weight = 0;
 
   const hrvBase = mean(baseline.map((w) => w.hrv));
+  if (hrvBase && !todayW?.hrv) missing.push('HRV');
   if (todayW?.hrv && hrvBase) {
     const ratio = todayW.hrv / hrvBase;
     const s = clamp(50 + (ratio - 1) * 250, 0, 100);
@@ -41,6 +51,7 @@ export function readiness(todayW: Wellness | undefined, baseline: Wellness[], ts
   }
 
   const sleepBase = mean(baseline.map((w) => w.sleepSeconds));
+  if (sleepBase && !todayW?.sleepSeconds) missing.push('Sleep');
   if (todayW?.sleepSeconds && sleepBase) {
     const ratio = todayW.sleepSeconds / sleepBase;
     const s = clamp(50 + (ratio - 1) * 200, 0, 100);
@@ -49,6 +60,7 @@ export function readiness(todayW: Wellness | undefined, baseline: Wellness[], ts
   }
 
   const rhrBase = mean(baseline.map((w) => w.restingHr));
+  if (rhrBase && !todayW?.restingHr) missing.push('Resting HR');
   if (todayW?.restingHr && rhrBase) {
     const delta = todayW.restingHr - rhrBase;
     const s = clamp(50 - delta * 8, 0, 100);
@@ -63,7 +75,10 @@ export function readiness(todayW: Wellness | undefined, baseline: Wellness[], ts
 
   const final = weight ? Math.round(score / weight) : 50;
   const band = final >= 75 ? 'go' : final >= 55 ? 'ease' : final >= 35 ? 'easy' : 'rest';
-  return { score: final, band, drivers };
+  // Form alone, but only worth saying when overnight numbers were expected: a rider with no
+  // overnight data at all keeps the plain form-based score, as before.
+  const formOnly = drivers.length === 1 && missing.length > 0;
+  return { score: final, band, drivers, missing, formOnly };
 }
 
 function mean(xs: Array<number | undefined>): number | undefined {

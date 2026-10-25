@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quickMoveDays, quickMoveLabel, syncLine, whenText } from './derived';
+import { missingText, quickMoveDays, quickMoveLabel, syncLine, whenText } from './derived';
 
 describe('quick moves', () => {
   it("moving today's session offers tomorrow onward, never today", () => {
@@ -36,4 +36,12 @@ describe('when this device last pulled', () => {
     // a failure before the last success is history
     expect(syncLine({ running: false, last: at(25, 10, 47), errorAt: at(25, 9, 0) }, now).failed).toBe(false);
   });
+});
+
+describe('the readiness panel says what the score rests on', () => {
+  it('nothing missing: no sentence', () => expect(missingText({ missing: [], formOnly: false }, false)).toBeUndefined());
+  it('one missing', () => expect(missingText({ missing: ['Sleep'], formOnly: false }, false)).toBe("Sleep hasn't arrived yet; the score uses the rest."));
+  it('two missing', () => expect(missingText({ missing: ['HRV', 'Sleep'], formOnly: false }, false)).toBe("HRV and sleep haven't arrived yet; the score uses the rest."));
+  it('all three: form alone', () => expect(missingText({ missing: ['HRV', 'Sleep', 'Resting HR'], formOnly: true }, false)).toBe("This morning's HRV, sleep and resting heart rate haven't arrived yet. This score is from form alone."));
+  it('set aside by the rider', () => expect(missingText({ missing: ['HRV', 'Sleep', 'Resting HR'], formOnly: true }, true)).toBe("Today's numbers are set aside (your note). This score is from form alone."));
 });

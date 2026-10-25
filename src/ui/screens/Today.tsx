@@ -6,7 +6,7 @@ import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, readinessToday, syncLine, weekStart } from '../derived';
+import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, syncLine, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from '../store';
@@ -187,6 +187,9 @@ export function Today({ data }: { data: AppData }) {
   const events = active && active.goal.kind === 'event' ? [{ date: active.goalDate, label: 'event' }] : [];
 
   const line = syncLine(syncState, new Date());
+  // Batch 9 B: say plainly when the score does not rest on every input.
+  const gap = missingText(ready, wellnessSetAside);
+  const waiting = wellnessSetAside || ready.formOnly;
   const bandText = readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
 
   return (
@@ -291,12 +294,12 @@ export function Today({ data }: { data: AppData }) {
         <h2 style="margin-bottom:12px">Readiness</h2>
         <div class="panel readiness">
           <div class="rd-top">
-            <a href="#/progress?on=hrv,restinghr,sleep&r=6w" class="rd-dial-link" aria-label="HRV, resting heart rate and sleep over time"><ReadinessDial score={ready.score} band={ready.band} /></a>
-            <p class="rd-advice">{bandText}.</p>
+            <a href="#/progress?on=hrv,restinghr,sleep&r=6w" class="rd-dial-link" aria-label="HRV, resting heart rate and sleep over time"><ReadinessDial score={ready.score} band={ready.band} waiting={waiting} /></a>
+            <p class="rd-advice">{waiting ? gap : <>{bandText}.{gap && <> <span class="faint">{gap}</span></>}</>}</p>
           </div>
           <ReadinessRows data={data} date={date} series={series} drivers={ready.drivers} />
           {wellnessSetAside ? (
-            <p class="small" style="margin-top:10px;color:var(--warn)">Today's HRV, sleep and resting heart rate are set aside as wrong, so the score is from form alone and the day is left out of your averages.</p>
+            <p class="small" style="margin-top:10px;color:var(--warn)">The day is also left out of your two-week averages.</p>
           ) : (
             <p class="faint small" style="margin-top:10px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own two-week normal. Lines show the last two weeks; green is better than normal, red worse.</p>
           )}

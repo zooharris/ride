@@ -13,6 +13,7 @@ import { pickSources } from '../player/sources';
 import { RideEngine, type TrainerMode } from '../player/engine';
 import { buildTimeline, targetBand, type TimelineStep } from '../player/timeline';
 import { putRecording, patchRecording } from '../player/rides';
+import { bandOf, ewma, settle, type Settled } from '../player/smooth';
 import type { Recording } from '../player/types';
 import { toast } from './Toast';
 
@@ -38,6 +39,10 @@ export interface ActiveRide {
   rec: Recording;
   /** Power averaged over the chosen seconds, for the big number. */
   shownWatts?: number;
+  /** A smoother power for the marker on the target bar, and the label beside it, settled so neither jumps about. */
+  markerWatts?: number;
+  band: Settled;
+  bandStep?: number;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number };
 }
 
@@ -76,7 +81,7 @@ export function startRide(setup: RideSetup): void {
     basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr,
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
-  active = { setup, engine, timeline, rec, live: {} };
+  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 } };
   recent.length = 0;
   resetTrainerSession();
   if (setup.sound) { try { audio ??= new AudioContext(); void audio.resume(); } catch { audio = undefined; } }
@@ -126,6 +131,16 @@ function second(now: number) {
   a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value };
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
+  if (a.live.watts != null && a.engine.phase === 'riding') {
+    a.markerWatts = ewma(a.markerWatts, a.live.watts);
+    const step = a.engine.step;
+    if (step) {
+      // A new step starts its label afresh, so a target change is not met with a stale verdict.
+      if (step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; }
+      const b = targetBand(step, 'power', a.setup.profile, a.engine.scale);
+      a.band = settle(a.band, bandOf(a.markerWatts, b.low, b.high));
+    }
+  }
   const out = a.engine.tick(now, a.live);
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);

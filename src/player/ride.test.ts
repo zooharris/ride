@@ -226,3 +226,30 @@ describe('the ride engine', () => {
     expect(e.tick(5000, pedal).command).toEqual({ grade: 0 });
   });
 });
+
+import { bandOf, ewma, settle, type Settled } from './smooth';
+
+describe('the calm power marker', () => {
+  it('follows a jittery ride far more steadily than the raw numbers', () => {
+    let m: number | undefined;
+    const raw = Array.from({ length: 60 }, (_, i) => 220 + (i % 2 ? 12 : -12));
+    const out = raw.map((w) => (m = ewma(m, w)));
+    const swing = (xs: number[]) => Math.max(...xs.slice(30)) - Math.min(...xs.slice(30));
+    expect(swing(raw)).toBe(24);
+    expect(swing(out)).toBeLessThan(6);
+  });
+  it('still shows a real change within a few seconds', () => {
+    let m: number | undefined = 220;
+    for (let i = 0; i < 5; i++) m = ewma(m, 180);
+    expect(m).toBeLessThan(195);
+  });
+  it('changes the label only after three seconds on the new side', () => {
+    let s: Settled = { count: 0 };
+    s = settle(s, bandOf(220, 210, 232));
+    expect(s.state).toBe('on');
+    s = settle(s, 'under'); s = settle(s, 'on'); s = settle(s, 'under'); s = settle(s, 'under');
+    expect(s.state).toBe('on');
+    s = settle(s, 'under');
+    expect(s.state).toBe('under');
+  });
+});

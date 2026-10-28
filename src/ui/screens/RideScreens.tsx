@@ -176,8 +176,10 @@ function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile
   const step = e.step ?? (e.workoutDone ? undefined : undefined);
   const band = step ? targetBand(step, 'power', profile, e.scale) : undefined;
   const w = ride.shownWatts;
-  const state = band && w != null ? (w < band.low ? 'under' : w > band.high ? 'over' : 'on') : undefined;
-  const span = band ? Math.max(20, band.mid * 0.15) : 1;
+  // The marker and the label use the calmer reading (smooth.ts); the big number stays the rider's chosen average.
+  const mw = ride.markerWatts ?? w;
+  const state = band && mw != null ? ride.band.state : undefined;
+  const span = band ? Math.max(30, band.mid * 0.25) : 1;
   const pos = (x: number) => Math.max(0, Math.min(100, band ? ((x - (band.mid - span)) / (2 * span)) * 100 : 50));
   const ergNow = e.mode === 'erg' && trainerOk;
   return (
@@ -193,9 +195,9 @@ function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile
           <div class="rd-band" aria-hidden="true">
             <div class="rd-band-track" />
             <div class="rd-band-ok" style={`left:${pos(band.low)}%;width:${Math.max(2, pos(band.high) - pos(band.low))}%`} />
-            {w != null && <div class="rd-band-mark" style={`left:${pos(w)}%`} />}
+            {mw != null && <div class="rd-band-mark" style={`left:${pos(mw)}%`} />}
           </div>
-          <div class="rd-band-words"><span>Too easy</span><span>{w != null ? (state === 'on' ? 'In the band' : `${Math.abs(Math.round(w - band.mid))} W ${w < band.mid ? 'under' : 'over'} the target`) : ''}</span><span>Too hard</span></div>
+          <div class="rd-band-words"><span>Too easy</span><span>{mw != null ? (state === 'on' ? 'In the band' : `${Math.abs(Math.round(mw - band.mid))} W ${mw < band.mid ? 'under' : 'over'} the target`) : ''}</span><span>Too hard</span></div>
         </>
       ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
       <div class="rd-grow" />

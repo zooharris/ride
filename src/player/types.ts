@@ -1,0 +1,55 @@
+/** What the player records. Times are seconds from the moment the ride started (the wall clock, pauses included). */
+
+export interface Sample {
+  t: number;
+  /** watts */
+  w?: number;
+  hr?: number;
+  cad?: number;
+  /** km/h */
+  spd?: number;
+  /** metres so far */
+  d?: number;
+  /** the target at that second, watts (power) or bpm (heart rate) */
+  tgt?: number;
+  /** index of the workout step being ridden; absent after the workout ends or on a free ride */
+  s?: number;
+  /** where in the workout this second was (seconds; skips move it on), for drawing the ride over the plan */
+  p?: number;
+}
+
+export interface Lap { start: number; end: number; step?: number; manual?: boolean }
+
+export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done';
+export interface RideEvent { t: number; type: RideEventType; value?: string | number }
+
+export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded';
+
+export interface Recording {
+  id: string;
+  status: RecordingStatus;
+  /** ISO local-time string of the start, and the start in ms since 1970. */
+  startedAt: string;
+  startMs: number;
+  /** The date it counts on, YYYY-MM-DD local. */
+  date: string;
+  plannedId?: string;
+  workoutId?: string;
+  name: string;
+  basis: 'power' | 'hr';
+  ftp: number;
+  lthr: number;
+  samples: Sample[];
+  laps: Lap[];
+  events: RideEvent[];
+  /** Seconds of riding (pauses left out). */
+  timerSeconds: number;
+  distanceM: number;
+  /** When the recording last saved, ms. */
+  savedMs: number;
+  rpe?: number;
+  activityId?: string;
+  uploadedAt?: string;
+  /** The last upload attempt's failure, in words. */
+  error?: string;
+}

@@ -3,6 +3,7 @@ import { getSetting, setSetting } from '../data/db';
 import { forget, removeSimulated, savedDevices, SIM_KEY, type SavedDevice } from '../player/hub';
 import { KIND_WORD } from '../player/sources';
 import { bluetoothAvailable } from '../player/ble/web';
+import { DEFAULT_PREFS, loadPrefs, PREF, type Prefs } from './screens/Player';
 
 /**
  * Settings → Ride player: the trainer and sensors this computer remembers, and
@@ -11,7 +12,9 @@ import { bluetoothAvailable } from '../player/ble/web';
 export function PlayerSettings() {
   const [devices, setDevices] = useState<SavedDevice[]>([]);
   const [sim, setSim] = useState(false);
-  const load = () => { savedDevices().then(setDevices); getSetting<boolean>(SIM_KEY, false).then(setSim); };
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+  const pref = async <K extends keyof Prefs>(k: K, v: Prefs[K]) => { await setSetting(PREF[k], v); setPrefs({ ...prefs, [k]: v }); };
+  const load = () => { savedDevices().then(setDevices); getSetting<boolean>(SIM_KEY, false).then(setSim); loadPrefs().then(setPrefs); };
   useEffect(load, []);
 
   const setPractice = async (on: boolean) => {
@@ -42,6 +45,17 @@ export function PlayerSettings() {
           </div>
         ) : <p class="faint small" style="margin:6px 0 0">None yet. Add them on the ride screen; they're remembered here for the next ride.</p>}
       </div>
+      <div class="row wrap" style="margin-top:14px;gap:18px;align-items:flex-start">
+        <div class="field"><label>Power shown as</label>
+          <div class="seg">{[1, 3, 5, 10].map((n) => <button key={n} class={prefs.smoothing === n ? 'on' : ''} aria-pressed={prefs.smoothing === n} onClick={() => void pref('smoothing', n)}>{n === 1 ? 'Each second' : `${n}-second average`}</button>)}</div></div>
+        <div class="field"><label>Beeps before each step</label>
+          <div class="seg"><button class={prefs.sound ? 'on' : ''} onClick={() => void pref('sound', true)}>On</button><button class={!prefs.sound ? 'on' : ''} onClick={() => void pref('sound', false)}>Off</button></div></div>
+        <div class="field"><label>Pause when you stop pedalling</label>
+          <div class="seg"><button class={prefs.autoPause ? 'on' : ''} onClick={() => void pref('autoPause', true)}>On</button><button class={!prefs.autoPause ? 'on' : ''} onClick={() => void pref('autoPause', false)}>Off</button></div></div>
+        <div class="field"><label>Ease off if your cadence drops</label>
+          <div class="seg"><button class={prefs.guard ? 'on' : ''} onClick={() => void pref('guard', true)}>On</button><button class={!prefs.guard ? 'on' : ''} onClick={() => void pref('guard', false)}>Off</button></div></div>
+      </div>
+      <p class="faint small" style="margin-top:6px">Pause: ten seconds without pedalling pauses the ride and lets the trainer go; pedalling carries on. Ease off: in ERG, if your cadence stays under 50 rpm for three seconds the trainer drops to half the target, and builds back once you are spinning over 70 rpm, so a heavy stroke never stalls you.</p>
       <div class="field" style="margin-top:14px"><label>Practice with a simulated trainer</label>
         <div class="seg"><button class={sim ? 'on' : ''} aria-pressed={sim} onClick={() => void setPractice(true)}>On</button><button class={!sim ? 'on' : ''} aria-pressed={!sim} onClick={() => void setPractice(false)}>Off</button></div>
         <p class="faint small" style="margin-top:6px">On: the ride screen's Add a device also offers a simulated trainer, power meter and heart rate, so you can try the player without the bike. A simulated rider pedals for you.</p></div>

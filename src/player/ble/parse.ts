@@ -53,6 +53,7 @@ export const OP = {
   setTargetResistance: 0x04,
   setTargetPower: 0x05,
   startOrResume: 0x07,
+  setSimulation: 0x11,
   stopOrPause: 0x08,
   response: 0x80,
 } as const;
@@ -67,6 +68,17 @@ export function cmdStop(pause = false): Uint8Array { return Uint8Array.of(OP.sto
 export function cmdSetTargetPower(watts: number): Uint8Array {
   const w = Math.max(-32768, Math.min(32767, Math.round(watts)));
   return Uint8Array.of(OP.setTargetPower, w & 0xff, (w >> 8) & 0xff);
+}
+
+/**
+ * Indoor Bike Simulation: the trainer behaves like a road of this gradient
+ * (percent), with no wind and typical rolling and air resistance. "Set
+ * resistance" and "Free ride" use it, because every FTMS trainer supports it
+ * (the resistance-level command is optional and its units vary by maker).
+ */
+export function cmdSimulation(gradePct: number): Uint8Array {
+  const g = Math.max(-32768, Math.min(32767, Math.round(gradePct * 100)));
+  return Uint8Array.of(OP.setSimulation, 0, 0, g & 0xff, (g >> 8) & 0xff, 40, 51);
 }
 
 export interface ControlResponse { request: number; result: number; ok: boolean }

@@ -27,6 +27,7 @@ import type { DayNote } from '../../engine/types';
 import type { ReadinessDriver } from '../../engine/readiness';
 import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
+import { RideNotices } from '../RideNotices';
 import { Icon } from '../icons';
 import { ChangeSheet } from '../ChangeSheet';
 import { PictureStrip } from '../ExercisePictures';
@@ -201,6 +202,8 @@ export function Today({ data }: { data: AppData }) {
           {connected && <span class={`sync-when${line.failed ? ' failed' : ''}`}>{line.text}</span>}
         </div>
       </PageHead>
+
+      <RideNotices />
 
       <WeekStrip week={weekSummary(weekStart(date), data.planned, data.rides, data.mine)} />
 

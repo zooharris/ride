@@ -706,3 +706,40 @@ export async function deleteActivity(c: IntervalsCredentials, activityId: string
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && isFinite(v) ? v : undefined;
 }
+
+/**
+ * Upload a recorded activity file (the ride player's FIT file). The upload is
+ * multipart, so it carries only the key, not the JSON content type. The
+ * external id is the recording's own, so a retried upload never makes a
+ * second copy. Answers the new activity's id.
+ */
+export async function uploadActivityFile(c: IntervalsCredentials, file: Uint8Array, o: { name: string; description?: string; externalId: string; fileName: string }): Promise<string> {
+  const form = new FormData();
+  const buf = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
+  form.append('file', new Blob([buf], { type: 'application/octet-stream' }), o.fileName);
+  const q = new URLSearchParams({ name: o.name, external_id: o.externalId });
+  if (o.description) q.set('description', o.description);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/athlete/${c.athleteId}/activities?${q}`, { method: 'POST', body: form, headers: { Authorization: 'Basic ' + btoa(`API_KEY:${c.apiKey}`) } });
+  } catch {
+    throw new IntervalsError('Could not reach intervals.icu. Check your connection.');
+  }
+  if (res.status === 401 || res.status === 403) throw new IntervalsError('Intervals.icu rejected the athlete ID or API key.', res.status);
+  const text = await res.text().catch(() => '');
+  if (!res.ok) {
+    let why = text;
+    try { const j = JSON.parse(text) as { error?: string; message?: string }; why = j.error ?? j.message ?? text; } catch { /* plain text */ }
+    throw new IntervalsError(`Intervals.icu answered ${res.status}${why ? `: ${why.slice(0, 200)}` : '.'}`, res.status);
+  }
+  let j: { id?: string | number; activities?: Array<{ id?: string | number }> } = {};
+  try { j = JSON.parse(text); } catch { /* no body */ }
+  const id = j.id ?? j.activities?.[0]?.id;
+  if (id == null) throw new IntervalsError('Intervals.icu took the file but did not say which activity it made.');
+  return String(id);
+}
+
+/** The rider's effort for an activity (1–10), as Intervals.icu keeps it. */
+export async function updateActivityEffort(c: IntervalsCredentials, activityId: string, rpe: number): Promise<void> {
+  await call(c, `/activity/${activityId}`, { method: 'PUT', body: JSON.stringify({ icu_rpe: rpe }) });
+}

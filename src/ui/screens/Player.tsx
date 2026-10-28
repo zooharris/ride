@@ -10,7 +10,13 @@ import { fmtDate } from '../derived';
 import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { Logo } from '../Brand';
 import { Empty } from '../PageHead';
-import { getSetting } from '../../data/db';
+import { getSetting, setSetting } from '../../data/db';
+import { buildTimeline } from '../../player/timeline';
+import { getRecording, patchRecording } from '../../player/rides';
+import type { Recording } from '../../player/types';
+import type { TrainerMode } from '../../player/engine';
+import { startRide } from '../rideController';
+import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
 import { KIND_WORD, pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
@@ -51,6 +57,28 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
     if (bluetoothAvailable()) void restoreSaved();
   }, [profile.ftp, profile.lthr, profile.restingHr, profile.maxHr]);
 
+  const ride = useRide();
+  const [recovered, setRecovered] = useState<Recording | null | undefined>(undefined);
+  useEffect(() => {
+    if (how !== 'recovered' || !id) return;
+    // A ride the browser closed in the middle of: it ends where the recording stopped.
+    getRecording(id).then(async (r) => {
+      if (r && r.status === 'recording') { r = { ...r, status: 'finished' }; await patchRecording(r.id, { status: 'finished' }); }
+      setRecovered(r ?? null);
+    });
+  }, [how, id]);
+
+  if (ride) {
+    if (ride.engine.phase !== 'finished') return <Riding ride={ride} profile={profile} />;
+    return <RideDone rec={ride.rec} workout={ride.setup.workout} planned={ride.setup.planned} timeline={ride.timeline} profile={profile} />;
+  }
+  if (how === 'recovered') {
+    if (recovered === undefined) return <Frame><div class="pl-empty" /></Frame>;
+    if (!recovered) return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It has already been saved or discarded.</Empty></div></Frame>;
+    const w = recovered.workoutId ? findWorkout(data.mine, recovered.workoutId) : undefined;
+    const p = recovered.plannedId ? data.planned.find((x) => x.id === recovered.plannedId) : undefined;
+    return <RideDone rec={recovered} workout={w} planned={p} timeline={w ? buildTimeline(w, profile) : []} profile={profile} recovered />;
+  }
   const bt = bluetoothAvailable();
   if (!bt && !sim) return <Frame><NoBluetooth /></Frame>;
   if (!workout || workout.kind !== 'ride') {
@@ -98,6 +126,18 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power';
+  const prefs = usePrefs();
+  const [mode, setMode] = useState<TrainerMode>('erg');
+  const [scale, setScale] = useState(1);
+  const [level, setLevel] = useState(3);
+  const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
+  // This update rides by power: with the trainer in control (ERG, resistance, free ride) or without (your gears).
+  const startable = basis === 'power' && (choice.mode === 'erg' || choice.mode === 'power-self');
+  const start = () => startRide({
+    workout, planned, basis, profile, scale, level,
+    mode: choice.mode === 'erg' ? mode : 'self',
+    sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
+  });
 
   return (
     <>
@@ -128,18 +168,39 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
         </section>
 
         <aside class="pl-side">
+          <div class="pl-side-body">
           <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} />
-          <section class="pl-card">
+          <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
-            <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{choice.mode ? choice.says.replace(/^Ready\.\s*/, '') : choice.says}
-              {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
+            {basis === 'power' && choice.mode === 'erg' ? (
+              <>
+                <div class="pl-runs-row">
+                  <span>Trainer</span>
+                  <div class="seg" role="group" aria-label="Trainer">
+                    {([['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
+                      <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {mode === 'resistance' ? (
+                  <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>
+                ) : mode === 'erg' ? (
+                  <div class="pl-runs-row"><span>Workout intensity</span><StepperSmall value={`${Math.round(scale * 100)}%`} onDown={() => setScale(Math.max(0.5, Math.round((scale - 0.01) * 100) / 100))} onUp={() => setScale(Math.min(1.5, Math.round((scale + 0.01) * 100) / 100))} label="workout intensity" /></div>
+                ) : null}
+                <div class="pl-runs-row"><span>Beeps before each step</span>
+                  <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>
+              </>
+            ) : (
+              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? choice.says.replace(/^Ready\.\s*/, '') : basis === 'hr' && choice.mode ? "Riding by heart rate arrives with the next update. For now, choose Power above if your trainer or power meter is connected." : choice.says}
+                {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
+            )}
           </section>
-          <div class="pl-grow" />
-          <button class="btn primary pl-start" disabled>
+          </div>
+          <button class="btn primary pl-start" disabled={!startable} onClick={start}>
             <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
             Start ride
           </button>
-          <p class="pl-start-note">Riding the workout arrives with the next update.</p>
+          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.mode ? 'Choose Power to ride now' : 'Connect what the ride needs to start'}</p>
         </aside>
       </main>
     </>
@@ -329,3 +390,31 @@ function unitOf(m: Metric, profile: Profile): string {
 }
 
 const TRAINER_ICON: JSX.Element = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="15" r="4" /><circle cx="17" cy="15" r="4" /><path d="M3 20h18" /></svg>;
+
+/** The player's preferences on this computer (Settings → Ride player). */
+export const PREF = { sound: 'playerSound', autoPause: 'playerAutoPause', guard: 'playerGuard', smoothing: 'playerSmoothing' } as const;
+export interface Prefs { sound: boolean; autoPause: boolean; guard: boolean; smoothing: number }
+export const DEFAULT_PREFS: Prefs = { sound: true, autoPause: true, guard: true, smoothing: 3 };
+export async function loadPrefs(): Promise<Prefs> {
+  return {
+    sound: await getSetting(PREF.sound, DEFAULT_PREFS.sound),
+    autoPause: await getSetting(PREF.autoPause, DEFAULT_PREFS.autoPause),
+    guard: await getSetting(PREF.guard, DEFAULT_PREFS.guard),
+    smoothing: await getSetting(PREF.smoothing, DEFAULT_PREFS.smoothing),
+  };
+}
+function usePrefs(): Prefs & { set: (p: Prefs) => void } {
+  const [p, set] = useState<Prefs>(DEFAULT_PREFS);
+  useEffect(() => { loadPrefs().then(set); }, []);
+  return { ...p, set };
+}
+
+function StepperSmall({ value, onDown, onUp, label }: { value: string; onDown: () => void; onUp: () => void; label: string }) {
+  return (
+    <div class="pl-stepper">
+      <button class="btn" aria-label={`Lower ${label}`} onClick={onDown}>−</button>
+      <b class="num">{value}</b>
+      <button class="btn" aria-label={`Raise ${label}`} onClick={onUp}>+</button>
+    </div>
+  );
+}

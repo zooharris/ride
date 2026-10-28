@@ -1,4 +1,5 @@
 import type { ActivePlan } from '../ui/planService';
+import type { Recording } from '../player/types';
 import Dexie, { type Table } from 'dexie';
 import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout, ActivityEdit } from '../engine/types';
 
@@ -67,6 +68,8 @@ class RideDb extends Dexie {
   powerCurves!: Table<PowerCurve, string>;
   plans!: Table<ActivePlan, string>;
   activityEdits!: Table<ActivityEdit, string>;
+  /** Rides recorded by the ride player: this computer only (never in the sync note or a backup), kept until uploaded and 30 days after. */
+  recordings!: Table<Recording, string>;
 
   constructor() {
     super('ride');
@@ -99,6 +102,7 @@ class RideDb extends Dexie {
         r.powerZoneSeconds = r.powerZoneSeconds.slice(0, 7);
       }
     }));
+    this.version(10).stores({ recordings: 'id, status, startMs' });
   }
 }
 

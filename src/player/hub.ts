@@ -6,7 +6,7 @@
  */
 import { getSetting, setSetting } from '../data/db';
 import { attach, chooseDevice, knownDevice, type Driver } from './ble/web';
-import type { Range } from './ble/parse';
+import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/parse';
 import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
 
@@ -176,3 +176,44 @@ export function removeSimulated(): void {
   stopSimIfIdle();
   emitNow();
 }
+
+// ── Controlling the trainer ─────────────────────────────────────────────────
+
+/** What the trainer is asked to do: hold watts (ERG), or ride like a road of a gradient (resistance, free ride). */
+export type TrainerCommand = { erg: number } | { grade: number };
+
+let queue: Promise<unknown> = Promise.resolve();
+let started = false;
+
+/** The trainer that will take commands, if any. */
+export function controlledTrainer(): SensorState | undefined {
+  return sensors.find((s) => s.kind === 'trainer' && s.status === 'connected' && s.controllable);
+}
+
+/**
+ * Send a command to the controlled trainer. Commands go one at a time (the
+ * control point answers each before the next); a simulated trainer follows at
+ * once. The first command of a ride is preceded by Start.
+ */
+export function commandTrainer(cmd: TrainerCommand): void {
+  const t = controlledTrainer();
+  if (!t) return;
+  if (t.simulated) {
+    if (rider) rider.target = 'erg' in cmd ? cmd.erg : 130 + cmd.grade * 18;
+    return;
+  }
+  const d = drivers.get(t.id);
+  if (!d?.command) return;
+  let watts = 'erg' in cmd ? cmd.erg : 0;
+  if ('erg' in cmd && t.powerRange) watts = Math.max(t.powerRange.min, Math.min(t.powerRange.max, watts));
+  const bytes = 'erg' in cmd ? cmdSetTargetPower(watts) : cmdSimulation(cmd.grade);
+  queue = queue.then(async () => {
+    try {
+      if (!started) { await d.command!(cmdStart()); started = true; }
+      await d.command!(bytes);
+    } catch { /* a dropped trainer: the next command, after it reconnects, carries the target again */ }
+  });
+}
+
+/** A new ride starts the trainer again with its first command. */
+export function resetTrainerSession(): void { started = false; }

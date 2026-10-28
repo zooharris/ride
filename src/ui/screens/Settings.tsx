@@ -1,3 +1,4 @@
+import { PlayerSettings } from '../PlayerSettings';
 import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
 import { formatPace, parsePace } from '../../engine/run';
@@ -244,6 +245,8 @@ export function Settings({ data }: { data: AppData }) {
           <div class="seg"><button class={coachAuto ? 'on' : ''} onClick={() => setCoachAuto(true)} disabled={!claudeKey.trim()}>On</button><button class={!coachAuto ? 'on' : ''} onClick={() => setCoachAuto(false)}>Off</button></div>
           <p class="faint small" style="margin-top:6px">On: each time a sync brings in new rides or sessions, the coach reviews them on Today; and whenever the plan finds something to change, the coach decides which changes to recommend and says why beside each. Off: the app's own list of changes is shown, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
       </section>
+
+      <PlayerSettings />
 
       <section class="section">
         <h2>Across your devices, and backup</h2>

@@ -863,3 +863,56 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .ph-actions:has(.sync-stack) { align-items: flex-start; }
 .ph-actions:has(.sync-stack) .ph-help { margin-top: -2px; }
 @media (max-width: 599px) { .sync-stack { align-items: flex-start; } }
+
+/* ---- The ride player (spec: laptop ride player, 27 Oct) ----
+   It takes the whole window, without the app's menu; sized for a laptop, and for an iPad either way up. */
+.player { min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.pl-head { display: flex; align-items: center; gap: 14px; height: 64px; padding: 0 clamp(16px, 2.4vw, 32px); border-bottom: 1px solid var(--line); background: var(--bg-2); position: sticky; top: 0; z-index: 20; }
+.pl-head-name { color: var(--ink-3); font-size: 15px; }
+.pl-banner { margin: 12px clamp(16px, 2.4vw, 32px) 0; padding: 10px 14px; border-radius: var(--radius-s); border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 9%, var(--bg-2)); font-size: 14px; }
+.pl-main { flex: 1; padding: 20px clamp(16px, 2.4vw, 32px); min-width: 0; }
+.pl-pre { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+/* One column (an iPad upright, a narrow window): the sensors come first, since connecting them is what this screen is for. */
+@media (max-width: 1099px) { .pl-pre { grid-template-columns: minmax(0, 1fr); } .pl-side { order: -1; } }
+.pl-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.pl-workout h1 { font-size: clamp(30px, 3vw, 40px); line-height: 1.1; letter-spacing: -0.02em; }
+.pl-sub { margin: 4px 0 0; font-size: 16px; color: var(--ink-2); }
+.pl-h2 { font-size: 17px; line-height: 24px; font-weight: 600; }
+.pl-stats { display: flex; flex-wrap: wrap; gap: 14px 32px; margin-top: 16px; }
+.pl-stat { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; font-stretch: 112%; }
+.pl-stat small { font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; font-stretch: 100%; }
+.pl-menu { left: auto; right: 0; min-width: 230px; }
+.pl-sensors { display: flex; flex-direction: column; margin-top: 10px; }
+.pl-sensor { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: "icon name live" "icon name status"; column-gap: 14px; row-gap: 2px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.pl-sensor:first-child { border-top: 0; }
+.pl-sensor > .pl-kind { grid-area: icon; }
+.pl-sensor > div:nth-child(2) { grid-area: name; }
+.pl-sensor > .pl-live { grid-area: live; justify-self: end; }
+.pl-sensor > .pl-status { grid-area: status; justify-self: end; }
+.pl-sensor-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-kind { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; --c: var(--accent); background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.pl-kind.k-power { --c: var(--z4); }
+.pl-kind.k-hr { --c: var(--z6); }
+.pl-kind.k-csc { --c: var(--info); }
+.pl-live { font-size: 16px; white-space: nowrap; }
+.pl-status { display: flex; align-items: center; gap: 6px; color: var(--ink-2); white-space: nowrap; }
+.pl-status .btn.sm { min-height: 30px; padding: 4px 8px; }
+.pl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.pl-dot.connected { background: var(--good); }
+.pl-dot.connecting, .pl-dot.lost { background: var(--warn); }
+.pl-warn { margin-top: 4px; color: var(--warn); line-height: 1.4; }
+.pl-uses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+.pl-use { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pl-use-v { font-size: 26px; letter-spacing: -0.02em; font-stretch: 112%; }
+.pl-foot { position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; gap: 20px; padding: 16px clamp(16px, 2.4vw, 32px) 24px; border-top: 1px solid var(--line); background: var(--bg-2); flex-wrap: wrap; }
+.pl-foot-text { flex: 1 1 360px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pl-ready { font-weight: 600; color: var(--good); }
+.pl-notready { font-weight: 600; color: var(--ink); }
+.pl-start { min-height: 52px; padding: 0 30px; font-size: 17px; font-weight: 700; }
+.pl-empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+@media (max-width: 520px) {
+  .pl-sensor { grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "icon name" "icon live" "icon status"; }
+  .pl-sensor > .pl-live, .pl-sensor > .pl-status { justify-self: start; }
+  .pl-uses { grid-template-columns: minmax(0, 1fr); }
+  .pl-start { width: 100%; }
+}

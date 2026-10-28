@@ -80,6 +80,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <div class="row wrap" style="margin:18px 0;gap:8px">
         <button class="btn primary" onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
+        <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>
         {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         <label class="btn" style="position:relative;overflow:hidden">Pick a date

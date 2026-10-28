@@ -90,6 +90,7 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
       <div class="wcard-actions">
         <button class="btn sm" onClick={async () => { const r = await scheduleWorkout(w, today(), basis); toast(r === 'already' ? { ok: false, text: alreadyText(w.name, today()) } : { ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
         <button class="btn sm" onClick={onPick}>Pick a date</button>
+        <a class="btn sm quiet" href={`#/play/workout/${w.id}`}>Ride it now</a>
       </div>
     </div>
   );

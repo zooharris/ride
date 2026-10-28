@@ -22,6 +22,7 @@ import { PlanPage } from './screens/PlanPage';
 import { Progress } from './screens/Progress';
 import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
+import { Player } from './screens/Player';
 import { Icon } from './icons';
 import { Logo, Mark } from './Brand';
 import { toast, Toaster } from './Toast';
@@ -92,6 +93,8 @@ export function App() {
 
   const [root, id] = route.parts;
   if (root === 'print') return <PrintView data={data} planId={id} params={route.params} />;
+  // The ride player has the whole window, without the app's menu.
+  if (root === 'play') return <><Player data={data} parts={route.parts} /><Toaster /></>;
   let screen;
   switch (root) {
     case 'calendar': screen = <Calendar data={data} params={route.params} />; break;

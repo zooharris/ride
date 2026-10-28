@@ -13,6 +13,7 @@ import { hrZoneOf, targetBand, totalSeconds, type TimelineStep } from '../../pla
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
 import { deleteRecording, downloadRide, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
+import { keepVeloiqInstead, KEPT_GARMIN } from '../../player/garmin';
 import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
@@ -527,8 +528,9 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const note = byHr ? observationHr(stats) : observation(stats);
   const zoneTime = byHr && timeline.length ? timeInZone(rec.samples, timeline, bandOf) : undefined;
   const [rpe, setRpe] = useState<number | undefined>(rec.rpe);
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId ? 'saved' : 'idle');
-  const [said, setSaid] = useState<string>('');
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId || rec.supersededBy ? 'saved' : 'idle');
+  const [said, setSaid] = useState<string>(rec.supersededBy ? KEPT_GARMIN : '');
+  const [garmins, setGarmins] = useState(!!rec.supersededBy);
   const want = plannedSeconds(workout);
   const short = !!workout && (rideSeconds(rec) < TRIVIAL_SECONDS || (!!want && rideSeconds(rec) < want * 0.2));
   const hasPower = t.avgPower != null;
@@ -544,6 +546,16 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     setState('saving');
     const r = await uploadRide(rec.id);
     setSaid(r.text);
+    setGarmins(!!r.superseded);
+    setState(r.ok ? 'saved' : 'waiting');
+    if (!r.superseded) toast({ ok: r.ok, text: r.text });
+  };
+  // The Garmin's recording was kept; the rider would rather have VeloIQ's.
+  const ours = async () => {
+    setState('saving');
+    const r = await keepVeloiqInstead(rec.id);
+    setSaid(r.text);
+    setGarmins(false);
     setState(r.ok ? 'saved' : 'waiting');
     toast({ ok: r.ok, text: r.text });
   };
@@ -656,7 +668,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             </div>
             <div class="rd-grow" />
             {state === 'saved' ? (
-              <div class="rd-saved"><span class="rd-state on">Saved</span><span class="small">{said || 'In Intervals.icu.'}</span></div>
+              <div class="rd-saved"><span class="rd-state on">{garmins ? "Garmin's kept" : 'Saved'}</span><span class="small">{said || 'In Intervals.icu.'}</span>
+                {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save VeloIQ's instead</button>}</div>
             ) : (
               <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save to Intervals.icu'}</button>
             )}

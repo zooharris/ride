@@ -226,6 +226,12 @@ export interface ActivityEdit {
   /** What was done, for an activity no planned session covers. */
   done?: DoneRecord;
   rpe?: number;
+  /** Made by the VeloIQ ride player (uploaded from a ride on the trainer). Only such activities may ever be deleted by the Garmin rule. */
+  source?: 'veloiq';
+  /** The rider chose to keep VeloIQ's recording over the Garmin's: the Garmin rule leaves it alone. */
+  keepVeloiq?: boolean;
+  /** On the Garmin's recording: VeloIQ's copy of the same ride was removed in its favour. */
+  replaced?: { name: string; at: string; recordingId?: string; noUndo?: boolean };
 }
 
 /** The record of a done strength, mobility or walk session. Rides have none: the device's data is the record. */

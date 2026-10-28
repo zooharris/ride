@@ -23,7 +23,7 @@ export interface Lap { start: number; end: number; step?: number; manual?: boole
 export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue';
 export interface RideEvent { t: number; type: RideEventType; value?: string | number }
 
-export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded';
+export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded' | 'superseded';
 
 export interface Recording {
   id: string;
@@ -52,4 +52,8 @@ export interface Recording {
   uploadedAt?: string;
   /** The last upload attempt's failure, in words. */
   error?: string;
+  /** The Garmin recorded the same ride and its recording was kept: its activity id. The file stays here 30 days for Undo. */
+  supersededBy?: string;
+  /** The rider chose VeloIQ's recording over the Garmin's. */
+  keepVeloiq?: boolean;
 }

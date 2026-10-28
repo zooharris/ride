@@ -1137,7 +1137,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .rd-effort-words { display: flex; justify-content: space-between; margin-top: 4px; }
 .rd-garmin { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); line-height: 1.5; }
 .rd-savebtn { min-height: 50px; font-size: 16px; font-weight: 700; justify-content: center; }
-.rd-saved { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--good) 8%, transparent); border: 1px solid color-mix(in srgb, var(--good) 35%, var(--line)); }
+.rd-saved { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--good) 8%, transparent); border: 1px solid color-mix(in srgb, var(--good) 35%, var(--line)); }
 @media (max-width: 1099px) {
   .player.ride { height: auto; overflow: visible; }
   .rd-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

@@ -24,6 +24,7 @@ import { Help } from './screens/Help';
 import { PrintView } from './screens/Print';
 import { Player } from './screens/Player';
 import { sendWaitingRides, tidyRecordings } from '../player/rides';
+import { watchGarminRule } from './garminWatch';
 import { Icon } from './icons';
 import { Logo, Mark } from './Brand';
 import { toast, Toaster } from './Toast';
@@ -84,6 +85,7 @@ export function App() {
       .then((ran) => { if (ran) notify(); });
     run();
     pull();
+    watchGarminRule();
     const onVis = () => { if (document.visibilityState === 'visible') { run(); pull(); } };
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); off(); };

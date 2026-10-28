@@ -15,6 +15,7 @@ import type { Recording } from './types';
 import type { PlannedWorkout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
+import { garminFirst, markPlayerMade } from './garmin';
 
 export async function putRecording(r: Recording): Promise<void> { await db.recordings.put({ ...r, savedMs: Date.now() }); }
 export async function getRecording(id: string): Promise<Recording | undefined> { return db.recordings.get(id); }
@@ -34,7 +35,7 @@ export async function waitingRides(): Promise<Recording[]> {
 /** Uploaded rides are kept 30 days (for downloads and the Garmin rule's Undo), then removed. */
 export async function tidyRecordings(now = Date.now()): Promise<void> {
   const old = await db.recordings.where('startMs').below(now - 30 * 86_400_000).toArray();
-  await db.recordings.bulkDelete(old.filter((r) => r.status === 'uploaded').map((r) => r.id));
+  await db.recordings.bulkDelete(old.filter((r) => r.status === 'uploaded' || r.status === 'superseded').map((r) => r.id));
 }
 
 export function rideFile(r: Recording): Uint8Array {
@@ -58,7 +59,9 @@ export function downloadRide(r: Recording): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export interface UploadResult { ok: boolean; text: string; activityId?: string; matched?: string; tooShort?: boolean }
+export interface UploadResult { ok: boolean; text: string; activityId?: string; matched?: string; tooShort?: boolean;
+  /** The Garmin's recording of the same ride was kept; VeloIQ's was not uploaded. */
+  superseded?: boolean }
 
 /** How long the ride lasted, start to finish: the larger of the timer and the recording's last second. */
 export function rideSeconds(r: Pick<Recording, 'samples' | 'timerSeconds'>): number {
@@ -89,20 +92,24 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   const r = await getRecording(id);
   if (!r) return { ok: false, text: 'That ride is no longer on this computer.' };
   if (r.activityId) return { ok: true, text: 'Already saved to Intervals.icu.', activityId: r.activityId };
+  if (r.status === 'superseded' && r.supersededBy) return { ok: true, text: 'Kept your Garmin\'s recording of this ride.', activityId: r.supersededBy, superseded: true };
   const c = await credentials();
   if (!c) {
     await patchRecording(id, { status: 'finished', error: 'Intervals.icu is not connected on this device.' });
     return { ok: false, text: 'Connect Intervals.icu in Settings, then save again. The ride is kept on this computer.' };
   }
+  // The Garmin recorded it too and its recording is already in: keep the Garmin's.
+  if (!r.keepVeloiq) { const g = await garminFirst(r); if (g) return g; }
   let activityId: string;
   try {
-    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}`, fileName: fileName(r), description: 'Ridden with the VeloIQ ride player.' });
+    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}${r.keepVeloiq ? '-kept' : ''}`, fileName: fileName(r), description: 'Ridden with the VeloIQ ride player.' });
   } catch (e) {
     const why = (e as Error).message;
     await patchRecording(id, { status: 'finished', error: why });
     return { ok: false, text: `Not saved yet: ${why} The ride is kept on this computer and will be tried again.` };
   }
   await patchRecording(id, { status: 'uploaded', activityId, uploadedAt: new Date().toISOString(), error: undefined });
+  await markPlayerMade(activityId, r.date, r.keepVeloiq);
 
   // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the
   // automatic pairing cannot hand it to another session planned that day. Nothing on other days is touched.

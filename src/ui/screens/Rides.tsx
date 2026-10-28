@@ -9,7 +9,8 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials, plannedSeconds, shownName, unmatchRecording } from '../../sync/syncService';
 import { deleteRecording, matchByHand, renameActivity, setActivityKind, setExcluded, undoHandLog } from '../../sync/records';
-import type { PlannedWorkout, SessionKind } from '../../engine/types';
+import type { ActivityEdit, PlannedWorkout, SessionKind } from '../../engine/types';
+import { canKeepVeloiq, keepVeloiqInstead } from '../../player/garmin';
 import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
@@ -328,7 +329,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
-      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} />
+      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
@@ -539,9 +540,20 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
 }
 
 /** The activity's name, what it was (when the device got it wrong), and whether it counts toward training load. */
-function AboutActivity({ ride: r, matched, excluded, kindEdited }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind }) {
+function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced'] }) {
   const [name, setName] = useState(r.name);
   const [busy, setBusy] = useState(false);
+  // The Garmin rule removed VeloIQ's copy of this ride: within 30 days, on the computer that has its file, it can come back.
+  const [canUndo, setCanUndo] = useState(false);
+  useEffect(() => { void canKeepVeloiq(r, replaced?.recordingId).then(setCanUndo); }, [r.id, replaced?.recordingId]);
+  const keepOurs = async () => {
+    if (!confirm(`Keep VeloIQ's recording of ${replaced!.name} instead?\n\nVeloIQ's is saved to Intervals.icu and completes the session. This Garmin recording stays in Garmin Connect and Intervals.icu, left out of training load so the ride counts once.`)) return;
+    setBusy(true);
+    const res = await keepVeloiqInstead(replaced!.recordingId!);
+    setBusy(false);
+    notify();
+    toast({ ok: res.ok, text: res.ok ? `Kept VeloIQ's recording of ${replaced!.name}.` : res.text });
+  };
   useEffect(() => setName(r.name), [r.name]);
   // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
   const run = async (what: () => Promise<void>, ok: string, undo?: () => Promise<void>) => {
@@ -558,6 +570,12 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited }: { ride: Ride;
     <section class="section">
       <h2>About this activity</h2>
       <div class="panel stack" style="gap:16px;margin-top:8px">
+        {replaced && (
+          <div class="row wrap" style="gap:8px 12px;align-items:center">
+            <span class="small" style="flex:1;min-width:220px">Your Garmin and VeloIQ's ride player both recorded this ride. This one, your Garmin's, was kept, since it's the one in Garmin Connect, and VeloIQ's copy was removed so the ride counts once.</span>
+            {canUndo && <button class="btn sm" disabled={busy} onClick={() => void keepOurs()}>Keep VeloIQ's instead…</button>}
+          </div>
+        )}
         <div class="row wrap" style="gap:8px;align-items:flex-end">
           <div class="field" style="flex:1;min-width:200px"><label>Name</label><input value={name} maxLength={80} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
           <button class="btn" disabled={busy || !name.trim() || name.trim() === r.name} onClick={() => run(() => renameActivity(r, name), 'Renamed.')}>Rename</button>

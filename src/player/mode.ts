@@ -13,6 +13,8 @@ export interface ModeChoice {
   says: string;
   /** Power basis with no power but heart rate present, on a workout that allows heart rate: offer the switch. */
   suggestHr?: boolean;
+  /** A power-only workout with no power connected: it cannot start; offer workouts that can be ridden by heart rate. */
+  needsPower?: boolean;
 }
 
 export function chooseMode(
@@ -28,7 +30,7 @@ export function chooseMode(
     if (power && control) return { mode: 'erg', says: 'Ready. The trainer will hold each power target for you (ERG).' };
     if (power) return { mode: 'power-self', says: "Ready. You'll ride to the power targets yourself: the trainer can't be controlled from here." };
     if (hr && allowsHr) return { says: 'No power source yet. Connect your trainer or power meter, or switch this ride to heart rate.', suggestHr: true };
-    if (hr) return { says: "This workout's short efforts need power. Connect your trainer or power meter." };
+    if (!allowsHr) return { says: 'This workout needs a power meter, or a smart trainer that measures power. Connect one to start.', needsPower: true };
     return { says: 'Connect a heart-rate monitor or a power source to ride this workout.' };
   }
   if (hr && control) return { mode: 'hr-trainer', says: 'Ready. The trainer will adjust its resistance to keep you in each heart-rate zone.' };

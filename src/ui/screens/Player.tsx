@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 import type { AppData } from '../store';
-import { findWorkout } from '../store';
+import { allWorkouts, findWorkout } from '../store';
+import { hrAlternatives } from '../../player/alternatives';
 import type { Basis, PlannedWorkout, Profile, Workout, WorkoutStep } from '../../engine/types';
 import { clock, flattenSteps, formatDuration, stepTargets, workoutStats } from '../../engine/workout';
 import { powerZone, ridePowerZones } from '../../engine/zones';
@@ -84,7 +85,7 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
-  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} /></Frame>;
+  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} /></Frame>;
 }
 
 function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }) {
@@ -117,7 +118,7 @@ function NoBluetooth() {
 
 // ── The workout, left ───────────────────────────────────────────────────────
 
-function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean }) {
+function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean; mine: Workout[] }) {
   const allowsHr = workout.bases.includes('hr');
   const [basis, setBasis] = useState<Basis>(planned?.basis ?? (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
   const { sensors, now } = useSensors();
@@ -126,6 +127,7 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power';
+  const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine))), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
   const [mode, setMode] = useState<TrainerMode>('erg');
   const [scale, setScale] = useState(1);
@@ -191,8 +193,20 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
                   <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>
               </>
             ) : (
+              <>
               <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? choice.says.replace(/^Ready\.\s*/, '') : basis === 'hr' && choice.mode ? "Riding by heart rate arrives with the next update. For now, choose Power above if your trainer or power meter is connected." : choice.says}
                 {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
+            {choice.needsPower && alternatives.length > 0 && (
+              <div class="pl-alts">
+                <span class="faint small">Or ride one of these by heart rate:</span>
+                {alternatives.map((a) => (
+                  <a key={a.id} class="pl-alt" href={`#/play/workout/${a.id}`}>
+                    <b>{a.name}</b><span class="faint small">{a.subtitle ? `${a.subtitle} · ` : ''}{clock(workoutStats(a.blocks).seconds)}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+              </>
             )}
           </section>
           </div>
@@ -200,7 +214,7 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
             <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
             Start ride
           </button>
-          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.mode ? 'Choose Power to ride now' : 'Connect what the ride needs to start'}</p>
+          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.mode ? 'Choose Power to ride now' : choice.needsPower ? 'Connect a power meter to start' : 'Connect what the ride needs to start'}</p>
         </aside>
       </main>
     </>

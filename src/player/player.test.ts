@@ -197,8 +197,27 @@ describe('choosing how the ride is played', () => {
   it('says what is missing', () => {
     expect(run('power', [strap]).mode).toBeUndefined();
     expect(run('power', [strap]).suggestHr).toBe(true);
-    expect(run('power', [strap], false).suggestHr).toBeUndefined();
+    expect(run('power', [strap], false)).toMatchObject({ needsPower: true });
+    expect(run('power', [], false).needsPower).toBe(true);
+    expect(run('power', [strap], false).mode).toBeUndefined();
     expect(run('hr', [trainer(true)]).mode).toBeUndefined();
     expect(run('power', []).says).toMatch(/Connect a heart-rate monitor or a power source/);
+    expect(run('power', [], false).says).toMatch(/needs a power meter/);
+  });
+});
+
+import { hrAlternatives } from './alternatives';
+import { LIBRARY } from '../library/workouts';
+import { workoutStats } from '../engine/workout';
+
+describe('heart-rate alternatives to a power-only workout', () => {
+  it('offers three rides that allow heart rate, close in length', () => {
+    const vo2 = LIBRARY.find((w) => w.kind === 'ride' && !w.bases.includes('hr'))!;
+    const alts = hrAlternatives(vo2, LIBRARY);
+    expect(alts).toHaveLength(3);
+    for (const a of alts) {
+      expect(a.bases).toContain('hr');
+      expect(Math.abs(workoutStats(a.blocks).seconds - workoutStats(vo2.blocks).seconds)).toBeLessThanOrEqual(30 * 60);
+    }
   });
 });

@@ -1145,3 +1145,8 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 
 /* Today: a ride interrupted, or rides waiting to upload */
 .ride-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+
+/* A power-only workout with no power: rides that can be ridden by heart rate instead */
+.pl-alts { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.pl-alt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 10px; text-decoration: none; color: var(--ink); }
+.pl-alt:hover { border-color: var(--accent); }

@@ -7,7 +7,7 @@ import { scoreRide } from '../../engine/compliance';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
-import { credentials, plannedSeconds, unmatchRecording } from '../../sync/syncService';
+import { credentials, plannedSeconds, shownName, unmatchRecording } from '../../sync/syncService';
 import { deleteRecording, matchByHand, renameActivity, setActivityKind, setExcluded, undoHandLog } from '../../sync/records';
 import type { PlannedWorkout, SessionKind } from '../../engine/types';
 import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
@@ -97,7 +97,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                     <a class="cal-item act" key={r.id} href={`#/rides/${r.id}`} style={c ? `--edge:${verdictColor(c.verdict)}` : ''}>
                       <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
                       <div class="t">
-                        <b>{r.name}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
+                        <b>{shownName(r.name, w)}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
                         <span>{[fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' }), clock(r.seconds), r.distanceM ? distance(r.distanceM, profile) : '', r.sport === 'ride' ? mph(r.averageSpeedMs) : ''].filter(Boolean).map((s) => s.replace(/ /g, '\u00a0')).join(' · ')}</span>
                       </div>
                       {zones && zones.some((z) => z > 0) && <ZoneStrip seconds={zones} power={!!r.powerZoneSeconds?.length} />}
@@ -210,7 +210,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const showRecording = !handLogged && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120;
   return (
     <div>
-      <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={r.name} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
+      <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>

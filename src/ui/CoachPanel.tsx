@@ -47,8 +47,9 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
       setKey(k);
       const chat = await getSetting<SavedChat | null>('coachChat', null);
       if (alive) setTurns(chat?.date === date ? chat.turns : []);
-      if (!k) return;
       const cached = await getSetting<SavedNote | null>('coachNote', null);
+      // Without a key, this device shows the latest note any device wrote (it travels with the plan), and asks for none.
+      if (!k) { if (alive && cached?.date === date && cached.text) setNote(cached); return; }
       if (cached?.date === date && cached.text && cached.v === 2) {
         if (alive) setNote(cached);
         if ((cached.sig ?? '') === daySig) return;      // still current
@@ -80,10 +81,31 @@ export function CoachPanel({ ctx, date, daySig, review, onDismissReview, onRetry
 
   if (key === null) return null;
   if (!key) {
+    // The note and the review written on another device, read-only; asking needs this device's own key.
+    if (!note && !review) {
+      return (
+        <section class="section">
+          <h2>Coach</h2>
+          <p class="muted small" style="margin-top:6px">Add a Claude API key in <a href="#/settings">Settings</a> for a daily note from the coach, a review after each sync, and answers to your questions. A note written on another of your devices shows here too.</p>
+        </section>
+      );
+    }
     return (
       <section class="section">
         <h2>Coach</h2>
-        <p class="muted small" style="margin-top:6px">Add a Claude API key in <a href="#/settings">Settings</a> for a daily note from the coach, a review after each sync, and answers to your questions.</p>
+        <div class="panel" style="margin-top:8px;padding:14px 16px">
+          {note && <>
+            <p style="font-size:15px;line-height:1.6;margin:0">{note.text}</p>
+            <p class="faint small" style="margin-top:6px">Written at {time(note.at)} on another of your devices.</p>
+          </>}
+          {review && !review.failed && (
+            <div style={note ? 'margin-top:14px;padding-top:12px;border-top:1px solid var(--line)' : ''}>
+              <div class="row between"><b class="small">{review.at ? `Review of the activities synced at ${time(review.at)}` : 'Review of the latest synced activities'}</b><button class="btn sm quiet" onClick={onDismissReview}>Dismiss</button></div>
+              <p style="margin-top:6px;font-size:15px;line-height:1.6">{review.text}</p>
+            </div>
+          )}
+          <p class="faint small" style="margin:12px 0 0">To ask the coach a question or get a fresh note on this device, add a Claude API key in <a href="#/settings">Settings</a>.</p>
+        </div>
       </section>
     );
   }

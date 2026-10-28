@@ -552,6 +552,18 @@ export function plausibleFor(r: Ride, planned: number | undefined): boolean {
 /** A recording name at least this long may be one the watch cut short (a watch keeps 32 characters). */
 export const CUT_NAME_MIN = 20;
 
+/**
+ * The name to show for a recording: the session's full name when the recording
+ * is matched to it and its own name is that name cut short by the watch;
+ * otherwise the recording's own name (a rider's rename is never overridden).
+ */
+export function shownName(recordingName: string, w?: { name: string; subtitle?: string }): string {
+  if (!w) return recordingName;
+  const a = recordingName.trim().toLowerCase();
+  const full = w.name.trim().toLowerCase();
+  return a.length >= CUT_NAME_MIN && full.length > a.length && full.startsWith(a) ? w.name : recordingName;
+}
+
 export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workoutOf: (id: string) => (Pick<Workout, 'name' | 'subtitle' | 'kind'> & Partial<Pick<Workout, 'minutes' | 'walk' | 'blocks'>>) | undefined): Map<string, Ride> {
   const taken = new Set<string>();
   const free = (r: Ride) => !taken.has(r.id);

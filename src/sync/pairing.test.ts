@@ -213,3 +213,13 @@ describe('a recording whose name the watch cut short', () => {
     expect(m.get('m')).toBeUndefined();
   });
 });
+
+describe('the name shown for a matched recording', () => {
+  it("shows the session's full name when the watch cut it short, and never overrides a rename", async () => {
+    const { shownName } = await import('./syncService');
+    const w = { name: 'Mobility: after strength (10 min)' };
+    expect(shownName('Mobility: after strength (10 min', w)).toBe('Mobility: after strength (10 min)');
+    expect(shownName('Evening stretch', w)).toBe('Evening stretch');
+    expect(shownName('Mobility: after strength (10 min', undefined)).toBe('Mobility: after strength (10 min');
+  });
+});

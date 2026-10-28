@@ -36,7 +36,7 @@ export interface SyncDoc {
 }
 
 /** Settings that belong to one device, or come from Intervals.icu anyway. */
-const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId', 'noteKey', 'noteLock', 'coachReview', 'coachChat', 'coachNote', 'historyLoadedFrom', 'scoringRules', 'progressOverlays', 'chartChat', 'retargetLog', 'coachRecheck', 'playerDevices', 'playerSim', 'playerSound', 'playerAutoPause', 'playerGuard', 'playerSmoothing', 'playerSlots']);
+const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId', 'noteKey', 'noteLock', 'coachChat', 'historyLoadedFrom', 'scoringRules', 'progressOverlays', 'chartChat', 'retargetLog', 'coachRecheck', 'playerDevices', 'playerSim', 'playerSound', 'playerAutoPause', 'playerGuard', 'playerSmoothing', 'playerSlots']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at

@@ -44,7 +44,7 @@ export function PlayerSettings() {
       </div>
       <div class="field" style="margin-top:14px"><label>Practice with a simulated trainer</label>
         <div class="seg"><button class={sim ? 'on' : ''} aria-pressed={sim} onClick={() => void setPractice(true)}>On</button><button class={!sim ? 'on' : ''} aria-pressed={!sim} onClick={() => void setPractice(false)}>Off</button></div>
-        <p class="faint small" style="margin-top:6px">On: the ride screen's Add a sensor also offers a simulated trainer, power meter and heart rate, so you can try the player without the bike. A simulated rider pedals for you.</p></div>
+        <p class="faint small" style="margin-top:6px">On: the ride screen's Add a device also offers a simulated trainer, power meter and heart rate, so you can try the player without the bike. A simulated rider pedals for you.</p></div>
     </section>
   );
 }

@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren, JSX } from 'preact';
 import type { AppData } from '../store';
 import { findWorkout } from '../store';
-import type { Basis, PlannedWorkout, Profile, Workout } from '../../engine/types';
-import { clock, workoutStats } from '../../engine/workout';
+import type { Basis, PlannedWorkout, Profile, Workout, WorkoutStep } from '../../engine/types';
+import { clock, flattenSteps, formatDuration, stepTargets, workoutStats } from '../../engine/workout';
+import { powerZone, ridePowerZones } from '../../engine/zones';
 import { today } from '../../engine/load';
-import { FAMILY_LABEL } from '../../library/workouts';
 import { fmtDate } from '../derived';
-import { WorkoutProfile } from '../Profile';
-import { StepsTable } from '../StepsTable';
+import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { Logo } from '../Brand';
 import { Empty } from '../PageHead';
 import { getSetting } from '../../data/db';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
-import { KIND_WORD, METRIC_WORD, pickSources, STALE_MS, suppliedBy, type Metric, type SensorKind, type Supplied } from '../../player/sources';
+import { KIND_WORD, pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
 import { chooseMode } from '../../player/mode';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
@@ -32,10 +32,12 @@ function back(): void {
 }
 
 /**
- * The ride player, before the ride (spec screen 1): the workout, the sensors
- * with their live numbers, and how the ride will be played. Reached from
- * "Ride indoors on the trainer" (#/play/planned/<id>) or a ride's page
- * (#/play/workout/<id>). It has the whole window, without the app's menu.
+ * The ride player, before the ride (spec screen 1, as redesigned 27 Oct): the
+ * workout on the left; on the right, "Ready to ride" — each number the ride
+ * uses shown once, with the device it comes from — the trainer, how the ride
+ * runs, and Start. Reached from "Ride indoors on the trainer"
+ * (#/play/planned/<id>) or a ride's page (#/play/workout/<id>). It has the
+ * whole window, without the app's menu.
  */
 export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   const profile = data.profile!;
@@ -57,11 +59,12 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   return <Frame><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} /></Frame>;
 }
 
-function Frame({ children }: { children: preact.ComponentChildren }) {
+function Frame({ children }: { children: ComponentChildren }) {
   return (
     <div class="player">
       <header class="pl-head">
         <Logo height={24} />
+        <span class="pl-head-sep" />
         <span class="pl-head-name">Ride player</span>
         <span style="flex:1" />
         <button class="btn quiet" onClick={back}>‹ Back</button>
@@ -84,6 +87,8 @@ function NoBluetooth() {
   );
 }
 
+// ── The workout, left ───────────────────────────────────────────────────────
+
 function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean }) {
   const allowsHr = workout.bases.includes('hr');
   const [basis, setBasis] = useState<Basis>(planned?.basis ?? (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
@@ -92,160 +97,232 @@ function PreRide({ workout, planned, profile, sim, bt }: { workout: Workout; pla
   const choice = chooseMode(basis, sensors, sources, allowsHr);
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
+  const power = basis === 'power';
 
   return (
     <>
       {!bt && <div class="pl-banner">This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer.</div>}
       <main class="pl-main pl-pre">
-        <section class="panel pl-workout">
+        <section class="pl-card pl-workout">
           <p class="eyebrow">{when}</p>
-          <div class="row between wrap" style="gap:8px">
-            <h1 style="margin:0">{workout.name}</h1>
+          <div class="pl-title-row">
+            <div style="min-width:0">
+              <h1>{workout.name}</h1>
+              {workout.subtitle && <p class="pl-sub">{workout.subtitle}</p>}
+            </div>
             {allowsHr ? (
               <div class="seg" role="group" aria-label="Targets by">
-                <button class={basis === 'power' ? 'on' : ''} aria-pressed={basis === 'power'} onClick={() => setBasis('power')}>Power</button>
-                <button class={basis === 'hr' ? 'on' : ''} aria-pressed={basis === 'hr'} onClick={() => setBasis('hr')}>Heart rate</button>
+                <button class={power ? 'on' : ''} aria-pressed={power} onClick={() => setBasis('power')}>Power</button>
+                <button class={!power ? 'on' : ''} aria-pressed={!power} onClick={() => setBasis('hr')}>Heart rate</button>
               </div>
-            ) : <span class="faint small">power only</span>}
+            ) : <span class="faint small">Power only</span>}
           </div>
-          {workout.subtitle && <p class="pl-sub">{workout.subtitle}</p>}
-          <div class="pl-stats">
-            <div><div class="caption">Duration</div><div class="pl-stat num">{clock(s.seconds)}</div></div>
-            <div><div class="caption">Training load</div><div class="pl-stat num">{s.tss}<small> TSS</small></div></div>
-            <div><div class="caption">Overall intensity</div><div class="pl-stat num">{s.intensityFactor.toFixed(2)}<small> of {basis === 'power' ? 'FTP' : 'threshold'}</small></div></div>
-            <div><div class="caption">{basis === 'power' ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-stat num">{basis === 'power' ? profile.ftp : profile.lthr}<small>{basis === 'power' ? ' W' : ' bpm'}</small></div></div>
+          <div class="pl-figures">
+            <div><div class="caption">Duration</div><div class="pl-fig num">{clock(s.seconds)}</div></div>
+            <div><div class="caption">Training load</div><div class="pl-fig num">{s.tss}<small> TSS</small></div></div>
+            <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power ? 'FTP' : 'threshold'}</small></div></div>
+            <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>
           </div>
-          <div style="margin:16px 0 6px"><WorkoutProfile blocks={workout.blocks} height={100} hero targets={{ profile, basis }} /></div>
-          <p class="muted small" style="margin:10px 0 14px">{FAMILY_LABEL[workout.family]}. {workout.purpose}</p>
-          <h2 class="pl-h2" style="margin:0 0 8px">Steps</h2>
-          <StepsTable blocks={workout.blocks} basis={basis} profile={profile} />
+          <WorkoutChart workout={workout} profile={profile} basis={basis} seconds={s.seconds} />
+          <StepList workout={workout} profile={profile} basis={basis} />
         </section>
 
-        <div class="pl-side">
-          <Sensors sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} />
-          <section class="panel">
-            <h2 class="pl-h2" style="margin:0 0 10px">The numbers the ride will use</h2>
-            <div class="pl-uses">
-              {(['watts', 'bpm', 'cadence', 'speedKmh'] as Metric[]).map((m) => {
-                const src = sources[m];
-                const from = src ? sensors.find((x) => x.id === src.from) : undefined;
-                return (
-                  <div key={m} class="pl-use">
-                    <span class="caption">{USE_LABEL[m]}</span>
-                    <span class="num pl-use-v">{src ? fmtMetric(m, src.value, profile) : '—'}</span>
-                    <span class="faint small">{from ? `from ${from.simulated ? 'the ' : 'your '}${sourceWord(from)}` : 'nothing connected supplies it'}</span>
-                  </div>
-                );
-              })}
-            </div>
+        <aside class="pl-side">
+          <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} />
+          <section class="pl-card">
+            <h2 class="pl-h2">How the ride runs</h2>
+            <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{choice.mode ? choice.says.replace(/^Ready\.\s*/, '') : choice.says}
+              {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
           </section>
-        </div>
+          <div class="pl-grow" />
+          <button class="btn primary pl-start" disabled>
+            <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
+            Start ride
+          </button>
+          <p class="pl-start-note">Riding the workout arrives with the next update.</p>
+        </aside>
       </main>
-
-      <footer class="pl-foot">
-        <div class="pl-foot-text">
-          <div class={choice.mode ? 'pl-ready' : 'pl-notready'}>{choice.says}{choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</div>
-          <div class="faint small">Riding the workout arrives with the next update. For now, connect your trainer and sensors here and check that their numbers move when you pedal.</div>
-        </div>
-        <button class="btn primary pl-start" disabled title="Arrives with the next update">Start ride</button>
-      </footer>
     </>
   );
 }
 
-const USE_LABEL: Record<Metric, string> = { watts: 'Power', bpm: 'Heart rate', cadence: 'Cadence', speedKmh: 'Speed' };
-
-function sourceWord(s: SensorState): string {
-  if (s.simulated) return s.name.toLowerCase();
-  return { trainer: 'trainer', power: 'power meter', hr: 'heart-rate monitor', csc: 'speed/cadence sensor' }[s.kind];
+/** The workout's shape at full width with its axes: the threshold line labelled in watts or bpm, time along the bottom. Pointing at a block names it (the shared diagram's own readout). */
+function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; profile: Profile; basis: Basis; seconds: number }) {
+  const steps = flattenSteps(workout.blocks);
+  const maxI = Math.max(1.25, ...steps.map((st) => st.intensityHigh ?? st.intensity));
+  const thresholdFromTop = (1 - 1 / maxI) * 100;
+  const tick = seconds <= 90 * 60 ? 600 : seconds <= 150 * 60 ? 900 : seconds <= 240 * 60 ? 1800 : 3600;
+  const ticks: number[] = [];
+  for (let t = 0; t <= seconds + 1; t += tick) ticks.push(t);
+  return (
+    <div class="pl-chart">
+      <div class="pl-chart-y" aria-hidden="true">
+        <span style={`top:calc(${thresholdFromTop}% - 7px)`}>{basis === 'power' ? `${profile.ftp} W` : `${profile.lthr} bpm`}</span>
+        <span style="bottom:-7px">0</span>
+      </div>
+      <div class="pl-chart-plot">
+        <WorkoutProfile blocks={workout.blocks} height={180} hero targets={{ profile, basis }} />
+        <div class="pl-chart-x" aria-hidden="true">
+          {ticks.map((t, i) => <span key={t} style={i === 0 ? 'left:0' : t >= seconds - 1 ? 'right:0' : `left:${(t / seconds) * 100}%;transform:translateX(-50%)`}>{clock(t)}</span>)}
+          {ticks[ticks.length - 1] < seconds - tick / 3 && <span style="right:0">{clock(seconds)}</span>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function fmtMetric(m: Metric, v: number, profile: Profile): string {
-  if (m === 'watts') return `${Math.round(v)} W`;
-  if (m === 'bpm') return `${Math.round(v)} bpm`;
-  if (m === 'cadence') return `${Math.round(v)} rpm`;
-  return profile.units === 'imperial' ? `${(v / 1.609344).toFixed(1)} mph` : `${v.toFixed(1)} km/h`;
+/** The steps, compact: a repeated set once under its heading, each step with its length and the one target that matters on this basis. */
+function StepList({ workout, profile, basis }: { workout: Workout; profile: Profile; basis: Basis }) {
+  const ladder = ridePowerZones(profile);
+  // A step without a name of its own: inside a set, the set's name for the work and "Recovery" for the easy part; elsewhere, its zone.
+  const nameOf = (st: WorkoutStep, z: number, set?: string) => st.label ?? (set ? (st.intensity < 0.6 ? 'Recovery' : set) : `Zone ${z}`);
+  const row = (st: WorkoutStep, key: string, set?: string) => {
+    const z = powerZone(st.intensity, ladder);
+    const t = stepTargets(st, profile);
+    const inSet = !!set;
+    return (
+      <div key={key} class={`pl-step${inSet ? ' in-set' : ''}`}>
+        <span class="z" style={`background:${ZONE_VAR[z - 1]}`} />
+        <span class="pl-step-name">{nameOf(st, z, set)}{st.cadence ? <span class="faint"> · {st.cadence} rpm</span> : null}</span>
+        <span class="num muted">{formatDuration(st.seconds)}</span>
+        <span class="num pl-step-target">{basis === 'power' ? `${t.watts} W` : `${t.bpm} bpm`}</span>
+      </div>
+    );
+  };
+  return (
+    <div class="pl-steps">
+      {workout.blocks.map((b, i) => b.kind === 'step' ? row(b, `${i}`) : (
+        <div key={i} class="pl-set">
+          <div class="pl-set-head"><span>{b.label ?? 'Set'} <b>× {b.times}</b></span></div>
+          {b.steps.map((st, j) => row(st, `${i}-${j}`, b.label ?? 'Set'))}
+        </div>
+      ))}
+    </div>
+  );
 }
+
+// ── Ready to ride, right ────────────────────────────────────────────────────
+
+const TILES: Array<{ m: Metric; label: string; from: SensorKind[]; hint: string }> = [
+  { m: 'watts', label: 'Power', from: ['power', 'trainer'], hint: 'From your trainer or power meter' },
+  { m: 'bpm', label: 'Heart rate', from: ['hr'], hint: '' },
+  { m: 'cadence', label: 'Cadence', from: ['power', 'csc', 'trainer'], hint: 'From your trainer or power meter' },
+  { m: 'speedKmh', label: 'Speed', from: ['trainer', 'csc'], hint: 'From your trainer' },
+];
 
 const STATUS_WORD: Record<SensorState['status'], string> = { connecting: 'Connecting…', connected: 'Connected', lost: 'Reconnecting…', offline: 'Not found' };
 
-function Sensors({ sensors, sources, profile, sim, bt }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean }) {
-  const [menu, setMenu] = useState(false);
-  const order: SensorKind[] = ['trainer', 'power', 'hr', 'csc'];
-  const list = [...sensors].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-  const pick = (kind: SensorKind, simulated: boolean) => {
-    setMenu(false);
-    if (simulated) addSimulated(kind); else void addSensor(kind);
+function Ready({ sensors, sources, profile, sim, bt, allSet }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean }) {
+  const [menu, setMenu] = useState<'add' | 'manage' | null>(null);
+  const trainer = sensors.find((s) => s.kind === 'trainer');
+  const connected = sensors.filter((s) => s.status === 'connected');
+  const warnings = sensors.filter((s) => s.warning);
+  const add = (kind: SensorKind, simulated = false) => {
+    setMenu(null);
+    if (simulated || !bt) addSimulated(kind); else void addSensor(kind);
   };
-  const ask = async (s: SensorState) => {
-    if (!confirm(`Forget ${s.name} on this computer?\n\nIt disconnects now. To use it again, add it again.`)) return;
-    await forget(s.id);
-  };
+  const pill = allSet ? { cls: 'ok', text: 'All set' } : sensors.length ? { cls: 'wait', text: 'Not ready yet' } : { cls: 'wait', text: 'Nothing connected yet' };
+
+  const trainerStrip = trainer ? (
+    <div class={`pl-trainer${trainer.status === 'connected' ? ' on' : ''}`}>
+      <span class="pl-kind">{TRAINER_ICON}</span>
+      <div style="min-width:0;flex:1">
+        <div class="pl-trainer-name">{trainer.name}</div>
+        <div class="muted small">{trainer.status !== 'connected' ? KIND_WORD.trainer : trainer.controllable ? 'Controls the resistance and holds each target for you' : 'Supplies its numbers; it is not taking control'}</div>
+      </div>
+      <span class={`pl-state ${trainer.status}`}><span class="pl-dot" />{STATUS_WORD[trainer.status]}</span>
+      {trainer.status === 'offline' && !trainer.simulated && <button class="btn sm" onClick={() => void reconnect(trainer.id)}>Connect</button>}
+    </div>
+  ) : (
+    <div class="pl-trainer vacant">
+      <span class="pl-kind">{TRAINER_ICON}</span>
+      <div style="min-width:0;flex:1">
+        <div class="pl-trainer-name">Your smart trainer</div>
+        <div class="muted small">It holds each target for you. Pedal a few strokes to wake it first.</div>
+      </div>
+      <button class="btn primary sm pl-connect" onClick={() => add('trainer')}>Connect trainer</button>
+    </div>
+  );
+
   return (
-    <section class="panel">
-      <div class="row between" style="align-items:flex-start;gap:12px">
-        <div>
-          <h2 class="pl-h2" style="margin:0">Your sensors</h2>
-          <p class="faint small" style="margin:2px 0 0">{list.length ? 'Pedal a few strokes to check the numbers move.' : 'Add your smart trainer first, then heart rate and any other sensors.'}</p>
-        </div>
+    <section class="pl-card">
+      <div class="row between">
+        <h2 class="pl-h2">{sensors.length ? 'Ready to ride' : 'Get ready to ride'}</h2>
+        <span class={`pl-pill ${pill.cls}`}><span class="pl-dot" />{pill.text}</span>
+      </div>
+      {!trainer && trainerStrip}
+      <div class="pl-tiles">
+        {TILES.map((t) => {
+          const src = sources[t.m];
+          const from = src ? sensors.find((x) => x.id === src.from) : undefined;
+          // No live value: say which device should supply it and why it isn't (dropped, not found), else how to get one.
+          const waiting = !src ? sensors.find((x) => t.from.includes(x.kind) && x.status !== 'connected') : undefined;
+          return (
+            <div key={t.m} class={`pl-tile${src ? '' : ' vacant'}`}>
+              <div class="caption">{t.label}</div>
+              <div class="pl-tile-v num">{src ? fmtValue(t.m, src.value, profile) : '—'}{src && <small> {unitOf(t.m, profile)}</small>}</div>
+              <div class="pl-tile-from">
+                {from ? <><span class="pl-dot ok" />{from.name}</>
+                  : waiting ? <><span class={`pl-dot ${waiting.status}`} />{waiting.name} · {STATUS_WORD[waiting.status].toLowerCase()}</>
+                  : t.m === 'bpm' ? <button class="btn sm" onClick={() => add('hr')}>Add heart rate</button>
+                  : <span>{t.hint}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {trainer && trainerStrip}
+      {warnings.map((s) => <p key={s.id} class="pl-alert small">{s.warning}</p>)}
+      <div class="pl-devices">
+        <span class="faint small">{connected.length ? `${connected.length} device${connected.length === 1 ? '' : 's'} connected` : 'Also have a power meter or a cadence sensor?'}</span>
+        <span style="flex:1" />
         <div class="menu">
-          <button class="btn sm" aria-expanded={menu} aria-haspopup="menu" onClick={() => setMenu(!menu)}>Add a sensor</button>
-          {menu && <div class="menu-bg" onClick={() => setMenu(false)} />}
-          {menu && (
+          <button class="btn sm" aria-haspopup="menu" aria-expanded={menu === 'add'} onClick={() => setMenu(menu === 'add' ? null : 'add')}>Add a device</button>
+          {menu === 'add' && <>
+            <div class="menu-bg" onClick={() => setMenu(null)} />
             <div class="menu-list pl-menu" role="menu">
-              {bt && order.map((k) => <button key={k} role="menuitem" onClick={() => pick(k, false)}>{KIND_WORD[k]}</button>)}
+              {bt && (['trainer', 'power', 'hr', 'csc'] as SensorKind[]).map((k) => <button key={k} role="menuitem" onClick={() => add(k)}>{KIND_WORD[k]}</button>)}
               {sim && <>
-                {bt && <div class="pl-menu-sep" />}
-                {(['trainer', 'power', 'hr'] as SensorKind[]).map((k) => <button key={`sim-${k}`} role="menuitem" onClick={() => pick(k, true)}>Simulated {k === 'trainer' ? 'trainer' : k === 'power' ? 'power meter' : 'heart rate'}</button>)}
+                {bt && <div class="menu-title">Practice</div>}
+                {(['trainer', 'power', 'hr'] as SensorKind[]).map((k) => <button key={`sim-${k}`} role="menuitem" onClick={() => add(k, true)}>Simulated {k === 'trainer' ? 'trainer' : k === 'power' ? 'power meter' : 'heart rate'}</button>)}
               </>}
             </div>
-          )}
+          </>}
         </div>
-      </div>
-      {list.length > 0 && (
-        <div class="pl-sensors">
-          {list.map((s) => {
-            const fresh = s.status === 'connected' && s.reading && Date.now() - s.reading.at <= STALE_MS;
-            const gives = suppliedBy(s.id, sources).map((m) => METRIC_WORD[m]);
-            return (
-              <div key={s.id} class="pl-sensor">
-                <span class={`pl-kind k-${s.kind}`}>{SENSOR_ICON[s.kind]}</span>
-                <div style="min-width:0">
-                  <div class="pl-sensor-name">{s.name}</div>
-                  <div class="faint small">{KIND_WORD[s.kind]}{s.kind === 'trainer' && s.controllable ? ' · controls the workout' : ''}{gives.length ? ` · supplies ${gives.join(', ')}` : ''}</div>
-                  {s.warning && <div class="pl-warn small">{s.warning}</div>}
-                </div>
-                <div class="pl-live num">{fresh ? liveText(s, profile) : '—'}</div>
-                <div class="pl-status">
-                  <span class={`pl-dot ${s.status}`} />
-                  <span class="small">{STATUS_WORD[s.status]}</span>
-                  {s.status === 'offline' && !s.simulated && <button class="btn sm" onClick={() => void reconnect(s.id)}>Connect</button>}
-                  <button class="btn sm quiet" onClick={() => void ask(s)}>Forget</button>
-                </div>
+        {sensors.length > 0 && (
+          <div class="menu">
+            <button class="btn sm quiet" aria-haspopup="menu" aria-expanded={menu === 'manage'} onClick={() => setMenu(menu === 'manage' ? null : 'manage')}>Manage</button>
+            {menu === 'manage' && <>
+              <div class="menu-bg" onClick={() => setMenu(null)} />
+              <div class="menu-list pl-menu pl-manage">
+                <div class="menu-title">On this computer</div>
+                {sensors.map((s) => (
+                  <div key={s.id} class="pl-manage-row">
+                    <div style="min-width:0;flex:1">
+                      <div class="pl-manage-name">{s.name}</div>
+                      <div class="faint small">{KIND_WORD[s.kind]} · {STATUS_WORD[s.status].toLowerCase()}</div>
+                    </div>
+                    {s.status === 'offline' && !s.simulated && <button class="btn sm" onClick={() => { setMenu(null); void reconnect(s.id); }}>Connect</button>}
+                    <button class="btn sm quiet" onClick={() => { setMenu(null); if (confirm(`Forget ${s.name} on this computer?\n\nIt disconnects now. To use it again, add it again.`)) void forget(s.id); }}>Forget</button>
+                  </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      )}
-      {!bt && !sim && <p class="faint small">This browser can't reach Bluetooth.</p>}
+            </>}
+          </div>
+        )}
+      </div>
+      {!sensors.length && <p class="pl-note">Your browser asks before connecting each one. Everything you connect is remembered on this computer for next time.</p>}
     </section>
   );
 }
 
-function liveText(s: SensorState, profile: Profile): string {
-  const r = s.reading!;
-  const parts: string[] = [];
-  if (r.bpm != null && s.kind === 'hr') parts.push(fmtMetric('bpm', r.bpm, profile));
-  if (r.watts != null) parts.push(fmtMetric('watts', r.watts, profile));
-  if (r.speedKmh != null && (s.kind === 'trainer' || s.kind === 'csc')) parts.push(fmtMetric('speedKmh', r.speedKmh, profile));
-  if (r.cadence != null && (s.kind === 'power' || s.kind === 'csc')) parts.push(fmtMetric('cadence', r.cadence, profile));
-  return parts.join(' · ') || '—';
+function fmtValue(m: Metric, v: number, profile: Profile): string {
+  if (m === 'speedKmh') return profile.units === 'imperial' ? (v / 1.609344).toFixed(1) : v.toFixed(1);
+  return String(Math.round(v));
 }
 
-const svg = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.75, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' } as const;
-const SENSOR_ICON: Record<SensorKind, preact.JSX.Element> = {
-  trainer: <svg {...svg}><circle cx="7" cy="15" r="4" /><circle cx="17" cy="15" r="4" /><path d="M3 20h18" /></svg>,
-  power: <svg {...svg}><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7z" /></svg>,
-  hr: <svg {...svg}><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z" /><path d="M7.5 12h3l1.5-2.5 2 4 1.2-1.5h1.3" /></svg>,
-  csc: <svg {...svg}><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v4h-4" /><circle cx="12" cy="12" r="1.5" /></svg>,
-};
+function unitOf(m: Metric, profile: Profile): string {
+  return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : profile.units === 'imperial' ? 'mph' : 'km/h';
+}
+
+const TRAINER_ICON: JSX.Element = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="15" r="4" /><circle cx="17" cy="15" r="4" /><path d="M3 20h18" /></svg>;

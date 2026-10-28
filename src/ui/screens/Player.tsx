@@ -152,7 +152,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const [open, setOpen] = useState<Slot | null>(null);
   // When the ride can't start, the place where Start would be says why, and opens the box that fixes it.
   const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
-    : choice.needsPower ? { head: 'This workout needs a power meter', text: `Connect a power meter, or a smart trainer that measures power, to ride it${alternatives.length ? '. Or ride one of the heart-rate workouts below instead.' : '.'}`, action: ['Choose power', () => setOpen('watts')] }
+    : choice.needsPower ? { head: 'This workout needs a power meter', text: 'Connect a power meter, or a smart trainer that measures power, to ride it.', action: ['Choose power', () => setOpen('watts')] }
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
@@ -193,22 +193,9 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
         <aside class="pl-side">
           {choice.needsPower ? (
             <>
-              {blocked && <Blocked b={blocked} />}
+              {blocked && <Blocked b={blocked} alternatives={alternatives} />}
               <ScrollMore class="pl-side-body">
               <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
-              {alternatives.length > 0 && (
-                <section class="pl-card pl-alts-card">
-                  <h2 class="pl-h2">Ride one of these by heart rate instead</h2>
-                  <p class="muted small" style="margin:2px 0 8px">Close in length and effort to this workout, and can be ridden by heart rate alone.</p>
-                  <ScrollMore class="pl-alts" label="Workouts to ride by heart rate">
-                    {alternatives.map((a) => (
-                      <a key={a.id} class="pl-alt" href={`#/play/workout/${a.id}`}>
-                        <b>{a.name}</b><span class="faint small">{a.subtitle ? `${a.subtitle} · ` : ''}{clock(workoutStats(a.blocks).seconds)}</span>
-                      </a>
-                    ))}
-                  </ScrollMore>
-                </section>
-              )}
               </ScrollMore>
             </>
           ) : (
@@ -574,15 +561,44 @@ function ScrollMore({ class: cls, children, label }: { class: string; children: 
 }
 
 /** Where the ride can't start: why, and the one next step. */
-function Blocked({ b }: { b: { head: string; text: string; action?: [string, () => void] } }) {
+/** Where the ride can't start: why, the one next step, and for a power-only workout, rides to do by heart rate instead. */
+function Blocked({ b, alternatives = [] }: { b: { head: string; text: string; action?: [string, () => void] }; alternatives?: Workout[] }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open || !btn.current) { setAt(null); return; }
+    const r = btn.current.getBoundingClientRect();
+    setAt({ left: Math.max(8, Math.min(r.left, innerWidth - 368)), top: r.bottom + 6 });
+  }, [open]);
   return (
-    <div class="pl-blocked" role="status">
+    <div class={`pl-blocked${alternatives.length ? ' with-alts' : ''}`} role="status">
       <span class="pl-blocked-icon" aria-hidden="true">!</span>
       <div style="min-width:0;flex:1">
         <b>{b.head}</b>
         <p>{b.text}</p>
+        {alternatives.length > 0 && <>
+          {b.action && <div class="pl-blocked-acts"><button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button></div>}
+          <div class="pl-blocked-alts">
+            <b class="pl-blocked-sub">Ride one of these by heart rate instead</b>
+            <span class="pl-blocked-or">Close in length and effort to this workout, and can be ridden by heart rate alone.</span>
+            <div><button ref={btn} class="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Choose a heart-rate workout <span aria-hidden="true">▾</span></button></div>
+            {open && <>
+              <div class="menu-bg" onClick={() => setOpen(false)} />
+              <div class="pl-pick pl-alt-menu" role="menu" style={at ? `left:${at.left}px;top:${at.top}px;max-height:${innerHeight - at.top - 8}px` : 'visibility:hidden'}>
+                
+                {alternatives.map((a) => (
+                  <a key={a.id} class="pl-alt-row pl-alt-thumbrow" href={`#/play/workout/${a.id}`}>
+                    <span class="pl-alt-thumb"><WorkoutProfile blocks={a.blocks} height={30} /></span>
+                    <span class="pl-alt-text"><b>{a.name}</b><span>{a.subtitle ? `${a.subtitle} · ` : ''}{clock(workoutStats(a.blocks).seconds)}</span></span>
+                  </a>
+                ))}
+              </div>
+            </>}
+          </div>
+        </>}
       </div>
-      {b.action && <button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button>}
+      {!alternatives.length && b.action && <button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button>}
     </div>
   );
 }

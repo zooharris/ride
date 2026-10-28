@@ -1252,3 +1252,27 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-pick-note { margin: 4px 6px 4px; padding: 8px 10px; border-radius: 8px; background: var(--bg-3); font-size: 12px; line-height: 1.4; color: var(--ink-2); }
 .pl-radio { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--line-2); }
 .pl-radio.on { border-color: var(--accent); background: radial-gradient(var(--accent) 42%, transparent 48%); }
+
+/* A power-only workout with no power (28 Oct): the alternatives live in the amber panel. */
+.pl-blocked.with-alts { align-items: flex-start; }
+.pl-blocked.with-alts .pl-blocked-icon { margin-top: 2px; }
+.pl-blocked-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pl-blocked-alts { margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); display: flex; flex-direction: column; gap: 4px; }
+.pl-blocked-or { font-size: 13px; color: var(--ink-2); margin-bottom: 2px; }
+.pl-alt-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink); text-decoration: none; font-size: 14px; }
+.pl-alt-row:hover { border-color: var(--accent); }
+.pl-alt-row span { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-alt-menu { width: 360px; }
+.pl-alt-menu .pl-alt-row { border: 0; background: none; }
+.pl-alt-menu .pl-alt-row:hover { background: var(--bg-3); }
+.pl-blocked .pl-alt-row b, .pl-alt-menu .pl-alt-row b { display: inline; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.pl-alt-row span { flex: 0 1 auto; min-width: 0; }
+.pl-blocked .pl-blocked-sub { font-size: 15px; color: var(--ink); }
+.pl-blocked-alts > div { margin-top: 6px; }
+.pl-alt-menu { width: 380px; }
+.pl-alt-thumbrow { align-items: center; justify-content: flex-start; gap: 12px; padding: 8px 10px; }
+.pl-alt-thumb { flex: none; width: 96px; height: 30px; display: block; }
+.pl-alt-thumb .profile, .pl-alt-thumb svg { width: 100%; height: 30px; display: block; }
+.pl-alt-text { display: flex; flex-direction: column; min-width: 0; }
+.pl-alt-text b { font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-alt-text span { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

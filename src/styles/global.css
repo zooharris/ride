@@ -1174,6 +1174,8 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .rd-cueline > b { font-size: 17px; }
 .rd-cueline.over, .rd-cueline.under { background: color-mix(in srgb, var(--warn) 13%, var(--bg-2)); }
 .rd-cueline.over > b, .rd-cueline.under > b { color: var(--warn); }
+.rd-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 8px; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, var(--bg-2)); font-size: 14px; }
+.rd-ask > span { flex: 1 1 200px; min-width: 0; }
 /* Free ride: the centre card and the before-the-ride card */
 .rd-free-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
 .rd-free-v { font-size: clamp(64px, 11vh, 120px); line-height: 1; font-weight: 600; letter-spacing: -0.03em; font-stretch: 112%; }

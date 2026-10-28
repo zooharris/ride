@@ -11,7 +11,9 @@ import { today } from '../engine/load';
 import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { RideEngine, type TrainerMode } from '../player/engine';
-import { buildTimeline, targetBand, type TimelineStep } from '../player/timeline';
+import { buildTimeline, hrZoneOf, targetBand, type TimelineStep } from '../player/timeline';
+import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, startWatts, type HrCtl, type HrPowerTable, type HrStep } from '../player/hrControl';
+import { getSetting, setSetting } from '../data/db';
 import { putRecording, patchRecording } from '../player/rides';
 import { bandOf, ewma, settle, type Settled } from '../player/smooth';
 import type { Recording } from '../player/types';
@@ -53,6 +55,13 @@ export interface ActiveRide {
   /** On a ride by heart rate with your gears: the cue on screen, if any. */
   cue?: Cue;
   cueState: CueState;
+  /** Riding by heart rate with the trainer adjusting: the loop for the step being ridden, and its line for the screen. */
+  hr?: { step: number; st: HrCtl; inS: number; status: string };
+  /** The watts that kept heart rate in each zone on earlier rides (synced). */
+  hrTable: HrPowerTable;
+  /** Heart rate missing since (ms); after a minute the trainer stops adjusting until it returns. */
+  hrMissingSince?: number;
+  hrLost?: boolean;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number };
 }
 
@@ -65,6 +74,7 @@ let wake: { release(): Promise<void> } | undefined;
 const recent: number[] = [];
 const recentHr: number[] = [];
 let offControl: (() => void) | undefined;
+export const HR_TABLE = 'hrPowerTable';
 
 /** The trainer came back after a dropout: start its session again and give it the current target at once. */
 export function trainerBack(): void {
@@ -102,7 +112,8 @@ export function startRide(setup: RideSetup): void {
     basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr,
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
-  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {} };
+  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {}, hrTable: {} };
+  if (setup.basis === 'hr') void getSetting<HrPowerTable>(HR_TABLE, {}).then((t) => { if (active?.rec.id === rec.id) active.hrTable = t ?? {}; });
   recent.length = 0;
   recentHr.length = 0;
   resetTrainerSession();
@@ -155,7 +166,7 @@ function second(now: number) {
   a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value };
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
-  if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(10, a.setup.smoothing)) recentHr.shift(); }
+  if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(30, a.setup.smoothing)) recentHr.shift(); }
   const lastHr = (n: number) => { const xs = recentHr.slice(-n); return xs.length ? Math.round(xs.reduce((x, y) => x + y, 0) / xs.length) : undefined; };
   a.shownBpm = lastHr(a.setup.smoothing);
   const byHr = a.setup.basis === 'hr';
@@ -169,11 +180,16 @@ function second(now: number) {
       a.band = settle(a.band, bandOf(a.markerWatts, b.low, b.high));
     }
   }
+  if (byHr && a.timeline.length && (a.engine.mode === 'erg' || a.hrLost)) steerByHr(a, now, step, a.live.bpm != null ? lastHr(30) : undefined);
+  const adjusting = byHr && a.timeline.length > 0 && a.engine.mode === 'erg';
   if (byHr && a.live.bpm != null && a.engine.phase === 'riding') {
     a.markerBpm = ewma(a.markerBpm, a.live.bpm);
     if (step) {
       const b = targetBand(step, 'hr', a.setup.profile);
       a.band = settle(a.band, bandOf(a.markerBpm, b.low, b.high));
+    }
+    if (step && !adjusting) {
+      const b = targetBand(step, 'hr', a.setup.profile);
       const c = hrCue(a.cueState, lastHr(10), b, step.noFloor, a.engine.wall(now));
       if (c.cue && c.cue !== a.cue) a.engine.mark(now, 'cue', c.cue);
       a.cueState = c.state;
@@ -181,7 +197,7 @@ function second(now: number) {
       if (c.tone && a.setup.sound) beep('count');
     }
   }
-  if (byHr && a.engine.phase !== 'riding') a.cue = undefined;
+  if (byHr && (a.engine.phase !== 'riding' || adjusting)) a.cue = undefined;
   const out = a.engine.tick(now, { ...a.live, canMove: canTellMoving() });
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
@@ -189,6 +205,74 @@ function second(now: number) {
   const last = a.engine.events[a.engine.events.length - 1];
   if (last?.type === 'eased' && last.t === a.engine.wall(now)) toast({ ok: true, text: 'Cadence dropped: the trainer has eased off. Spin back up over 70 rpm and it builds back to the target.' });
   if (a.engine.timer % 5 === 0) save();
+}
+
+/** A step as the heart-rate loop sees it. */
+function hrStepOf(step: TimelineStep, profile: Profile): HrStep {
+  const b = targetBand(step, 'hr', profile);
+  return { seconds: step.seconds, noFloor: step.noFloor, zone: hrZoneOf(step, profile), low: b.low, high: b.high };
+}
+
+/**
+ * Riding by heart rate with the trainer adjusting (brief C2): once a second the
+ * loop moves the trainer's watts a little toward the step's zone. Heart rate
+ * missing for a minute: the trainer gives a set resistance and the rider rides
+ * to the zones with their gears until it returns.
+ */
+function steerByHr(a: ActiveRide, now: number, step: TimelineStep | undefined, bpm30: number | undefined) {
+  const e = a.engine;
+  const profile = a.setup.profile;
+  if (a.live.bpm == null) {
+    a.hrMissingSince ??= now;
+    if (!a.hrLost && e.mode === 'erg' && e.phase === 'riding' && now - a.hrMissingSince >= 60_000) {
+      a.hrLost = true;
+      e.setMode(now, 'resistance');
+      toast({ ok: false, text: 'Heart rate lost for a minute: ride to the zones with your gears until it returns.' });
+      return;
+    }
+  } else {
+    a.hrMissingSince = undefined;
+    if (a.hrLost) {
+      a.hrLost = false;
+      a.hr = undefined;
+      e.setMode(now, 'erg');
+      toast({ ok: true, text: 'Heart rate is back: the trainer adjusts to it again.' });
+    }
+  }
+  if (e.mode !== 'erg' || e.phase === 'paused' || e.phase === 'finished' || !step) return;
+  const hs = hrStepOf(step, profile);
+  const inS = Math.max(0, e.position - step.start);
+  if (!a.hr || a.hr.step !== step.index) {
+    if (a.hr) learnFrom(a);
+    a.hr = { step: step.index, st: hrStepStart(startWatts(a.hrTable, hs.zone, profile)), inS: 0, status: '' };
+  }
+  const r = hrTick(a.hr.st, hs, inS, bpm30);
+  a.hr = { ...a.hr, st: r.state, inS, status: hrStatus(r.state, hs, inS, bpm30) };
+  e.hrWatts = r.state.target;
+  if (r.easedNow) toast({ ok: false, text: 'Heart rate well above the zone: the trainer has eased off.' });
+}
+
+/** A steady step that held its zone teaches the table the watts that did it (the last three minutes' average). */
+function learnFrom(a: ActiveRide) {
+  const h = a.hr;
+  const step = h ? a.timeline[h.step] : undefined;
+  if (!h || !step) return;
+  const hs = hrStepOf(step, a.setup.profile);
+  if (!hrLearns(h.st, hs, h.inS + 1)) return;
+  const ws = a.engine.samples.filter((s) => s.s === step.index && s.w != null).slice(-180).map((s) => s.w!);
+  if (ws.length < 150) return;
+  a.hrTable = hrLearn(a.hrTable, hs.zone, ws.reduce((x, y) => x + y, 0) / ws.length, today());
+  void setSetting(HR_TABLE, a.hrTable);
+}
+
+/** The rider's answer to "Your heart rate is staying low today". */
+export function answerHr(answer: 'harder' | 'keep') {
+  const a = active;
+  if (!a?.hr) return;
+  const step = a.timeline[a.hr.step];
+  const st = hrAnswer(a.hr.st, answer);
+  a.hr = { ...a.hr, st, status: step ? hrStatus(st, hrStepOf(step, a.setup.profile), a.hr.inS, recentHr.length ? recentHr[recentHr.length - 1] : undefined) : a.hr.status };
+  emit();
 }
 
 /** Whether a connected sensor can say the rider is moving: anything but a heart-rate strap. */
@@ -222,11 +306,18 @@ function save() { if (active) void putRecording(snapshot(active)); }
 // ── The rider's controls ───────────────────────────────────────────────────
 
 export function pauseRide() { if (active) { active.engine.pause(Date.now()); push(); } }
-export function resumeRide() { if (active) { active.engine.resume(Date.now()); push(); } }
+export function resumeRide() { if (active) { active.engine.resume(Date.now()); if (active.hr) active.hr = { ...active.hr, st: hrResumed(active.hr.st) }; push(); } }
 export function skipStep() { if (active) { active.engine.skip(Date.now()); push(); } }
 export function lapNow() { if (active) { active.engine.lap(Date.now()); toast({ ok: true, text: 'Lap.' }); emit(); } }
 export function setRideScale(scale: number) { if (active) { active.engine.setScale(Date.now(), scale); push(); } }
-export function setRideMode(mode: TrainerMode) { if (active) { active.engine.setMode(Date.now(), mode); push(); } }
+export function setRideMode(mode: TrainerMode) {
+  if (!active) return;
+  // The rider's own choice wins over the switch made when heart rate went missing; coming back to adjusting starts the step's loop afresh.
+  active.hrLost = false;
+  if (mode === 'erg' && active.setup.basis === 'hr') active.hr = undefined;
+  active.engine.setMode(Date.now(), mode);
+  push();
+}
 export function setRideLevel(level: number) { if (active) { active.engine.setLevel(level); push(); } }
 export function setRideFreeWatts(watts: number) { if (active) { active.engine.setFreeWatts(Date.now(), watts); push(); } }
 
@@ -243,6 +334,7 @@ function push() {
 export async function endRide(): Promise<Recording | undefined> {
   const a = active;
   if (!a) return undefined;
+  if (a.hr && a.engine.mode === 'erg') learnFrom(a);
   const cmd = a.engine.finish(Date.now());
   if (cmd) commandTrainer(cmd);
   clearInterval(timer);

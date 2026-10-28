@@ -17,7 +17,7 @@ import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import {
-  clearRide, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, subscribeRide, type ActiveRide,
+  answerHr, clearRide, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, subscribeRide, type ActiveRide,
 } from '../rideController';
 
 export function useRide(): ActiveRide | undefined {
@@ -217,6 +217,7 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
   const zone = step ? hrZoneOf(step, profile) : undefined;
   const away = band && mb != null ? (mb > band.high ? Math.round(mb - band.high) : band.low && mb < band.low ? Math.round(band.low - mb) : 0) : 0;
   const cue = ride.cue ? CUE_WORDS[ride.cue] : undefined;
+  const adjusting = e.mode === 'erg' && ride.timeline.length > 0;
   return (
     <section class="rd-card rd-hero">
       <div class="row between">
@@ -235,6 +236,11 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
           <div class="rd-band-words"><span>Too easy</span><span>Too hard</span></div>
         </>
       ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
+      {adjusting ? (
+        <div class="rd-cueline" aria-live="polite">
+          <span>{ride.hr?.status || 'The trainer starts each step at the watts that usually keep you in its zone.'}</span>
+        </div>
+      ) : (
       <div class={`rd-cueline${cue ? ` ${ride.cue}` : ''}`} aria-live="polite">
         {cue ? <><b>{cue.head}</b><span>{cue.how}</span></>
           : step && band && zone && e.position - step.start < 20 ? <span>New step: <b class="rd-cue-inline">Zone {zone}, {band.text.replace(/–/, ' to ')}</b>. Change your effort now; your heart rate takes a minute or two to follow.</span>
@@ -242,11 +248,19 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
           : step && mb != null ? <span class="muted">In the zone. Hold it steady.</span>
           : null}
       </div>
+      )}
+      {adjusting && ride.hr?.st.asking && (
+        <div class="rd-ask" role="group" aria-label="Heart rate staying low">
+          <span>Your heart rate is staying low today.</span>
+          <button class="btn" onClick={() => answerHr('harder')}>Allow harder</button>
+          <button class="btn quiet" onClick={() => answerHr('keep')}>Keep it here</button>
+        </div>
+      )}
       <div class="rd-grow" />
       {trainerOk && e.mode !== 'self' && (
         <div class="rd-controls">
           <div class="seg" role="group" aria-label="Trainer">
-            {(['resistance', 'free'] as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'resistance' ? 'Set resistance' : 'Free ride'}</button>)}
+            {((ride.timeline.length ? ['erg', 'resistance', 'free'] : ['resistance', 'free']) as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'erg' ? 'Adjusts to heart rate' : m === 'resistance' ? 'Set resistance' : 'Free ride'}</button>)}
           </div>
           <span style="flex:1" />
           {ride.timeline.length > 0 && e.mode === 'resistance' && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}

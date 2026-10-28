@@ -142,8 +142,8 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine), 5)), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
   const [chosenMode, setMode] = useState<TrainerMode>('erg');
-  // Riding by heart rate in this update: the trainer gives you a road (set resistance or flat) and you ride to the zones with your gears.
-  const mode: TrainerMode = basis === 'hr' && chosenMode === 'erg' ? 'resistance' : chosenMode;
+  // By heart rate, "erg" means the trainer adjusts its watts to keep heart rate in each zone.
+  const mode: TrainerMode = chosenMode;
   const [scale, setScale] = useState(1);
   const [level, setLevel] = useState(3);
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
@@ -205,18 +205,20 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
               <>
-                {!power && <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>}
+                {!power && (mode === 'erg'
+                  ? <p class="pl-runs">The trainer adjusts its resistance, a few watts at a time, to keep your heart rate in each zone. Steps under three minutes are held at steady watts.</p>
+                  : <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>)}
                 <div class="pl-runs-row">
                   <span>Trainer</span>
                   <div class="seg" role="group" aria-label="Trainer">
-                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
+                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['erg', 'Adjusts to heart rate'], ['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
                       <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
                     ))}
                   </div>
                 </div>
                 {mode === 'resistance' ? (
                   <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>
-                ) : mode === 'erg' ? (
+                ) : mode === 'erg' && power ? (
                   <div class="pl-runs-row"><span>Workout intensity</span><StepperSmall value={`${Math.round(scale * 100)}%`} onDown={() => setScale(Math.max(0.5, Math.round((scale - 0.01) * 100) / 100))} onUp={() => setScale(Math.min(1.5, Math.round((scale + 0.01) * 100) / 100))} label="workout intensity" /></div>
                 ) : null}
                 <div class="pl-runs-row"><span>Beeps before each step</span>

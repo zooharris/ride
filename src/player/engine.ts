@@ -53,6 +53,8 @@ export class RideEngine {
   level = 3;
   /** A free ride in ERG: the watts the trainer holds (the rider sets them). */
   freeWatts = 150;
+  /** Riding by heart rate with the trainer adjusting: the watts the heart-rate loop asks for, held in ERG in place of the step's own. */
+  hrWatts?: number;
   mode: TrainerMode;
   samples: Sample[] = [];
   laps: Lap[] = [];
@@ -93,6 +95,7 @@ export class RideEngine {
   /** The watts the trainer is asked to hold in ERG now (before the cadence guard). */
   ergTarget(): number | undefined {
     if (!this.o.timeline.length) return this.freeWatts;
+    if (this.hrWatts != null) return this.hrWatts;
     const s = this.step ?? this.o.timeline[this.o.timeline.length - 1];
     return s ? ergWatts(s, this.o.ftp, this.scale) : undefined;
   }

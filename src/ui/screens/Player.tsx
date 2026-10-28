@@ -190,7 +190,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
           <StepList workout={workout} profile={profile} basis={basis} />
         </section>
 
-        <aside class="pl-side">
+        <aside class={`pl-side${choice.needsPower ? ' needs' : ''}`}>
           {choice.needsPower ? (
             <>
               {blocked && <Blocked b={blocked} alternatives={alternatives} />}
@@ -575,14 +575,15 @@ function Blocked({ b, alternatives = [] }: { b: { head: string; text: string; ac
     <div class={`pl-blocked${alternatives.length ? ' with-alts' : ''}`} role="status">
       <span class="pl-blocked-icon" aria-hidden="true">!</span>
       <div style="min-width:0;flex:1">
-        <b>{b.head}</b>
-        <p>{b.text}</p>
-        {alternatives.length > 0 && <>
-          {b.action && <div class="pl-blocked-acts"><button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button></div>}
-          <div class="pl-blocked-alts">
-            <b class="pl-blocked-sub">Ride one of these by heart rate instead</b>
-            <span class="pl-blocked-or">Close in length and effort to this workout, and can be ridden by heart rate alone.</span>
-            <div><button ref={btn} class="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Choose a heart-rate workout <span aria-hidden="true">▾</span></button></div>
+        {alternatives.length > 0 ? <>
+          <div class="pl-bl-row">
+            <div class="pl-bl-text"><b>{b.head}</b><p>{b.text}</p></div>
+            {b.action && <div class="pl-blocked-acts"><button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button></div>}
+          </div>
+          <div class="pl-blocked-alts pl-bl-row">
+            <div class="pl-bl-text"><b class="pl-blocked-sub">Ride one of these by heart rate instead</b>
+            <span class="pl-blocked-or">Close in length and effort to this workout, and can be ridden by heart rate alone.</span></div>
+            <div class="pl-bl-btn"><button ref={btn} class="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Choose a heart-rate workout <span aria-hidden="true">▾</span></button></div>
             {open && <>
               <div class="menu-bg" onClick={() => setOpen(false)} />
               <div class="pl-pick pl-alt-menu" role="menu" style={at ? `left:${at.left}px;top:${at.top}px;max-height:${innerHeight - at.top - 8}px` : 'visibility:hidden'}>
@@ -596,7 +597,7 @@ function Blocked({ b, alternatives = [] }: { b: { head: string; text: string; ac
               </div>
             </>}
           </div>
-        </>}
+        </> : <><b>{b.head}</b><p>{b.text}</p></>}
       </div>
       {!alternatives.length && b.action && <button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button>}
     </div>

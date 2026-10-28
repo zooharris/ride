@@ -1276,3 +1276,24 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-alt-text { display: flex; flex-direction: column; min-width: 0; }
 .pl-alt-text b { font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-alt-text span { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* A power-only workout with no power (28 Oct): the column tightens so the notice and all five device boxes fit. */
+.pl-bl-text b { display: block; }
+.pl-blocked-alts .pl-bl-text { display: flex; flex-direction: column; gap: 2px; }
+.pl-side.needs { gap: 10px; }
+.pl-side.needs .pl-blocked { padding: 12px 16px; gap: 12px; }
+.pl-side.needs .pl-blocked-acts { margin-top: 8px; }
+.pl-side.needs .pl-blocked-alts { margin-top: 10px; padding-top: 8px; }
+.pl-side.needs .pl-blocked-alts > .pl-bl-btn { margin-top: 6px; }
+.pl-side.needs .pl-card { padding: 14px 18px; }
+.pl-side.needs .pl-devgrid { gap: 8px; margin-top: 8px; }
+.pl-side.needs .pl-dev { min-height: 0; padding: 9px 12px; gap: 2px; }
+.pl-side.needs .pl-dev-act { padding-top: 2px; }
+.pl-side.needs .pl-pill { height: 24px; }
+
+/* A repeated set's steps sit inside a bracket that runs from its heading to its last step (28 Oct), so the end of the repeat is plain. */
+.pl-set { position: relative; }
+.pl-set::before { content: ''; position: absolute; left: 3px; top: 30px; bottom: 9px; width: 2px; border-radius: 1px; background: color-mix(in srgb, var(--ink-3) 55%, transparent); }
+.pl-step.in-set { padding-left: 16px; grid-template-columns: 12px minmax(0, 1fr) 72px 128px; }
+/* The ride page's steps table: the same bracket marks a repeated set. */
+.steps tr.in-set td:first-child { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ink-3) 55%, transparent); padding-left: 10px; }

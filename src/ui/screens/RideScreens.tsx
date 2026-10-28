@@ -85,7 +85,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
           <div class="rd-sub">{ride.setup.workout?.subtitle ?? 'No workout: ride as you like'}</div>
         </div>
         <span style="flex:1" />
-        <div class="rd-pills">{sensors.map((s) => <SensorPill key={s.id} s={s} mode={e.mode} />)}</div>
+        <div class="rd-pills">{sensors.map((s) => <SensorPill key={s.id} s={s} mode={e.mode} byHr={byHr && ride.timeline.length > 0} />)}</div>
         <span class="pl-head-sep" />
         <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>
           {paused ? <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
@@ -169,8 +169,8 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
   );
 }
 
-function SensorPill({ s, mode }: { s: SensorState; mode: TrainerMode }) {
-  const word = s.kind === 'trainer' ? `Trainer · ${s.controllable ? MODE_WORD[mode] : 'not in control'}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : 'Cadence';
+function SensorPill({ s, mode, byHr }: { s: SensorState; mode: TrainerMode; byHr?: boolean }) {
+  const word = s.kind === 'trainer' ? `Trainer · ${!s.controllable ? 'not in control' : byHr && mode === 'erg' ? 'adjusting to heart rate' : MODE_WORD[mode]}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : 'Cadence';
   return <span class={`rd-pill ${s.status}`}><i />{word}</span>;
 }
 const MODE_WORD: Record<TrainerMode, string> = { erg: 'ERG', resistance: 'Resistance', free: 'Free ride', self: 'your gears' };

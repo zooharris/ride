@@ -38,7 +38,7 @@ export async function tidyRecordings(now = Date.now()): Promise<void> {
 }
 
 export function rideFile(r: Recording): Uint8Array {
-  return encodeFit(r, totals(r.samples, r.ftp, r.lthr));
+  return encodeFit(r, totals(r.samples, r.ftp, r.lthr, undefined, r.basis));
 }
 
 export function fileName(r: Recording): string {

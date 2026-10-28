@@ -4,10 +4,12 @@
  */
 import type { Basis, Profile, Workout, WorkoutStep } from '../engine/types';
 import { flattenStepsWithSets, stepTargets } from '../engine/workout';
-import { powerZone, ridePowerZones } from '../engine/zones';
+import { hrZone, powerZone, rideHrZones, ridePowerZones } from '../engine/zones';
 
 export interface TimelineStep {
   index: number;
+  /** The step's share of threshold (its low end), for telling steady blocks from easy ones. */
+  intensity: number;
   start: number;            // seconds from the start of the workout
   end: number;
   seconds: number;
@@ -41,7 +43,7 @@ export function buildTimeline(workout: Workout, profile: Profile): TimelineStep[
     const low = step.intensity;
     const high = step.intensityHigh ?? step.intensity;
     const s: TimelineStep = {
-      index, start: t, end: t + step.seconds, seconds: step.seconds, name,
+      index, intensity: step.intensity, start: t, end: t + step.seconds, seconds: step.seconds, name,
       setNote: set && set.times > 1 ? `set ${set.rep} of ${set.times}` : undefined,
       zone, low, high, noFloor: !!step.noFloor, cadence: step.cadence,
       work: step.intensity >= 0.75 && !EASY.test(name),
@@ -84,4 +86,11 @@ export function targetBand(s: TimelineStep, basis: Basis, profile: Profile, scal
   const low = s.noFloor ? 0 : nums[0] ?? 0;
   const high = nums[nums.length - 1] ?? low;
   return { low, high, mid: Math.round((low + high) / 2), text: `${t} bpm` };
+}
+
+/** The heart-rate zone a step's band sits in (its middle), for colour and the zone pill on a ride by heart rate. */
+export function hrZoneOf(s: TimelineStep, profile: Profile): number {
+  const b = targetBand(s, 'hr', profile);
+  const mid = s.noFloor ? b.high * 0.97 : b.mid;
+  return hrZone(mid / profile.lthr, rideHrZones(profile));
 }

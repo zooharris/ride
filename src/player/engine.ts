@@ -51,6 +51,8 @@ export class RideEngine {
   private shift = 0;
   scale = 1;
   level = 3;
+  /** A free ride in ERG: the watts the trainer holds (the rider sets them). */
+  freeWatts = 150;
   mode: TrainerMode;
   samples: Sample[] = [];
   laps: Lap[] = [];
@@ -90,6 +92,7 @@ export class RideEngine {
 
   /** The watts the trainer is asked to hold in ERG now (before the cadence guard). */
   ergTarget(): number | undefined {
+    if (!this.o.timeline.length) return this.freeWatts;
     const s = this.step ?? this.o.timeline[this.o.timeline.length - 1];
     return s ? ergWatts(s, this.o.ftp, this.scale) : undefined;
   }
@@ -238,6 +241,15 @@ export class RideEngine {
   }
 
   setLevel(level: number): void { this.level = Math.max(0, Math.min(10, Math.round(level))); }
+
+  /** A free ride in ERG: the watts to hold, in 5 W steps, 50 to 600. */
+  setFreeWatts(now: number, watts: number): void {
+    this.freeWatts = Math.max(50, Math.min(600, Math.round(watts / 5) * 5));
+    this.event(this.wall(now), 'intensity', this.freeWatts);
+  }
+
+  /** Something the controller noticed, for the record (a heart-rate cue). */
+  mark(now: number, type: RideEvent['type'], value?: RideEvent['value']): void { this.event(this.wall(now), type, value); }
 
   /** End the ride: close the last lap. The trainer is let go (a flat road). */
   finish(now: number): TrainerCommand | undefined {

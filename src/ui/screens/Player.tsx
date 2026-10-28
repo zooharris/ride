@@ -23,7 +23,7 @@ import { platform } from '../../player/platform';
 import { APP_NAME } from '../../appName';
 import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
 import { KIND_WORD, pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
-import { chooseMode } from '../../player/mode';
+import { chooseFreeMode, chooseMode } from '../../player/mode';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
@@ -84,6 +84,7 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   }
   const bt = bluetoothAvailable();
   if (!bt && !sim) return <Frame><NoBluetooth /></Frame>;
+  if (how === 'free') return <Frame fit><FreePre profile={profile} sim={sim} bt={bt} /></Frame>;
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
@@ -137,15 +138,17 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const power = basis === 'power';
   const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine))), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
-  const [mode, setMode] = useState<TrainerMode>('erg');
+  const [chosenMode, setMode] = useState<TrainerMode>('erg');
+  // Riding by heart rate in this update: the trainer gives you a road (set resistance or flat) and you ride to the zones with your gears.
+  const mode: TrainerMode = basis === 'hr' && chosenMode === 'erg' ? 'resistance' : chosenMode;
   const [scale, setScale] = useState(1);
   const [level, setLevel] = useState(3);
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
-  // This update rides by power: with the trainer in control (ERG, resistance, free ride) or without (your gears).
-  const startable = basis === 'power' && (choice.mode === 'erg' || choice.mode === 'power-self');
+  const startable = basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
+  const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer';
   const start = () => startRide({
     workout, planned, basis, profile, scale, level,
-    mode: choice.mode === 'erg' ? mode : 'self',
+    mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   });
 
@@ -182,12 +185,13 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
           <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} />
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
-            {basis === 'power' && choice.mode === 'erg' ? (
+            {trainerRuns ? (
               <>
+                {!power && <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Ease off a little</b> or <b>Push a little</b>.</p>}
                 <div class="pl-runs-row">
                   <span>Trainer</span>
                   <div class="seg" role="group" aria-label="Trainer">
-                    {([['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
+                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
                       <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
                     ))}
                   </div>
@@ -202,8 +206,10 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             ) : (
               <>
-              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? choice.says.replace(/^Ready\.\s*/, '') : basis === 'hr' && choice.mode ? "Riding by heart rate arrives with the next update. For now, choose Power above if your trainer or power meter is connected." : choice.says}
+              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? (choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Ease off a little</b> or <b>Push a little</b>.</> : choice.says.replace(/^Ready\.\s*/, '')) : choice.says}
                 {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
+              {startable && <div class="pl-runs-row"><span>Beeps before each step</span>
+                <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>}
             {choice.needsPower && alternatives.length > 0 && (
               <div class="pl-alts">
                 <span class="faint small">Or ride one of these by heart rate:</span>
@@ -222,7 +228,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
             Start ride
           </button>
-          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.mode ? 'Choose Power to ride now' : choice.needsPower ? 'Connect a power meter to start' : 'Connect what the ride needs to start'}</p>
+          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.needsPower ? 'Connect a power meter to start' : 'Connect what the ride needs to start'}</p>
         </aside>
       </main>
     </>
@@ -283,6 +289,69 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
         </div>
       ))}
     </div>
+    </>
+  );
+}
+
+// ── Free ride: no workout ──────────────────────────────────────────────────
+
+function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boolean }) {
+  const { sensors, now } = useSensors();
+  const sources = pickSources(sensors, now);
+  const free = chooseFreeMode(sensors, sources);
+  const prefs = usePrefs();
+  const [mode, setMode] = useState<TrainerMode>('resistance');
+  const [level, setLevel] = useState(3);
+  const [watts, setWatts] = useState(150);
+  const start = () => startRide({
+    workout: undefined, planned: undefined, basis: sources.watts ? 'power' : sources.bpm ? 'hr' : 'power', profile, scale: 1, level, freeWatts: watts,
+    mode: free.control ? mode : 'self',
+    sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
+  });
+  return (
+    <>
+      {!bt && <div class="pl-banner">This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer.</div>}
+      <main class="pl-main pl-pre">
+        <section class="pl-card pl-workout pl-free">
+          <p class="eyebrow">{`Today · ${fmtDate(today())}`}</p>
+          <h1>Free ride</h1>
+          <p class="pl-sub">No workout: ride as you like</p>
+          <p class="pl-free-text">The ride is recorded and saved to Intervals.icu like any other, and goes on today's calendar as a ride of its own. It counts toward your training load, and your plan takes it into account when it next checks itself.</p>
+          <div class="pl-free-ways">
+            <div><b>Set resistance</b><span class="muted">A road of a fixed steepness, levels 0 to 10. Change gear as you like.</span></div>
+            <div><b>Hold watts</b><span class="muted">The trainer holds the watts you choose (ERG), whatever gear you are in.</span></div>
+            <div><b>Free ride</b><span class="muted">A flat road.</span></div>
+          </div>
+          <p class="faint small">You can change any of these as you ride, with the buttons or the + and − keys.</p>
+        </section>
+        <aside class="pl-side">
+          <div class="pl-side-body">
+            <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={free.ready} />
+            <section class="pl-card pl-runs-card">
+              <h2 class="pl-h2">How the ride runs</h2>
+              {free.control && free.ready ? (
+                <>
+                  <div class="pl-runs-row">
+                    <span>Trainer</span>
+                    <div class="seg" role="group" aria-label="Trainer">
+                      {([['resistance', 'Set resistance'], ['erg', 'Hold watts'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
+                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {mode === 'resistance' && <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>}
+                  {mode === 'erg' && <div class="pl-runs-row"><span>Watts to hold</span><StepperSmall value={`${watts} W`} onDown={() => setWatts(Math.max(50, watts - 5))} onUp={() => setWatts(Math.min(600, watts + 5))} label="watts to hold" /></div>}
+                </>
+              ) : <p class={`pl-runs ${free.ready ? '' : 'muted'}`}>{free.says.replace(/^Ready\.\s*/, '')}</p>}
+            </section>
+          </div>
+          <button class="btn primary pl-start" disabled={!free.ready} onClick={start}>
+            <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
+            Start ride
+          </button>
+          <p class="pl-start-note">{free.ready ? 'Saved to Intervals.icu when you finish' : 'Connect what the ride needs to start'}</p>
+        </aside>
+      </main>
     </>
   );
 }

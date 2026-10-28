@@ -38,3 +38,15 @@ export function chooseMode(
   if (power) return { says: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.' };
   return { says: 'Connect a heart-rate monitor or a power source to ride this workout.' };
 }
+
+/**
+ * A free ride (no workout): it can start with any number to record, power,
+ * heart rate or speed. With a trainer in control the rider chooses a set
+ * resistance, watts to hold, or a flat road.
+ */
+export function chooseFreeMode(sensors: (SensorSnapshot & { controllable?: boolean })[], sources: Partial<Record<Metric, Supplied>>): { ready: boolean; control: boolean; says: string } {
+  const control = sensors.some((s) => s.kind === 'trainer' && s.status === 'connected' && s.controllable);
+  const ready = sources.watts != null || sources.bpm != null || sources.speedKmh != null;
+  if (!ready) return { ready, control, says: 'Connect your trainer, a power meter or a heart-rate monitor: anything that gives the ride a number to record.' };
+  return { ready, control, says: control ? 'Ready. Choose how the trainer feels; you can change it as you ride.' : "Ready. You'll ride with your gears; the ride records what your sensors send." };
+}

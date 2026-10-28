@@ -30,7 +30,7 @@ export function Library({ data }: { data: AppData }) {
   return (
     <div>
       <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library" help="library">
-        <a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a>
+        {tab === 'ride' && playerOffered() && <a class="btn sm" href="#/play/free">Free ride on the trainer</a>}<a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a>
       </PageHead>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
         <div class="seg kinds">

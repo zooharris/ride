@@ -20,7 +20,7 @@ export interface Sample {
 
 export interface Lap { start: number; end: number; step?: number; manual?: boolean }
 
-export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done';
+export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue';
 export interface RideEvent { t: number; type: RideEventType; value?: string | number }
 
 export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded';

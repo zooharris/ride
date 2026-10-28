@@ -41,7 +41,12 @@ export function normalizedPower(watts: number[]): number | undefined {
   return Math.pow(acc / n, 0.25);
 }
 
-export function totals(samples: Sample[], ftp: number, lthr: number, ladders?: Ladders): Totals {
+/**
+ * The ride's totals. Training load comes from power when there is power,
+ * else from heart rate; a ride by heart rate (`basis` 'hr') takes it from
+ * heart rate whenever there is heart rate, since that is what it was ridden to.
+ */
+export function totals(samples: Sample[], ftp: number, lthr: number, ladders?: Ladders, basis: 'power' | 'hr' = 'power'): Totals {
   const watts = samples.map((s) => s.w ?? 0);
   const hasPower = samples.some((s) => s.w != null);
   const hrs = samples.map((s) => s.hr).filter((x): x is number => x != null && x > 0);
@@ -49,7 +54,7 @@ export function totals(samples: Sample[], ftp: number, lthr: number, ladders?: L
   const seconds = samples.length;
   const np = hasPower ? normalizedPower(watts) : undefined;
   const avgHr = mean(hrs);
-  const tss = np ? powerTss(seconds, np, ftp) : avgHr ? hrTss(seconds, avgHr, lthr, ladders) : 0;
+  const tss = basis === 'hr' && avgHr ? hrTss(seconds, avgHr, lthr, ladders) : np ? powerTss(seconds, np, ftp) : avgHr ? hrTss(seconds, avgHr, lthr, ladders) : 0;
   const last = [...samples].reverse().find((s) => s.d != null);
   return {
     seconds,
@@ -72,12 +77,12 @@ export interface StepStats {
   avgPower?: number;
   avgHr?: number;
   maxHr?: number;
-  /** Share of the step's seconds with power inside its band (0..1). */
+  /** Share of the step's seconds inside its band (0..1): power on a power ride, heart rate on a heart-rate ride. */
   onTarget?: number;
 }
 
-/** Each step ridden: its averages and how much of it was on target. `band(step)` gives the step's band in watts. */
-export function stepStats(samples: Sample[], tl: TimelineStep[], band: (s: TimelineStep) => { low: number; high: number }): StepStats[] {
+/** Each step ridden: its averages and how much of it was on target. `band(step)` gives the step's band, in watts (by 'power') or bpm (by 'hr'). */
+export function stepStats(samples: Sample[], tl: TimelineStep[], band: (s: TimelineStep) => { low: number; high: number }, by: 'power' | 'hr' = 'power'): StepStats[] {
   return tl.map((step) => {
     const xs = samples.filter((s) => s.s === step.index);
     if (!xs.length) return { step, seconds: 0 };
@@ -90,7 +95,9 @@ export function stepStats(samples: Sample[], tl: TimelineStep[], band: (s: Timel
       avgPower: w.length ? Math.round(mean(w)!) : undefined,
       avgHr: h.length ? Math.round(mean(h)!) : undefined,
       maxHr: h.length ? Math.max(...h) : undefined,
-      onTarget: w.length ? w.filter((x) => x >= b.low && x <= b.high).length / w.length : undefined,
+      onTarget: by === 'hr'
+        ? (h.length ? h.filter((x) => x >= b.low && x <= b.high).length / h.length : undefined)
+        : (w.length ? w.filter((x) => x >= b.low && x <= b.high).length / w.length : undefined),
     };
   });
 }
@@ -116,4 +123,55 @@ export function observation(stats: StepStats[]): string | undefined {
   if (diff < 0) return `Heart rate fell ${-diff} bpm from the first effort to the last at the same power: you warmed into it.`;
   const verdict = pct < 5 ? 'A small drift, normal for efforts like these.' : pct < 10 ? 'Normal for efforts this long, and worth watching on the next one.' : 'More than usual: heat, fatigue or too little fuel are the common causes.';
   return `Heart rate rose ${diff} bpm from the first effort to the last at the same power (about ${Math.round(pct)}%). ${verdict}`;
+}
+
+/**
+ * The steps the summary tables as efforts. By power, the hard ones. By heart
+ * rate, also the long steady blocks (five minutes or more, zone 2 and up),
+ * since a ride by heart rate is mostly those; never the warm-up, cool-down or
+ * recoveries.
+ */
+export function isEffort(step: TimelineStep, by: 'power' | 'hr'): boolean {
+  if (step.work) return true;
+  return by === 'hr' && step.seconds >= 300 && !step.noFloor && step.intensity >= 0.6 && !/warm|cool|recover|easy|spin/i.test(step.name);
+}
+
+/**
+ * Time in the target zone on a ride by heart rate: seconds whose heart rate
+ * sat inside its step's band, and their share of the seconds ridden in steps.
+ */
+export function timeInZone(samples: Sample[], tl: TimelineStep[], band: (s: TimelineStep) => { low: number; high: number }): { seconds: number; share?: number } {
+  const bands = new Map(tl.map((s) => [s.index, band(s)]));
+  let inside = 0, counted = 0;
+  for (const x of samples) {
+    if (x.s == null || x.hr == null || x.hr <= 0) continue;
+    const b = bands.get(x.s);
+    if (!b) continue;
+    counted++;
+    if (x.hr >= b.low && x.hr <= b.high) inside++;
+  }
+  return { seconds: inside, share: counted ? inside / counted : undefined };
+}
+
+/**
+ * On a ride by heart rate: how power moved across equal work steps held at
+ * the same heart rate. Less power for the same heart rate later on is the
+ * same drift as on a power ride, seen from the other side.
+ */
+export function observationHr(stats: StepStats[]): string | undefined {
+  const done = stats.filter((s) => isEffort(s.step, 'hr') && s.avgPower && s.seconds >= s.step.seconds * 0.9);
+  if (done.length < 2) return undefined;
+  const key = (s: StepStats) => `${s.step.low}-${s.step.high}-${Math.round(s.step.seconds / 30)}`;
+  const groups = new Map<string, StepStats[]>();
+  for (const s of done) groups.set(key(s), [...(groups.get(key(s)) ?? []), s]);
+  const best = [...groups.values()].filter((g) => g.length >= 2).sort((a, b) => b.length - a.length)[0];
+  if (!best) return undefined;
+  const first = best[0].avgPower!, last = best[best.length - 1].avgPower!;
+  const diff = last - first;
+  const pct = Math.abs(diff / first) * 100;
+  const n = best.length === 2 ? 'two' : best.length === 3 ? 'three' : String(best.length);
+  if (Math.abs(diff) <= 3) return `Power held steady across the ${n} efforts in the same heart-rate zone: a well-paced, comfortable session for you today.`;
+  if (diff > 0) return `Power rose ${diff} W from the first effort to the last in the same heart-rate zone: you warmed into it.`;
+  const verdict = pct < 5 ? 'A small drift, normal for efforts like these.' : pct < 10 ? 'Normal for efforts this long, and worth watching on the next one.' : 'More than usual: heat, fatigue or too little fuel are the common causes.';
+  return `Power fell ${-diff} W from the first effort to the last in the same heart-rate zone (about ${Math.round(pct)}%). ${verdict}`;
 }

@@ -1150,3 +1150,20 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-alts { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .pl-alt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 10px; text-decoration: none; color: var(--ink); }
 .pl-alt:hover { border-color: var(--accent); }
+
+/* Riding by heart rate: the cue under the zone bar (C1) */
+.rd-cueline { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; min-height: 44px; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 1.4; background: var(--bg); }
+.rd-cueline b { font-size: 17px; }
+.rd-cueline.over, .rd-cueline.under { background: color-mix(in srgb, var(--warn) 13%, var(--bg-2)); }
+.rd-cueline.over b, .rd-cueline.under b { color: var(--warn); }
+/* Free ride: the centre card and the before-the-ride card */
+.rd-free-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.rd-free-v { font-size: clamp(64px, 11vh, 120px); line-height: 1; font-weight: 600; letter-spacing: -0.03em; font-stretch: 112%; }
+.rd-free-v small { font-size: .22em; color: var(--ink-2); font-weight: 600; letter-spacing: 0; }
+.rd-free-btns { display: flex; gap: 12px; }
+.rd-free-btns .btn { width: 64px; height: 48px; font-size: 22px; justify-content: center; }
+.rd-free-body p { max-width: 30ch; margin: 0; }
+.pl-free-text { font-size: 15px; line-height: 1.55; margin: 14px 0 6px; max-width: 62ch; }
+.pl-free-ways { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.pl-free-ways > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14.5px; }
+@media (max-width: 700px) { .pl-free-ways > div { grid-template-columns: 1fr; gap: 2px; } }

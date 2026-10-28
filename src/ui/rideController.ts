@@ -15,6 +15,7 @@ import { buildTimeline, targetBand, type TimelineStep } from '../player/timeline
 import { putRecording, patchRecording } from '../player/rides';
 import { bandOf, ewma, settle, type Settled } from '../player/smooth';
 import type { Recording } from '../player/types';
+import { hrCue, type Cue, type CueState } from '../player/hrCue';
 import { toast } from './Toast';
 
 export interface RideSetup {
@@ -30,6 +31,8 @@ export interface RideSetup {
   guard: boolean;
   /** Seconds of power averaged for the big number. */
   smoothing: number;
+  /** A free ride in ERG: the watts to start at. */
+  freeWatts?: number;
 }
 
 export interface ActiveRide {
@@ -43,6 +46,13 @@ export interface ActiveRide {
   markerWatts?: number;
   band: Settled;
   bandStep?: number;
+  /** Heart rate averaged over the chosen seconds, for the big number on a ride by heart rate. */
+  shownBpm?: number;
+  /** A smoother heart rate for the marker on the zone bar. */
+  markerBpm?: number;
+  /** On a ride by heart rate with your gears: the cue on screen, if any. */
+  cue?: Cue;
+  cueState: CueState;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number };
 }
 
@@ -53,6 +63,7 @@ let lastTick = 0;
 let audio: AudioContext | undefined;
 let wake: { release(): Promise<void> } | undefined;
 const recent: number[] = [];
+const recentHr: number[] = [];
 let offControl: (() => void) | undefined;
 
 /** The trainer came back after a dropout: start its session again and give it the current target at once. */
@@ -84,14 +95,16 @@ export function startRide(setup: RideSetup): void {
   const engine = new RideEngine({ timeline, ftp: setup.profile.ftp, basis: setup.basis, mode: setup.mode, autoPause: setup.autoPause, guard: setup.guard, targetOf }, now);
   engine.scale = setup.scale;
   engine.setLevel(setup.level);
+  if (setup.freeWatts) engine.freeWatts = setup.freeWatts;
   const rec: Recording = {
     id: newId(), status: 'recording', startedAt: localIso(now), startMs: now, date: today(),
     plannedId: setup.planned?.id, workoutId: setup.workout?.id, name: setup.workout?.name ?? 'Free ride',
     basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr,
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
-  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 } };
+  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {} };
   recent.length = 0;
+  recentHr.length = 0;
   resetTrainerSession();
   if (setup.sound) { try { audio ??= new AudioContext(); void audio.resume(); } catch { audio = undefined; } }
   void holdScreenOn();
@@ -142,16 +155,33 @@ function second(now: number) {
   a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value };
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
-  if (a.live.watts != null && a.engine.phase === 'riding') {
+  if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(10, a.setup.smoothing)) recentHr.shift(); }
+  const lastHr = (n: number) => { const xs = recentHr.slice(-n); return xs.length ? Math.round(xs.reduce((x, y) => x + y, 0) / xs.length) : undefined; };
+  a.shownBpm = lastHr(a.setup.smoothing);
+  const byHr = a.setup.basis === 'hr';
+  const step = a.engine.step;
+  // A new step starts its label and cue afresh, so a target change is not met with a stale verdict.
+  if (step && step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; a.cueState = { lastTone: a.cueState.lastTone }; a.cue = undefined; }
+  if (!byHr && a.live.watts != null && a.engine.phase === 'riding') {
     a.markerWatts = ewma(a.markerWatts, a.live.watts);
-    const step = a.engine.step;
     if (step) {
-      // A new step starts its label afresh, so a target change is not met with a stale verdict.
-      if (step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; }
       const b = targetBand(step, 'power', a.setup.profile, a.engine.scale);
       a.band = settle(a.band, bandOf(a.markerWatts, b.low, b.high));
     }
   }
+  if (byHr && a.live.bpm != null && a.engine.phase === 'riding') {
+    a.markerBpm = ewma(a.markerBpm, a.live.bpm);
+    if (step) {
+      const b = targetBand(step, 'hr', a.setup.profile);
+      a.band = settle(a.band, bandOf(a.markerBpm, b.low, b.high));
+      const c = hrCue(a.cueState, lastHr(10), b, step.noFloor, a.engine.wall(now));
+      if (c.cue && c.cue !== a.cue) a.engine.mark(now, 'cue', c.cue);
+      a.cueState = c.state;
+      a.cue = c.cue;
+      if (c.tone && a.setup.sound) beep('count');
+    }
+  }
+  if (byHr && a.engine.phase !== 'riding') a.cue = undefined;
   const out = a.engine.tick(now, { ...a.live, canMove: canTellMoving() });
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
@@ -198,6 +228,7 @@ export function lapNow() { if (active) { active.engine.lap(Date.now()); toast({ 
 export function setRideScale(scale: number) { if (active) { active.engine.setScale(Date.now(), scale); push(); } }
 export function setRideMode(mode: TrainerMode) { if (active) { active.engine.setMode(Date.now(), mode); push(); } }
 export function setRideLevel(level: number) { if (active) { active.engine.setLevel(level); push(); } }
+export function setRideFreeWatts(watts: number) { if (active) { active.engine.setFreeWatts(Date.now(), watts); push(); } }
 
 /** After a control: the trainer gets its new command at once, not at the next second. */
 function push() {

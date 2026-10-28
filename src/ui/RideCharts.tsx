@@ -31,7 +31,7 @@ export function ZoneBars({ title, seconds }: { title: string; seconds: number[] 
  * the power zone it falls in, so a lap's effort reads without the numbers.
  * Without power, the bar is heart rate against threshold heart rate.
  */
-export function LapsTable({ intervals, ftp, lthr, hrZones = HR_ZONES, powerZones = POWER_ZONES, heartRateOnly = false, distance, time, imperial = false }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; heartRateOnly?: boolean; distance?: number[]; time?: number[]; imperial?: boolean }) {
+export function LapsTable({ intervals, ftp, lthr, hrZones = HR_ZONES, powerZones = POWER_ZONES, heartRateOnly = false, distance, time, imperial = false, names }: { intervals: NonNullable<StreamSet['intervals']>; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; heartRateOnly?: boolean; distance?: number[]; time?: number[]; imperial?: boolean; names?: string[] }) {
   // Runs: each lap's pace from the distance stream. A lap's start and end are seconds into the
   // recording, found in the time stream (or sample indices when there is no time stream).
   const at = (sec: number) => { if (!time?.length) return Math.max(0, Math.min(sec, (distance?.length ?? 1) - 1)); let i = 0; while (i < time.length - 1 && time[i] < sec) i++; return i; };
@@ -60,7 +60,7 @@ export function LapsTable({ intervals, ftp, lthr, hrZones = HR_ZONES, powerZones
           return (
             <tr key={i}>
               <td class="faint"><span class="wide-only">{i + 1}</span><span class="z lap-z" style={`background:${ZONE_VAR[zone - 1]}`} /></td>
-              <td>{r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
+              <td>{names ? names[i] : r.label || (r.type ? r.type.charAt(0) + r.type.slice(1).toLowerCase() : `Lap ${i + 1}`)}</td>
               <td class="r num">{clock(Math.round(r.end - r.start))}</td>
               {distance?.length ? <td class="r num">{lapPace(r) ?? '–'}</td> : null}
               {showPower && <td class="r num">{r.avgWatts ? `${Math.round(r.avgWatts)} W` : '–'}</td>}
@@ -75,7 +75,7 @@ export function LapsTable({ intervals, ftp, lthr, hrZones = HR_ZONES, powerZones
           );
         })}
       </table>
-      <p class="faint small" style="margin-top:8px"><span class="wide-only">Each bar is the lap's average {byW ? 'power' : 'heart rate'}, coloured by its zone; the upright tick marks {byW ? 'your FTP' : 'your threshold heart rate'}, and the figure is the lap as a share of it.</span><span class="narrow-only">The square is the lap's zone, in the colours of Time in zone above; the figure is its average {byW ? `power as a share of your FTP (${ftp} W)` : `heart rate as a share of your threshold heart rate (${lthr} bpm)`}.</span> Labels such as "Work" and "Recovery" are Intervals.icu's guess from the recording.</p>
+      <p class="faint small" style="margin-top:8px"><span class="wide-only">Each bar is the lap's average {byW ? 'power' : 'heart rate'}, coloured by its zone; the upright tick marks {byW ? 'your FTP' : 'your threshold heart rate'}, and the figure is the lap as a share of it.</span><span class="narrow-only">The square is the lap's zone, in the colours of Time in zone above; the figure is its average {byW ? `power as a share of your FTP (${ftp} W)` : `heart rate as a share of your threshold heart rate (${lthr} bpm)`}.</span>{names ? '' : ' Labels such as "Work" and "Recovery" are Intervals.icu\'s guess from the recording.'}</p>
     </>
   );
 }

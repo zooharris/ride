@@ -14,7 +14,7 @@ import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go } from '../router';
-import { fetchStreams, sportOf } from '../../sync/intervals';
+import { fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
 import { StatusPill } from '../StatusMark';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
@@ -126,6 +126,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const [streams, setStreams] = useState<StreamSet | null | undefined>(undefined);
   const [streamErr, setStreamErr] = useState<string | null>(null);
   const basis: 'power' | 'hr' = r.normalizedPower ? 'power' : 'hr';
+  // Strength and mobility: each lap named after the session's step, when they line up one for one.
+  const lapSteps = w && (w.kind === 'strength' || w.kind === 'mobility') ? sessionLapNames(w) : undefined;
+  const lapNames = (r.sport === 'strength' || r.sport === 'mobility') && streams?.intervals?.length ? nameLaps(streams.intervals.filter((iv) => iv.end > iv.start), lapSteps) : undefined;
 
   useEffect(() => {
     let alive = true;
@@ -309,8 +312,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {streams?.intervals?.length ? (
         <section class="section">
           <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
-          <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold as the watch split it, in order.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
-          <div class="panel" style="overflow-x:auto"><LapsTable intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
+          <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold, in order, with heart rate.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
+          {lapNames && !lapNames.matched && w && <p class="faint small" style="margin:-4px 0 10px">The laps don't line up with the {lapSteps!.length} steps of {w.name} (a lap press missed or extra), so they're numbered rather than named.</p>}
+          <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
         </section>
       ) : null}
       <section class="section">

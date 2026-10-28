@@ -462,6 +462,50 @@ export function sessionSteps(workout: Workout): string[] {
 }
 
 /**
+ * The steps of a strength or mobility session as the watch records them, one
+ * lap each, in order, named for people: "Goblet squat, set 2 of 3",
+ * "Hip flexor stretch, left side", "Rest". Built exactly as sessionSteps sends
+ * them, so the recording's laps can be named after them.
+ */
+export function sessionLapNames(workout: Workout): string[] {
+  const ex = workout.exercises ?? [];
+  const effort = workout.effort ?? 6;
+  const restSec = workout.kind === 'mobility' ? 0 : effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
+  const blocks: Array<{ times: number; steps: (k: number) => string[] }> = [];
+  for (const e of ex) {
+    const sets = Math.max(1, e.sets ?? 1);
+    const of = (k: number) => (sets > 1 ? `, set ${k} of ${sets}` : '');
+    if (e.holdSeconds) {
+      const perSide = workout.kind === 'mobility' && /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
+      blocks.push({ times: sets, steps: (k) => [...(perSide ? [`${e.name}, left side${of(k)}`, `${e.name}, right side${of(k)}`] : [`${e.name}${of(k)}`]), ...(restSec ? ['Rest'] : [])] });
+      continue;
+    }
+    blocks.push({ times: sets, steps: (k) => [`${e.name}${of(k)}`, ...(restSec ? ['Rest'] : [])] });
+  }
+  const out: string[] = [];
+  blocks.forEach((b, i) => { for (let k = 1; k <= b.times; k++) out.push(...b.steps(k)); if (i === blocks.length - 1 && b.times === 1 && out[out.length - 1] === 'Rest') out.pop(); });
+  return out;
+}
+
+/** A last lap this short is the watch closing the recording, not a step. */
+export const STRAY_LAP_S = 10;
+
+/**
+ * Names for a strength or mobility recording's laps (Todd, 28 Oct): when the
+ * laps match the session's steps one for one (a stray last lap under ten
+ * seconds aside), each takes its step's name; when they don't (a lap press
+ * missed or extra), they are numbered, never guessed.
+ */
+export function nameLaps(laps: Array<{ start: number; end: number }>, steps: string[] | undefined): { names: string[]; matched: boolean } {
+  const n = laps.length;
+  const numbered = laps.map((_, i) => `Lap ${i + 1}`);
+  if (!steps?.length) return { names: numbered, matched: false };
+  const stray = n === steps.length + 1 && laps[n - 1].end - laps[n - 1].start < STRAY_LAP_S;
+  if (n === steps.length || stray) return { names: laps.map((_, i) => steps[i] ?? 'End'), matched: true };
+  return { names: numbered, matched: false };
+}
+
+/**
  * Step text the way Intervals.icu passes it to Garmin: short and readable.
  * Numbers stay as numerals ("8 reps", "40 lb"), which take less of the watch's
  * screen; a range is written "8 to 10" because a bare "8-10" could be read by

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 import type { AppData } from '../store';
 import { allWorkouts, findWorkout } from '../store';
@@ -136,7 +136,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power';
-  const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine))), [workout.id, allowsHr, mine]);
+  const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine), 5)), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
   const [chosenMode, setMode] = useState<TrainerMode>('erg');
   // Riding by heart rate in this update: the trainer gives you a road (set resistance or flat) and you ride to the zones with your gears.
@@ -146,6 +146,13 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
   const startable = basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
   const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer';
+  const connect = (kind: SensorKind) => { if (!bt) addSimulated(kind); else void addSensor(kind); };
+  // When the ride can't start, the place where Start would be says why, and offers the next step.
+  const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
+    : choice.needsPower ? { head: 'This workout needs a power meter', text: `Connect a power meter, or a smart trainer that measures power, to ride it${alternatives.length ? '. Or ride one of the heart-rate workouts below instead.' : '.'}`, action: ['Connect a power meter', () => connect('power')] }
+    : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
+    : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Connect heart rate', () => connect('hr')] }
+    : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Connect trainer', () => connect('trainer')] };
   const start = () => startRide({
     workout, planned, basis, profile, scale, level,
     mode: trainerRuns ? mode : 'self',
@@ -181,8 +188,29 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
         </section>
 
         <aside class="pl-side">
-          <div class="pl-side-body">
-          <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} />
+          {choice.needsPower ? (
+            <>
+              {blocked && <Blocked b={blocked} />}
+              <ScrollMore class="pl-side-body">
+              <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} quiet />
+              {alternatives.length > 0 && (
+                <section class="pl-card pl-alts-card">
+                  <h2 class="pl-h2">Ride one of these by heart rate instead</h2>
+                  <p class="muted small" style="margin:2px 0 8px">Close in length and effort to this workout, and can be ridden by heart rate alone.</p>
+                  <ScrollMore class="pl-alts" label="Workouts to ride by heart rate">
+                    {alternatives.map((a) => (
+                      <a key={a.id} class="pl-alt" href={`#/play/workout/${a.id}`}>
+                        <b>{a.name}</b><span class="faint small">{a.subtitle ? `${a.subtitle} · ` : ''}{clock(workoutStats(a.blocks).seconds)}</span>
+                      </a>
+                    ))}
+                  </ScrollMore>
+                </section>
+              )}
+              </ScrollMore>
+            </>
+          ) : (
+          <ScrollMore class="pl-side-body">
+          {<Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} quiet={!!blocked} />}
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
@@ -206,13 +234,13 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             ) : (
               <>
-              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? (choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.says.replace(/^Ready\.\s*/, '')) : choice.says}
-                {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
+              {startable ? <p class="pl-runs">{choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.says.replace(/^Ready\.\s*/, '')}</p>
+                : !choice.needsPower && <p class="pl-runs muted">Choices for the trainer appear here once what the ride needs is connected.</p>}
               {startable && <div class="pl-runs-row"><span>Beeps before each step</span>
                 <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>}
             {choice.needsPower && alternatives.length > 0 && (
               <div class="pl-alts">
-                <span class="faint small">Or ride one of these by heart rate:</span>
+                <span class="muted small">No power meter? These are close in length and effort, and can be ridden by heart rate:</span>
                 {alternatives.map((a) => (
                   <a key={a.id} class="pl-alt" href={`#/play/workout/${a.id}`}>
                     <b>{a.name}</b><span class="faint small">{a.subtitle ? `${a.subtitle} · ` : ''}{clock(workoutStats(a.blocks).seconds)}</span>
@@ -223,12 +251,17 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             )}
           </section>
-          </div>
-          <button class="btn primary pl-start" disabled={!startable} onClick={start}>
-            <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
-            Start ride
-          </button>
-          <p class="pl-start-note">{startable ? (planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish') : choice.needsPower ? 'Connect a power meter to start' : 'Connect what the ride needs to start'}</p>
+          </ScrollMore>
+          )}
+          {choice.needsPower ? null : blocked ? <Blocked b={blocked} /> : (
+            <>
+              <button class="btn primary pl-start" onClick={start}>
+                <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
+                Start ride
+              </button>
+              <p class="pl-start-note">{planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish'}</p>
+            </>
+          )}
         </aside>
       </main>
     </>
@@ -281,14 +314,14 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
   return (
     <>
     <h2 class="pl-steps-head">Steps <span class="faint">· {flattenSteps(workout.blocks).length}</span></h2>
-    <div class="pl-steps" tabIndex={0} aria-label="The workout's steps">
+    <ScrollMore class="pl-steps" label="The workout's steps">
       {workout.blocks.map((b, i) => b.kind === 'step' ? row(b, `${i}`) : b.times === 1 ? b.steps.map((st, j) => row(st, `${i}-${j}`, b.label, true)) : (
         <div key={i} class="pl-set">
           <div class="pl-set-head"><span>{b.label ?? 'Set'} <b>× {b.times}</b></span></div>
           {b.steps.map((st, j) => row(st, `${i}-${j}`, b.label ?? 'Set'))}
         </div>
       ))}
-    </div>
+    </ScrollMore>
     </>
   );
 }
@@ -367,7 +400,7 @@ const TILES: Array<{ m: Metric; label: string; from: SensorKind[]; hint: string 
 
 const STATUS_WORD: Record<SensorState['status'], string> = { connecting: 'Connecting…', connected: 'Connected', lost: 'Reconnecting…', offline: 'Not found' };
 
-function Ready({ sensors, sources, profile, sim, bt, allSet }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean }) {
+function Ready({ sensors, sources, profile, sim, bt, allSet, quiet }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean; quiet?: boolean }) {
   const [menu, setMenu] = useState<'add' | 'manage' | null>(null);
   const trainer = sensors.find((s) => s.kind === 'trainer');
   const connected = sensors.filter((s) => s.status === 'connected');
@@ -395,7 +428,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet }: { sensors: Sensor
         <div class="pl-trainer-name">Your smart trainer</div>
         <div class="muted small">It holds each target for you. Pedal a few strokes to wake it first.</div>
       </div>
-      <button class="btn primary sm pl-connect" onClick={() => add('trainer')}>Connect trainer</button>
+      <button class={`btn sm pl-connect${quiet ? '' : ' primary'}`} onClick={() => add('trainer')}>Connect trainer</button>
     </div>
   );
 
@@ -506,6 +539,46 @@ function StepperSmall({ value, onDown, onUp, label }: { value: string; onDown: (
       <button class="btn" aria-label={`Lower ${label}`} onClick={onDown}>−</button>
       <b class="num">{value}</b>
       <button class="btn" aria-label={`Raise ${label}`} onClick={onUp}>+</button>
+    </div>
+  );
+}
+
+/**
+ * A panel that scrolls inside the window, showing that it does: while there
+ * is more below, its foot fades and a "More below" tab sits at the bottom
+ * (click it to scroll on). Both go once the end is in view.
+ */
+function ScrollMore({ class: cls, children, label }: { class: string; children: ComponentChildren; label?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const check = () => { const el = ref.current; if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 6); };
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    check();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : undefined;
+    ro?.observe(el);
+    for (const c of Array.from(el.children)) ro?.observe(c);
+    return () => ro?.disconnect();
+  });
+  return (
+    <div class={`pl-scrollwrap ${cls}-wrap`}>
+      <div ref={ref} class={`${cls}${more ? ' more' : ''}`} onScroll={check} tabIndex={0} aria-label={label}>{children}</div>
+      {more && <button type="button" class="pl-more" onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.7, behavior: 'smooth' })}>More below <span aria-hidden="true">↓</span></button>}
+    </div>
+  );
+}
+
+/** Where the ride can't start: why, and the one next step. */
+function Blocked({ b }: { b: { head: string; text: string; action?: [string, () => void] } }) {
+  return (
+    <div class="pl-blocked" role="status">
+      <span class="pl-blocked-icon" aria-hidden="true">!</span>
+      <div style="min-width:0;flex:1">
+        <b>{b.head}</b>
+        <p>{b.text}</p>
+      </div>
+      {b.action && <button class="btn primary" onClick={b.action[1]}>{b.action[0]}</button>}
     </div>
   );
 }

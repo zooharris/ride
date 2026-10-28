@@ -165,6 +165,33 @@ describe('the ride engine', () => {
     expect(e.laps[0]).toMatchObject({ start: 4, end: 604, step: 0 });
   });
 
+  it('gives the same target again on demand, so a trainer back from a dropout gets it at once', () => {
+    const e = make();
+    run(e, 1, 3);
+    run(e, 4, 30);
+    expect(e.tick(34_000, pedal).command).toBeUndefined();
+    expect(e.commandNow(34_500, 90)).toEqual({ erg: 138 });
+  });
+
+  it('never pauses itself when nothing connected can tell the rider is moving (a heart-rate strap alone)', () => {
+    const e = make({ mode: 'self', basis: 'hr' });
+    run(e, 1, 3);
+    run(e, 4, 60, { bpm: 130, canMove: false });
+    expect(e.phase).toBe('riding');
+    expect(e.timer).toBe(60);
+  });
+
+  it('counts speed as pedalling, and resumes on it', () => {
+    const e = make();
+    run(e, 1, 3);
+    run(e, 4, 30, { speedKmh: 25 });
+    expect(e.phase).toBe('riding');
+    run(e, 34, 12, { speedKmh: 0, cadence: 0, watts: 0 });
+    expect(e.phase).toBe('paused');
+    e.tick(46_000, { speedKmh: 20 });
+    expect(e.phase).toBe('riding');
+  });
+
   it('scales the target with workout intensity', () => {
     const e = make();
     run(e, 1, 3);

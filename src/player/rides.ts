@@ -5,7 +5,7 @@
  * matched to its planned session, and given the rider's effort.
  */
 import { db } from '../data/db';
-import { credentials, syncAll } from '../sync/syncService';
+import { credentials, plannedSeconds, syncAll, TRIVIAL_SECONDS } from '../sync/syncService';
 import { uploadActivityFile, updateActivityEffort } from '../sync/intervals';
 import { matchByHand, saveActivityEffort } from '../sync/records';
 import { findWorkout } from '../ui/store';
@@ -58,7 +58,26 @@ export function downloadRide(r: Recording): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export interface UploadResult { ok: boolean; text: string; activityId?: string; matched?: string }
+export interface UploadResult { ok: boolean; text: string; activityId?: string; matched?: string; tooShort?: boolean }
+
+/** How long the ride lasted, start to finish: the larger of the timer and the recording's last second. */
+export function rideSeconds(r: Pick<Recording, 'samples' | 'timerSeconds'>): number {
+  const last = r.samples.length ? r.samples[r.samples.length - 1].t + 1 : 0;
+  return Math.max(r.timerSeconds ?? 0, last);
+}
+
+/**
+ * Whether a ride is long enough to count as the workout it was started from:
+ * the rule the pairing uses for every recording (at least five minutes, and at
+ * least a fifth of the workout). A ride stopped after a minute or two is saved
+ * as a ride on its own, and the session stays to do.
+ */
+export async function longEnough(r: Recording): Promise<boolean> {
+  if (!r.workoutId) return true;
+  const secs = rideSeconds(r);
+  const want = plannedSeconds(findWorkout(await db.workouts.toArray(), r.workoutId));
+  return secs >= TRIVIAL_SECONDS && (!want || secs >= want * 0.2);
+}
 
 /**
  * Upload one ride and settle it: the activity is made in Intervals.icu (named
@@ -87,7 +106,8 @@ export async function uploadRide(id: string): Promise<UploadResult> {
 
   // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the
   // automatic pairing cannot hand it to another session planned that day. Nothing on other days is touched.
-  const entry = await calendarEntryFor(r, activityId);
+  const tooShort = !(await longEnough(r));
+  const entry = tooShort ? undefined : await calendarEntryFor(r, activityId);
   let added = false;
   try {
     await syncAll();
@@ -103,8 +123,9 @@ export async function uploadRide(id: string): Promise<UploadResult> {
     if (r.rpe) { try { await updateActivityEffort(c, activityId, r.rpe); } catch { /* the app keeps it either way */ } }
   } catch { /* the next sync pairs it: the calendar entry already holds the recording's id */ }
   const day = r.date === today() ? "today's" : `${new Date(r.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'long' })}'s`;
-  const text = !entry ? 'Saved to Intervals.icu.' : added ? `Saved to Intervals.icu and added to ${day} calendar as done.` : `Saved to Intervals.icu and matched to ${r.name} on ${day} calendar.`;
-  return { ok: true, text, activityId, matched: entry ? r.name : undefined };
+  const text = tooShort ? `Saved to Intervals.icu. Too short to count as ${r.name}, so it's saved as a ride on its own. The session is still on your calendar.`
+    : !entry ? 'Saved to Intervals.icu.' : added ? `Saved to Intervals.icu and added to ${day} calendar as done.` : `Saved to Intervals.icu and matched to ${r.name} on ${day} calendar.`;
+  return { ok: true, text, activityId, matched: entry ? r.name : undefined, tooShort };
 }
 
 /**

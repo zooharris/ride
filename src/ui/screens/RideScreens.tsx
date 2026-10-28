@@ -11,7 +11,8 @@ import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { observation, stepStats, totals, type Totals } from '../../player/summary';
-import { deleteRecording, downloadRide, patchRecording, uploadRide } from '../../player/rides';
+import { deleteRecording, downloadRide, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
+import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import {
@@ -360,6 +361,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const [rpe, setRpe] = useState<number | undefined>(rec.rpe);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId ? 'saved' : 'idle');
   const [said, setSaid] = useState<string>('');
+  const want = plannedSeconds(workout);
+  const short = !!workout && (rideSeconds(rec) < TRIVIAL_SECONDS || (!!want && rideSeconds(rec) < want * 0.2));
   const hasPower = t.avgPower != null;
   const when = new Date(rec.startMs);
 
@@ -398,7 +401,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             <p class="eyebrow">{recovered ? 'Recovered ride · ' : ''}{when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>
             <h1>{rec.name}</h1>
             <div class="row" style="gap:8px;flex-wrap:wrap">
-              {planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
+              {short ? <span class="pill">Too short to count as this workout: saved as a ride on its own</span>
+                : planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
               {timeline.length > 0 && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
             </div>
           </div>

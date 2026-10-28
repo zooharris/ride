@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../data/db';
 import { LIBRARY } from '../library/workouts';
 import { addDays, today } from '../engine/load';
-import { calendarEntryFor } from './rides';
+import { calendarEntryFor, longEnough } from './rides';
+import { plannedSeconds } from '../sync/syncService';
 import { pairRecordings } from '../sync/syncService';
 import type { Recording } from './types';
 import type { Ride } from '../engine/types';
@@ -63,5 +64,24 @@ describe('a ride on the trainer goes on the calendar of the day it was ridden', 
 
   it('puts nothing on the calendar for a free ride', async () => {
     expect(await calendarEntryFor(rec({ workoutId: undefined, name: 'Free ride' }), 'act6')).toBeUndefined();
+  });
+});
+
+describe('a ride too short to count as its workout', () => {
+  const len = plannedSeconds(a)!;
+  it('does not count under five minutes', async () => {
+    expect(await longEnough(rec({ timerSeconds: 240 }))).toBe(false);
+  });
+  it('does not count under a fifth of the workout, even past five minutes', async () => {
+    const long = rides.find((w) => (plannedSeconds(w) ?? 0) >= 3600)!;
+    const want = plannedSeconds(long)!;
+    expect(await longEnough(rec({ workoutId: long.id, timerSeconds: Math.floor(want * 0.19) }))).toBe(false);
+    expect(await longEnough(rec({ workoutId: long.id, timerSeconds: Math.ceil(want * 0.21) }))).toBe(true);
+  });
+  it('counts a partial ride over a fifth of the workout and five minutes', async () => {
+    expect(await longEnough(rec({ timerSeconds: Math.max(300, Math.ceil(len * 0.25)) }))).toBe(true);
+  });
+  it('a free ride always counts (it completes nothing)', async () => {
+    expect(await longEnough(rec({ workoutId: undefined, timerSeconds: 60 }))).toBe(true);
   });
 });

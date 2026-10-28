@@ -33,6 +33,7 @@ import { ChangeSheet } from '../ChangeSheet';
 import { PictureStrip } from '../ExercisePictures';
 import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
+import { playerOffered } from '../../player/platform';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -258,7 +259,7 @@ export function Today({ data }: { data: AppData }) {
           <div class="row wrap" style="margin-top:14px;gap:8px">
             {plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
             {plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
-            {plan.status !== 'completed' && <a class="btn" href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
+            {plan.status !== 'completed' && playerOffered() && <a class="btn" href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
             <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
             {plan.status === 'completed' && plan.activityId && data.rides.some((r) => r.id === plan.activityId) && <a class="btn primary" href={`#/rides/${plan.activityId}`}>See the recording</a>}
             <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>{plan.status === 'completed' ? 'The plan' : 'Details'}</a>

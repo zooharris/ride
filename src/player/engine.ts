@@ -14,7 +14,11 @@ export type Phase = 'countdown' | 'riding' | 'paused' | 'finished';
 /** ERG: the trainer holds the watts. Resistance: a road of a set gradient. Free: a flat road. Self: no trainer control at all. */
 export type TrainerMode = 'erg' | 'resistance' | 'free' | 'self';
 
-export interface Live { watts?: number; cadence?: number; speedKmh?: number; bpm?: number }
+export interface Live {
+  watts?: number; cadence?: number; speedKmh?: number; bpm?: number;
+  /** Whether any connected sensor can tell that the rider is moving (a trainer, a power meter, a speed or cadence sensor). Without one, the ride never pauses itself. Absent means yes. */
+  canMove?: boolean;
+}
 
 export interface EngineOptions {
   timeline: TimelineStep[];
@@ -142,15 +146,16 @@ export class RideEngine {
       return out;
     }
 
-    const moving = (live.cadence ?? 0) > 0 || (live.watts ?? 0) >= 10;
+    const moving = (live.cadence ?? 0) > 0 || (live.watts ?? 0) >= 10 || (live.speedKmh ?? 0) > 3;
+    const watching = this.o.autoPause && live.canMove !== false;
     if (this.phase === 'paused') {
       if (this.autoPaused && moving) { this.resume(now); out.note = 'Pedalling again: the ride carries on.'; }
       else { out.command = this.send(now / 1000, live.cadence); return out; }
     }
 
     // Auto-pause after ten seconds without pedalling.
-    this.still = moving ? 0 : this.still + 1;
-    if (this.o.autoPause && this.still >= AUTO_PAUSE_S) {
+    this.still = moving || !watching ? 0 : this.still + 1;
+    if (watching && this.still >= AUTO_PAUSE_S) {
       this.pause(now, true);
       out.note = 'Paused: you stopped pedalling. Pedal to carry on.';
       out.command = this.send(now / 1000, live.cadence);

@@ -19,6 +19,8 @@ import type { TrainerMode } from '../../player/engine';
 import { startRide } from '../rideController';
 import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
+import { platform } from '../../player/platform';
+import { APP_NAME } from '../../appName';
 import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
 import { KIND_WORD, pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
 import { chooseMode } from '../../player/mode';
@@ -104,11 +106,17 @@ function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }
 }
 
 function NoBluetooth() {
+  const where = platform();
+  const [head, text] = where === 'iphone'
+    ? ['Riding with a trainer needs a computer or an iPad', <>An iPhone's browsers can't reach Bluetooth, so they can't talk to a smart trainer or sensors. Open {APP_NAME} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook), or in the free <b>Bluefy</b> browser on an iPad.</>]
+    : where === 'ipad'
+      ? ['Riding with a trainer on an iPad needs the Bluefy browser', <>Safari on an iPad can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_NAME} in the free <b>Bluefy</b> browser on this iPad, or in <b>Chrome</b> or <b>Edge</b> on a computer.</>]
+      : ['Riding with a trainer needs Chrome or Edge', <>This browser can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_NAME} in <b>Chrome</b> or <b>Edge</b> on this computer (Mac, Windows or Chromebook).</>];
   return (
     <div class="pl-empty">
       <div class="panel" style="max-width:560px">
-        <h2 style="margin-top:0">Riding with a trainer needs Chrome or Edge</h2>
-        <p class="muted">This browser can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {location.host || 'the app'} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook). On an iPad, the free <b>Bluefy</b> browser adds Bluetooth. Safari, Firefox and every iPhone browser can't do it yet.</p>
+        <h2 style="margin-top:0">{head}</h2>
+        <p class="muted">{text}</p>
         <p class="muted small">Everything else in the app works here as usual. To try the player without a trainer, turn on <b>Practice with a simulated trainer</b> in Settings.</p>
         <div class="row" style="margin-top:12px"><button class="btn" onClick={back}>Back</button><a class="btn quiet" href="#/help?s=player">Help</a></div>
       </div>

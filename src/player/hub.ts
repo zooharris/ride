@@ -75,13 +75,24 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
   drivers.set(id, attach(device, kind, {
     reading: (r) => onReading(id, r),
     status: (status: SensorStatus) => update(id, status === 'connected' ? { status } : { status, reading: undefined }),
-    control: (c) => update(id, {
-      controllable: c.controllable,
-      powerRange: c.powerRange,
-      warning: c.controllable ? undefined : c.busy ? BUSY_WARNING : NO_CONTROL_WARNING,
-    }),
+    control: (c) => {
+      update(id, {
+        controllable: c.controllable,
+        powerRange: c.powerRange,
+        warning: c.controllable ? undefined : c.busy ? BUSY_WARNING : NO_CONTROL_WARNING,
+      });
+      if (c.controllable) controlListeners.forEach((l) => l());
+    },
   }));
 }
+
+const controlListeners = new Set<() => void>();
+/**
+ * Called each time a trainer (re)gains control: on first connecting and after
+ * every dropout. A ride in progress uses it to give the trainer its target back,
+ * since a trainer that lost the link has forgotten it.
+ */
+export function onTrainerControl(fn: () => void): () => void { controlListeners.add(fn); return () => { controlListeners.delete(fn); }; }
 
 const KIND_FALLBACK: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed/cadence sensor' };
 

@@ -15,6 +15,7 @@ import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
 import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
+import { playerOffered } from '../../player/platform';
 
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks'], ['run', 'Runs']];
@@ -90,7 +91,7 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
       <div class="wcard-actions">
         <button class="btn sm" onClick={async () => { const r = await scheduleWorkout(w, today(), basis); toast(r === 'already' ? { ok: false, text: alreadyText(w.name, today()) } : { ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
         <button class="btn sm" onClick={onPick}>Pick a date</button>
-        <a class="btn sm quiet" href={`#/play/workout/${w.id}`}>Ride it now</a>
+        {playerOffered() && <a class="btn sm quiet" href={`#/play/workout/${w.id}`}>Ride it now</a>}
       </div>
     </div>
   );

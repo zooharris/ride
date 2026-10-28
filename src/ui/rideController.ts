@@ -8,7 +8,7 @@
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
-import { getSensors, commandTrainer, resetTrainerSession } from '../player/hub';
+import { getSensors, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { RideEngine, type TrainerMode } from '../player/engine';
 import { buildTimeline, targetBand, type TimelineStep } from '../player/timeline';
@@ -53,6 +53,15 @@ let lastTick = 0;
 let audio: AudioContext | undefined;
 let wake: { release(): Promise<void> } | undefined;
 const recent: number[] = [];
+let offControl: (() => void) | undefined;
+
+/** The trainer came back after a dropout: start its session again and give it the current target at once. */
+export function trainerBack(): void {
+  const a = active;
+  if (!a || (a.engine.phase !== 'riding' && a.engine.phase !== 'paused')) return;
+  resetTrainerSession();
+  push();
+}
 
 export function currentRide(): ActiveRide | undefined { return active; }
 export function subscribeRide(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
@@ -88,6 +97,8 @@ export function startRide(setup: RideSetup): void {
   void holdScreenOn();
   addEventListener('beforeunload', onLeave);
   document.addEventListener('visibilitychange', onVisible);
+  offControl?.();
+  offControl = onTrainerControl(trainerBack);
   lastTick = now;
   timer = setInterval(loop, 250);
   void putRecording(rec);
@@ -141,13 +152,18 @@ function second(now: number) {
       a.band = settle(a.band, bandOf(a.markerWatts, b.low, b.high));
     }
   }
-  const out = a.engine.tick(now, a.live);
+  const out = a.engine.tick(now, { ...a.live, canMove: canTellMoving() });
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
   if (out.note) toast({ ok: true, text: out.note });
   const last = a.engine.events[a.engine.events.length - 1];
   if (last?.type === 'eased' && last.t === a.engine.wall(now)) toast({ ok: true, text: 'Cadence dropped: the trainer has eased off. Spin back up over 70 rpm and it builds back to the target.' });
   if (a.engine.timer % 5 === 0) save();
+}
+
+/** Whether a connected sensor can say the rider is moving: anything but a heart-rate strap. */
+function canTellMoving(): boolean {
+  return getSensors().some((s) => s.kind !== 'hr' && s.status === 'connected');
 }
 
 function beep(kind: 'count' | 'go') {
@@ -200,6 +216,8 @@ export async function endRide(): Promise<Recording | undefined> {
   if (cmd) commandTrainer(cmd);
   clearInterval(timer);
   timer = undefined;
+  offControl?.();
+  offControl = undefined;
   removeEventListener('beforeunload', onLeave);
   document.removeEventListener('visibilitychange', onVisible);
   try { await wake?.release(); } catch { /* already released */ }

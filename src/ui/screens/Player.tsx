@@ -56,12 +56,12 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
-  return <Frame><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} /></Frame>;
+  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} /></Frame>;
 }
 
-function Frame({ children }: { children: ComponentChildren }) {
+function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }) {
   return (
-    <div class="player">
+    <div class={`player${fit ? ' fit' : ''}`}>
       <header class="pl-head">
         <Logo height={24} />
         <span class="pl-head-sep" />
@@ -161,7 +161,7 @@ function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; 
         <span style="bottom:-7px">0</span>
       </div>
       <div class="pl-chart-plot">
-        <WorkoutProfile blocks={workout.blocks} height={180} hero targets={{ profile, basis }} />
+        <WorkoutProfile blocks={workout.blocks} height={150} hero targets={{ profile, basis }} />
         <div class="pl-chart-x" aria-hidden="true">
           {ticks.map((t, i) => <span key={t} style={i === 0 ? 'left:0' : t >= seconds - 1 ? 'right:0' : `left:${(t / seconds) * 100}%;transform:translateX(-50%)`}>{clock(t)}</span>)}
           {ticks[ticks.length - 1] < seconds - tick / 3 && <span style="right:0">{clock(seconds)}</span>}
@@ -176,10 +176,10 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
   const ladder = ridePowerZones(profile);
   // A step without a name of its own: inside a set, the set's name for the work and "Recovery" for the easy part; elsewhere, its zone.
   const nameOf = (st: WorkoutStep, z: number, set?: string) => st.label ?? (set ? (st.intensity < 0.6 ? 'Recovery' : set) : `Zone ${z}`);
-  const row = (st: WorkoutStep, key: string, set?: string) => {
+  const row = (st: WorkoutStep, key: string, set?: string, flat = false) => {
     const z = powerZone(st.intensity, ladder);
     const t = stepTargets(st, profile);
-    const inSet = !!set;
+    const inSet = !!set && !flat;
     return (
       <div key={key} class={`pl-step${inSet ? ' in-set' : ''}`}>
         <span class="z" style={`background:${ZONE_VAR[z - 1]}`} />
@@ -190,14 +190,17 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
     );
   };
   return (
-    <div class="pl-steps">
-      {workout.blocks.map((b, i) => b.kind === 'step' ? row(b, `${i}`) : (
+    <>
+    <h2 class="pl-steps-head">Steps <span class="faint">· {flattenSteps(workout.blocks).length}</span></h2>
+    <div class="pl-steps" tabIndex={0} aria-label="The workout's steps">
+      {workout.blocks.map((b, i) => b.kind === 'step' ? row(b, `${i}`) : b.times === 1 ? b.steps.map((st, j) => row(st, `${i}-${j}`, b.label, true)) : (
         <div key={i} class="pl-set">
           <div class="pl-set-head"><span>{b.label ?? 'Set'} <b>× {b.times}</b></span></div>
           {b.steps.map((st, j) => row(st, `${i}-${j}`, b.label ?? 'Set'))}
         </div>
       ))}
     </div>
+    </>
   );
 }
 

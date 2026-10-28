@@ -1,8 +1,8 @@
 /**
  * Riding by heart rate with your gears (brief C1.1): after twenty seconds
- * outside the step's zone the screen says "Ease off a little" or "Push a
- * little", and clears as soon as heart rate is back inside. A recovery step
- * (no minimum) never says push. A soft tone marks a new cue, at most once a
+ * outside the step's zone the screen says "Reduce intensity" or "Increase
+ * intensity", and clears as soon as heart rate is back inside. A recovery step
+ * (no minimum) never says increase. A soft tone marks a new cue, at most once a
  * minute. Pure: the controller calls it once a second with the 10-second
  * average heart rate.
  */
@@ -36,6 +36,6 @@ export function hrCue(st: CueState, bpm: number | undefined, band: { low: number
 }
 
 export const CUE_WORDS: Record<Cue, { head: string; how: string }> = {
-  over: { head: 'Ease off a little', how: 'Shift to an easier gear or soften your pedalling until your heart rate drops into the zone.' },
-  under: { head: 'Push a little', how: 'Shift to a harder gear or pedal a little faster until your heart rate rises into the zone.' },
+  over: { head: 'Reduce intensity', how: 'Shift to an easier gear or soften your pedalling until your heart rate drops into the zone.' },
+  under: { head: 'Increase intensity', how: 'Shift to a harder gear or pedal a little faster until your heart rate rises into the zone.' },
 };

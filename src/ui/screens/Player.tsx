@@ -187,7 +187,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
               <>
-                {!power && <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Ease off a little</b> or <b>Push a little</b>.</p>}
+                {!power && <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>}
                 <div class="pl-runs-row">
                   <span>Trainer</span>
                   <div class="seg" role="group" aria-label="Trainer">
@@ -206,7 +206,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             ) : (
               <>
-              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? (choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Ease off a little</b> or <b>Push a little</b>.</> : choice.says.replace(/^Ready\.\s*/, '')) : choice.says}
+              <p class={`pl-runs ${choice.mode ? '' : 'muted'}`}>{startable ? (choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.says.replace(/^Ready\.\s*/, '')) : choice.says}
                 {choice.suggestHr && <> <button class="btn sm" onClick={() => setBasis('hr')}>Switch to heart rate</button></>}</p>
               {startable && <div class="pl-runs-row"><span>Beeps before each step</span>
                 <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>}

@@ -232,22 +232,26 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
             <div class="rd-band-ok" style={`left:${pos(band.low || lo - span)}%;width:${Math.max(2, pos(band.high) - pos(band.low || lo - span))}%`} />
             {mb != null && <div class="rd-band-mark" style={`left:${pos(mb)}%`} />}
           </div>
-          <div class="rd-band-words"><span>Too easy</span><span>{mb != null ? (away === 0 ? 'In the zone' : `${away} bpm ${mb > band.high ? 'above' : 'below'} the zone`) : ''}</span><span>Too hard</span></div>
+          <div class="rd-band-words"><span>Too easy</span><span>Too hard</span></div>
         </>
       ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
       <div class={`rd-cueline${cue ? ` ${ride.cue}` : ''}`} aria-live="polite">
-        {cue ? <><b>{cue.head}</b><span>{cue.how}</span></> : step ? <span class="muted">{state === 'on' ? 'Holding the zone. Keep it steady.' : 'Settling in: heart rate takes a minute or two to answer a change in effort.'}</span> : null}
+        {cue ? <><b>{cue.head}</b><span>{cue.how}</span></>
+          : step && band && zone && e.position - step.start < 20 ? <span>New step: <b class="rd-cue-inline">Zone {zone}, {band.text.replace(/–/, ' to ')}</b>. Change your effort now; your heart rate takes a minute or two to follow.</span>
+          : step && mb != null && away > 0 ? <span><b class="rd-cue-inline">{away} bpm {mb > band!.high ? 'above' : 'below'} the zone.</b> <span class="muted">If it stays there, you'll be told to {mb > band!.high ? 'reduce' : 'increase'} intensity.</span></span>
+          : step && mb != null ? <span class="muted">In the zone. Hold it steady.</span>
+          : null}
       </div>
       <div class="rd-grow" />
-      <div class="rd-controls">
-        {trainerOk && e.mode !== 'self' ? (
+      {trainerOk && e.mode !== 'self' && (
+        <div class="rd-controls">
           <div class="seg" role="group" aria-label="Trainer">
             {(['resistance', 'free'] as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'resistance' ? 'Set resistance' : 'Free ride'}</button>)}
           </div>
-        ) : <span class="faint small">Riding to the zones with your gears.</span>}
-        <span style="flex:1" />
-        {ride.timeline.length > 0 && e.mode === 'resistance' && trainerOk && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}
-      </div>
+          <span style="flex:1" />
+          {ride.timeline.length > 0 && e.mode === 'resistance' && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}
+        </div>
+      )}
     </section>
   );
 }
@@ -489,7 +493,7 @@ export function RideChart({ timeline, samples, profile, position, live, by = 'po
         </svg>
       )}
       <div class="rd-chart-x" aria-hidden="true">
-        {ticks.map((t, i) => <span key={t} style={i === 0 ? 'left:0' : `left:${(t / total) * 100}%;transform:translateX(-50%)`}>{clock(t)}</span>)}
+        {ticks.filter((t) => !(nowX != null && live && Math.abs(x(t) - nowX) < W * 0.045)).map((t) => <span key={t} style={t === 0 ? 'left:0' : `left:${(t / total) * 100}%;transform:translateX(-50%)`}>{clock(t)}</span>)}
         {nowX != null && live && <span class="now" style={`left:${(nowX / W) * 100}%;transform:translateX(-50%)`}>Now</span>}
       </div>
     </div>

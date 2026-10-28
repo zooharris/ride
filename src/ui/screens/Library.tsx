@@ -8,7 +8,7 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import type { Profile, SessionKind, Workout } from '../../engine/types';
 import { KIND_LABEL, KindDot } from './Plan';
 import { KIND_ICON } from '../icons';
-import { today } from '../../engine/load';
+import { addDays, today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
@@ -71,11 +71,18 @@ export function Library({ data }: { data: AppData }) {
 
 /**
  * A ride in the library: family and basis, the workout's shape, its place name
- * and descriptive name, then length, load and intensity. On a laptop, hovering
- * shows Ride today and Pick a date; on a phone, the workout's page has both.
+ * and descriptive name, then length, load and intensity, and on a computer a
+ * row of its own: Schedule (today, tomorrow, a date) and Ride now. On a
+ * phone, tapping the card opens the workout's page, which has them all.
  */
 function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void }) {
   const s = workoutStats(w.blocks);
+  const [menu, setMenu] = useState(false);
+  const add = async (date: string, day: string) => {
+    setMenu(false);
+    const r = await scheduleWorkout(w, date, basis);
+    toast(r === 'already' ? { ok: false, text: alreadyText(w.name, date) } : { ok: true, text: `${w.name} is on ${day} calendar.` });
+  };
   return (
     <div class="wcard ride">
       <a class="wcard-main" href={`#/workout/${w.id}?from=library`}>
@@ -89,9 +96,18 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
         <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
-        <button class="btn sm" onClick={async () => { const r = await scheduleWorkout(w, today(), basis); toast(r === 'already' ? { ok: false, text: alreadyText(w.name, today()) } : { ok: true, text: `${w.name} is on today's calendar.` }); }}>Ride today</button>
-        <button class="btn sm" onClick={onPick}>Pick a date</button>
-        {playerOffered() && <a class="btn sm quiet" href={`#/play/workout/${w.id}`}>Ride it now</a>}
+        <div class="menu">
+          <button class="btn sm" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>Schedule <span aria-hidden="true">▾</span></button>
+          {menu && <>
+            <div class="menu-bg" onClick={() => setMenu(false)} />
+            <div class="menu-list" role="menu">
+              <button role="menuitem" onClick={() => void add(today(), "today's")}>Today</button>
+              <button role="menuitem" onClick={() => void add(addDays(today(), 1), "tomorrow's")}>Tomorrow</button>
+              <button role="menuitem" onClick={() => { setMenu(false); onPick(); }}>Pick a date…</button>
+            </div>
+          </>}
+        </div>
+        {playerOffered() && <a class="btn sm" href={`#/play/workout/${w.id}`}>Ride now</a>}
       </div>
     </div>
   );

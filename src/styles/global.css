@@ -617,10 +617,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .wc-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
 .wc-stats b { color: var(--ink-2); font-weight: 600; }
 .wcard-actions { display: flex; gap: 6px; padding: 0 14px 12px; }
-@media (hover: hover) and (pointer: fine) {
-  .wcard-actions { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 14px 12px; background: linear-gradient(180deg, transparent, var(--bg-2) 45%); opacity: 0; transform: translateY(4px); transition: opacity .14s ease, transform .14s ease; pointer-events: none; }
-  .wcard.ride:hover .wcard-actions, .wcard.ride:focus-within .wcard-actions { opacity: 1; transform: none; pointer-events: auto; }
-}
+/* On a computer the actions have their own row under the numbers (28 Oct): always there, covering nothing. */
+.wcard.ride { overflow: visible; }
+.wcard-actions { border-top: 1px solid var(--line); padding: 10px 14px 12px; }
+.wcard-actions { display: grid; grid-template-columns: 1fr 1fr; }
+.wcard-actions > * { min-width: 0; }
+.wcard-actions .menu > .btn, .wcard-actions > .btn { width: 100%; justify-content: center; white-space: nowrap; }
+.wcard-actions .menu-list { min-width: 170px; }
+.wcard.ride:focus-within, .wcard.ride:has(.menu-list) { z-index: 20; }
 @media (hover: none), (pointer: coarse) { .wcard-actions { display: none; } }
 @media (max-width: 599px) {
   .filterbar input { flex: 1 1 100%; max-width: none; }

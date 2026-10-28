@@ -167,3 +167,49 @@ describe('missed sessions and the best-fitting recording', () => {
     expect(m.get('a')).toBeUndefined();
   });
 });
+
+describe('a recording whose name the watch cut short', () => {
+  const d = today();
+  const mob = (id: string, name: string, minutes: number) => ({ id, name, kind: 'mobility', minutes, source: 'generated', blocks: [] }) as unknown as Workout;
+  const ride = (id: string, name: string, seconds: number, date = d): Ride => ({ id, name, type: 'VirtualRide', date, startTime: `${date}T09:31:09`, sport: 'ride', seconds, elapsedSeconds: seconds });
+  const plan = (id: string, workoutId: string, date = d): PlannedWorkout => ({ id, date, workoutId, basis: 'power', status: 'sent' });
+  const ws = [lift, mob('m10', 'Mobility: after strength (10 min)', 10), mob('lr12', 'Mobility: after the long ride (12 min)', 12), mob('lr15', 'Mobility: after the long ride (15 min)', 15),
+    { id: 'bj', name: 'Bluemont Junction', kind: 'ride', minutes: 60, source: 'library', blocks: [] } as unknown as Workout,
+    { id: 'bl', name: 'Bluemont', kind: 'ride', minutes: 60, source: 'library', blocks: [] } as unknown as Workout];
+  const of = (id: string) => ws.find((w) => w.id === id);
+  const pair = async (planned: PlannedWorkout[], rides: Ride[]) => (await import('./syncService')).pairRecordings(planned, rides, of);
+
+  it('pairs today’s mobility session, and the strength session by its exact name', async () => {
+    const m = await pair([plan('s', lift.id), plan('m', 'm10')], [
+      { ...ride('i202749720', 'Strength A: legs and trunk', 2199), type: 'WeightTraining', sport: 'strength' },
+      ride('i202754423', 'Mobility: after strength (10 min', 517),
+    ]);
+    expect(m.get('s')?.id).toBe('i202749720');
+    expect(m.get('m')?.id).toBe('i202754423');
+  });
+
+  it('does not pair a different session that only starts the same way', async () => {
+    const m = await pair([plan('m', 'm10')], [ride('x', 'Mobility: after strength (20 min', 1200)]);
+    expect(m.get('m')).toBeUndefined();
+  });
+
+  it('two sessions cut to the same name: the nearer in length wins, and only it', async () => {
+    const m = await pair([plan('a', 'lr12'), plan('b', 'lr15')], [ride('y', 'Mobility: after the long ride (1', 15 * 60)]);
+    expect(m.get('b')?.id).toBe('y');
+    expect(m.get('a')).toBeUndefined();
+  });
+
+  it('a short name is never treated as cut short; an exact name wins', async () => {
+    // Typed as something other than a ride, so only a name could pair it: "Bluemont" is too short to be a cut name.
+    const one = await pair([plan('j', 'bj')], [{ ...ride('z', 'Bluemont', 3600), type: 'Workout', sport: 'strength' }]);
+    expect(one.get('j')).toBeUndefined();
+    const both = await pair([plan('j', 'bj'), plan('b', 'bl')], [ride('z', 'Bluemont', 3600)]);
+    expect(both.get('b')?.id).toBe('z');
+    expect(both.get('j')).toBeUndefined();
+  });
+
+  it('a cut name on another day does not pair', async () => {
+    const m = await pair([plan('m', 'm10')], [ride('w', 'Mobility: after strength (10 min', 517, addDays(d, -1))]);
+    expect(m.get('m')).toBeUndefined();
+  });
+});

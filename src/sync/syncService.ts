@@ -549,6 +549,9 @@ export function plausibleFor(r: Ride, planned: number | undefined): boolean {
   return secs >= 300 && (!planned || secs >= planned * 0.2);
 }
 
+/** A recording name at least this long may be one the watch cut short (a watch keeps 32 characters). */
+export const CUT_NAME_MIN = 20;
+
 export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workoutOf: (id: string) => (Pick<Workout, 'name' | 'subtitle' | 'kind'> & Partial<Pick<Workout, 'minutes' | 'walk' | 'blocks'>>) | undefined): Map<string, Ride> {
   const taken = new Set<string>();
   const free = (r: Ride) => !taken.has(r.id);
@@ -569,6 +572,27 @@ export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workout
     const m = rides.find((r) => p.icuEventId && r.pairedEventId === p.icuEventId && fits(p, r))
       ?? (w ? rides.find((r) => r.date === p.date && fits(p, r) && named(r, w)) : undefined);
     if (m) { taken.add(m.id); matches.set(p.id, m); }
+  }
+  // A name the watch cut short (it keeps 32 characters): the recording's whole name is the
+  // beginning of the session's. Only long names, which are the ones a watch cuts, and only
+  // after the exact names have had their turn. Two sessions starting the same way: the
+  // nearer in length wins.
+  const cutFrom = (r: Ride, w: { name: string; subtitle?: string }) => {
+    const a = r.name.trim().toLowerCase();
+    if (a.length < CUT_NAME_MIN) return false;
+    const full = [w.name, w.subtitle ? `${w.name} · ${w.subtitle}` : ''].filter(Boolean).map((n) => n.trim().toLowerCase());
+    return full.some((b) => b.length > a.length && b.startsWith(a));
+  };
+  for (const r of rides) {
+    if (!free(r)) continue;
+    const options = planned.filter((p) => {
+      if (matches.has(p.id) || p.date !== r.date || !fits(p, r)) return false;
+      const w = workoutOf(p.workoutId);
+      return !!w && cutFrom(r, w);
+    });
+    const length = (p: PlannedWorkout) => { const want = plannedSeconds(workoutOf(p.workoutId)); return want ? Math.abs(Math.max(r.seconds, r.elapsedSeconds ?? 0) - want) : 0; };
+    const best = options.sort((a, b) => length(a) - length(b))[0];
+    if (best) { taken.add(r.id); matches.set(best.id, r); }
   }
   // Same day and kind, the closest in length first: with two rides planned and two recorded, the
   // long one completes the long ride. A ride-typed recording that carries the name of a strength or

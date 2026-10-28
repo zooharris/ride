@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ComponentChildren, JSX } from 'preact';
+import { Fragment, type ComponentChildren } from 'preact';
 import type { AppData } from '../store';
 import { allWorkouts, findWorkout } from '../store';
 import { hrAlternatives } from '../../player/alternatives';
@@ -22,8 +22,9 @@ import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
 import { APP_NAME } from '../../appName';
 import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
-import { KIND_WORD, pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
+import { pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
 import { chooseFreeMode, chooseMode } from '../../player/mode';
+import { ADD_TITLE, cleanName, deviceBoxes, KIND_CAPTION, KIND_NOUN, pillFor, WAKE } from '../../player/devices';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
@@ -42,9 +43,8 @@ function back(): void {
 
 /**
  * The ride player, before the ride (spec screen 1, as redesigned 27 Oct): the
- * workout on the left; on the right, "Ready to ride" — each number the ride
- * uses shown once, with the device it comes from — the trainer, how the ride
- * runs, and Start. Reached from "Ride indoors on the trainer"
+ * workout on the left; on the right, "Your devices" (a box per kind of device,
+ * its numbers live), how the ride runs, and Start. Reached from "Ride indoors on the trainer"
  * (#/play/planned/<id>) or a ride's page (#/play/workout/<id>). It has the
  * whole window, without the app's menu.
  */
@@ -148,7 +148,9 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer';
   const connect = (kind: SensorKind) => { if (!bt) addSimulated(kind); else void addSensor(kind); };
   // When the ride can't start, the place where Start would be says why, and offers the next step.
+  const waitingDevices = sensors.filter((x) => x.status === 'offline' && !x.simulated).length;
   const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
+    : waitingDevices && !choice.needsPower ? { head: `Connect your device${waitingDevices === 1 ? '' : 's'} to start`, text: `Wake ${waitingDevices === 1 ? 'it' : 'them'} first (pedal a few strokes; turn on Broadcast heart rate on your watch), then click each box above that says Click to connect.` }
     : choice.needsPower ? { head: 'This workout needs a power meter', text: `Connect a power meter, or a smart trainer that measures power, to ride it${alternatives.length ? '. Or ride one of the heart-rate workouts below instead.' : '.'}`, action: ['Connect a power meter', () => connect('power')] }
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Connect heart rate', () => connect('hr')] }
@@ -192,7 +194,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <>
               {blocked && <Blocked b={blocked} />}
               <ScrollMore class="pl-side-body">
-              <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} quiet />
+              <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} basis={basis} />
               {alternatives.length > 0 && (
                 <section class="pl-card pl-alts-card">
                   <h2 class="pl-h2">Ride one of these by heart rate instead</h2>
@@ -210,7 +212,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             </>
           ) : (
           <ScrollMore class="pl-side-body">
-          {<Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={!!choice.mode} quiet={!!blocked} />}
+          <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} basis={basis} />
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
@@ -389,117 +391,87 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   );
 }
 
-// ── Ready to ride, right ────────────────────────────────────────────────────
+// ── Your devices, right (brief of 28 Oct: one box per kind of device) ─────
 
-const TILES: Array<{ m: Metric; label: string; from: SensorKind[]; hint: string }> = [
-  { m: 'watts', label: 'Power', from: ['power', 'trainer'], hint: 'From your trainer or power meter' },
-  { m: 'bpm', label: 'Heart rate', from: ['hr'], hint: '' },
-  { m: 'cadence', label: 'Cadence', from: ['power', 'csc', 'trainer'], hint: 'From your trainer or power meter' },
-  { m: 'speedKmh', label: 'Speed', from: ['trainer', 'csc'], hint: 'From your trainer' },
-];
+const STATUS_WORD: Record<SensorState['status'], string> = { connecting: 'Connecting…', connected: 'Connected', lost: 'Lost: reconnecting…', offline: 'Click to connect' };
 
-const STATUS_WORD: Record<SensorState['status'], string> = { connecting: 'Connecting…', connected: 'Connected', lost: 'Reconnecting…', offline: 'Not found' };
-
-function Ready({ sensors, sources, profile, sim, bt, allSet, quiet }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean; quiet?: boolean }) {
-  const [menu, setMenu] = useState<'add' | 'manage' | null>(null);
-  const trainer = sensors.find((s) => s.kind === 'trainer');
-  const connected = sensors.filter((s) => s.status === 'connected');
-  const warnings = sensors.filter((s) => s.warning);
-  const add = (kind: SensorKind, simulated = false) => {
-    setMenu(null);
-    if (simulated || !bt) addSimulated(kind); else void addSensor(kind);
-  };
-  const pill = allSet ? { cls: 'ok', text: 'All set' } : sensors.length ? { cls: 'wait', text: 'Not ready yet' } : { cls: 'wait', text: 'Nothing connected yet' };
-
-  const trainerStrip = trainer ? (
-    <div class={`pl-trainer${trainer.status === 'connected' ? ' on' : ''}`}>
-      <span class="pl-kind">{TRAINER_ICON}</span>
-      <div style="min-width:0;flex:1">
-        <div class="pl-trainer-name">{trainer.name}</div>
-        <div class="muted small">{trainer.status !== 'connected' ? KIND_WORD.trainer : trainer.controllable ? 'Controls the resistance and holds each target for you' : 'Supplies its numbers; it is not taking control'}</div>
-      </div>
-      <span class={`pl-state ${trainer.status}`}><span class="pl-dot" />{STATUS_WORD[trainer.status]}</span>
-      {trainer.status === 'offline' && !trainer.simulated && <button class="btn sm" onClick={() => void reconnect(trainer.id)}>Connect</button>}
-    </div>
-  ) : (
-    <div class="pl-trainer vacant">
-      <span class="pl-kind">{TRAINER_ICON}</span>
-      <div style="min-width:0;flex:1">
-        <div class="pl-trainer-name">Your smart trainer</div>
-        <div class="muted small">It holds each target for you. Pedal a few strokes to wake it first.</div>
-      </div>
-      <button class={`btn sm pl-connect${quiet ? '' : ' primary'}`} onClick={() => add('trainer')}>Connect trainer</button>
-    </div>
+function Ready({ sensors, sources, profile, sim, bt, allSet, basis }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean; basis?: Basis }) {
+  const [menu, setMenu] = useState<string | null>(null);
+  const d = deviceBoxes(sensors, sources, basis);
+  const pill = pillFor(d, allSet);
+  const add = (kind: SensorKind, simulated = false) => { setMenu(null); if (simulated || !bt) addSimulated(kind); else void addSensor(kind); };
+  // Adding: straight to the browser's list, unless practice mode also offers a simulated one.
+  const addItems = (kind: SensorKind) => (
+    <>
+      {bt && <button role="menuitem" onClick={() => add(kind)}>{KIND_CAPTION[kind]} nearby…</button>}
+      {sim && <button role="menuitem" onClick={() => add(kind, true)}>Simulated {KIND_NOUN[kind]}</button>}
+    </>
   );
-
+  const onEmpty = (kind: SensorKind) => { if (sim && bt) setMenu(`add-${kind}`); else add(kind); };
+  const menuOf = (key: string, body: ComponentChildren) => menu === key && <>
+    <div class="menu-bg" onClick={() => setMenu(null)} />
+    <div class="menu-list pl-menu pl-dev-menu" role="menu">{body}</div>
+  </>;
   return (
     <section class="pl-card">
       <div class="row between">
-        <h2 class="pl-h2">{sensors.length ? 'Ready to ride' : 'Get ready to ride'}</h2>
-        <span class={`pl-pill ${pill.cls}`}><span class="pl-dot" />{pill.text}</span>
+        <h2 class="pl-h2">Your devices</h2>
+        <span class={`pl-pill ${pill.ok ? 'ok' : 'wait'}`}><span class="pl-dot" />{pill.text}</span>
       </div>
-      {!trainer && trainerStrip}
-      <div class="pl-tiles">
-        {TILES.map((t) => {
-          const src = sources[t.m];
-          const from = src ? sensors.find((x) => x.id === src.from) : undefined;
-          // No live value: say which device should supply it and why it isn't (dropped, not found), else how to get one.
-          const waiting = !src ? sensors.find((x) => t.from.includes(x.kind) && x.status !== 'connected') : undefined;
-          return (
-            <div key={t.m} class={`pl-tile${src ? '' : ' vacant'}`}>
-              <div class="caption">{t.label}</div>
-              <div class="pl-tile-v num">{src ? fmtValue(t.m, src.value, profile) : '—'}{src && <small> {unitOf(t.m, profile)}</small>}</div>
-              <div class="pl-tile-from">
-                {from ? <><span class="pl-dot ok" />{from.name}</>
-                  : waiting ? <><span class={`pl-dot ${waiting.status}`} />{waiting.name} · {STATUS_WORD[waiting.status].toLowerCase()}</>
-                  : t.m === 'bpm' ? <button class="btn sm" onClick={() => add('hr')}>Add heart rate</button>
-                  : <span>{t.hint}</span>}
+      <div class="pl-devgrid">
+        {d.boxes.map((b) => {
+          const key = `box-${b.kind}`;
+          if (b.state === 'empty') {
+            return (
+              <div key={b.kind} class="menu pl-devcell">
+                <button class="pl-dev empty" aria-haspopup={sim && bt ? 'menu' : undefined} onClick={() => onEmpty(b.kind)}>
+                  <span class="pl-dev-plus" aria-hidden="true">+</span>
+                  <b>{ADD_TITLE[b.kind]}</b>
+                  <span class="faint small">{b.reason}</span>
+                </button>
+                {menuOf(`add-${b.kind}`, addItems(b.kind))}
               </div>
+            );
+          }
+          const s = b.sensor!;
+          const name = cleanName(s.name);
+          const waiting = b.state === 'click' || b.state === 'lost';
+          const click = () => { if (b.state === 'click' && !s.simulated) { setMenu(null); void reconnect(s.id); } else setMenu(menu === key ? null : key); };
+          return (
+            <div key={b.kind} class="menu pl-devcell">
+              <button class={`pl-dev ${b.state}`} aria-haspopup={b.state === 'click' ? undefined : 'menu'} aria-expanded={menu === key} onClick={click}>
+                <span class="pl-dev-k">{KIND_CAPTION[b.kind]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
+                <span class="pl-dev-name">{name}</span>
+                {b.state === 'connected' && b.metrics.length > 0 && (
+                  <span class="pl-dev-v num">{b.metrics.map((m, i) => <span key={m}>{i > 0 && ' '}{fmtValue(m, sources[m]!.value, profile)}<small> {unitOf(m, profile)}</small></span>)}</span>
+                )}
+                <span class="pl-dev-s"><span class={`pl-dot ${b.state === 'connected' ? 'ok' : b.state === 'connecting' ? 'connecting' : 'wait'}`} />
+                  {STATUS_WORD[s.status]}{b.state === 'connected' && b.kind === 'trainer' ? (s.controllable ? ' · controls the resistance' : ' · not in control') : ''}</span>
+                {waiting && <span class="pl-dev-hint">{WAKE[b.kind]}</span>}
+                {b.unused && <span class="pl-dev-hint">{b.unused}</span>}
+                {s.warning && <span class="pl-dev-warn">{s.warning}</span>}
+              </button>
+              {menuOf(key, <>
+                <div class="menu-title">{name}</div>
+                <button role="menuitem" onClick={() => { setMenu(null); if (sim && !bt) add(b.kind, true); else if (sim) setMenu(`add-${b.kind}`); else add(b.kind); }}>Use a different {KIND_NOUN[b.kind]}…</button>
+                <button role="menuitem" class="danger-text" onClick={() => { setMenu(null); if (confirm(`Forget ${name} on this computer?\n\nTo use it again, add it again.`)) void forget(s.id); }}>Forget this {KIND_NOUN[b.kind]}…</button>
+              </>)}
+              {menuOf(`add-${b.kind}`, addItems(b.kind))}
             </div>
           );
         })}
-      </div>
-      {trainer && trainerStrip}
-      {warnings.map((s) => <p key={s.id} class="pl-alert small">{s.warning}</p>)}
-      <div class="pl-devices">
-        <span class="faint small">{connected.length ? `${connected.length} device${connected.length === 1 ? '' : 's'} connected` : 'Also have a power meter or a cadence sensor?'}</span>
-        <span style="flex:1" />
-        <div class="menu">
-          <button class="btn sm" aria-haspopup="menu" aria-expanded={menu === 'add'} onClick={() => setMenu(menu === 'add' ? null : 'add')}>Add a device</button>
-          {menu === 'add' && <>
-            <div class="menu-bg" onClick={() => setMenu(null)} />
-            <div class="menu-list pl-menu" role="menu">
-              {bt && (['trainer', 'power', 'hr', 'csc'] as SensorKind[]).map((k) => <button key={k} role="menuitem" onClick={() => add(k)}>{KIND_WORD[k]}</button>)}
-              {sim && <>
-                {bt && <div class="menu-title">Practice</div>}
-                {(['trainer', 'power', 'hr'] as SensorKind[]).map((k) => <button key={`sim-${k}`} role="menuitem" onClick={() => add(k, true)}>Simulated {k === 'trainer' ? 'trainer' : k === 'power' ? 'power meter' : 'heart rate'}</button>)}
-              </>}
-            </div>
-          </>}
-        </div>
-        {sensors.length > 0 && (
-          <div class="menu">
-            <button class="btn sm quiet" aria-haspopup="menu" aria-expanded={menu === 'manage'} onClick={() => setMenu(menu === 'manage' ? null : 'manage')}>Manage</button>
-            {menu === 'manage' && <>
-              <div class="menu-bg" onClick={() => setMenu(null)} />
-              <div class="menu-list pl-menu pl-manage">
-                <div class="menu-title">On this computer</div>
-                {sensors.map((s) => (
-                  <div key={s.id} class="pl-manage-row">
-                    <div style="min-width:0;flex:1">
-                      <div class="pl-manage-name">{s.name}</div>
-                      <div class="faint small">{KIND_WORD[s.kind]} · {STATUS_WORD[s.status].toLowerCase()}</div>
-                    </div>
-                    {s.status === 'offline' && !s.simulated && <button class="btn sm" onClick={() => { setMenu(null); void reconnect(s.id); }}>Connect</button>}
-                    <button class="btn sm quiet" onClick={() => { setMenu(null); if (confirm(`Forget ${s.name} on this computer?\n\nIt disconnects now. To use it again, add it again.`)) void forget(s.id); }}>Forget</button>
-                  </div>
-                ))}
-              </div>
-            </>}
+        {d.more.length > 0 && (
+          <div class="menu pl-devcell">
+            <button class="pl-dev empty more" aria-haspopup="menu" aria-expanded={menu === 'more'} onClick={() => setMenu(menu === 'more' ? null : 'more')}>
+              <span class="pl-dev-plus" aria-hidden="true">+</span>
+              <b>Add another device</b>
+              <span class="faint small">{d.more.map((k) => KIND_NOUN[k]).join(' or ').replace(/^./, (c) => c.toUpperCase())}</span>
+            </button>
+            {menuOf('more', <>{d.more.map((k) => <Fragment key={k}>{bt && <button key={k} role="menuitem" onClick={() => add(k)}>{KIND_CAPTION[k]} nearby…</button>}{sim && <button key={`s-${k}`} role="menuitem" onClick={() => add(k, true)}>Simulated {KIND_NOUN[k]}</button>}</Fragment>)}</>)}
           </div>
         )}
       </div>
-      {!sensors.length && <p class="pl-note">Your browser asks before connecting each one. Everything you connect is remembered on this computer for next time.</p>}
+      {!sensors.length && <p class="pl-note">Click a box to add a device. Your browser asks before connecting each one, and this computer remembers them for next time.</p>}
     </section>
   );
 }
@@ -513,7 +485,6 @@ function unitOf(m: Metric, profile: Profile): string {
   return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : profile.units === 'imperial' ? 'mph' : 'km/h';
 }
 
-const TRAINER_ICON: JSX.Element = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="15" r="4" /><circle cx="17" cy="15" r="4" /><path d="M3 20h18" /></svg>;
 
 /** The player's preferences on this computer (Settings → Ride player). */
 export const PREF = { sound: 'playerSound', autoPause: 'playerAutoPause', guard: 'playerGuard', smoothing: 'playerSmoothing' } as const;

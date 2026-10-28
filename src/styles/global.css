@@ -1200,3 +1200,30 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-alts-card .pl-alts { height: 100%; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; padding-bottom: 36px; }
 .pl-alts-card .pl-alts.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
 .pl-alts-card .pl-alts .pl-alt { flex: none; }
+
+/* Your devices (28 Oct): one box per kind of device, each a button that adds, connects, or opens its menu. */
+.pl-devgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.pl-devcell { position: relative; display: flex; min-width: 0; }
+.pl-dev { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; padding: 12px 14px; min-height: 112px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink); font: inherit; cursor: pointer; }
+.pl-dev:hover, .pl-dev[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+.pl-dev:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pl-dev.click, .pl-dev.lost { background: color-mix(in srgb, var(--warn) 9%, var(--bg-2)); border-color: color-mix(in srgb, var(--warn) 32%, var(--line)); }
+.pl-dev.empty { border-style: dashed; border-color: var(--line-2); align-items: center; justify-content: center; text-align: center; gap: 2px; }
+.pl-dev.empty b { font-size: 14.5px; }
+.pl-dev-plus { font-size: 22px; line-height: 1; font-weight: 600; color: var(--accent); }
+.pl-dev-k { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.pl-dev-chev { font-size: 14px; letter-spacing: 0; }
+.pl-dev-name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-dev-v { font-size: 26px; font-weight: 600; font-stretch: 112%; letter-spacing: -0.02em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-dev-v small { font-size: 13px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; font-stretch: 100%; }
+.pl-dev-s { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.pl-dev-s .pl-dot.wait { background: var(--warn); }
+.pl-dev-hint { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+.pl-dev-warn { font-size: 12.5px; color: var(--warn); line-height: 1.4; margin-top: 2px; }
+.pl-dev-menu { min-width: 240px; }
+.pl-dev-menu .danger-text { color: var(--bad); }
+@media (min-width: 1100px) and (min-height: 650px) and (max-height: 860px) {
+  .player.fit .pl-devgrid { gap: 8px; margin-top: 10px; }
+  .player.fit .pl-dev { min-height: 96px; padding: 10px 12px; }
+  .player.fit .pl-dev-v { font-size: 22px; }
+}

@@ -15,10 +15,13 @@ export function overlapSeconds(a: Span, b: Span): number {
   return Math.max(0, (hi - lo) / 1000);
 }
 
-/** The same ride: they share at least half of the shorter one. */
-export function sameRide(a: Span, b: Span): boolean {
-  const shorter = Math.min(a.seconds, b.seconds);
-  return shorter > 0 && overlapSeconds(a, b) >= shorter / 2;
+/**
+ * The same ride: the Garmin's recording covers at least half of VeloIQ's. A
+ * fragment (an Edge started late, or one that died early) is not the ride, so
+ * it never replaces VeloIQ's full recording.
+ */
+export function sameRide(player: Span, garmin: Span): boolean {
+  return player.seconds > 0 && overlapSeconds(player, garmin) >= player.seconds / 2;
 }
 
 /** A recording's span: its local start and its whole length (elapsed time when known). */
@@ -31,7 +34,7 @@ export function playerMade(edits: Pick<ActivityEdit, 'id' | 'source'>[], uploade
   return new Set([...edits.filter((e) => e.source === 'veloiq').map((e) => e.id), ...uploadedIds]);
 }
 
-/** The Garmin's recording of the same ride: a ride the player didn't make, overlapping; the longest overlap wins. */
+/** The Garmin's recording of the same ride: a ride the player didn't make, covering at least half of VeloIQ's; the longest overlap wins. */
 export function garminTwin(span: Span, rides: Ride[], mine: Set<string>): Ride | undefined {
   let best: Ride | undefined;
   let most = 0;

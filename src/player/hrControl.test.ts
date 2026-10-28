@@ -139,3 +139,60 @@ describe('the learned table', () => {
     expect(startWatts({}, 2, noFtp).watts).toBe(90);
   });
 });
+
+describe('a step change is a change of effort (heart rate takes time to answer)', () => {
+  const tempo: HrStep = { seconds: 720, noFloor: false, zone: 3, low: 141, high: 144 };
+  const recovery: HrStep = { seconds: 240, noFloor: true, zone: 1, low: 0, high: 115 };
+  it('tempo → recovery: no lowering in the first 90 seconds while heart rate comes down', () => {
+    // 8 bpm over the recovery band (under the safety margin of 10) for 100 seconds.
+    let st = hrStepStart({ watts: 90, learned: true }, 2000, 170);
+    const targets: number[] = [];
+    for (let i = 0; i < 150; i++) { st = hrTick(st, { ...recovery, seconds: 600 }, i, i < 100 ? 123 : 110).state; targets.push(st.target); }
+    expect(targets.slice(0, 90).every((t) => t === 90)).toBe(true);
+    expect(targets[95]).toBeLessThan(90);   // after 90 seconds it may ease
+  });
+  it('the safety ease-off still acts in that window', () => {
+    let st = hrStepStart({ watts: 90, learned: true }, 2000, 170);
+    let eased = -1;
+    for (let i = 0; i < 60 && eased < 0; i++) { const r = hrTick(st, { ...recovery, seconds: 600 }, i, 140); st = r.state; if (r.easedNow) eased = i; }
+    expect(eased).toBeGreaterThanOrEqual(20);
+    expect(eased).toBeLessThan(30);
+    expect(st.target).toBe(72);
+  });
+  it('recovery → tempo: no rise in the first 2 minutes while heart rate climbs', () => {
+    let st = hrStepStart({ watts: 170, learned: true }, 2000, 90);
+    const targets: number[] = [];
+    for (let i = 0; i < 100; i++) { st = hrTick(st, tempo, i, 120).state; targets.push(st.target); }
+    expect(targets.every((t) => t === 170)).toBe(true);
+    for (let i = 100; i < 160; i++) { st = hrTick(st, tempo, i, 120).state; targets.push(st.target); }
+    expect(targets[119]).toBe(170);
+    expect(Math.max(...targets)).toBeGreaterThan(170);   // after two minutes it may rise
+  });
+  it('the first step of a ride is unchanged (no step before it)', () => {
+    const st = hrStepStart({ watts: 90, learned: false });
+    expect(st.raisedAtS).toBeUndefined();
+    expect(st.loweredAtS).toBeUndefined();
+  });
+  it('the status line says heart rate is coming down on a recovery step', () => {
+    const st = { ...hrStepStart({ watts: 90, learned: true }), lastDelta: -5, lastChangeS: 100 };
+    expect(hrStatus(st, recovery, 120, 118)).toMatch(/while your heart rate comes down/);
+    expect(hrStatus(st, z2, 120, 145)).toMatch(/as your heart rate crept up/);
+  });
+  it('with a learned table, zone 2 then zone 3 each hold near their learned watts after the first two minutes', () => {
+    // Learn both zones from a first, long ride of each.
+    const z3: HrStep = { seconds: 2400, noFloor: false, zone: 3, low: 142, high: 150 };
+    const learn = (step: HrStep) => { const r = ride(step, hrStepStart({ watts: 90, learned: false }, 2000)); const ws = r.out.slice(-180).map((o) => o.st.target); return ws.reduce((a, b) => a + b, 0) / ws.length; };
+    let table: HrPowerTable = {};
+    table = hrLearn(table, 2, learn(z2), '2026-10-28');
+    table = hrLearn(table, 3, learn({ ...z3, seconds: 2400 }), '2026-10-28');
+    // The second ride: 10 minutes of each, the rider carrying on from one step to the next.
+    const sim = new SimRider(rider);
+    sim.bpm = 128;
+    const a = ride({ ...z2, seconds: 600 }, hrStepStart(startWatts(table, 2, noFtp)), sim);
+    const s3 = startWatts(table, 3, noFtp);
+    const b = ride({ ...z3, seconds: 600 }, hrStepStart(s3, 2000, a.last.target), a.sim);
+    const near = (out: { st: HrCtl }[], w: number) => out.slice(120).every((o) => Math.abs(o.st.target - w) <= 10);
+    expect(near(a.out, table[2].watts)).toBe(true);
+    expect(near(b.out, table[3].watts)).toBe(true);
+  });
+});

@@ -38,8 +38,14 @@ export interface HrCtl {
   /** Seconds into the step of the last change, and its size. */
   lastChangeS: number;
   lastDelta?: number;
-  /** When the target last went up: for two minutes after, it may only come down. */
+  /** When the target last went up: for two minutes after, it may only come down. A step that starts harder counts as a rise. */
   raisedAtS?: number;
+  /** A step that starts easier than the last: heart rate is still on its way down, so no lowering for 90 seconds (safety apart). */
+  loweredAtS?: number;
+  /** Heart rate 30 seconds ago and now, sampled every 30 seconds: whether it is falling. */
+  bpmPrev?: number;
+  bpmMark?: number;
+  bpmMarkS?: number;
   /** Since when heart rate has been well above the zone. */
   overSince?: number;
   /** When the safety ease-off last acted. */
@@ -55,6 +61,7 @@ export interface HrCtl {
 export const HR_SHORT_S = 180;
 export const HR_GAP_S = 30;
 export const HR_RISE_WAIT_S = 120;
+export const HR_FALL_WAIT_S = 90;
 export const HR_CEILING = 1.25;
 export const HR_MORE = 0.15;
 export const HR_SAFE_BPM = 10;
@@ -89,15 +96,22 @@ export function startWatts(table: HrPowerTable, zone: number, profile: Pick<Prof
   return { watts: 90, learned: false };
 }
 
-/** A step begins: hold its start watts. */
-export function hrStepStart(start: { watts: number; learned: boolean }, maxW = 2000): HrCtl {
+/**
+ * A step begins: hold its start watts. After a previous step (`prevTarget`),
+ * the change of watts is itself a change of effort that heart rate takes a
+ * minute or two to answer: a harder start counts as a rise (no further rise for
+ * two minutes), an easier one allows no lowering for 90 seconds.
+ */
+export function hrStepStart(start: { watts: number; learned: boolean }, maxW = 2000, prevTarget?: number): HrCtl {
   const w = Math.min(maxW, Math.max(MIN_W, start.watts));
-  return { startWatts: w, learned: start.learned, target: w, ceiling: Math.min(maxW, Math.round(w * HR_CEILING)), maxW, lastChangeS: 0, asking: false, kept: false };
+  const st: HrCtl = { startWatts: w, learned: start.learned, target: w, ceiling: Math.min(maxW, Math.round(w * HR_CEILING)), maxW, lastChangeS: 0, asking: false, kept: false };
+  if (prevTarget != null) { if (w >= prevTarget) st.raisedAtS = 0; else st.loweredAtS = 0; }
+  return st;
 }
 
 /** After a pause: carry on from the current target, free to rise again. */
 export function hrResumed(st: HrCtl): HrCtl {
-  return { ...st, raisedAtS: undefined, overSince: undefined, inSince: undefined };
+  return { ...st, raisedAtS: undefined, loweredAtS: undefined, overSince: undefined, inSince: undefined };
 }
 
 /** The rider's answer to "heart rate staying low": allow a further 15 % of the start watts, or hold where it is. */
@@ -113,6 +127,7 @@ export function hrAnswer(st: HrCtl, answer: 'harder' | 'keep'): HrCtl {
 export function hrTick(st: HrCtl, step: HrStep, inS: number, bpm: number | undefined): { state: HrCtl; easedNow: boolean } {
   if (step.seconds < HR_SHORT_S || bpm == null) return { state: st, easedNow: false };
   const s: HrCtl = { ...st };
+  if (s.bpmMarkS == null || inS - s.bpmMarkS >= 30) { s.bpmPrev = s.bpmMark; s.bpmMark = bpm; s.bpmMarkS = inS; }
   const inBand = bpm <= step.high && (step.noFloor || bpm >= step.low);
   s.inSince = inBand ? st.inSince ?? inS : undefined;
 
@@ -137,6 +152,8 @@ export function hrTick(st: HrCtl, step: HrStep, inS: number, bpm: number | undef
   if (s.kept || inS - s.lastChangeS < HR_GAP_S) return { state: s, easedNow: false };
 
   if (bpm > step.high) {
+    // Into an easier step heart rate is still coming down: give it 90 seconds before lowering (the safety ease-off above still acts).
+    if (s.loweredAtS != null && inS - s.loweredAtS < HR_FALL_WAIT_S) return { state: s, easedNow: false };
     const d = bpm > step.high + 5 ? -10 : -5;
     const to = Math.max(MIN_W, s.target + d);
     if (to !== s.target) { s.lastDelta = to - s.target; s.target = to; s.lastChangeS = inS; s.asking = false; }
@@ -166,7 +183,8 @@ export function hrStatus(st: HrCtl, step: HrStep, inS: number, bpm: number | und
   if (st.kept) return `Holding ${t} W for the rest of this step, as you chose.`;
   if (st.easedAtS != null && inS - st.easedAtS < 60) return `Eased to ${t} W: your heart rate was well above the zone.`;
   if (bpm == null) return `Holding ${t} W until your heart rate comes through.`;
-  if (st.lastDelta != null && st.lastDelta < 0 && inS - st.lastChangeS < 90) return `Eased ${-st.lastDelta} W ${ago(inS - st.lastChangeS)} as your heart rate crept up.`;
+  const falling = step.noFloor || (st.bpmPrev != null && bpm < st.bpmPrev);
+  if (st.lastDelta != null && st.lastDelta < 0 && inS - st.lastChangeS < 90) return `Eased ${-st.lastDelta} W ${ago(inS - st.lastChangeS)} ${falling ? 'while your heart rate comes down' : 'as your heart rate crept up'}.`;
   if (bpm > step.high) return `Holding ${t} W. Your heart rate is above zone ${step.zone}, so the trainer eases off in small steps.`;
   if (!step.noFloor && bpm < step.low) return `Building up: ${t} W, waiting for your heart rate to settle.`;
   return `Trainer is holding ${t} W to keep you in zone ${step.zone}.`;

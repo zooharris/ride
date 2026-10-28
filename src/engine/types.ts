@@ -231,7 +231,7 @@ export interface ActivityEdit {
   /** The rider chose to keep VeloIQ's recording over the Garmin's: the Garmin rule leaves it alone. */
   keepVeloiq?: boolean;
   /** On the Garmin's recording: VeloIQ's copy of the same ride was removed in its favour. */
-  replaced?: { name: string; at: string; recordingId?: string; noUndo?: boolean };
+  replaced?: { name: string; at: string; playerActivityId?: string; recordingId?: string };
 }
 
 /** The record of a done strength, mobility or walk session. Rides have none: the device's data is the record. */

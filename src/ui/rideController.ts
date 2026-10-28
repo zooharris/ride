@@ -198,7 +198,10 @@ function second(now: number) {
     }
   }
   if (byHr && (a.engine.phase !== 'riding' || adjusting)) a.cue = undefined;
+  const wasPaused = a.engine.phase === 'paused';
   const out = a.engine.tick(now, { ...a.live, canMove: canTellMoving() });
+  // Pedalling again after an auto-pause carries on as the Resume button does: free to rise again.
+  if (wasPaused && a.engine.phase === 'riding' && a.hr) a.hr = { ...a.hr, st: hrResumed(a.hr.st) };
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
   if (out.note) toast({ ok: true, text: out.note });
@@ -243,8 +246,10 @@ function steerByHr(a: ActiveRide, now: number, step: TimelineStep | undefined, b
   const hs = hrStepOf(step, profile);
   const inS = Math.max(0, e.position - step.start);
   if (!a.hr || a.hr.step !== step.index) {
+    // The step before's final watts: a step that starts harder or easier is a change heart rate takes time to answer.
+    const prev = a.hr?.st.target;
     if (a.hr) learnFrom(a);
-    a.hr = { step: step.index, st: hrStepStart(startWatts(a.hrTable, hs.zone, profile)), inS: 0, status: '' };
+    a.hr = { step: step.index, st: hrStepStart(startWatts(a.hrTable, hs.zone, profile), undefined, prev), inS: 0, status: '' };
   }
   const r = hrTick(a.hr.st, hs, inS, bpm30);
   a.hr = { ...a.hr, st: r.state, inS, status: hrStatus(r.state, hs, inS, bpm30) };

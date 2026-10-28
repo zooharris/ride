@@ -4,7 +4,7 @@
  * Garmin's recording of the same ride when that has arrived, with a toast and
  * Undo.
  */
-import { applyGarminRule, keepVeloiqInstead, markEarlierPlayerRides, type Swap } from '../player/garmin';
+import { adoptSwaps, applyGarminRule, keepVeloiqInstead, markEarlierPlayerRides, type Swap } from '../player/garmin';
 import { onSyncRunning, syncRunning } from '../sync/syncService';
 import { notify } from './store';
 import { toast } from './Toast';
@@ -13,7 +13,7 @@ let started = false;
 let running = false;
 
 export function swapToast(s: Swap): void {
-  if (!s.undo) { toast({ ok: true, text: `Kept your Garmin's recording of ${s.name} and removed VeloIQ's copy.` }); return; }
+  if (!s.undo) { toast({ ok: true, text: `Kept your Garmin's recording of ${s.name} and removed VeloIQ's copy. Undo is on the computer you rode on, on the Garmin recording's page.` }); return; }
   toast({
     ok: true,
     text: `Kept your Garmin's recording of ${s.name}: it's the one in Garmin Connect.${s.noPower ? " Your Garmin didn't record power; Undo to keep VeloIQ's instead." : ''}`,
@@ -25,6 +25,8 @@ async function run(): Promise<void> {
   if (running) return;
   running = true;
   try {
+    // A swap another device made: this computer's copy of the ride is marked as replaced, so Undo is offered here.
+    if (await adoptSwaps()) notify();
     await markEarlierPlayerRides();
     const swaps = await applyGarminRule();
     if (swaps.length) { notify(); swaps.forEach(swapToast); }

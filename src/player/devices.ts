@@ -1,100 +1,112 @@
 /**
- * The before-the-ride screen's device boxes (brief of 28 Oct): one box per
- * kind of device, shown when the rider has one or the ride lacks what it
- * gives. Trainer and heart rate always; a power meter when one is known or the
- * ride is by power and nothing measures power; a speed or cadence sensor when
- * one is known or nothing reports cadence (a trainer gives speed, but cadence
- * depends on the gear). The rest fold into one "Add another device" box. Pure,
- * so the rules are tested.
+ * The before-the-ride screen's device boxes (Todd, 28 Oct): a box for the
+ * smart trainer and one for each number the ride measures (power, heart rate,
+ * cadence, speed), each chosen separately. Clicking a box lists the devices
+ * that can fill it: the one connected now, those this computer has used before
+ * (with when), a way to find another nearby, and "None for this ride". One
+ * device can fill several boxes (pedals give power and cadence). Pure, so the
+ * rules are tested.
  */
-import type { Metric, SensorKind, SensorSnapshot, SensorStatus, Supplied } from './sources';
-import { suppliedBy } from './sources';
+import type { Metric, SensorKind, SensorSnapshot, Supplied } from './sources';
 
-export type BoxState = 'empty' | 'click' | 'connecting' | 'lost' | 'connected';
+export type Slot = 'trainer' | Metric;
+export const SLOTS: Slot[] = ['trainer', 'watts', 'bpm', 'cadence', 'speedKmh'];
 
-export interface DeviceBox {
+type Sensor = SensorSnapshot & { controllable?: boolean; warning?: string };
+export interface Known { id: string; name: string; kind: SensorKind; lastUsed?: string; reports?: Metric[] }
+
+export interface SlotView {
+  slot: Slot;
+  /** connected: filled now; waiting: its device is connecting or reconnecting; off: the rider chose none; empty: nothing yet. */
+  state: 'connected' | 'waiting' | 'off' | 'empty';
+  /** The device filling it (or on its way). */
+  device?: Sensor;
+  value?: number;
+  /** For an empty box: the device used for it most recently, as a reminder. */
+  lastUsed?: string;
+}
+
+export interface Option {
+  id: string;
+  name: string;
   kind: SensorKind;
-  state: BoxState;
-  sensor?: SensorSnapshot & { controllable?: boolean; warning?: string };
-  /** For an empty box: why it is there. */
-  reason?: string;
-  /** For a connected box: the numbers this device is supplying to the ride now. */
-  metrics: Metric[];
-  /** A number the device reports that the ride takes from elsewhere. */
-  unused?: string;
+  /** Connected now (it shows its live reading) or used before (it shows when). */
+  connected: boolean;
+  selected: boolean;
+  lastUsed?: string;
+  simulated?: boolean;
 }
-
-export interface DeviceBoxes {
-  boxes: DeviceBox[];
-  /** Kinds with no box of their own, offered by the one "Add another device" box. */
-  more: SensorKind[];
-  /** Remembered devices waiting for a click to connect. */
-  waiting: number;
-  connected: number;
-}
-
-const STATE: Record<SensorStatus, BoxState> = { offline: 'click', connecting: 'connecting', lost: 'lost', connected: 'connected' };
 
 /** A device's name for display: Garmin broadcasts "EPIX PRO -". */
 export function cleanName(name: string): string {
   return name.replace(/[\s\-–—_·:]+$/u, '').trim() || name.trim();
 }
 
-export function deviceBoxes(
-  sensors: (SensorSnapshot & { controllable?: boolean; warning?: string })[],
-  sources: Partial<Record<Metric, Supplied>>,
-  basis?: 'power' | 'hr',
-): DeviceBoxes {
-  const of = (k: SensorKind) => sensors.find((s) => s.kind === k);
-  const trainer = of('trainer');
-  const trainerOn = trainer?.status === 'connected';
-  const show: Record<SensorKind, boolean> = {
-    trainer: true,
-    hr: true,
-    power: !!of('power') || (basis === 'power' && !sources.watts),
-    csc: !!of('csc') || !sources.cadence,
-  };
-  const box = (kind: SensorKind): DeviceBox => {
-    const s = of(kind);
-    if (!s) {
-      const reason = kind === 'trainer' ? 'It holds each target for you'
-        : kind === 'hr' ? 'A strap, or your watch broadcasting heart rate'
-        : kind === 'power' ? (basis === 'power' && !sources.watts ? 'Nothing connected measures power' : 'Optional if your trainer measures power')
-        : trainerOn && !sources.cadence ? "Your trainer doesn't report cadence" : 'Optional: for cadence, if nothing else reports it';
-      return { kind, state: 'empty', reason, metrics: [] };
-    }
-    const state = STATE[s.status];
-    const metrics = state === 'connected' ? suppliedBy(s.id, sources) : [];
-    let unused: string | undefined;
-    if (state === 'connected' && s.reading?.watts != null && sources.watts && sources.watts.from !== s.id) unused = "Watts from your power meter are used";
-    return { kind, state, sensor: s, metrics, unused };
-  };
-  const order: SensorKind[] = ['trainer', 'power', 'hr', 'csc'];
-  const boxes = order.filter((k) => show[k]).map(box);
-  return {
-    boxes,
-    more: order.filter((k) => !show[k]),
-    waiting: boxes.filter((b) => b.state === 'click').length,
-    connected: sensors.filter((s) => s.status === 'connected').length,
-  };
+/** What a remembered device can supply: what it has been seen to report, else what its kind usually does. */
+export function reportsOf(d: Pick<Known, 'kind' | 'reports'>): Metric[] {
+  if (d.reports?.length) return d.reports;
+  return d.kind === 'trainer' ? ['speedKmh', 'watts'] : d.kind === 'power' ? ['watts', 'cadence'] : d.kind === 'hr' ? ['bpm'] : ['cadence', 'speedKmh'];
 }
 
-/** The pill over the boxes: tied to whether the ride can start. */
-export function pillFor(d: DeviceBoxes, ready: boolean): { ok: boolean; text: string } {
+/** Which kind of device the browser's list shows when finding one for a box. */
+export const FIND_KIND: Record<Slot, SensorKind> = { trainer: 'trainer', watts: 'power', bpm: 'hr', cadence: 'csc', speedKmh: 'csc' };
+
+const canFill = (slot: Slot, kind: SensorKind, reports: Metric[]) => (slot === 'trainer' ? kind === 'trainer' : reports.includes(slot));
+const byRecent = (a: Known, b: Known) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? '');
+
+export function slotView(slot: Slot, sensors: Sensor[], known: Known[], sources: Partial<Record<Metric, Supplied>>, chosen: Partial<Record<Metric, string>>): SlotView {
+  if (slot === 'trainer') {
+    const t = sensors.find((s) => s.kind === 'trainer');
+    if (t?.status === 'connected') return { slot, state: 'connected', device: t };
+    if (t) return { slot, state: 'waiting', device: t };
+    return { slot, state: 'empty', lastUsed: known.filter((d) => d.kind === 'trainer').sort(byRecent)[0]?.name };
+  }
+  const src = sources[slot];
+  if (src) return { slot, state: 'connected', device: sensors.find((s) => s.id === src.from), value: src.value };
+  if (chosen[slot] === 'none') return { slot, state: 'off' };
+  const on = (s: Sensor) => s.id === chosen[slot] || (!chosen[slot] && canFill(slot, s.kind, reportsOf(known.find((k) => k.id === s.id) ?? s)));
+  const coming = sensors.find((s) => s.status !== 'connected' && s.status !== 'offline' && on(s));
+  if (coming) return { slot, state: 'waiting', device: coming };
+  return { slot, state: 'empty', lastUsed: known.filter((d) => canFill(slot, d.kind, reportsOf(d))).sort(byRecent)[0]?.name };
+}
+
+/**
+ * The list a box opens: devices connected now that can fill it, then devices
+ * used before that can, most recent first. A device connected now and also
+ * remembered appears once.
+ */
+export function optionsFor(slot: Slot, sensors: Sensor[], known: Known[], sources: Partial<Record<Metric, Supplied>>): Option[] {
+  const live = sensors.filter((s) => s.status !== 'offline').filter((s) => {
+    if (slot === 'trainer') return s.kind === 'trainer';
+    const k = known.find((d) => d.id === s.id);
+    return s.reading?.[slot] != null || canFill(slot, s.kind, reportsOf(k ?? s));
+  });
+  const selectedId = slot === 'trainer' ? sensors.find((s) => s.kind === 'trainer' && s.status === 'connected')?.id : sources[slot]?.from;
+  const now: Option[] = live.map((s) => ({ id: s.id, name: cleanName(s.name), kind: s.kind, connected: true, selected: s.id === selectedId, simulated: s.simulated, lastUsed: known.find((d) => d.id === s.id)?.lastUsed }));
+  const before: Option[] = known
+    .filter((d) => !live.some((s) => s.id === d.id) && canFill(slot, d.kind, reportsOf(d)))
+    .sort(byRecent)
+    .map((d) => ({ id: d.id, name: cleanName(d.name), kind: d.kind, connected: false, selected: false, lastUsed: d.lastUsed }));
+  return [...now, ...before];
+}
+
+/** The label at the top: tied to whether the ride can start. */
+export function pillFor(sensors: Sensor[], ready: boolean): { ok: boolean; text: string } {
   if (ready) return { ok: true, text: 'All set' };
-  if (d.waiting) return { ok: false, text: `${d.waiting} to connect` };
-  if (!d.connected) return { ok: false, text: 'Nothing connected yet' };
+  if (!sensors.some((s) => s.status === 'connected')) return { ok: false, text: 'Nothing connected yet' };
   return { ok: false, text: 'Not ready yet' };
 }
 
-/** What waking a device takes, for the boxes waiting on it. */
-export const WAKE: Record<SensorKind, string> = {
-  trainer: 'Wake it first: pedal a few strokes',
-  power: 'Wake it first: pedal a few strokes',
-  csc: 'Wake it first: pedal a few strokes',
-  hr: 'Turn on Broadcast heart rate on your watch, or put the strap on',
+export const SLOT_CAPTION: Record<Slot, string> = { trainer: 'Smart trainer', watts: 'Power', bpm: 'Heart rate', cadence: 'Cadence', speedKmh: 'Speed' };
+export const KIND_NOUN: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed or cadence sensor' };
+export const FIND_WORDS: Record<Slot, string> = {
+  trainer: 'Find a smart trainer nearby…',
+  watts: 'Find a power meter nearby…',
+  bpm: 'Find another heart-rate monitor nearby…',
+  cadence: 'Find a cadence sensor nearby…',
+  speedKmh: 'Find a speed sensor nearby…',
 };
-
-export const KIND_CAPTION: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart rate', csc: 'Speed or cadence sensor' };
-export const KIND_NOUN: Record<SensorKind, string> = { trainer: 'smart trainer', power: 'power meter', hr: 'heart-rate monitor', csc: 'speed or cadence sensor' };
-export const ADD_TITLE: Record<SensorKind, string> = { trainer: 'Add your smart trainer', power: 'Add a power meter', hr: 'Add heart rate', csc: 'Add a cadence sensor' };
+/** The one line some lists carry: what makes the device appear. */
+export const WAKE: Partial<Record<Slot, string>> = {
+  bpm: 'Wake it first: put the strap on, or turn on Broadcast heart rate on your watch.',
+};

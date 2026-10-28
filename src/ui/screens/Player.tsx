@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Fragment, type ComponentChildren } from 'preact';
+import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
 import { allWorkouts, findWorkout } from '../store';
 import { hrAlternatives } from '../../player/alternatives';
@@ -21,17 +21,20 @@ import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
 import { APP_NAME } from '../../appName';
-import { addSensor, addSimulated, forget, getSensors, reconnect, restoreSaved, setRiderNumbers, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
-import { pickSources, type Metric, type SensorKind, type Supplied } from '../../player/sources';
+import { addSensor, addSimulated, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
+import { pickSources, type Metric, type Supplied } from '../../player/sources';
 import { chooseFreeMode, chooseMode } from '../../player/mode';
-import { ADD_TITLE, cleanName, deviceBoxes, KIND_CAPTION, KIND_NOUN, pillFor, WAKE } from '../../player/devices';
+import { cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
   const [state, setState] = useState({ sensors: getSensors(), now: Date.now() });
   useEffect(() => {
-    const off = subscribe(() => setState({ sensors: getSensors(), now: Date.now() }));
-    const t = setInterval(() => setState({ sensors: getSensors(), now: Date.now() }), 1000);
+    const tick = () => setState({ sensors: getSensors(), now: Date.now() });
+    // The remembered devices and the rider's choices load once; the boxes redraw when they arrive.
+    void Promise.all([savedDevices(), loadSlots()]).then(tick);
+    const off = subscribe(tick);
+    const t = setInterval(tick, 1000);
     return () => { off(); clearInterval(t); };
   }, []);
   return state;
@@ -131,7 +134,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const allowsHr = workout.bases.includes('hr');
   const [basis, setBasis] = useState<Basis>(planned?.basis ?? (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
   const { sensors, now } = useSensors();
-  const sources = pickSources(sensors, now);
+  const sources = pickSources(sensors, now, getSlots());
   const choice = chooseMode(basis, sensors, sources, allowsHr);
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
@@ -146,15 +149,13 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
   const startable = basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
   const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer';
-  const connect = (kind: SensorKind) => { if (!bt) addSimulated(kind); else void addSensor(kind); };
-  // When the ride can't start, the place where Start would be says why, and offers the next step.
-  const waitingDevices = sensors.filter((x) => x.status === 'offline' && !x.simulated).length;
+  const [open, setOpen] = useState<Slot | null>(null);
+  // When the ride can't start, the place where Start would be says why, and opens the box that fixes it.
   const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
-    : waitingDevices && !choice.needsPower ? { head: `Connect your device${waitingDevices === 1 ? '' : 's'} to start`, text: `Wake ${waitingDevices === 1 ? 'it' : 'them'} first (pedal a few strokes; turn on Broadcast heart rate on your watch), then click each box above that says Click to connect.` }
-    : choice.needsPower ? { head: 'This workout needs a power meter', text: `Connect a power meter, or a smart trainer that measures power, to ride it${alternatives.length ? '. Or ride one of the heart-rate workouts below instead.' : '.'}`, action: ['Connect a power meter', () => connect('power')] }
+    : choice.needsPower ? { head: 'This workout needs a power meter', text: `Connect a power meter, or a smart trainer that measures power, to ride it${alternatives.length ? '. Or ride one of the heart-rate workouts below instead.' : '.'}`, action: ['Choose power', () => setOpen('watts')] }
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
-    : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Connect heart rate', () => connect('hr')] }
-    : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Connect trainer', () => connect('trainer')] };
+    : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
+    : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
   const start = () => startRide({
     workout, planned, basis, profile, scale, level,
     mode: trainerRuns ? mode : 'self',
@@ -194,7 +195,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <>
               {blocked && <Blocked b={blocked} />}
               <ScrollMore class="pl-side-body">
-              <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} basis={basis} />
+              <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
               {alternatives.length > 0 && (
                 <section class="pl-card pl-alts-card">
                   <h2 class="pl-h2">Ride one of these by heart rate instead</h2>
@@ -212,7 +213,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             </>
           ) : (
           <ScrollMore class="pl-side-body">
-          <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} basis={basis} />
+          <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
@@ -332,12 +333,13 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
 
 function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boolean }) {
   const { sensors, now } = useSensors();
-  const sources = pickSources(sensors, now);
+  const sources = pickSources(sensors, now, getSlots());
   const free = chooseFreeMode(sensors, sources);
   const prefs = usePrefs();
   const [mode, setMode] = useState<TrainerMode>('resistance');
   const [level, setLevel] = useState(3);
   const [watts, setWatts] = useState(150);
+  const [open, setOpen] = useState<Slot | null>(null);
   const start = () => startRide({
     workout: undefined, planned: undefined, basis: sources.watts ? 'power' : sources.bpm ? 'hr' : 'power', profile, scale: 1, level, freeWatts: watts,
     mode: free.control ? mode : 'self',
@@ -361,7 +363,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
         </section>
         <aside class="pl-side">
           <div class="pl-side-body">
-            <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={free.ready} />
+            <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={free.ready} open={open} setOpen={setOpen} />
             <section class="pl-card pl-runs-card">
               <h2 class="pl-h2">How the ride runs</h2>
               {free.control && free.ready ? (
@@ -391,87 +393,118 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   );
 }
 
-// ── Your devices, right (brief of 28 Oct: one box per kind of device) ─────
+// ── Your devices, right (Todd, 28 Oct): a box for the trainer and for each number ──
 
-const STATUS_WORD: Record<SensorState['status'], string> = { connecting: 'Connecting…', connected: 'Connected', lost: 'Lost: reconnecting…', offline: 'Click to connect' };
+const SUB_DATE = (iso?: string) => (iso ? `last used ${iso === new Date().toISOString().slice(0, 10) ? 'today' : new Date(iso + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'used before');
 
-function Ready({ sensors, sources, profile, sim, bt, allSet, basis }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean; basis?: Basis }) {
-  const [menu, setMenu] = useState<string | null>(null);
-  const d = deviceBoxes(sensors, sources, basis);
-  const pill = pillFor(d, allSet);
-  const add = (kind: SensorKind, simulated = false) => { setMenu(null); if (simulated || !bt) addSimulated(kind); else void addSensor(kind); };
-  // Adding: straight to the browser's list, unless practice mode also offers a simulated one.
-  const addItems = (kind: SensorKind) => (
-    <>
-      {bt && <button role="menuitem" onClick={() => add(kind)}>{KIND_CAPTION[kind]} nearby…</button>}
-      {sim && <button role="menuitem" onClick={() => add(kind, true)}>Simulated {KIND_NOUN[kind]}</button>}
-    </>
-  );
-  const onEmpty = (kind: SensorKind) => { if (sim && bt) setMenu(`add-${kind}`); else add(kind); };
-  const menuOf = (key: string, body: ComponentChildren) => menu === key && <>
-    <div class="menu-bg" onClick={() => setMenu(null)} />
-    <div class="menu-list pl-menu pl-dev-menu" role="menu">{body}</div>
-  </>;
+function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { sensors: SensorState[]; sources: Partial<Record<Metric, Supplied>>; profile: Profile; sim: boolean; bt: boolean; allSet: boolean; open: Slot | null; setOpen: (s: Slot | null) => void }) {
+  const known = knownNow();
+  const chosen = getSlots();
+  const pill = pillFor(sensors, allSet);
+  const ref = useRef<HTMLElement>(null);
+  // The list floats over the page beside its box, so a scrolling panel never cuts it off; it opens upward when there is no room below.
+  const [at, setAt] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) { setAt(null); return; }
+    const cell = ref.current?.querySelector(`[data-slot="${open}"]`) as HTMLElement | null;
+    if (!cell) return;
+    cell.scrollIntoView({ block: 'nearest' });
+    const r = cell.getBoundingClientRect();
+    const w = 330, gap = 6;
+    const left = Math.max(8, Math.min(r.left, innerWidth - w - 8));
+    const below = innerHeight - r.bottom - gap - 8, above = r.top - gap - 8;
+    setAt(below >= 300 || below >= above ? { left, top: r.bottom + gap, maxHeight: below } : { left, bottom: innerHeight - r.top + gap, maxHeight: above });
+  }, [open]);
+  const done = () => setOpen(null);
+  const pickOption = async (slot: Slot, id: string, connected: boolean) => {
+    done();
+    if (!connected && !(await connectSaved(id))) return;
+    if (slot !== 'trainer') await setSlot(slot, id);
+  };
+  const find = async (slot: Slot) => {
+    done();
+    const id = await addSensor(FIND_KIND[slot]);
+    if (id && slot !== 'trainer') await setSlot(slot, id);
+  };
+  const simulate = async (slot: Slot) => {
+    done();
+    const kind = FIND_KIND[slot];
+    addSimulated(kind);
+    if (slot !== 'trainer') await setSlot(slot, `sim-${kind}`);
+  };
+  const none = async (slot: Slot) => {
+    done();
+    if (slot === 'trainer') { const t = sensors.find((x) => x.kind === 'trainer'); if (t) disconnect(t.id); }
+    else await setSlot(slot, 'none');
+  };
+  const reading = (id: string, slot: Slot) => {
+    const s = sensors.find((x) => x.id === id);
+    if (slot === 'trainer') return s?.status !== 'connected' ? 'connecting…' : s.controllable ? 'controls the resistance' : 'not in control';
+    const v = s?.reading?.[slot];
+    return v != null ? `${fmtValue(slot, v, profile)} ${unitOf(slot, profile)}` : s?.status === 'connected' ? 'connected' : 'connecting…';
+  };
+
+  const box = (slot: Slot) => {
+    const v = slotView(slot, sensors, known, sources, chosen);
+    const d = v.device;
+    const name = d ? cleanName(d.name) : undefined;
+    const opts = optionsFor(slot, sensors, known, sources);
+    const isOpen = open === slot;
+    return (
+      <div key={slot} class={`menu pl-devcell${slot === 'trainer' ? ' wide' : ''}`} data-slot={slot}>
+        <button class={`pl-dev ${v.state}`} aria-haspopup="menu" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : slot)}>
+          <span class="pl-dev-k">{SLOT_CAPTION[slot]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
+          {v.state === 'connected' && <>
+            <span class="pl-dev-name">{name}</span>
+            {slot !== 'trainer' && v.value != null && <span class="pl-dev-v num">{fmtValue(slot, v.value, profile)}<small> {unitOf(slot, profile)}</small></span>}
+            <span class="pl-dev-s"><span class="pl-dot ok" />Connected{slot === 'trainer' ? (d?.controllable ? ' · controls the resistance' : ' · not in control') : ''}</span>
+            {slot === 'trainer' && d?.warning && <span class="pl-dev-warn">{d.warning}</span>}
+          </>}
+          {v.state === 'waiting' && <>
+            <span class="pl-dev-name">{name}</span>
+            <span class="pl-dev-s"><span class="pl-dot connecting" />{d?.status === 'lost' ? 'Lost: reconnecting…' : 'Connecting…'}</span>
+          </>}
+          {v.state === 'off' && <span class="pl-dev-none">None for this ride</span>}
+          {v.state === 'empty' && <>
+            <span class="pl-dev-none">Not connected</span>
+            {v.lastUsed && <span class="pl-dev-hint">Last used: {cleanName(v.lastUsed)}</span>}
+          </>}
+          <span class="pl-dev-act">{v.state === 'connected' || v.state === 'waiting' ? 'Change…' : 'Choose…'}</span>
+        </button>
+        {isOpen && <>
+          <div class="menu-bg" onClick={done} />
+          <div class="pl-pick" role="menu" style={at ? `left:${at.left}px;${at.top != null ? `top:${at.top}px` : `bottom:${at.bottom}px`};max-height:${at.maxHeight}px` : 'visibility:hidden'}>
+            <div class="pl-pick-title">{SLOT_CAPTION[slot]} from</div>
+            {opts.map((o) => (
+              <button key={o.id} role="menuitemradio" aria-checked={o.selected} class="pl-pick-it" onClick={() => void pickOption(slot, o.id, o.connected)}>
+                <span class={`pl-radio${o.selected ? ' on' : ''}`} aria-hidden="true" />
+                <span class="pl-pick-m"><b>{o.name}</b><span>{KIND_NOUN[o.kind]} · {o.connected ? reading(o.id, slot) : SUB_DATE(o.lastUsed)}</span></span>
+              </button>
+            ))}
+            {(opts.length > 0) && <hr />}
+            {bt && <button role="menuitem" class="pl-pick-find" onClick={() => void find(slot)}>+ {FIND_WORDS[slot]}</button>}
+            {sim && <button role="menuitem" class="pl-pick-find" onClick={() => void simulate(slot)}>+ Simulated {KIND_NOUN[FIND_KIND[slot]].toLowerCase()}</button>}
+            <button role="menuitemradio" aria-checked={v.state === 'off'} class="pl-pick-it" onClick={() => void none(slot)}>
+              <span class={`pl-radio${v.state === 'off' ? ' on' : ''}`} aria-hidden="true" /><span class="pl-pick-m"><span class="pl-pick-none">None for this ride</span></span>
+            </button>
+            {WAKE[slot] && <p class="pl-pick-note">{WAKE[slot]}</p>}
+          </div>
+        </>}
+      </div>
+    );
+  };
+
   return (
-    <section class="pl-card">
+    <section class="pl-card" ref={ref}>
       <div class="row between">
         <h2 class="pl-h2">Your devices</h2>
         <span class={`pl-pill ${pill.ok ? 'ok' : 'wait'}`}><span class="pl-dot" />{pill.text}</span>
       </div>
       <div class="pl-devgrid">
-        {d.boxes.map((b) => {
-          const key = `box-${b.kind}`;
-          if (b.state === 'empty') {
-            return (
-              <div key={b.kind} class="menu pl-devcell">
-                <button class="pl-dev empty" aria-haspopup={sim && bt ? 'menu' : undefined} onClick={() => onEmpty(b.kind)}>
-                  <span class="pl-dev-plus" aria-hidden="true">+</span>
-                  <b>{ADD_TITLE[b.kind]}</b>
-                  <span class="faint small">{b.reason}</span>
-                </button>
-                {menuOf(`add-${b.kind}`, addItems(b.kind))}
-              </div>
-            );
-          }
-          const s = b.sensor!;
-          const name = cleanName(s.name);
-          const waiting = b.state === 'click' || b.state === 'lost';
-          const click = () => { if (b.state === 'click' && !s.simulated) { setMenu(null); void reconnect(s.id); } else setMenu(menu === key ? null : key); };
-          return (
-            <div key={b.kind} class="menu pl-devcell">
-              <button class={`pl-dev ${b.state}`} aria-haspopup={b.state === 'click' ? undefined : 'menu'} aria-expanded={menu === key} onClick={click}>
-                <span class="pl-dev-k">{KIND_CAPTION[b.kind]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
-                <span class="pl-dev-name">{name}</span>
-                {b.state === 'connected' && b.metrics.length > 0 && (
-                  <span class="pl-dev-v num">{b.metrics.map((m, i) => <span key={m}>{i > 0 && ' '}{fmtValue(m, sources[m]!.value, profile)}<small> {unitOf(m, profile)}</small></span>)}</span>
-                )}
-                <span class="pl-dev-s"><span class={`pl-dot ${b.state === 'connected' ? 'ok' : b.state === 'connecting' ? 'connecting' : 'wait'}`} />
-                  {STATUS_WORD[s.status]}{b.state === 'connected' && b.kind === 'trainer' ? (s.controllable ? ' · controls the resistance' : ' · not in control') : ''}</span>
-                {waiting && <span class="pl-dev-hint">{WAKE[b.kind]}</span>}
-                {b.unused && <span class="pl-dev-hint">{b.unused}</span>}
-                {s.warning && <span class="pl-dev-warn">{s.warning}</span>}
-              </button>
-              {menuOf(key, <>
-                <div class="menu-title">{name}</div>
-                <button role="menuitem" onClick={() => { setMenu(null); if (sim && !bt) add(b.kind, true); else if (sim) setMenu(`add-${b.kind}`); else add(b.kind); }}>Use a different {KIND_NOUN[b.kind]}…</button>
-                <button role="menuitem" class="danger-text" onClick={() => { setMenu(null); if (confirm(`Forget ${name} on this computer?\n\nTo use it again, add it again.`)) void forget(s.id); }}>Forget this {KIND_NOUN[b.kind]}…</button>
-              </>)}
-              {menuOf(`add-${b.kind}`, addItems(b.kind))}
-            </div>
-          );
-        })}
-        {d.more.length > 0 && (
-          <div class="menu pl-devcell">
-            <button class="pl-dev empty more" aria-haspopup="menu" aria-expanded={menu === 'more'} onClick={() => setMenu(menu === 'more' ? null : 'more')}>
-              <span class="pl-dev-plus" aria-hidden="true">+</span>
-              <b>Add another device</b>
-              <span class="faint small">{d.more.map((k) => KIND_NOUN[k]).join(' or ').replace(/^./, (c) => c.toUpperCase())}</span>
-            </button>
-            {menuOf('more', <>{d.more.map((k) => <Fragment key={k}>{bt && <button key={k} role="menuitem" onClick={() => add(k)}>{KIND_CAPTION[k]} nearby…</button>}{sim && <button key={`s-${k}`} role="menuitem" onClick={() => add(k, true)}>Simulated {KIND_NOUN[k]}</button>}</Fragment>)}</>)}
-          </div>
-        )}
+        {box('trainer')}
+        {box('watts')}{box('bpm')}{box('cadence')}{box('speedKmh')}
       </div>
-      {!sensors.length && <p class="pl-note">Click a box to add a device. Your browser asks before connecting each one, and this computer remembers them for next time.</p>}
+      {!known.length && !sensors.length && <p class="pl-note">Click a box to choose the device for it. Your browser asks before connecting each one, and this computer remembers them for next time.</p>}
     </section>
   );
 }

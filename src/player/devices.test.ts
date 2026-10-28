@@ -1,61 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, deviceBoxes, pillFor } from './devices';
+import { cleanName, optionsFor, pillFor, slotView, type Known } from './devices';
+import { migrateSaved } from './hub';
 import { pickSources, type SensorSnapshot } from './sources';
 
 type S = SensorSnapshot & { controllable?: boolean; warning?: string };
 const now = 1_000_000;
-const rollr = (o: Partial<S> = {}): S => ({ id: 'rollr', kind: 'trainer', name: 'KICKR ROLLR 5A50', status: 'offline', ...o });
-const pedals = (o: Partial<S> = {}): S => ({ id: 'ped', kind: 'power', name: 'SPEEDPLAY POWER F53E', status: 'offline', ...o });
-const epix = (o: Partial<S> = {}): S => ({ id: 'epix', kind: 'hr', name: 'EPIX PRO -', status: 'offline', ...o });
-const boxes = (ss: S[], basis?: 'power' | 'hr') => deviceBoxes(ss, pickSources(ss, now), basis);
-const kinds = (d: ReturnType<typeof boxes>) => d.boxes.map((b) => `${b.kind}:${b.state}`);
+const known: Known[] = [
+  { id: 'rollr', name: 'KICKR ROLLR 5A50', kind: 'trainer', lastUsed: '2026-10-28', reports: ['speedKmh', 'watts'] },
+  { id: 'ped', name: 'SPEEDPLAY POWER F53E', kind: 'power', lastUsed: '2026-10-28', reports: ['watts', 'cadence'] },
+  { id: 'epix', name: 'EPIX PRO -', kind: 'hr', lastUsed: '2026-10-28', reports: ['bpm'] },
+  { id: 'hrm', name: 'HRM-Pro+', kind: 'hr', lastUsed: '2026-10-12' },
+  { id: 'rpm', name: 'Wahoo RPM cadence', kind: 'csc', lastUsed: '2026-09-02', reports: ['cadence'] },
+];
+const on = (id: string, kind: S['kind'], reading: Omit<NonNullable<S['reading']>, 'at'>, o: Partial<S> = {}): S => ({ id, kind, name: known.find((k) => k.id === id)?.name ?? id, status: 'connected', reading: { ...reading, at: now }, ...o });
 
 describe('the device boxes', () => {
-  it("Todd's setup, all remembered and waiting: three click-to-connect boxes and the cadence box, then the cadence box goes once the pedals report cadence", () => {
-    const asleep = boxes([rollr(), pedals(), epix()], 'power');
-    expect(kinds(asleep)).toEqual(['trainer:click', 'power:click', 'hr:click', 'csc:empty']);
-    expect(asleep.more).toEqual([]);
-    expect(pillFor(asleep, false).text).toBe('3 to connect');
-    const awake = boxes([
-      rollr({ status: 'connected', controllable: true, reading: { speedKmh: 26, watts: 210, at: now } }),
-      pedals({ status: 'connected', reading: { watts: 212, cadence: 88, at: now } }),
-      epix({ status: 'connected', reading: { bpm: 128, at: now } }),
-    ], 'power');
-    expect(kinds(awake)).toEqual(['trainer:connected', 'power:connected', 'hr:connected']);
-    expect(awake.more).toEqual(['csc']);
-    expect(awake.boxes[1].metrics).toEqual(['watts', 'cadence']);
-    expect(awake.boxes[0].metrics).toEqual(['speedKmh']);
-    expect(awake.boxes[0].unused).toBe('Watts from your power meter are used');
-    expect(pillFor(awake, true)).toEqual({ ok: true, text: 'All set' });
+  it('opening the ride with nothing connected: every box empty, reminding which device was used last', () => {
+    const v = (slot: Parameters<typeof slotView>[0]) => slotView(slot, [], known, {}, {});
+    expect(v('trainer')).toMatchObject({ state: 'empty', lastUsed: 'KICKR ROLLR 5A50' });
+    expect(v('bpm')).toMatchObject({ state: 'empty', lastUsed: 'EPIX PRO -' });
+    expect(v('cadence')).toMatchObject({ state: 'empty', lastUsed: 'SPEEDPLAY POWER F53E' });
+    expect(v('speedKmh')).toMatchObject({ state: 'empty', lastUsed: 'KICKR ROLLR 5A50' });
+    expect(pillFor([], false).text).toBe('Nothing connected yet');
   });
 
-  it('a wheel-on trainer reporting speed only, no pedals: the cadence box says why', () => {
-    const d = boxes([rollr({ status: 'connected', reading: { speedKmh: 25, watts: 180, at: now } })], 'hr');
-    const csc = d.boxes.find((b) => b.kind === 'csc');
-    expect(csc).toMatchObject({ state: 'empty', reason: "Your trainer doesn't report cadence" });
+  it('the heart-rate list offers every heart-rate monitor used before, most recent first, not just the last one', () => {
+    expect(optionsFor('bpm', [], known, {}).map((o) => o.name)).toEqual(['EPIX PRO', 'HRM-Pro+']);
   });
 
-  it('a heart-rate rider whose trainer reports power and cadence: no power box, no cadence box, one add box', () => {
-    const d = boxes([rollr({ status: 'connected', reading: { speedKmh: 25, watts: 180, cadence: 85, at: now } }), epix({ status: 'connected', reading: { bpm: 120, at: now } })], 'hr');
-    expect(kinds(d)).toEqual(['trainer:connected', 'hr:connected']);
-    expect(d.more).toEqual(['power', 'csc']);
+  it('the cadence list offers only devices that report cadence: the pedals and the cadence sensor, never the ROLLR', () => {
+    const ids = optionsFor('cadence', [], known, {}).map((o) => o.id);
+    expect(ids).toEqual(['ped', 'rpm']);
   });
 
-  it('first time, a ride by power: four add boxes and nothing more', () => {
-    const d = boxes([], 'power');
-    expect(kinds(d)).toEqual(['trainer:empty', 'power:empty', 'hr:empty', 'csc:empty']);
-    expect(d.boxes[1].reason).toBe('Nothing connected measures power');
-    expect(d.more).toEqual([]);
-    expect(pillFor(d, false).text).toBe('Nothing connected yet');
+  it('connected: pedals fill power and cadence, the ROLLR speed; the connected device comes first and is selected', () => {
+    const sensors = [on('rollr', 'trainer', { speedKmh: 26, watts: 210 }, { controllable: true }), on('ped', 'power', { watts: 212, cadence: 88 }), on('epix', 'hr', { bpm: 128 })];
+    const src = pickSources(sensors, now);
+    expect(slotView('watts', sensors, known, src, {})).toMatchObject({ state: 'connected', value: 212, device: { id: 'ped' } });
+    expect(slotView('cadence', sensors, known, src, {})).toMatchObject({ state: 'connected', value: 88, device: { id: 'ped' } });
+    expect(slotView('speedKmh', sensors, known, src, {})).toMatchObject({ state: 'connected', device: { id: 'rollr' } });
+    const cad = optionsFor('cadence', sensors, known, src);
+    expect(cad[0]).toMatchObject({ id: 'ped', connected: true, selected: true });
+    expect(cad.map((o) => o.id)).not.toContain('rollr');
+    expect(pillFor(sensors, true)).toEqual({ ok: true, text: 'All set' });
   });
 
-  it('connected but the ride still lacks something: "Not ready yet"', () => {
-    const d = boxes([rollr({ status: 'connected', controllable: true, reading: { speedKmh: 25, watts: 180, cadence: 85, at: now } })], 'hr');
-    expect(pillFor(d, false).text).toBe('Not ready yet');
+  it("the rider's choice wins: a separate cadence sensor over the pedals, or none at all", () => {
+    const sensors = [on('ped', 'power', { watts: 212, cadence: 88 }), on('rpm', 'csc', { cadence: 90 })];
+    expect(pickSources(sensors, now, { cadence: 'rpm' }).cadence?.from).toBe('rpm');
+    expect(pickSources(sensors, now).cadence?.from).toBe('ped');
+    const off = pickSources(sensors, now, { cadence: 'none' });
+    expect(off.cadence).toBeUndefined();
+    expect(slotView('cadence', sensors, known, off, { cadence: 'none' }).state).toBe('off');
+  });
+
+  it('a ROLLR once filed as a speed sensor is a trainer again, and each device is remembered once', () => {
+    const fixed = migrateSaved([
+      { id: 'ped', name: 'SPEEDPLAY POWER F53E', kind: 'power' },
+      { id: 'epix', name: 'EPIX PRO -', kind: 'hr' },
+      { id: 'rollr', name: 'KICKR ROLLR 5A50', kind: 'csc' },
+    ]);
+    expect(fixed.find((d) => d.id === 'rollr')?.kind).toBe('trainer');
+    expect(fixed).toHaveLength(3);
   });
 
   it('tidies the name a Garmin watch broadcasts', () => {
     expect(cleanName('EPIX PRO -')).toBe('EPIX PRO');
-    expect(cleanName('KICKR ROLLR 5A50')).toBe('KICKR ROLLR 5A50');
   });
 });

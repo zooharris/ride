@@ -1227,3 +1227,24 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .player.fit .pl-dev { min-height: 96px; padding: 10px 12px; }
   .player.fit .pl-dev-v { font-size: 22px; }
 }
+
+/* Your devices, revised (28 Oct): trainer across the top, then power, heart rate, cadence, speed; each opens a list. */
+.pl-devcell.wide { grid-column: 1 / -1; }
+.pl-devcell.wide .pl-dev { min-height: 0; }
+.pl-dev.empty, .pl-dev.off { border-style: dashed; border-color: var(--line-2); align-items: stretch; justify-content: flex-start; text-align: left; }
+.pl-dev.waiting { background: color-mix(in srgb, var(--warn) 9%, var(--bg-2)); border-color: color-mix(in srgb, var(--warn) 32%, var(--line)); }
+.pl-dev-none { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.pl-dev-act { margin-top: auto; padding-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--accent); }
+.pl-pick { position: fixed; z-index: 60; width: 330px; overflow-y: auto; padding: 6px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow); }
+.pl-pick-title { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 6px 10px 4px; }
+.pl-pick hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+.pl-pick-it { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.pl-pick-it:hover, .pl-pick-find:hover { background: var(--bg-3); }
+.pl-pick-m { display: flex; flex-direction: column; align-items: flex-start; text-align: left; flex: 1; min-width: 0; }
+.pl-pick-m b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-pick-m span { font-size: 12px; color: var(--ink-3); }
+.pl-pick-m .pl-pick-none { font-size: 14px; color: var(--ink-2); }
+.pl-pick-find { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; text-align: left; font: 600 14px var(--font); color: var(--accent); cursor: pointer; }
+.pl-pick-note { margin: 4px 6px 4px; padding: 8px 10px; border-radius: 8px; background: var(--bg-3); font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+.pl-radio { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--line-2); }
+.pl-radio.on { border-color: var(--accent); background: radial-gradient(var(--accent) 42%, transparent 48%); }

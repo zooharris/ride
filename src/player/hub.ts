@@ -7,8 +7,9 @@
 import { getSetting, setSetting } from '../data/db';
 import { attach, chooseDevice, knownDevice, type Driver } from './ble/web';
 import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/parse';
-import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
+import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Metric, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
+import { reportsOf } from './devices';
 
 export interface SensorState extends SensorSnapshot {
   warning?: string;
@@ -18,11 +19,19 @@ export interface SensorState extends SensorSnapshot {
   rollrSince?: number;
 }
 
-export interface SavedDevice { id: string; name: string; kind: SensorKind }
+/**
+ * A device this computer has used. Each device once (by id), with the service it
+ * connects through (`kind`), when it was last used, and the numbers it has been
+ * seen to report, so each box can offer only the devices that can fill it.
+ */
+export interface SavedDevice { id: string; name: string; kind: SensorKind; lastUsed?: string; reports?: Metric[] }
 
 /** Local-only settings (see LOCAL_ONLY in devicesync.ts): devices belong to one computer. */
 export const DEVICES_KEY = 'playerDevices';
 export const SIM_KEY = 'playerSim';
+/** Which device the rider chose for each number (or 'none'): local, like the devices. */
+export const SLOTS_KEY = 'playerSlots';
+export type Slots = Partial<Record<Metric, string>>;
 
 let sensors: SensorState[] = [];
 const drivers = new Map<string, Driver>();
@@ -45,6 +54,7 @@ function onReading(id: string, r: Omit<Reading, 'at'>): void {
   const s = sensors.find((x) => x.id === id);
   if (!s) return;
   const reading: Reading = { ...r, at: Date.now() };
+  if (!s.simulated) learn(id, r);
   const patch: Partial<SensorState> = { reading };
   if (s.kind === 'trainer') {
     const c = rollrCheck(s.name, reading, s.rollrSince, reading.at);
@@ -55,10 +65,74 @@ function onReading(id: string, r: Omit<Reading, 'at'>): void {
   update(id, patch, true);
 }
 
-async function saved(): Promise<SavedDevice[]> { return getSetting<SavedDevice[]>(DEVICES_KEY, []); }
+let savedCache: SavedDevice[] | undefined;
+async function saved(): Promise<SavedDevice[]> {
+  savedCache ??= migrateSaved(await getSetting<SavedDevice[]>(DEVICES_KEY, []));
+  return savedCache;
+}
+async function writeSaved(list: SavedDevice[]): Promise<void> { savedCache = list; await setSetting(DEVICES_KEY, list); emitNow(); }
+
+/** A device's way in: a trainer before a power meter before a heart-rate monitor before a speed/cadence sensor. */
+const RANK: Record<SensorKind, number> = { trainer: 0, power: 1, hr: 2, csc: 3 };
+
+/** Remember a device, once by id, keeping what was learned about it; never forgets others of its kind. */
 async function remember(d: SavedDevice): Promise<void> {
-  const list = (await saved()).filter((x) => x.kind !== d.kind && x.id !== d.id);
-  await setSetting(DEVICES_KEY, [...list, d]);
+  const list = await saved();
+  const old = list.find((x) => x.id === d.id);
+  const kind = old && RANK[old.kind] < RANK[d.kind] ? old.kind : d.kind;
+  await writeSaved([...list.filter((x) => x.id !== d.id), { ...old, ...d, kind, reports: old?.reports ?? d.reports }]);
+}
+
+/**
+ * Before 28 Oct the list held one device per kind, and a device added under a
+ * second kind replaced its first entry (a KICKR ROLLR picked as a speed sensor
+ * stopped being the trainer). A Wahoo KICKR is a trainer whatever it was filed as.
+ */
+export function migrateSaved(list: SavedDevice[]): SavedDevice[] {
+  const byId = new Map<string, SavedDevice>();
+  for (const d of list) {
+    const kind: SensorKind = /\bKICKR\b/i.test(d.name) ? 'trainer' : d.kind;
+    const old = byId.get(d.id);
+    byId.set(d.id, old && RANK[old.kind] <= RANK[kind] ? old : { ...d, kind });
+  }
+  return [...byId.values()];
+}
+
+/** Learn what a device reports (once per number), so the boxes offer it where it can help. */
+const learned = new Map<string, Set<Metric>>();
+function learn(id: string, r: Omit<Reading, 'at'>): void {
+  const seen = learned.get(id) ?? new Set<Metric>();
+  const fresh = (['watts', 'cadence', 'speedKmh', 'bpm'] as Metric[]).filter((m) => r[m] != null && !seen.has(m));
+  if (!fresh.length) return;
+  fresh.forEach((m) => seen.add(m));
+  learned.set(id, seen);
+  void saved().then((list) => {
+    const d = list.find((x) => x.id === id);
+    if (!d) return;
+    const reports = [...new Set([...(d.reports ?? []), ...seen])];
+    if (reports.length !== (d.reports ?? []).length) void writeSaved(list.map((x) => (x.id === id ? { ...x, reports } : x)));
+  });
+}
+
+async function touch(id: string): Promise<void> {
+  const list = await saved();
+  const today = new Date().toISOString().slice(0, 10);
+  if (list.some((x) => x.id === id && x.lastUsed !== today)) await writeSaved(list.map((x) => (x.id === id ? { ...x, lastUsed: today } : x)));
+}
+
+// ── Which device fills each box ──────────────────────────────────────────────
+
+let slots: Slots = {};
+let slotsLoaded = false;
+export async function loadSlots(): Promise<Slots> { if (!slotsLoaded) { slots = await getSetting<Slots>(SLOTS_KEY, {}); slotsLoaded = true; } return slots; }
+export function getSlots(): Slots { return slots; }
+/** The rider's choice for one number: a device id, 'none', or undefined to let the app pick. */
+export async function setSlot(m: Metric, id: string | undefined): Promise<void> {
+  await loadSlots();
+  slots = { ...slots, [m]: id };
+  if (id === undefined) delete slots[m];
+  await setSetting(SLOTS_KEY, slots);
+  emitNow();
 }
 
 function drop(id: string): void {
@@ -69,12 +143,13 @@ function drop(id: string): void {
 
 function start(device: BluetoothDevice, kind: SensorKind): void {
   const id = device.id;
-  for (const s of sensors.filter((x) => x.kind === kind || x.id === id)) drop(s.id);
+  // One trainer, one power meter, one heart-rate monitor at a time; separate speed and cadence sensors can both be connected.
+  for (const s of sensors.filter((x) => x.id === id || (x.kind === kind && kind !== 'csc'))) drop(s.id);
   sensors = [...sensors, { id, kind, name: device.name || KIND_FALLBACK[kind], status: 'connecting' }];
   emitNow();
   drivers.set(id, attach(device, kind, {
     reading: (r) => onReading(id, r),
-    status: (status: SensorStatus) => update(id, status === 'connected' ? { status } : { status, reading: undefined }),
+    status: (status: SensorStatus) => { update(id, status === 'connected' ? { status } : { status, reading: undefined }); if (status === 'connected') void touch(id); },
     control: (c) => {
       update(id, {
         controllable: c.controllable,
@@ -96,49 +171,76 @@ export function onTrainerControl(fn: () => void): () => void { controlListeners.
 
 const KIND_FALLBACK: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed/cadence sensor' };
 
-/** Opens the browser's chooser for one kind of sensor (call from a click) and connects what is picked. */
-export async function addSensor(kind: SensorKind): Promise<'added' | 'cancelled'> {
+/**
+ * Opens the browser's list of devices nearby of one kind (call from a click)
+ * and connects what is picked. Returns its id. A device already connected some
+ * other way (a ROLLR picked again as a speed sensor) is not connected twice.
+ */
+export async function addSensor(kind: SensorKind): Promise<string | undefined> {
   let device: BluetoothDevice;
-  try { device = await chooseDevice(kind); } catch { return 'cancelled'; }
+  try { device = await chooseDevice(kind); } catch { return undefined; }
+  if (sensors.some((s) => s.id === device.id && s.status !== 'offline')) return device.id;
   await remember({ id: device.id, name: device.name || KIND_FALLBACK[kind], kind });
   start(device, kind);
-  return 'added';
+  return device.id;
 }
 
 /**
- * Brings back the sensors this computer has used before. Where the browser can
- * reach a remembered device without asking, it reconnects on its own; where it
- * cannot, the row waits with a Connect button (one click opens the chooser).
+ * Connect a device this computer has used before. Where the browser hands it
+ * back without asking, at once; where it does not (Chrome on a Mac), its list
+ * opens narrowed to that one device, to confirm. Call from a click.
+ */
+export async function connectSaved(id: string): Promise<boolean> {
+  const d = (await saved()).find((x) => x.id === id);
+  if (!d) return false;
+  if (sensors.some((s) => s.id === id && s.status !== 'offline')) return true;
+  let device = await knownDevice(id);
+  if (!device) { try { device = await chooseDevice(d.kind, d.name); } catch { return false; } }
+  start(device, d.kind);
+  return true;
+}
+
+/**
+ * At the ride screen's opening: where the browser can reach remembered devices
+ * without asking, reconnect the ones in use (each box's chosen device, else the
+ * one used most recently for it, and the last trainer). Where it cannot,
+ * nothing happens until the rider picks them.
  */
 export async function restoreSaved(): Promise<void> {
-  for (const d of await saved()) {
-    if (sensors.some((s) => s.id === d.id || s.kind === d.kind)) continue;
-    const device = await knownDevice(d.id);
+  const list = await saved();
+  const s = await loadSlots();
+  const latest = (fits: (d: SavedDevice) => boolean) => list.filter(fits).sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? ''))[0]?.id;
+  const want = new Set<string>();
+  const t = latest((d) => d.kind === 'trainer'); if (t) want.add(t);
+  for (const m of ['watts', 'bpm', 'cadence', 'speedKmh'] as Metric[]) {
+    const id = s[m] && s[m] !== 'none' ? s[m] : latest((d) => reportsOf(d).includes(m));
+    if (id) want.add(id);
+  }
+  for (const id of want) {
+    const d = list.find((x) => x.id === id);
+    if (!d || sensors.some((x) => x.id === id)) continue;
+    const device = await knownDevice(id);
     if (device) start(device, d.kind);
-    else { sensors = [...sensors, { id: d.id, kind: d.kind, name: d.name, status: 'offline' }]; emitNow(); }
   }
 }
 
-/** Connect a remembered sensor that could not reconnect by itself. Call from a click. */
-export async function reconnect(id: string): Promise<void> {
-  const s = sensors.find((x) => x.id === id);
-  if (!s) return;
-  const device = await knownDevice(id);
-  if (device) { start(device, s.kind); return; }
-  await addSensor(s.kind);
-}
+/** Disconnect a device for now (it stays remembered). */
+export function disconnect(id: string): void { const s = sensors.find((x) => x.id === id); drop(id); if (s?.simulated) stopSimIfIdle(); emitNow(); }
 
 /** Disconnect and forget a sensor on this computer. */
 export async function forget(id: string): Promise<void> {
   const s = sensors.find((x) => x.id === id);
   drop(id);
   if (s?.simulated) stopSimIfIdle();
-  await setSetting(DEVICES_KEY, (await saved()).filter((d) => d.id !== id));
+  await writeSaved((await saved()).filter((d) => d.id !== id));
+  if (Object.values(slots).includes(id)) { slots = Object.fromEntries(Object.entries(slots).filter(([, v]) => v !== id)); await setSetting(SLOTS_KEY, slots); }
   emitNow();
 }
 
-/** Every remembered device, for Settings (whether or not connected now). */
+/** Every remembered device, for Settings and the device boxes (whether or not connected now). */
 export async function savedDevices(): Promise<SavedDevice[]> { return saved(); }
+/** The remembered devices as last loaded (load them once with savedDevices()). */
+export function knownNow(): SavedDevice[] { return savedCache ?? []; }
 
 // ── Simulated sensors (practice mode) ───────────────────────────────────────
 

@@ -8,7 +8,7 @@
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
-import { getSensors, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
+import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { RideEngine, type TrainerMode } from '../player/engine';
 import { buildTimeline, targetBand, type TimelineStep } from '../player/timeline';
@@ -151,7 +151,7 @@ function loop() {
 
 function second(now: number) {
   const a = active!;
-  const src = pickSources(getSensors(), Date.now());
+  const src = pickSources(getSensors(), Date.now(), getSlots());
   a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value };
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;

@@ -18,10 +18,11 @@ export const canRemember = (): boolean => bluetoothAvailable() && typeof navigat
 
 const PRIMARY: Record<SensorKind, number> = { trainer: SERVICE.ftms, power: SERVICE.cyclingPower, hr: SERVICE.heartRate, csc: SERVICE.csc };
 
-/** Opens the browser's chooser, showing only devices that offer this kind's service. Must run from a click. */
-export async function chooseDevice(kind: SensorKind): Promise<BluetoothDevice> {
+/** Opens the browser's chooser, showing only devices that offer this kind's service (and, with a name, only that device). Must run from a click. */
+export async function chooseDevice(kind: SensorKind, name?: string): Promise<BluetoothDevice> {
   return navigator.bluetooth.requestDevice({
-    filters: [{ services: [PRIMARY[kind]] }],
+    // With a name, the list shows only that device: confirming one used before.
+    filters: [name ? { services: [PRIMARY[kind]], name } : { services: [PRIMARY[kind]] }],
     optionalServices: [SERVICE.ftms, SERVICE.cyclingPower, SERVICE.heartRate, SERVICE.csc],
   });
 }

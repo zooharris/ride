@@ -40,14 +40,20 @@ export const STALE_MS = 3000;
 export interface Supplied { value: number; from: string; kind: SensorKind }
 
 /**
- * The value of each number and the sensor it comes from. A sensor supplies a
+ * The value of each number and the sensor it comes from. The rider's choice in
+ * the device boxes comes first (`chosen`). Otherwise a sensor supplies a
  * number when it is connected, its reading is fresh and it reports that
  * number at all; the first such sensor in priority order wins. A zero is a
  * real value (stopped pedalling); an absent field is not.
  */
-export function pickSources(sensors: SensorSnapshot[], now: number): Partial<Record<Metric, Supplied>> {
+export function pickSources(sensors: SensorSnapshot[], now: number, chosen: Partial<Record<Metric, string>> = {}): Partial<Record<Metric, Supplied>> {
   const out: Partial<Record<Metric, Supplied>> = {};
+  const live = (x: SensorSnapshot, m: Metric) => x.status === 'connected' && !!x.reading && now - x.reading.at <= STALE_MS && x.reading[m] != null;
   for (const m of Object.keys(PRIORITY) as Metric[]) {
+    // The rider's choice for this number: none at all, or a particular device while it is supplying it.
+    if (chosen[m] === 'none') continue;
+    const pick = chosen[m] ? sensors.find((x) => x.id === chosen[m] && live(x, m)) : undefined;
+    if (pick) { out[m] = { value: pick.reading![m]!, from: pick.id, kind: pick.kind }; continue; }
     for (const kind of PRIORITY[m]) {
       const s = sensors.find((x) => x.kind === kind && x.status === 'connected' && x.reading && now - x.reading.at <= STALE_MS && x.reading[m] != null);
       if (s) { out[m] = { value: s.reading![m]!, from: s.id, kind }; break; }

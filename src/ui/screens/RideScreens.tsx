@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile, Workout, PlannedWorkout } from '../../engine/types';
 import { clock, workoutStats } from '../../engine/workout';
+import { today } from '../../engine/load';
 import { hrZone, powerZone, ridePowerZones, rideHrZones } from '../../engine/zones';
 import { Mark } from '../Brand';
 import { ZONE_VAR } from '../Profile';
@@ -395,7 +396,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             <p class="eyebrow">{recovered ? 'Recovered ride · ' : ''}{when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>
             <h1>{rec.name}</h1>
             <div class="row" style="gap:8px;flex-wrap:wrap">
-              {planned && <span class="rd-state on">{planned.date === rec.date ? "Matches today's plan" : `Planned for ${new Date(planned.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'long' })}`}</span>}
+              {planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
               {timeline.length > 0 && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
             </div>
           </div>

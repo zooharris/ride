@@ -12,6 +12,9 @@ import { findWorkout } from '../ui/store';
 import { encodeFit } from './fit';
 import { totals } from './summary';
 import type { Recording } from './types';
+import type { PlannedWorkout } from '../engine/types';
+import { newId } from '../engine/workout';
+import { today } from '../engine/load';
 
 export async function putRecording(r: Recording): Promise<void> { await db.recordings.put({ ...r, savedMs: Date.now() }); }
 export async function getRecording(id: string): Promise<Recording | undefined> { return db.recordings.get(id); }
@@ -82,23 +85,49 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   }
   await patchRecording(id, { status: 'uploaded', activityId, uploadedAt: new Date().toISOString(), error: undefined });
 
-  // Bring it back and settle the match and the effort. The upload itself has succeeded; a failure here only delays the match.
-  let matched: string | undefined;
+  // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the
+  // automatic pairing cannot hand it to another session planned that day. Nothing on other days is touched.
+  const entry = await calendarEntryFor(r, activityId);
+  let added = false;
   try {
     await syncAll();
     const ride = await db.rides.get(activityId);
-    const planned = r.plannedId ? await db.planned.get(r.plannedId) : undefined;
-    if (ride && planned) {
-      const w = findWorkout(await db.workouts.toArray(), planned.workoutId);
-      if (w && planned.activityId !== ride.id) await matchByHand(planned, w, ride);
-      if (r.rpe) await db.planned.update(planned.id, { rpe: r.rpe });
-      matched = w?.name;
+    if (ride && entry) {
+      const w = findWorkout(await db.workouts.toArray(), entry.p.workoutId);
+      if (w) await matchByHand((await db.planned.get(entry.p.id)) ?? entry.p, w, ride);
+      if (r.rpe) await db.planned.update(entry.p.id, { rpe: r.rpe });
+      added = entry.added;
     } else if (ride && r.rpe) {
       await saveActivityEffort(ride, r.rpe);
     }
     if (r.rpe) { try { await updateActivityEffort(c, activityId, r.rpe); } catch { /* the app keeps it either way */ } }
-  } catch { /* the next sync pairs it */ }
-  return { ok: true, text: matched ? `Saved to Intervals.icu and matched to ${matched}.` : 'Saved to Intervals.icu.', activityId, matched };
+  } catch { /* the next sync pairs it: the calendar entry already holds the recording's id */ }
+  const day = r.date === today() ? "today's" : `${new Date(r.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'long' })}'s`;
+  const text = !entry ? 'Saved to Intervals.icu.' : added ? `Saved to Intervals.icu and added to ${day} calendar as done.` : `Saved to Intervals.icu and matched to ${r.name} on ${day} calendar.`;
+  return { ok: true, text, activityId, matched: entry ? r.name : undefined };
+}
+
+/**
+ * The calendar entry a ride completes, on the day it was ridden: the session
+ * it was started from if that is the same day; else the same workout already on
+ * that day and not yet done; else a new entry, added by hand (so the plan
+ * counts its load as extra). A session planned for another day stays where it
+ * is, still to do. A free ride has no workout and no entry: it shows as an
+ * unscheduled activity.
+ */
+export async function calendarEntryFor(r: Recording, activityId: string): Promise<{ p: PlannedWorkout; added: boolean } | undefined> {
+  if (!r.workoutId) return undefined;
+  const from = r.plannedId ? await db.planned.get(r.plannedId) : undefined;
+  const sameDay = from && from.date === r.date && from.status !== 'completed' ? from
+    : (await db.planned.where('date').equals(r.date).toArray()).find((p) => p.workoutId === (from?.workoutId ?? r.workoutId) && p.status !== 'completed');
+  const hold = { activityId, matchedByHand: true as const };
+  if (sameDay) {
+    await db.planned.update(sameDay.id, hold);
+    return { p: { ...sameDay, ...hold }, added: false };
+  }
+  const p: PlannedWorkout = { id: newId(), date: r.date, workoutId: from?.workoutId ?? r.workoutId, basis: r.basis, status: 'planned', ...hold };
+  await db.planned.add(p);
+  return { p, added: true };
 }
 
 /** Try every waiting ride once (at launch, on return to the app, and from Today's "Try now"). */

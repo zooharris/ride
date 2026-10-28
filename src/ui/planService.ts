@@ -190,7 +190,8 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     // What was actually done this week, so the days left respond to it: everything before today, and
     // anything today that was not a planned session (a planned one done today is already in the plan).
     const t = today(), wk = weekStart(t);
-    const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed').map((p) => p.activityId));
+    // A ride added by hand today (an extra workout on the trainer, say) is not in the plan, so it counts as extra load.
+    const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed' && p.planId).map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
     return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality });

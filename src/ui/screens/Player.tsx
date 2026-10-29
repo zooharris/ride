@@ -139,7 +139,8 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const s = workoutStats(workout.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power';
-  const alternatives = useMemo(() => (allowsHr ? [] : hrAlternatives(workout, allWorkouts(mine), 5)), [workout.id, allowsHr, mine]);
+  // A test measures power, so no other ride stands in for it: no heart-rate alternatives.
+  const alternatives = useMemo(() => (allowsHr || workout.test ? [] : hrAlternatives(workout, allWorkouts(mine), 5)), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
   const [chosenMode, setMode] = useState<TrainerMode>('erg');
   // By heart rate, "erg" means the trainer adjusts its watts to keep heart rate in each zone.

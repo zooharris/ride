@@ -1,6 +1,10 @@
-# AntoVelo (formerly VeloIQ) 2.0
+# Antogo Cycling
+
+*(formerly AntoVelo, and before that VeloIQ 2.0)*
 
 A personal cycling training app for masters riders: plan the week, send each ride to a Garmin, pull the results back, and adapt the plan. Runs entirely in the browser; installs on an iPhone home screen as a PWA.
+
+Antogo is the family name. This repository is **Antogo Cycling**, the training app; **Antogo BikeFit**, the camera-based bike fitter, lives in its own repository.
 
 - Hosted from this repository with GitHub Pages at `https://<owner>.github.io/ride/`.
 - Intervals.icu is the only outside service: it pushes planned workouts to Garmin Connect and receives finished rides. One free account, one API key, entered once in Settings.
@@ -17,6 +21,7 @@ A personal cycling training app for masters riders: plan the week, send each rid
 | `src/data/` | IndexedDB schema (Dexie) and backup export/import |
 | `src/ui/` | Screens: Today, Calendar, Library, Workout, Rides, Settings, Onboarding |
 | `src/appName.ts` | The app's name, in one place |
+| `art/antogo/` | The logo and icon master files (vector), plus the approval sheet |
 
 ## Working on it
 

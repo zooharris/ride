@@ -7,8 +7,9 @@ export interface Readiness {
   band: 'go' | 'ease' | 'easy' | 'rest';
   drivers: ReadinessDriver[];
   /**
-   * The overnight inputs the rider normally has (a four-week normal exists) that have no value
-   * this morning: not yet arrived, or set aside by the rider. An input the rider's devices never
+   * The main overnight inputs (HRV, sleep, resting HR) the rider normally has (a four-week normal
+   * exists) that have no value this morning: not yet arrived, or set aside by the rider. Sleeping
+   * HR and breathing rate are never listed: when absent they are simply left out. An input the rider's devices never
    * send has no normal and is not listed, so a rider without HRV is never told HRV is missing.
    */
   missing: ReadinessInput[];
@@ -126,7 +127,8 @@ export function readiness(todayW: Wellness | undefined, baseline: Wellness[], ts
   const one = (name: ReadinessInput, key: Key, show: (v: number) => string, unit: string, twoDay: boolean): { score: number; z: number } | undefined => {
     const n = normalOf(baseline, key);
     const v = todayW?.[key];
-    if (n && !(typeof v === 'number' && v > 0)) missing.push(name);
+    // Only the main three are ever called missing: sleeping HR and breathing rate don't come every night and weigh little, so they are left out quietly.
+    if (n && !(typeof v === 'number' && v > 0) && (name === 'HRV' || name === 'Sleep' || name === 'Resting HR')) missing.push(name);
     if (!n || typeof v !== 'number' || v <= 0) return undefined;
     const z = zOf(v, n, key);
     let score = scoreOfZ(z);

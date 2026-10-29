@@ -270,6 +270,13 @@ describe('readiness', () => {
     expect(b.drivers.map((d) => d.name)).toEqual(['HRV', 'Sleep', 'Resting HR', 'Sleeping HR', 'Form']);
     expect(readiness({ ...normal, avgSleepingHr: 62 }, withShr, -5).score).toBeLessThan(b.score);
   });
+  it('a night without sleeping HR or breathing rate is not called missing; the score just uses the rest', () => {
+    const withBoth = base.map((w, i) => ({ ...w, avgSleepingHr: 55 + ((i % 3) - 1), respiration: 14 + ((i % 3) - 1) * 0.3 }));
+    const r = readiness(normal, withBoth, -5);
+    expect(r.missing).toEqual([]);
+    expect(r.drivers.map((d) => d.name)).toEqual(['HRV', 'Sleep', 'Resting HR', 'Form']);
+    expect(r.band).toBe('go');
+  });
   it('the sleep score is blended with sleep length', () => {
     const withScore = base.map((w) => ({ ...w, sleepScore: 80 + ((w.hrv! - 50) / 2) }));
     const good = readiness({ ...normal, sleepScore: 80 }, withScore, -5), poor = readiness({ ...normal, sleepScore: 60 }, withScore, -5);

@@ -20,7 +20,7 @@ import { StatusPill } from '../StatusMark';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
 import { RouteMap } from '../RouteMap';
-import { KIND_COLOR, KIND_LABEL, KindDot } from './Plan';
+import { KIND_LABEL } from './Plan';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
@@ -29,6 +29,8 @@ import { ZONE_VAR } from '../Profile';
 import { GLOSSARY, ZONE_KEY, ZONE_NAMES } from '../glossary';
 import { KindStack } from '../Glance';
 import { hoursLabel, type WeekSummary } from '../week';
+import { ActivityPicture } from '../Thumbs';
+import { MonthDone } from './Calendar';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -69,9 +71,9 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
       )}
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
-          render={(d) => list.filter((r) => r.date === d).map((r) => (
-            <a class={`month-item done k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · ${r.tss ?? '–'} TSS`} style={`--c:${KIND_COLOR[r.sport]}`}><span class="mi-name">{r.name}</span></a>
-          ))} />
+          cellClass={() => ''}
+          weekNote={(ws) => { const rs = list.filter((r) => r.date >= ws && r.date <= addDays(ws, 6)); const tss = Math.round(rs.reduce((a, r) => a + (r.tss ?? 0), 0)); return tss ? <><b class="num">{tss}</b><span class="faint">TSS</span><span class="faint">{hoursLabel(rs.reduce((a, r) => a + r.seconds, 0) / 60)}</span></> : null; }}
+          render={(d) => list.filter((r) => r.date === d).map((r) => <MonthDone key={r.id} r={r} data={data} title={`${r.name} · ${r.tss ?? '–'} TSS`} />)} />
       )}
       {view === 'list' && <div class="actlist">
         {groupByWeek(list).map(({ start, rides }) => {
@@ -96,7 +98,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                   const zones = r.powerZoneSeconds?.length ? r.powerZoneSeconds : r.hrZoneSeconds;
                   return (
                     <a class="cal-item act" key={r.id} href={`#/rides/${r.id}`} style={c ? `--edge:${verdictColor(c.verdict)}` : ''}>
-                      <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
+                      <ActivityPicture ride={r} w={w} profile={profile} height={56} width={96} exMax={2} />
                       <div class="t">
                         <b>{shownName(r.name, w)}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
                         <span>{[fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' }), clock(r.seconds), r.distanceM ? distance(r.distanceM, profile) : '', r.sport === 'ride' ? mph(r.averageSpeedMs) : ''].filter(Boolean).map((s) => s.replace(/ /g, '\u00a0')).join(' · ')}</span>

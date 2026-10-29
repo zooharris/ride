@@ -114,7 +114,7 @@ async function pullAll(): Promise<SyncResult> {
   const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).map((r) => r.id));
   // An activity deleted in Intervals.icu (or on another device) goes from this one too.
   const gone = [...known].filter((id) => !rides.some((r) => r.id === id));
-  if (gone.length) { await db.rides.bulkDelete(gone); await db.streams.bulkDelete(gone); await db.powerCurves.bulkDelete(gone); }
+  if (gone.length) { await db.rides.bulkDelete(gone); await db.streams.bulkDelete(gone); await db.powerCurves.bulkDelete(gone); await db.thumbs.bulkDelete(gone); }
   const newIds = first ? [] : rides.filter((r) => !known.has(r.id)).map((r) => r.id);
   // Rides score from power or heart rate; walks from heart rate; strength from
   // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's

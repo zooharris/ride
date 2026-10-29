@@ -686,6 +686,14 @@ export async function fetchPowerStream(c: IntervalsCredentials, activityId: stri
   return { time: list.find((x) => x.type === 'time')?.data ?? [], watts: list.find((x) => x.type === 'watts')?.data };
 }
 
+/** What an activity's small picture needs: the route and the power or heart rate, a fraction of the full recording. */
+export async function fetchThumbStreams(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[]; lat?: number[]; lng?: number[] }> {
+  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,latlng`);
+  const find = (t: string) => list.find((x) => x.type === t);
+  const ll = find('latlng');
+  return { time: find('time')?.data ?? [], watts: find('watts')?.data, heartrate: find('heartrate')?.data, lat: ll?.data, lng: ll?.data2 };
+}
+
 /** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
 export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams> {
   const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng`);

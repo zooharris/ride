@@ -90,6 +90,7 @@ export async function deleteRecording(rideId: string): Promise<void> {
   await db.activityEdits.delete(rideId);
   await db.streams.delete(rideId);
   await db.powerCurves.delete(rideId);
+  await db.thumbs.delete(rideId);
 }
 
 /* ---------- the rider's edits to a recorded activity ---------- */

@@ -1,5 +1,6 @@
 import type { ActivePlan } from '../ui/planService';
 import type { Recording } from '../player/types';
+import type { Thumb } from './thumbs';
 import Dexie, { type Table } from 'dexie';
 import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout, ActivityEdit } from '../engine/types';
 
@@ -70,6 +71,8 @@ class RideDb extends Dexie {
   activityEdits!: Table<ActivityEdit, string>;
   /** Rides recorded by the ride player: this computer only (never in the sync note or a backup), kept until uploaded and 30 days after. */
   recordings!: Table<Recording, string>;
+  /** The small pictures of done activities (route shape, effort profile) for the calendar and lists: this device only, rebuilt on demand. */
+  thumbs!: Table<Thumb, string>;
 
   constructor() {
     super('ride');
@@ -103,6 +106,7 @@ class RideDb extends Dexie {
       }
     }));
     this.version(10).stores({ recordings: 'id, status, startMs' });
+    this.version(11).stores({ thumbs: 'id' });
   }
 }
 

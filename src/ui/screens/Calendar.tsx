@@ -10,7 +10,7 @@ import { addDays, today } from '../../engine/load';
 import { clock, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
 import { db } from '../../data/db';
-import type { PlannedWorkout, Workout } from '../../engine/types';
+import type { PlannedWorkout, Ride, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
 import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
@@ -22,6 +22,9 @@ import { PageHead } from '../PageHead';
 import { WeekBar } from '../Glance';
 import { weekSummary } from '../week';
 import { Icon } from '../icons';
+import { ActivityPicture, ExerciseRow } from '../Thumbs';
+import { picturedCount } from '../ExercisePictures';
+import { WeekNote } from '../MonthGrid';
 
 /** A name short enough for a month cell: the part before any colon ("Strength A"), at most 14 characters. The full name is the cell's title. */
 function shortName(name: string): string {
@@ -124,7 +127,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       {view === 'month' && (
         <MonthGrid month={month} onPrev={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onToday={() => setMonth(monthOf(today()))}
           cellClass={(d) => `${recoveryWeeks.has(weekStart(d)) ? 'recovery' : ''} ${dnd.dropClass(d)}`}
-          weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <><b class="num">{wk.doneTss}</b>{wk.plannedTss > 0 && <span class="faint"> of {wk.plannedTss}</span>}<span class="faint"> TSS</span>{recoveryWeeks.has(ws) && <span class="mn-tag">recovery</span>}</> : null; }}
+          weekNote={(ws) => { const wk = weekSummary(ws, data.planned, data.rides, data.mine); return wk.plannedTss || wk.doneTss ? <WeekNote done={wk.doneTss} planned={wk.plannedTss} tag={recoveryWeeks.has(ws) ? 'recovery' : undefined} /> : null; }}
           render={(d) => {
             const plans = plannedOn(data.planned, d, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
             const rides = data.rides.filter((r) => r.date === d && !plans.some((p) => p.activityId === r.id));
@@ -136,14 +139,19 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                   const w = findWorkout(data.mine, p.workoutId);
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
+                  const rec = p.status === 'completed' && p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined;
+                  // The picture: what was done for a done session (route, effort, exercises), else what is planned (the ride's diagram, the exercises).
+                  const pic = rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={56} />
+                    : w.kind === 'ride' ? <span class="mi-diag"><WorkoutProfile blocks={w.blocks} height={30} ratio={6} /></span>
+                    : w.kind === 'strength' || w.kind === 'mobility' ? <ExerciseRow w={w} max={3} /> : null;
                   return (
-                    <a class={`month-item ${p.status} k-${w.kind}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
-                      <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind === 'ride' ? <span class="mi-prof"><WorkoutProfile blocks={w.blocks} height={10} ratio={4} /></span> : <KindDot kind={w.kind} />}</span>
-                      <span class="mi-name">{shortName(w.name)}</span>
+                    <a class={`month-item ${p.status} k-${w.kind}${pic ? ' has-pic' : ''}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
+                      <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind !== 'ride' && <KindDot kind={w.kind} />}<span class="mi-name">{shortName(w.name)}</span></span>
+                      {pic && <span class="mi-pic">{pic}</span>}
                     </a>
                   );
                 })}
-                {rides.map((r) => <a class={`month-item completed k-${r.sport}`} key={r.id} href={`#/rides/${r.id}`} title={`${r.name} · Done, unscheduled`} style={`--c:${KIND_COLOR[r.sport === 'other' ? 'ride' : r.sport]}`}><span class="mi-top"><StatusMark status="done" size={11} /><KindDot kind={r.sport === 'other' ? 'ride' : r.sport} /></span><span class="mi-name">{shortName(r.name)}</span></a>)}
+                {rides.map((r) => <MonthDone key={r.id} r={r} data={data} title={`${r.name} · Done, unscheduled`} />)}
                 {d >= today() && plans.length === 0 && rides.length === 0 && <button class="month-item" style="background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3)" onClick={() => setPicking({ date: d })}>+</button>}
               </>
             );
@@ -183,7 +191,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                           <div class={`cal-item ${p.status}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})}>
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
-                              {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
+                              {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88} exMax={2} /> : <PlanPicture w={w} />}
                               <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
                             <StatusPill status={st} />
@@ -195,7 +203,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                       {rides.filter((r) => !plans.some((p) => p.activityId === r.id)).map((r) => (
                         <a class="cal-item completed" key={r.id} href={`#/rides/${r.id}`}>
                           <StatusMark status="done" />
-                          <KindDot kind={r.sport === 'other' ? 'ride' : r.sport} big />
+                          <ActivityPicture ride={r} profile={profile} height={52} width={88} />
                           <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · ${r.normalizedPower} W normalized` : r.averageHr ? ` · ${r.averageHr} bpm` : ''} · unscheduled</span></div>
                           <StatusPill status="done" />
                         </a>
@@ -240,4 +248,24 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       {dnd.ghost}
     </div>
   );
+}
+
+/** A done activity in a month cell: its name, then its picture (route, effort or exercises). */
+export function MonthDone({ r, data, title }: { r: Ride; data: AppData; title: string }) {
+  const p = data.planned.find((x) => x.activityId === r.id);
+  const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
+  const kind = r.sport === 'other' ? 'ride' : r.sport;
+  return (
+    <a class={`month-item completed k-${r.sport} has-pic`} href={`#/rides/${r.id}`} title={title} style={`--c:${KIND_COLOR[kind]}`}>
+      <span class="mi-top"><StatusMark status="done" size={11} />{kind !== 'ride' && <KindDot kind={kind} />}<span class="mi-name">{shortName(w?.name ?? r.name)}</span></span>
+      <span class="mi-pic"><ActivityPicture ride={r} w={w} profile={data.profile!} height={56} /></span>
+    </a>
+  );
+}
+
+/** A planned session's picture in a list row, in the same 88-pixel slot as a done one: the ride's diagram, else two exercise pictures, else the kind's tile. */
+function PlanPicture({ w }: { w: Workout }) {
+  if (w.kind === 'ride') return <span class="act-pic plan"><WorkoutProfile blocks={w.blocks} height={34} ratio={2.6} /></span>;
+  if (w.exercises && picturedCount(w.exercises) > 0) return <span class="act-pic ex" style="width:88px"><ExerciseRow w={w} max={2} /></span>;
+  return <span class="act-pic" style="width:88px"><KindDot kind={w.kind} big /></span>;
 }

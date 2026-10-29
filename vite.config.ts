@@ -41,7 +41,7 @@ export default defineConfig({
         runtimeCaching: [{
           urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
           handler: 'CacheFirst',
-          options: { cacheName: 'map-tiles', expiration: { maxEntries: 600, maxAgeSeconds: 30 * 24 * 3600 } },
+          options: { cacheName: 'map-tiles', expiration: { maxEntries: 1500, maxAgeSeconds: 30 * 24 * 3600 } },
         }],
       },
     }),

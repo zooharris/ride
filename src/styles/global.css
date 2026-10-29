@@ -1307,3 +1307,47 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-step.in-set { padding-left: 16px; grid-template-columns: 12px minmax(0, 1fr) 72px 128px; }
 /* The ride page's steps table: the same bracket marks a repeated set. */
 .steps tr.in-set td:first-child { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ink-3) 55%, transparent); padding-left: 10px; }
+
+/* ---------- activity pictures: the calendar, its list and Activities (Oct 2026) ---------- */
+:root { --rt-line: #4FA3FF; --rt-halo: rgba(5, 12, 24, .75); }
+:root[data-theme="light"] { --rt-line: #1F6FE0; --rt-halo: rgba(255, 255, 255, .9); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --rt-line: #1F6FE0; --rt-halo: rgba(255, 255, 255, .9); } }
+.route-thumb { position: relative; overflow: hidden; border-radius: 6px; background: var(--bg-3); width: 100%; }
+.route-thumb .rt-tiles { position: absolute; inset: 0; filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.85) saturate(.4); }
+:root[data-theme="light"] .route-thumb .rt-tiles { filter: saturate(.45) contrast(.88) brightness(1.04); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .route-thumb .rt-tiles { filter: saturate(.45) contrast(.88) brightness(1.04); } }
+.route-thumb img { position: absolute; width: 256px; height: 256px; max-width: none; }
+.route-thumb svg { position: absolute; inset: 0; display: block; }
+.act-pic { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 0; }
+.act-pic.skeleton { border-radius: 6px; width: 100%; }
+.act-pic.eff { align-items: stretch; background: color-mix(in srgb, var(--bg-3) 60%, transparent); border-radius: 6px; padding: 4px 4px 0; }
+.act-pic.eff .profile { width: 100%; }
+.effort-thumb svg { display: block; width: 100%; }
+.ex-row { display: flex; gap: 3px; min-width: 0; width: 100%; }
+.ex-row .ex-tile { flex: 1 1 0; min-width: 0; max-width: 40px; width: auto; height: auto; aspect-ratio: 1; border-radius: 5px; }
+.ex-row .ex-more { display: flex; align-items: center; justify-content: center; background: var(--bg-3); color: var(--ink-2); font-size: 11px; font-weight: 600; }
+.cal-item .act-pic.ex .ex-row .ex-tile { max-width: 42px; }
+
+/* month cells: name on top, the picture below at the cell's full width */
+.month-item.has-pic { border-left-color: transparent; padding-left: 0; gap: 3px; }
+.month-item .mi-top .mi-name { flex: 1; min-width: 0; }
+.month-item .mi-pic { display: block; width: 100%; }
+.month-item .mi-diag .profile svg { height: 30px; }
+.month-item .act-pic.eff { height: 40px !important; }
+.month-cell { gap: 6px; }
+.month-cell.past:not(.today) { background: color-mix(in srgb, var(--bg-2) 45%, var(--bg)); }
+.month-item:hover .route-thumb, .month-item:hover .profile { filter: brightness(1.06); }
+@media (min-width: 900px) { .month-cell { min-height: 108px; padding: 6px 6px 7px; } .month-day { font-size: 12px; } }
+@media (max-width: 599px) {
+  .month-item .mi-diag .profile svg { height: 16px; }
+  .month-item .route-thumb { height: 34px !important; }
+  .month-item .act-pic.eff { height: 22px !important; padding: 2px 2px 0; }
+  .month-item .ex-row { display: none; }
+}
+/* week column: load done against planned, and a bar */
+.month-note .mn-bar { display: block; width: 52px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 4px; }
+.month-note .mn-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.act-pic.plan { width: 88px; }
+.cal-item .act-pic.plan .profile { width: 88px; flex: 0 0 88px; }
+.cal-item .act-pic.ex .ex-row { justify-content: center; }
+.act-pic.eff { overflow: hidden; }

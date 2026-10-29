@@ -1,4 +1,6 @@
 import { PlayerSettings } from '../PlayerSettings';
+import { useEvidence } from '../thresholdService';
+import { takeThreshold } from '../testService';
 import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
 import { formatPace, parsePace } from '../../engine/run';
@@ -205,7 +207,8 @@ export function Settings({ data }: { data: AppData }) {
             <span class="muted small">Rides: FTP, threshold heart rate, max, and the power and heart-rate tables.</span>
           </div>
         <div class="form">
-          <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} /></div>
+          <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} />
+            <FtpFromRiding data={data} ftp={p.ftp} edited={p.ftp !== data.profile!.ftp} onTaken={async () => { const stored = await db.profile.get('me'); if (stored) setP({ ...p, ftp: stored.ftp, ftpSetOn: stored.ftpSetOn, updatedAt: stored.updatedAt }); }} /></div>
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
           <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
         </div>
@@ -521,5 +524,34 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
         {custom && <button class="btn sm quiet" style="margin-left:auto" onClick={onStandard}>Back to standard shares</button>}
       </div>
     </div>
+  );
+}
+
+/**
+ * Step 2, A3: under the FTP field, what the rider's own riding suggests (the
+ * app's estimate from best efforts, Intervals.icu's estimates and a recent
+ * test), with Use to take it. Absent when the evidence is too thin.
+ */
+function FtpFromRiding({ data, ftp, edited, onTaken }: { data: AppData; ftp: number; edited: boolean; onTaken: () => void }) {
+  const ev = useEvidence(data);
+  const [busy, setBusy] = useState(false);
+  if (!ev || ev.estimate == null || ev.confidence === 'thin' || edited) return null;
+  const word = ev.confidence === 'settled' ? 'settled' : 'mixed evidence';
+  const from = ev.sources.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  if (Math.abs(ev.estimate - ftp) <= Math.max(2, ftp * 0.01)) {
+    return <p class="faint small" style="margin:6px 0 0">Your riding agrees with this ({ev.estimate} W from {from}).</p>;
+  }
+  const use = async () => {
+    setBusy(true);
+    const r = await takeThreshold({ ftp: ev.estimate });
+    toast(r);
+    onTaken();
+    setBusy(false);
+  };
+  return (
+    <p class="small" style="margin:6px 0 0;line-height:1.5">
+      Your riding suggests about <b class="num">{ev.estimate} W</b> <span class="faint">({word}; from {from})</span>.{' '}
+      <button class="btn sm" disabled={busy} onClick={() => void use()}>Use {ev.estimate} W</button>
+    </p>
   );
 }

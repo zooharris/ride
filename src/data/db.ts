@@ -167,7 +167,10 @@ export async function loadProfile(): Promise<Profile | null> {
 export async function saveProfile(p: Profile): Promise<void> {
   // A changed FTP carries the day it changed (Settings, a sync from Intervals.icu, or a test result), for "set 12 September".
   const before = await db.profile.get('me');
-  const stamp = before && before.ftp !== p.ftp && p.ftpSetOn === before.ftpSetOn ? { ftpSetOn: localDay() } : {};
+  const stamp = {
+    ...(before && before.ftp !== p.ftp && p.ftpSetOn === before.ftpSetOn ? { ftpSetOn: localDay() } : {}),
+    ...(before && before.lthr !== p.lthr && p.lthrSetOn === before.lthrSetOn ? { lthrSetOn: localDay() } : {}),
+  };
   await db.profile.put({ ...p, ...stamp, id: 'me' });
 }
 

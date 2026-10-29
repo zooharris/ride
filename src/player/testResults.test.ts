@@ -145,4 +145,11 @@ describe('the day FTP changed', () => {
     await saveProfile({ ...profile, ftpSetOn: '2026-09-12', ftp: 234 });
     expect((await db.profile.get('me'))!.ftpSetOn).not.toBe('2026-09-12');
   });
+  it('the threshold heart rate gets its own date the same way', async () => {
+    await saveProfile({ ...profile, lthrSetOn: '2026-09-01' });
+    await saveProfile({ ...profile, lthrSetOn: '2026-09-01', ftp: 240 });
+    expect((await db.profile.get('me'))!.lthrSetOn).toBe('2026-09-01');
+    await saveProfile({ ...profile, lthrSetOn: '2026-09-01', lthr: 163 });
+    expect((await db.profile.get('me'))!.lthrSetOn).not.toBe('2026-09-01');
+  });
 });

@@ -46,8 +46,8 @@ export function PlayerSettings() {
         ) : <p class="faint small" style="margin:6px 0 0">None yet. Add them on the ride screen; they're remembered here for the next ride.</p>}
       </div>
       <div class="row wrap" style="margin-top:14px;gap:18px;align-items:flex-start">
-        <div class="field"><label>Power shown as</label>
-          <div class="seg">{[1, 3, 5, 10].map((n) => <button key={n} class={prefs.smoothing === n ? 'on' : ''} aria-pressed={prefs.smoothing === n} onClick={() => void pref('smoothing', n)}>{n === 1 ? 'Each second' : `${n}-second average`}</button>)}</div></div>
+        <div class="field"><label>Power shown as (seconds averaged)</label>
+          <div class="seg">{[1, 3, 5, 10].map((n) => <button key={n} class={prefs.smoothing === n ? 'on' : ''} aria-pressed={prefs.smoothing === n} aria-label={n === 1 ? 'Each second' : `${n}-second average`} onClick={() => void pref('smoothing', n)}>{n === 1 ? 'Each second' : `${n} s`}</button>)}</div></div>
         <div class="field"><label>Beeps before each step</label>
           <div class="seg"><button class={prefs.sound ? 'on' : ''} onClick={() => void pref('sound', true)}>On</button><button class={!prefs.sound ? 'on' : ''} onClick={() => void pref('sound', false)}>Off</button></div></div>
         <div class="field"><label>Pause when you stop pedalling</label>

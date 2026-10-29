@@ -9,6 +9,8 @@ export interface Profile {
   /** The day the FTP last changed (YYYY-MM-DD), stamped by the database whenever it does. */
   ftpSetOn?: string;
   lthr: number;         // bpm, lactate threshold heart rate on the bike
+  /** The day the threshold heart rate last changed (YYYY-MM-DD), stamped by the database whenever it does. */
+  lthrSetOn?: string;
   maxHr: number;        // bpm
   restingHr: number;    // bpm
   /**

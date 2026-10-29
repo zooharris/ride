@@ -569,7 +569,7 @@ function useTests(data: AppData): TestEntry[] {
         const kind = kindOf(r);
         if (!kind) continue;
         let result = kept.get(r.id) ?? byRide.get(r.id)?.test;
-        if (!result) { const st = await db.streams.get(r.id); if (st) result = resultFromStreams(kind, st.watts, st.heartrate, data.profile?.weightKg); }
+        if (!result) { const st = await db.streams.get(r.id); if (st) result = resultFromStreams(kind, st.watts, st.heartrate, data.profile?.weightKg, st.time); }
         list.push({ key: r.id, date: r.date, kind, result, rideId: r.id });
       }
       for (const rec of recs) if (!rec.activityId || !data.rides.some((x) => x.id === rec.activityId)) list.push({ key: rec.id, date: rec.date, kind: rec.test!.kind, result: rec.test });

@@ -104,6 +104,14 @@ describe('the 20-minute test (C4)', () => {
     expect(r.lthrEstimate).toBe(165);
     expect(r.fromStreams).toBe(true);
   });
+  it('a Garmin file that skipped quiet seconds is laid out by its own timestamps first', () => {
+    // Every other second recorded: 20 minutes at 260 W span 1200 s of time but only 600 readings.
+    const time = Array.from({ length: 600 }, (_, i) => i * 2);
+    const r = resultFromStreams('20min', Array(600).fill(260), Array(600).fill(160), undefined, time);
+    expect(r.testWatts).toBe(260);
+    expect(r.lthrEstimate).toBe(160);
+    expect(resultFromStreams('20min', Array(600).fill(260), undefined).ftpEstimate).toBeUndefined();
+  });
   it('the ramp from streams: the best minute, and VO2max from it', () => {
     const r = resultFromStreams('ramp', [...Array(600).fill(150), ...Array(60).fill(320), ...Array(60).fill(100)], undefined, 80);
     expect(r.bestMinuteWatts).toBe(320);

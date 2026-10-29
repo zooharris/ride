@@ -326,7 +326,7 @@ export function stopTest() {
 }
 export function skipStep() { if (active) { active.engine.skip(Date.now()); push(); } }
 export function lapNow() { if (active) { active.engine.lap(Date.now()); toast({ ok: true, text: 'Lap.' }); emit(); } }
-export function setRideScale(scale: number) { if (active) { active.engine.setScale(Date.now(), scale); push(); } }
+export function setRideScale(scale: number) { if (active && !active.setup.workout?.test) { active.engine.setScale(Date.now(), scale); push(); } }
 export function setRideMode(mode: TrainerMode) {
   if (!active) return;
   // The rider's own choice wins over the switch made when heart rate went missing; coming back to adjusting starts the step's loop afresh.
@@ -352,6 +352,8 @@ export async function endRide(): Promise<Recording | undefined> {
   const a = active;
   if (!a) return undefined;
   if (a.hr && a.engine.mode === 'erg') learnFrom(a);
+  // Ending the ride while still on the ramp is stopping the test: the result then knows where it ended.
+  a.engine.endTest(Date.now(), 'rider');
   const cmd = a.engine.finish(Date.now());
   if (cmd) commandTrainer(cmd);
   clearInterval(timer);

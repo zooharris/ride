@@ -359,7 +359,7 @@ function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile
         <span style="flex:1" />
         {!ride.timeline.length ? null : e.mode === 'resistance' && trainerOk ? (
           <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />
-        ) : e.mode !== 'free' && ride.timeline.length > 0 ? (
+        ) : e.mode !== 'free' && ride.timeline.length > 0 && !ride.setup.workout?.test ? (
           <Stepper label="Intensity" value={pct(e.scale)} onDown={() => setRideScale(e.scale - 0.01)} onUp={() => setRideScale(e.scale + 0.01)} />
         ) : null}
       </div>

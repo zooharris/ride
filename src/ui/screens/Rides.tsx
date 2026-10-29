@@ -640,7 +640,7 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
   }, [r.id]);
   const [own, setOwn] = useState<TestResult | undefined>(undefined);
   if (rec === undefined || kept === undefined) return null;
-  const result: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg) : undefined);
+  const result: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
   if (!result) return null;
   const change = (x: TestResult) => {
     setOwn(x);

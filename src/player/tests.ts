@@ -10,16 +10,18 @@ export const RAMP_GIVE_OUT = 0.85;
 
 /**
  * Whether the Ramp Test should end by itself now: from the second ramp step on,
- * at least five seconds into the step, the last ten seconds' average power under
- * 85% of the step's target. A cadence collapse in ERG shows here too (the
- * trainer eases off and the power falls). Ten seconds with fewer than eight
- * power readings (a sensor dropping out) decide nothing.
+ * at least five seconds into the step, when at least eight of the last ten
+ * readings are each under 85% of the step's target. Legs that have gone read
+ * low second after second; a power meter dropping to zero for a few seconds
+ * does not, so a dropout never ends the test. A cadence collapse in ERG shows
+ * here too (the trainer eases off and the power falls). Fewer than eight
+ * readings in the ten seconds decide nothing.
  */
 export function rampGaveOut(last10: Array<number | undefined>, target: number, secondsIntoStep: number, rampStep: number): boolean {
   if (rampStep < 2 || secondsIntoStep < 5 || target <= 0) return false;
   const ws = last10.slice(-10).filter((w): w is number => w != null);
   if (ws.length < 8) return false;
-  return ws.reduce((a, b) => a + b, 0) / ws.length < RAMP_GIVE_OUT * target;
+  return ws.filter((w) => w < RAMP_GIVE_OUT * target).length >= 8;
 }
 
 // ── Results (Part C) ───────────────────────────────────────────────────────
@@ -151,8 +153,13 @@ function twentyMinFrom(watts: Array<number | undefined>, hr: Array<number | unde
  * it on one-minute steps, so VO2max is estimated from that), or the
  * 20-minute test's best twenty minutes and the heart rate over their last fifteen.
  */
-export function resultFromStreams(kind: 'ramp' | '20min', watts: number[] | undefined, heartrate: number[] | undefined, weightKg?: number): TestResult {
+export function resultFromStreams(kind: 'ramp' | '20min', watts: number[] | undefined, heartrate: number[] | undefined, weightKg?: number, time?: number[]): TestResult {
   if (!watts?.length) return { kind, fromStreams: true };
+  // A file that is not one reading a second (Garmin's smart recording skips quiet seconds): lay it out second by second first.
+  if (time && time.length === watts.length && !isOneHz(time)) {
+    const laid = perSecond(time, watts, heartrate);
+    watts = laid.watts; heartrate = laid.heartrate;
+  }
   if (kind === 'ramp') {
     const best = bestAverage(watts, 60);
     if (best == null) return { kind, fromStreams: true };
@@ -168,6 +175,24 @@ export function resultFromStreams(kind: 'ramp' | '20min', watts: number[] | unde
     if (i >= N - 1 && sum > best) { best = sum; at = i - N + 1; }
   }
   return { ...twentyMinFrom(watts.slice(at, at + N), (heartrate ?? []).slice(at, at + N)), fromStreams: true };
+}
+
+/** Whether a stream's timestamps are one a second with no gaps. */
+function isOneHz(time: number[]): boolean {
+  for (let i = 1; i < time.length; i++) if (time[i] - time[i - 1] !== 1) return false;
+  return true;
+}
+
+/** A stream laid out one reading a second: a gap repeats the reading before it (a pause or a skipped quiet second), capped at ten minutes of gap. */
+export function perSecond(time: number[], watts: number[], heartrate?: number[]): { watts: number[]; heartrate?: number[] } {
+  const w: number[] = [], h: number[] = [];
+  const gap = (i: number) => Math.max(1, Math.min(600, Math.round(time[i + 1] - time[i])));
+  for (let i = 0; i < time.length; i++) {
+    // A reading holds until the next one; the last holds as long as the one before it did.
+    const span = i < time.length - 1 ? gap(i) : i > 0 ? gap(i - 1) : 1;
+    for (let k = 0; k < span; k++) { w.push(watts[i] ?? 0); if (heartrate) h.push(heartrate[i] ?? 0); }
+  }
+  return { watts: w, heartrate: heartrate ? h : undefined };
 }
 
 /** The result in lines of plain text, for the activity's description in Intervals.icu. */

@@ -80,6 +80,12 @@ describe('the automatic stop (B3)', () => {
     expect(rampGaveOut(ten(0), 300, 30, 1)).toBe(false);
     expect(rampGaveOut(ten(0), 300, 4, 6)).toBe(false);
   });
+  it('does not fire on a power meter dropping to zero for three seconds', () => {
+    expect(rampGaveOut([300, 300, 300, 300, 300, 300, 300, 0, 0, 0], 300, 30, 6)).toBe(false);
+  });
+  it('fires when eight of the ten readings are low, whatever the other two', () => {
+    expect(rampGaveOut([400, 400, 200, 200, 200, 200, 200, 200, 200, 200], 300, 30, 6)).toBe(true);
+  });
   it('decides nothing when the power meter has dropped readings', () => {
     expect(rampGaveOut([0, 0, 0, 0, 0, 0, 0, undefined, undefined, undefined], 300, 30, 6)).toBe(false);
   });
@@ -104,11 +110,21 @@ describe('the ramp in the ride engine', () => {
     const outs = ride(e, 4, giveUp + 30, giveUp);
     expect(outs.some((o) => o.note?.startsWith('Legs went'))).toBe(true);
     expect(e.rampEndAt).toBeGreaterThan(giveUp);
-    expect(e.rampEndAt! - giveUp).toBeLessThanOrEqual(5);
+    expect(e.rampEndAt! - giveUp).toBeLessThanOrEqual(10);
     expect(e.events.find((x) => x.type === 'test')?.value).toBe('auto');
     expect(tl).toHaveLength(12); // the same array, changed in place: warm-up, 10 steps, cool-down
     expect(e.step?.name).toBe('Cool down');
     expect(e.ergTarget()).toBe(Math.round(225 * 0.4));
+  });
+  it('ending the ride on the ramp counts as stopping the test', () => {
+    const { e } = make();
+    ride(e, 1, 3, 1e9);
+    ride(e, 4, 400, 1e9);
+    expect(e.step?.ramp).toBeGreaterThan(0);
+    e.endTest(404_000, 'rider'); // what End ride now does first
+    e.finish(405_000);
+    expect(e.rampEndAt).toBeDefined();
+    expect(e.events.map((x) => x.type)).toContain('test');
   });
   it('ends at once on the rider’s button, and only on the ramp', () => {
     const { e } = make();

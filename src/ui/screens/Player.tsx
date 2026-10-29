@@ -228,7 +228,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
                 </div>
                 {mode === 'resistance' ? (
                   <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>
-                ) : mode === 'erg' && power ? (
+                ) : mode === 'erg' && power && !workout.test ? (
                   <div class="pl-runs-row"><span>Workout intensity</span><StepperSmall value={`${Math.round(scale * 100)}%`} onDown={() => setScale(Math.max(0.5, Math.round((scale - 0.01) * 100) / 100))} onUp={() => setScale(Math.min(1.5, Math.round((scale + 0.01) * 100) / 100))} label="workout intensity" /></div>
                 ) : null}
                 <div class="pl-runs-row"><span>Beeps before each step</span>

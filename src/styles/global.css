@@ -1328,10 +1328,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .act-pic.eff { align-items: stretch; background: color-mix(in srgb, var(--bg-3) 60%, transparent); border-radius: 6px; padding: 4px 4px 0; }
 .act-pic.eff .profile { width: 100%; }
 .effort-thumb svg { display: block; width: 100%; }
-.ex-row { display: flex; gap: 3px; min-width: 0; width: 100%; }
-.ex-row .ex-tile { flex: 1 1 0; min-width: 0; max-width: 40px; width: auto; height: auto; aspect-ratio: 1; border-radius: 5px; }
-.ex-row .ex-more { display: flex; align-items: center; justify-content: center; background: var(--bg-3); color: var(--ink-2); font-size: 11px; font-weight: 600; }
-.cal-item .act-pic.ex .ex-row .ex-tile { max-width: 42px; }
 
 /* month cells: name on top, the picture below at the cell's full width */
 .month-item.has-pic { border-left-color: transparent; padding-left: 0; gap: 3px; }
@@ -1347,14 +1343,12 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .month-item .mi-diag .profile svg { height: 16px; }
   .month-item .route-thumb { height: 34px !important; }
   .month-item .act-pic.eff { height: 22px !important; padding: 2px 2px 0; }
-  .month-item .ex-row { display: none; }
 }
 /* week column: load done against planned, and a bar */
 .month-note .mn-bar { display: block; width: 52px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 4px; }
 .month-note .mn-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .act-pic.plan { width: 88px; }
 .cal-item .act-pic.plan .profile { width: 88px; flex: 0 0 88px; }
-.cal-item .act-pic.ex .ex-row { justify-content: center; }
 .act-pic.eff { overflow: hidden; }
 .done-hero { margin: 14px 0 12px; }
 .done-hero .route-thumb { border-radius: 10px; }

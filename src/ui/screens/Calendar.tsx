@@ -22,8 +22,7 @@ import { PageHead } from '../PageHead';
 import { WeekBar } from '../Glance';
 import { weekSummary } from '../week';
 import { Icon } from '../icons';
-import { ActivityPicture, ExerciseRow } from '../Thumbs';
-import { picturedCount } from '../ExercisePictures';
+import { ActivityPicture } from '../Thumbs';
 import { WeekNote } from '../MonthGrid';
 
 /** A name short enough for a month cell: the part before any colon ("Strength A"), at most 14 characters. The full name is the cell's title. */
@@ -140,10 +139,10 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                   if (!w) return null;
                   const colour = w.kind === 'ride' ? ZONE_VAR[workoutStats(w.blocks).dominantZone - 1] : KIND_COLOR[w.kind];
                   const rec = p.status === 'completed' && p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined;
-                  // The picture: what was done for a done session (route, effort, exercises), else what is planned (the ride's diagram, the exercises).
+                  // The picture: the route or effort shape of a done ride or walk, else a planned ride's diagram; other kinds show only their icon beside the name.
                   const pic = rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={56} />
                     : w.kind === 'ride' ? <span class="mi-diag"><WorkoutProfile blocks={w.blocks} height={30} ratio={6} /></span>
-                    : w.kind === 'strength' || w.kind === 'mobility' ? <ExerciseRow w={w} max={3} /> : null;
+                    : null;
                   return (
                     <a class={`month-item ${p.status} k-${w.kind}${pic ? ' has-pic' : ''}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
                       <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind !== 'ride' && <KindDot kind={w.kind} />}<span class="mi-name">{shortName(w.name)}</span></span>
@@ -191,7 +190,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                           <div class={`cal-item ${p.status}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})}>
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
-                              {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88} exMax={2} /> : <PlanPicture w={w} />}
+                              {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88}  /> : <PlanPicture w={w} />}
                               <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
                             <StatusPill status={st} />
@@ -263,9 +262,8 @@ export function MonthDone({ r, data, title }: { r: Ride; data: AppData; title: s
   );
 }
 
-/** A planned session's picture in a list row, in the same 88-pixel slot as a done one: the ride's diagram, else two exercise pictures, else the kind's tile. */
+/** A planned session's picture in a list row, in the same 88-pixel slot as a done one: the ride's diagram, else the kind's tile. */
 export function PlanPicture({ w }: { w: Workout }) {
   if (w.kind === 'ride') return <span class="act-pic plan"><WorkoutProfile blocks={w.blocks} height={34} ratio={2.6} /></span>;
-  if (w.exercises && picturedCount(w.exercises) > 0) return <span class="act-pic ex" style="width:88px"><ExerciseRow w={w} max={2} /></span>;
   return <span class="act-pic" style="width:88px"><KindDot kind={w.kind} big /></span>;
 }

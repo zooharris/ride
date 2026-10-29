@@ -98,7 +98,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                   const zones = r.powerZoneSeconds?.length ? r.powerZoneSeconds : r.hrZoneSeconds;
                   return (
                     <a class="cal-item act" key={r.id} href={`#/rides/${r.id}`} style={c ? `--edge:${verdictColor(c.verdict)}` : ''}>
-                      <ActivityPicture ride={r} w={w} profile={profile} height={56} width={96} exMax={2} />
+                      <ActivityPicture ride={r} w={w} profile={profile} height={56} width={96} />
                       <div class="t">
                         <b>{shownName(r.name, w)}{r.sport !== 'ride' ? <span class="faint" style="font-weight:400"> · {KIND_LABEL[r.sport]}</span> : null}</b>
                         <span>{[fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' }), clock(r.seconds), r.distanceM ? distance(r.distanceM, profile) : '', r.sport === 'ride' ? mph(r.averageSpeedMs) : ''].filter(Boolean).map((s) => s.replace(/ /g, '\u00a0')).join(' · ')}</span>

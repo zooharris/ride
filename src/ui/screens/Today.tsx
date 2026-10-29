@@ -283,7 +283,7 @@ export function Today({ data }: { data: AppData }) {
             {rest.map(({ p, w }) => { const rs = w!.kind === 'ride' ? workoutStats(w!.blocks) : undefined; return (
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
-                {(() => { const r = p.status === 'completed' && p.activityId ? data.rides.find((x) => x.id === p.activityId) : undefined; return r ? <ActivityPicture ride={r} w={w} profile={profile} height={52} width={88} exMax={2} /> : <PlanPicture w={w!} />; })()}
+                {(() => { const r = p.status === 'completed' && p.activityId ? data.rides.find((x) => x.id === p.activityId) : undefined; return r ? <ActivityPicture ride={r} w={w} profile={profile} height={52} width={88} /> : <PlanPicture w={w!} />; })()}
                 <div class="t"><b>{w!.name}</b>{rs ? <span>{clock(rs.seconds)} · {rs.tss} TSS · {w!.subtitle ?? FAMILY_LABEL[w!.family]}{p.status === 'completed' ? ' · done' : ''}{rideCount > 1 ? ` · Ride ${rideNo(p)} of ${rideCount}` : ''}</span> : <span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span>}</div>
                 <StatusPill status={statusOf(p.status)} />
                 {(w!.kind === 'strength' || w!.kind === 'mobility') && w!.exercises && <PictureStrip exercises={w!.exercises} max={5} under />}

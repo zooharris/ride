@@ -7,7 +7,6 @@ import { credentials } from '../sync/syncService';
 import { fetchThumbStreams } from '../sync/intervals';
 import { ZONE_VAR } from './Profile';
 import { KindDot } from './screens/Plan';
-import { picturesFor } from '../art/pictures';
 import { useWidth } from './useWidth';
 
 /* ---------- getting an activity's picture: from this device, else once from Intervals.icu ---------- */
@@ -136,34 +135,23 @@ export function EffortThumb({ thumb, profile, height }: { thumb: NonNullable<Thu
   );
 }
 
-/** Up to `max` start pictures of a session's exercises, then "+N". */
-export function ExerciseRow({ w, max }: { w?: Workout; max: number }) {
-  const pics = (w?.exercises ?? []).map((e) => ({ name: e.name, src: picturesFor(e.name).a })).filter((p): p is { name: string; src: string } => !!p.src);
-  if (!pics.length) return null;
-  const more = pics.length - max;
-  return (
-    <span class="ex-row" aria-hidden="true">
-      {pics.slice(0, max).map((p, i) => <span class="ex-tile" key={i} title={p.name}><img src={p.src} alt="" width={80} height={80} loading="lazy" decoding="async" /></span>)}
-      {more > 0 && <span class="ex-tile ex-more">+{more}</span>}
-    </span>
-  );
-}
-
 /**
- * The picture of a done activity: its route on a map, else its effort profile,
- * else its exercises (strength and mobility), else the kind's tile. `width`
- * fixes the size (list rows); without it the picture fills its box (month cells).
+ * The small picture of a done activity, by one rule (first match wins): its
+ * route on a map; for a ride without GPS, its effort shape; for anything else
+ * (strength, mobility, a walk or run without GPS), the kind's tile. `width`
+ * fixes the size (list rows); without it the picture fills its box (month
+ * cells), where the kind's tile is left out because the item already shows the
+ * kind's icon beside its name. Exercise pictures appear only where they are
+ * big enough to read (Today's main card, the session and workout pages,
+ * Library, the done record), never here.
  */
-export function ActivityPicture({ ride, w, profile, height, width, exMax = 3 }: { ride: Ride; w?: Workout; profile: Profile; height: number; width?: number; exMax?: number }) {
+export function ActivityPicture({ ride, profile, height, width }: { ride: Ride; w?: Workout; profile: Profile; height: number; width?: number }) {
   const t = useThumb(ride);
   const kind = ride.sport === 'other' ? 'ride' : ride.sport;
-  if (ride.sport === 'strength' || ride.sport === 'mobility') {
-    const row = <ExerciseRow w={w} max={exMax} />;
-    if (w?.exercises?.some((e) => picturesFor(e.name).a)) return <span class="act-pic ex" style={width ? `width:${width}px` : ''}>{row}</span>;
-    return width ? <span class="act-pic" style={`width:${width}px;height:${height}px`}><KindDot kind={kind} big /></span> : null;
-  }
+  const tile = width ? <span class="act-pic" style={`width:${width}px;height:${height}px`}><KindDot kind={kind} big /></span> : null;
+  if (ride.sport === 'strength' || ride.sport === 'mobility') return tile;
   if (t === undefined) return <span class="act-pic skeleton" style={`height:${height}px${width ? `;width:${width}px` : ''}`} />;
   if (t?.route) return <span class="act-pic" style={width ? `width:${width}px` : ''}><RouteThumb route={t.route} height={height} width={width} /></span>;
-  if (t?.profile) return <span class="act-pic eff" style={`height:${height}px${width ? `;width:${width}px` : ''}`}><EffortThumb thumb={t.profile} profile={profile} height={height - 6} /></span>;
-  return width ? <span class="act-pic" style={`width:${width}px;height:${height}px`}><KindDot kind={kind} big /></span> : null;
+  if (kind === 'ride' && t?.profile) return <span class="act-pic eff" style={`height:${height}px${width ? `;width:${width}px` : ''}`}><EffortThumb thumb={t.profile} profile={profile} height={height - 6} /></span>;
+  return tile;
 }

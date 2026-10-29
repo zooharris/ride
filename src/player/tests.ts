@@ -186,3 +186,6 @@ export function testLines(r: TestResult): string[] {
   }
   return out;
 }
+
+/** Where a test's results are kept once its ride is in Intervals.icu: a setting per activity, so they outlast the recording (tidied after 30 days) and travel to the rider's other devices. */
+export const testResultKey = (activityId: string): string => `testResult:${activityId}`;

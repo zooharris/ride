@@ -25,6 +25,8 @@ import { getActivePlan, type ActivePlan } from '../planService';
 import type { Ride, SessionKind } from '../../engine/types';
 import { ZONE_VAR } from '../Profile';
 import { ZONE_KEY } from '../glossary';
+import { LIBRARY } from '../../library/workouts';
+import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -124,6 +126,8 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
       <TotalsCard rides={data.rides} imperial={imperial} />
 
       <WeightCard data={data} from={from} to={t} imperial={imperial} />
+
+      <TestsCard data={data} from={from} to={t} />
     </div>
   );
 }
@@ -535,6 +539,87 @@ function MorningAfterCard({ data, from, to }: { data: AppData; from: string; to:
       )}
       <p class="faint small mtable-note">Green is better than your normal, red worse; grey rows rest on fewer than six mornings, so treat them as thin evidence. A hard ride is 40 minutes or more at 85% of FTP or above (or its heart-rate equivalent), a hard run 30 minutes or more at 85% of threshold heart rate; a long ride is 2½ hours or more; a rest day has nothing recorded. The run row appears once there are mornings after a run.</p>
       </div>
+    </Card>
+  );
+}
+
+interface TestEntry { key: string; date: string; kind: 'ramp' | '20min'; result?: TestResult; rideId?: string }
+
+/**
+ * Every fitness test: rides matched to a test on the calendar or named like one,
+ * and tests the player recorded on this computer that are not uploaded yet.
+ * Results come from the player's recording when it is here, else from the
+ * ride's streams if this device has opened it (opening it fills them in).
+ */
+function useTests(data: AppData): TestEntry[] {
+  const [out, setOut] = useState<TestEntry[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const recs = await db.recordings.filter((r) => !!r.test && r.status !== 'discarded').toArray();
+      const byRide = new Map(recs.filter((r) => r.activityId).map((r) => [r.activityId!, r]));
+      const kept = new Map((await db.settings.where('key').startsWith(testResultKey('')).toArray()).map((s) => [s.key.slice(testResultKey('').length), s.value as TestResult]));
+      const kindOf = (r: Ride): TestEntry['kind'] | undefined => {
+        const p = data.planned.find((x) => x.activityId === r.id);
+        const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
+        return w?.test ?? (r.sport === 'ride' ? LIBRARY.find((x) => x.test && x.name === r.name)?.test : undefined);
+      };
+      const list: TestEntry[] = [];
+      for (const r of data.rides) {
+        const kind = kindOf(r);
+        if (!kind) continue;
+        let result = kept.get(r.id) ?? byRide.get(r.id)?.test;
+        if (!result) { const st = await db.streams.get(r.id); if (st) result = resultFromStreams(kind, st.watts, st.heartrate, data.profile?.weightKg); }
+        list.push({ key: r.id, date: r.date, kind, result, rideId: r.id });
+      }
+      for (const rec of recs) if (!rec.activityId || !data.rides.some((x) => x.id === rec.activityId)) list.push({ key: rec.id, date: rec.date, kind: rec.test!.kind, result: rec.test });
+      list.sort((a, b) => b.date.localeCompare(a.date));
+      if (alive) setOut(list);
+    })();
+    return () => { alive = false; };
+  }, [data.rides, data.planned]);
+  return out;
+}
+
+/** FTP on record over the range, with each test's FTP estimate as a dot, and every test as a row. */
+function TestsCard({ data, from, to }: { data: AppData; from: string; to: string }) {
+  const tests = useTests(data);
+  const profile = data.profile!;
+  const label = (k: TestEntry['kind']) => (k === 'ramp' ? 'Ramp test' : '20-minute test');
+  const vo2 = (r?: TestResult) => (r?.vo2maxMlKgMin != null ? `${r.vo2maxMlKgMin}` : r?.vo2maxLmin != null ? `${r.vo2maxLmin} L/min` : '\u2014');
+  if (!tests.length) return (
+    <Card title="Tests"><div class="empty small">Ride the Ramp Test from the Library to see your FTP and VO2max estimates here.</div></Card>
+  );
+  const ftp = ftpByDay(data.rides, from, to, profile.ftp);
+  const dates = ftp.map((d) => d.date);
+  const onDay = new Map(tests.filter((x) => x.date >= from && x.date <= to && x.result?.ftpEstimate != null).map((x) => [x.date, x]));
+  const tick = (d: string, i: number) => (i === 0 || i === dates.length - 1 || i % Math.ceil(dates.length / 5) === 0) ? short(d) : null;
+  return (
+    <Card title="Tests" explain="Your FTP on record over this range, with each test's FTP estimate as a dot, and every test you've ridden. Open one to update your FTP from it.">
+      {onDay.size > 0 && (
+        <LineChart series={[
+          { name: 'FTP on record', color: 'var(--accent)', values: ftp.map((d) => d.ftp), width: 2, unit: 'W' },
+          { name: 'Test estimate', color: 'var(--warn)', values: dates.map((d) => onDay.get(d)?.result?.ftpEstimate ?? null), dots: true, unit: 'W' },
+        ]} xLabels={dates} xTick={tick} yTitle="W" height={130}
+          yMin={Math.min(...ftp.map((d) => d.ftp), ...[...onDay.values()].map((x) => x.result!.ftpEstimate!)) - 15}
+          yMax={Math.max(...ftp.map((d) => d.ftp), ...[...onDay.values()].map((x) => x.result!.ftpEstimate!)) + 15}
+          readout={(i) => { const x = onDay.get(dates[i]); return `${short(dates[i])} · FTP ${ftp[i].ftp} W${x ? ` · ${label(x.kind)}, ${fmtDate(x.date, { month: 'short', day: 'numeric' })}: FTP ${x.result!.ftpEstimate} W${x.kind === 'ramp' && vo2(x.result) !== '\u2014' ? `, VO2max ${vo2(x.result)}` : ''}` : ''}`; }} />
+      )}
+      <table class="rd-table tests-table" style="margin-top:10px">
+        <thead><tr><th>Date</th><th>Test</th><th>FTP estimate</th><th>VO2max estimate</th></tr></thead>
+        <tbody>{tests.map((x) => {
+          const when = fmtDate(x.date, x.date.slice(0, 4) === to.slice(0, 4) ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+          const chose = x.result?.ftpAction === 'updated' ? 'you updated your FTP' : x.result?.ftpAction === 'kept' ? 'you kept your FTP' : '';
+          return (
+            <tr key={x.key}>
+              <td>{x.rideId ? <a href={`#/rides/${x.rideId}`}>{when}</a> : when}</td>
+              <td>{label(x.kind)}</td>
+              <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '\u2014' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}</td>
+              <td class="num">{x.kind === 'ramp' ? <>{vo2(x.result)}{x.result?.vo2maxMlKgMin != null ? <span class="faint small"> ml/kg/min</span> : null}</> : '\u2014'}</td>
+            </tr>
+          );
+        })}</tbody>
+      </table>
     </Card>
   );
 }

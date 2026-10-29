@@ -6,7 +6,7 @@ import { distance, elevation, fmtDate, weekStart } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { db, STREAMS_VERSION, type StreamSet } from '../../data/db';
+import { db, getSetting, setSetting, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials, plannedSeconds, shownName, unmatchRecording } from '../../sync/syncService';
 import { deleteRecording, matchByHand, renameActivity, setActivityKind, setExcluded, undoHandLog } from '../../sync/records';
 import type { ActivityEdit, PlannedWorkout, SessionKind } from '../../engine/types';
@@ -34,7 +34,7 @@ import { MonthDone } from './Calendar';
 import { LIBRARY } from '../../library/workouts';
 import { patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
-import { resultFromStreams, type TestResult } from '../../player/tests';
+import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
@@ -633,11 +633,19 @@ function SummaryStrip({ items }: { items: Array<[string, string | number | undef
  */
 function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: 'ramp' | '20min'; streams: StreamSet | null; profile: NonNullable<AppData['profile']> }) {
   const [rec, setRec] = useState<Recording | null | undefined>(undefined);
-  useEffect(() => { void db.recordings.filter((x) => x.activityId === r.id).first().then((x) => setRec(x ?? null)); }, [r.id]);
+  const [kept, setKept] = useState<TestResult | null | undefined>(undefined);
+  useEffect(() => {
+    void db.recordings.filter((x) => x.activityId === r.id).first().then((x) => setRec(x ?? null));
+    void getSetting<TestResult | null>(testResultKey(r.id), null).then(setKept);
+  }, [r.id]);
   const [own, setOwn] = useState<TestResult | undefined>(undefined);
-  if (rec === undefined) return null;
-  const result: TestResult | undefined = own ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg) : undefined);
+  if (rec === undefined || kept === undefined) return null;
+  const result: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg) : undefined);
   if (!result) return null;
-  const change = (x: TestResult) => { setOwn(x); if (rec) void patchRecording(rec.id, { test: x }); };
+  const change = (x: TestResult) => {
+    setOwn(x);
+    void setSetting(testResultKey(r.id), x);
+    if (rec) void patchRecording(rec.id, { test: x });
+  };
   return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact /></div>;
 }

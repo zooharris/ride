@@ -4,8 +4,8 @@
  * upload succeeds. After an upload the ride is pulled back like any recording,
  * matched to its planned session, and given the rider's effort.
  */
-import { testLines } from './tests';
-import { db } from '../data/db';
+import { testLines, testResultKey } from './tests';
+import { db, setSetting } from '../data/db';
 import { credentials, plannedSeconds, syncAll, TRIVIAL_SECONDS } from '../sync/syncService';
 import { uploadActivityFile, updateActivityEffort } from '../sync/intervals';
 import { matchByHand, saveActivityEffort } from '../sync/records';
@@ -110,6 +110,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
     return { ok: false, text: `Not saved yet: ${why} The ride is kept on this computer and will be tried again.` };
   }
   await patchRecording(id, { status: 'uploaded', activityId, uploadedAt: new Date().toISOString(), error: undefined });
+  if (r.test) await setSetting(testResultKey(activityId), r.test);
   await markPlayerMade(activityId, r.date, r.keepVeloiq);
 
   // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the

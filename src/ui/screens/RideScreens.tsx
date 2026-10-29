@@ -12,9 +12,10 @@ import { controlledTrainer, type SensorState } from '../../player/hub';
 import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
-import { rampResult, twentyMinResult, type TestResult } from '../../player/tests';
+import { rampResult, testResultKey, twentyMinResult, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
-import { deleteRecording, downloadRide, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
+import { deleteRecording, downloadRide, getRecording, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
+import { setSetting } from '../../data/db';
 import { keepVeloiqInstead, KEPT_GARMIN } from '../../player/garmin';
 import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
@@ -538,7 +539,13 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction };
   });
   useEffect(() => { if (test) void patchRecording(rec.id, { test }); }, []);
-  const changeTest = (r: TestResult) => { setTest(r); void patchRecording(rec.id, { test: r }); };
+  const changeTest = async (r: TestResult) => {
+    setTest(r);
+    await patchRecording(rec.id, { test: r });
+    // Already in Intervals.icu: the kept copy (which syncs to the other devices) follows the choice.
+    const id = (await getRecording(rec.id))?.activityId;
+    if (id) await setSetting(testResultKey(id), r);
+  };
   // The ride is drawn and judged with the numbers it was ridden at, even after a test result changes the settings.
   const asRidden: Profile = { ...profile, ftp: rec.ftp, lthr: rec.lthr };
   const bandOf = (s: TimelineStep) => targetBand(s, rec.basis, asRidden);

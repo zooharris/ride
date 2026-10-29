@@ -1376,3 +1376,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .test-res.compact .test-lead { font-size: 15px; }
 .test-res.compact .test-lead b { font-size: 17px; }
 .test-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line-2); color: var(--ink-3); font-size: 11px; font-weight: 700; font-style: normal; cursor: help; vertical-align: 1px; }
+.tests-table { width: 100%; }
+.tests-table th, .tests-table td { white-space: normal; }
+.tests-table td:first-child { white-space: nowrap; }

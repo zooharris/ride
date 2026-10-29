@@ -97,6 +97,11 @@ export const GLOSSARY = {
     short: 'Resting heart rate this morning against your four-week normal. Higher than normal is a fatigue or illness signal.',
     long: 'Resting heart rate this morning against your four-week normal. Higher than normal is a fatigue or illness signal.',
   },
+  vo2max: {
+    term: 'VO2max estimate',
+    short: 'The most oxygen your body can use, estimated from a Ramp Test',
+    long: 'The most oxygen your body can use at full effort, in millilitres per kilogram of body weight per minute. A lab measures it from your breath; Antogo estimates it from the peak power of a Ramp Test and your weight (Hawley and Noakes), so it tracks your trend from test to test rather than matching a lab number.',
+  },
   readiness: {
     term: 'Readiness',
     short: 'HRV, sleep, heart rate overnight, breathing rate and form against your own four-week normal, as a score out of 100',
@@ -110,7 +115,7 @@ export const GLOSSARY = {
 } satisfies Record<string, Term>;
 
 /** The order of Help's "The numbers, explained". */
-export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort', 'runLoad'];
+export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'vo2max', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort', 'runLoad'];
 
 /** The hover text on each readiness row on Today. */
 export const READINESS_HELP: Record<string, string> = {

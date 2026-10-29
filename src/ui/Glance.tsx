@@ -1,21 +1,37 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { useWidth } from './useWidth';
 import type { SessionKind } from '../engine/types';
 import { today } from '../engine/load';
 import { fmtDate } from './derived';
 import { hoursLabel, type WeekSummary } from './week';
+import { KIND_ICON } from './icons';
 
 const KIND_VAR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: 'var(--strength)', mobility: 'var(--mobility)', walk: 'var(--walk)', run: 'var(--run)', other: 'var(--z1)' };
 const KIND_WORD: Record<SessionKind, string> = { ride: 'ride', strength: 'strength', mobility: 'mobility', walk: 'walk', run: 'run', other: 'other' };
 
+/** Whether the window is at most `px` wide (the phone layout), kept up to date as it resizes. */
+function useNarrow(px: number): boolean {
+  const q = `(max-width: ${px}px)`;
+  const [n, setN] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const m = matchMedia(q), on = () => setN(m.matches);
+    m.addEventListener('change', on); on();
+    return () => m.removeEventListener('change', on);
+  }, [q]);
+  return n;
+}
+
 /**
- * The week at a glance: a cell per day with a block per session (taller is
- * longer), done ticked and missed struck, today outlined; under it the week's
- * load done against planned. A cell opens that day on the calendar.
+ * The week at a glance: a cell per day with each session's kind icon (filled on
+ * a tint when done, a dashed outline when planned, grey when missed), a tick
+ * under a day that is all done, today outlined; under it the week's load done
+ * against planned. A cell opens that day on the calendar.
  */
 export function WeekStrip({ week }: { week: WeekSummary }) {
   const t = today();
-  const maxMin = Math.max(60, ...week.days.flatMap((d) => d.sessions.map((s) => s.minutes)));
+  // How many icons fit in a day's box: four on a computer, two on a phone; beyond that the last place says +n.
+  const small = useNarrow(420), fit = small ? 2 : 4;
   const pct = week.plannedTss ? Math.min(100, (week.doneTss / week.plannedTss) * 100) : 0;
   return (
     <section class="weekstrip" aria-label="This week">
@@ -27,11 +43,13 @@ export function WeekStrip({ week }: { week: WeekSummary }) {
             <a key={d.date} class={`ws-day${isToday ? ' today' : ''}${past ? ' past' : ''}`} href={`#/calendar?d=${d.date}`} title={label} aria-label={label}>
               <span class="ws-dow">{fmtDate(d.date, { weekday: 'narrow' })}</span>
               <span class="ws-num">{Number(d.date.slice(8))}</span>
-              <span class="ws-blocks">
-                {d.sessions.slice(0, 3).map((s, i) => {
-                  const done = s.status === 'completed' || s.status === 'unscheduled', missed = s.status === 'missed';
-                  return <span key={i} class={`ws-block${done ? ' done' : ''}${missed ? ' missed' : ''}`} style={`--c:${KIND_VAR[s.kind]};height:${Math.round(8 + 26 * Math.sqrt(Math.min(1, s.minutes / maxMin)))}px`} />;
+              <span class="ws-icons">
+                {(d.sessions.length > fit ? d.sessions.slice(0, fit - 1) : d.sessions).map((s, i) => {
+                  const state = s.status === 'completed' || s.status === 'unscheduled' ? 'done' : s.status === 'missed' ? 'missed' : 'planned';
+                  const Ic = KIND_ICON[s.kind];
+                  return <span key={i} class={`ws-ic ${state}`} style={`--c:${KIND_VAR[s.kind]}`} aria-hidden="true"><Ic size={small ? 13 : 16} /></span>;
                 })}
+                {d.sessions.length > fit && <span class="ws-more" aria-hidden="true">+{d.sessions.length - fit + 1}</span>}
                 {d.sessions.length === 0 && <span class="ws-rest" />}
               </span>
               <span class="ws-mark">{d.sessions.some((s) => s.status === 'missed') ? '–' : d.sessions.length && d.sessions.every((s) => s.status === 'completed' || s.status === 'unscheduled') ? '✓' : ''}</span>

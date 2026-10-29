@@ -31,6 +31,11 @@ import { KindStack } from '../Glance';
 import { hoursLabel, type WeekSummary } from '../week';
 import { ActivityPicture } from '../Thumbs';
 import { MonthDone } from './Calendar';
+import { LIBRARY } from '../../library/workouts';
+import { patchRecording } from '../../player/rides';
+import type { Recording } from '../../player/types';
+import { resultFromStreams, type TestResult } from '../../player/tests';
+import { TestResults } from '../TestResults';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -152,6 +157,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     return () => { alive = false; };
   }, [r.id]);
 
+  // A fitness test: matched to one on the calendar, or named like one in the Library.
+  const testKind = w?.test ?? (r.sport === 'ride' ? LIBRARY.find((x) => x.test && x.name === r.name)?.test : undefined);
   const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate) : undefined;
   // Planned targets for both charts: the ride's own basis as analysed, the other converted (watts to the matching heart rate, and back).
   const targets = streams && w && w.kind === 'ride' ? {
@@ -234,6 +241,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           {hubActions}
         </div>
       )}
+      {testKind && streams !== undefined && <ActivityTest ride={r} kind={testKind} streams={streams} profile={profile} />}
       {refused && <p class="muted small" style="margin-top:14px">Not matched to a planned session: you said it was a different workout from {refusedW?.name ?? 'the session'} on {fmtDate(refused.date)}.</p>}
 
       {!p && <MatchByHand ride={r} data={data} />}
@@ -614,4 +622,22 @@ function SummaryStrip({ items }: { items: Array<[string, string | number | undef
       {shown.map(([k, v, hint]) => <div key={k} title={hint}><b class="num">{v}</b><span>{SHORT[k]}</span></div>)}
     </div>
   );
+}
+
+/**
+ * A test's results on its activity page: the player's own results when its
+ * recording is on this computer (with what the rider chose), otherwise worked
+ * out from Intervals.icu's streams (a 20-minute test ridden on the Garmin, or
+ * the ride seen from another device). Update is offered while the suggestion
+ * differs from the setting, so a Keep at the time can be changed later.
+ */
+function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: 'ramp' | '20min'; streams: StreamSet | null; profile: NonNullable<AppData['profile']> }) {
+  const [rec, setRec] = useState<Recording | null | undefined>(undefined);
+  useEffect(() => { void db.recordings.filter((x) => x.activityId === r.id).first().then((x) => setRec(x ?? null)); }, [r.id]);
+  const [own, setOwn] = useState<TestResult | undefined>(undefined);
+  if (rec === undefined) return null;
+  const result: TestResult | undefined = own ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg) : undefined);
+  if (!result) return null;
+  const change = (x: TestResult) => { setOwn(x); if (rec) void patchRecording(rec.id, { test: x }); };
+  return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact /></div>;
 }

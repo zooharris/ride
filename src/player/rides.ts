@@ -4,6 +4,7 @@
  * upload succeeds. After an upload the ride is pulled back like any recording,
  * matched to its planned session, and given the rider's effort.
  */
+import { testLines } from './tests';
 import { db } from '../data/db';
 import { credentials, plannedSeconds, syncAll, TRIVIAL_SECONDS } from '../sync/syncService';
 import { uploadActivityFile, updateActivityEffort } from '../sync/intervals';
@@ -102,7 +103,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   if (!r.keepVeloiq) { const g = await garminFirst(r); if (g) return g; }
   let activityId: string;
   try {
-    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}${r.keepVeloiq ? '-kept' : ''}`, fileName: fileName(r), description: 'Ridden with the Antogo ride player.' });
+    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}${r.keepVeloiq ? '-kept' : ''}`, fileName: fileName(r), description: ['Ridden with the Antogo ride player.', ...(r.test ? ['', ...testLines(r.test)] : [])].join('\n') });
   } catch (e) {
     const why = (e as Error).message;
     await patchRecording(id, { status: 'finished', error: why });

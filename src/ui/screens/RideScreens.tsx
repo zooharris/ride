@@ -12,6 +12,8 @@ import { controlledTrainer, type SensorState } from '../../player/hub';
 import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
+import { rampResult, twentyMinResult, type TestResult } from '../../player/tests';
+import { TestResults } from '../TestResults';
 import { deleteRecording, downloadRide, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
 import { keepVeloiqInstead, KEPT_GARMIN } from '../../player/garmin';
 import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
@@ -525,8 +527,21 @@ export function RideChart({ timeline, samples, profile, position, live, by = 'po
 export function RideDone({ rec, workout, planned, timeline, profile, recovered }: { rec: Recording; workout?: Workout; planned?: PlannedWorkout; timeline: TimelineStep[]; profile: Profile; recovered?: boolean }) {
   const byHr = rec.basis === 'hr';
   const t: Totals = totals(rec.samples, rec.ftp, rec.lthr, undefined, rec.basis);
-  const plannedStats = workout ? workoutStats(workout.blocks) : undefined;
-  const bandOf = (s: TimelineStep) => targetBand(s, rec.basis, profile);
+  const testKind = workout?.test;
+  // An open-ended ramp has no planned length or load to measure against.
+  const plannedStats = workout && testKind !== 'ramp' ? workoutStats(workout.blocks) : undefined;
+  // A test's results, worked out from the recording; what the rider chose is kept with them on the recording.
+  const [test, setTest] = useState<TestResult | undefined>(() => {
+    if (!testKind) return undefined;
+    const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg) : twentyMinResult(rec, timeline);
+    const was = rec.test;
+    return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction };
+  });
+  useEffect(() => { if (test) void patchRecording(rec.id, { test }); }, []);
+  const changeTest = (r: TestResult) => { setTest(r); void patchRecording(rec.id, { test: r }); };
+  // The ride is drawn and judged with the numbers it was ridden at, even after a test result changes the settings.
+  const asRidden: Profile = { ...profile, ftp: rec.ftp, lthr: rec.lthr };
+  const bandOf = (s: TimelineStep) => targetBand(s, rec.basis, asRidden);
   const stats = stepStats(rec.samples, timeline, bandOf, rec.basis);
   const work = stats.filter((s) => isEffort(s.step, rec.basis) && s.seconds > 0);
   const doneSteps = stats.filter((s) => s.seconds >= s.step.seconds * 0.9).length;
@@ -565,6 +580,16 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     toast({ ok: r.ok, text: r.text });
   };
   const done = () => { clearRide(); go('today'); };
+  const rideChart = (
+        <section class="rd-card rd-chartcard">
+          <div class="rd-chart-head"><span class="caption">The ride</span>{byHr ? <>
+            <span class="rd-key"><i class="ln hr" />Your heart rate</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+          </> : <>
+            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target, coloured by zone</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
+          </>}</div>
+          <RideChart timeline={timeline} samples={rec.samples} profile={asRidden} by={rec.basis} />
+        </section>
+  );
   const discard = async () => {
     if (!confirm('Discard this ride?\n\nIt won\'t be saved anywhere.')) return;
     await deleteRecording(rec.id);
@@ -576,7 +601,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     <div class="player">
       <header class="pl-head">
         <Mark size={20} />
-        <span class="rd-name">Ride complete</span>
+        <span class="rd-name">{testKind ? 'Test complete' : 'Ride complete'}</span>
         <span style="flex:1" />
         {state === 'saved' && <button class="btn primary" onClick={done}>Done</button>}
       </header>
@@ -588,7 +613,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             <div class="row" style="gap:8px;flex-wrap:wrap">
               {short ? <span class="pill">Too short to count as this workout: saved as a ride on its own</span>
                 : planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
-              {timeline.length > 0 && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
+              {timeline.length > 0 && testKind !== 'ramp' && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
             </div>
           </div>
           {byHr ? (
@@ -618,17 +643,9 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
           )}
         </section>
 
-        <section class="rd-card rd-chartcard">
-          <div class="rd-chart-head"><span class="caption">The ride</span>{byHr ? <>
-            <span class="rd-key"><i class="ln hr" />Your heart rate</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
-          </> : <>
-            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target, coloured by zone</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
-          </>}</div>
-          <RideChart timeline={timeline} samples={rec.samples} profile={profile} by={rec.basis} />
-        </section>
-
+        {!test && rideChart}
         <section class="rd-done-grid">
-          <div class="rd-card">
+          {test ? <div class="rd-card"><TestResults result={test} profile={profile} onChange={changeTest} /></div> : <div class="rd-card">
             {work.length > 0 ? (
               <>
                 <h2 class="pl-h2">{work.length === 1 ? 'The effort' : `The ${work.length === 2 ? 'two' : work.length === 3 ? 'three' : work.length} efforts`}</h2>
@@ -660,7 +677,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               </>
             ) : <><h2 class="pl-h2">The ride</h2><p class="muted">{timeline.length ? 'No hard efforts in this workout to compare.' : 'A free ride: no workout to compare against.'}</p></>}
             {note && <div class="rd-note"><span class="pl-kind">↗</span><p>{note}</p></div>}
-          </div>
+          </div>}
 
           <div class="rd-card rd-save">
             <div>
@@ -686,6 +703,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             <p class="faint small" style="text-align:center;margin:0">{state === 'waiting' ? 'The ride is kept on this computer and tried again each time the app opens.' : 'A copy stays on this computer until the upload succeeds.'}</p>
           </div>
         </section>
+        {test && rideChart}
       </main>
     </div>
   );

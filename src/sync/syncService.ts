@@ -1,4 +1,4 @@
-import { db, getSetting, setSetting } from '../data/db';
+import { db, getSetting, saveProfile, setSetting } from '../data/db';
 import { addDays, estimatedRideTss, hrTss, looksLikeADrive, rideTss, today } from '../engine/load';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
@@ -107,7 +107,7 @@ async function pullAll(): Promise<SyncResult> {
   const numbers = await testConnection(c);
   if (profile) {
     const next = { ...applyAthleteNumbers(profile, numbers), id: 'me' as const };
-    if (JSON.stringify(next) !== JSON.stringify(profile)) { await db.profile.put(next); profile = next; }
+    if (JSON.stringify(next) !== JSON.stringify(profile)) { await saveProfile(next); profile = (await db.profile.get('me')) ?? next; }
   }
 
   const rides = await fetchRides(c, oldest, newest);

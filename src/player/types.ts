@@ -60,4 +60,6 @@ export interface Recording {
   rampStep?: number;
   /** The Ramp Test: where in the workout (seconds) the ramp ended, by the rider or by itself; the cool-down follows from there. */
   rampEndAt?: number;
+  /** A fitness test's results, and what the rider did with each suggestion. */
+  test?: import('./tests').TestResult;
 }

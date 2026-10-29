@@ -1367,3 +1367,12 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .sum-strip > div { background: var(--bg-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
 .sum-strip b { font-size: 22px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
 .sum-strip span { font-size: 12px; color: var(--ink-3); }
+
+/* Fitness test results (29 Oct, Step 1 Part C) */
+.test-res { display: flex; flex-direction: column; gap: 6px; }
+.test-res .test-lead { margin: 0; font-size: 17px; line-height: 1.45; }
+.test-res .test-lead b { font-size: 20px; }
+.test-res .test-row { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 10px; }
+.test-res.compact .test-lead { font-size: 15px; }
+.test-res.compact .test-lead b { font-size: 17px; }
+.test-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line-2); color: var(--ink-3); font-size: 11px; font-weight: 700; font-style: normal; cursor: help; vertical-align: 1px; }

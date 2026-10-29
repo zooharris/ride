@@ -1379,3 +1379,13 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .tests-table { width: 100%; }
 .tests-table th, .tests-table td { white-space: normal; }
 .tests-table td:first-child { white-space: nowrap; }
+
+/* The coach's FTP and zone advice (29 Oct, Step 2 Part B) */
+.coach-card { margin-top: 10px; padding: 14px 16px; }
+.coach-why { margin: 8px 0 0; padding-left: 18px; }
+.coach-why li { margin: 2px 0; }
+.coach-tables { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+.coach-zt { border-collapse: collapse; font-size: 13.5px; min-width: 0; flex: 1 1 220px; }
+.coach-zt caption { text-align: left; font-weight: 600; font-size: 13px; color: var(--ink-2); padding-bottom: 4px; }
+.coach-zt th, .coach-zt td { padding: 3px 8px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
+.coach-zt tr.moved td { font-weight: 700; }

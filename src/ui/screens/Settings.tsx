@@ -1,5 +1,6 @@
 import { PlayerSettings } from '../PlayerSettings';
-import { useEvidence } from '../thresholdService';
+import { useEvidence, useHasKey } from '../thresholdService';
+import { CoachFtp, CoachZones } from '../ThresholdAdvice';
 import { takeThreshold } from '../testService';
 import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
 import { useEffect, useState } from 'preact/hooks';
@@ -25,6 +26,14 @@ import { addDays, today } from '../../engine/load';
 
 export function Settings({ data }: { data: AppData }) {
   const [p, setP] = useState<Profile>(data.profile!);
+  const hasKey = useHasKey();
+  // A card that saved numbers itself (Update, Apply, Use): bring those into this page's copy, so Save never puts the old ones back.
+  const SAVED_BY_CARDS = ['ftp', 'ftpSetOn', 'lthr', 'lthrSetOn', 'powerZoneMode', 'powerZonePcts', 'powerZoneWatts', 'hrZoneMode', 'hrZonePcts', 'hrZoneTops', 'updatedAt'] as const;
+  const takeSaved = async () => {
+    const stored = await db.profile.get('me');
+    if (!stored) return;
+    setP((cur) => { const next = { ...cur }; for (const k of SAVED_BY_CARDS) (next as Record<string, unknown>)[k] = stored[k]; return next; });
+  };
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
   const [claudeKey, setClaudeKey] = useState('');
   const [coachAuto, setCoachAuto] = useState(false);
@@ -208,10 +217,11 @@ export function Settings({ data }: { data: AppData }) {
           </div>
         <div class="form">
           <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} />
-            <FtpFromRiding data={data} ftp={p.ftp} edited={p.ftp !== data.profile!.ftp} onTaken={async () => { const stored = await db.profile.get('me'); if (stored) setP({ ...p, ftp: stored.ftp, ftpSetOn: stored.ftpSetOn, updatedAt: stored.updatedAt }); }} /></div>
+            {!hasKey && <FtpFromRiding data={data} ftp={p.ftp} edited={p.ftp !== data.profile!.ftp} onTaken={() => void takeSaved()} />}</div>
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
           <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
         </div>
+        {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
         <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
           onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
           onPcts={(v) => setP({ ...p, powerZoneMode: 'pct', powerZonePcts: v })} onAbs={(v) => setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: v })}
@@ -220,6 +230,10 @@ export function Settings({ data }: { data: AppData }) {
           onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
           onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
           onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
+        {hasKey && <CoachZones profile={data.profile!} data={data} onChanged={() => void takeSaved()} onEditFirst={(pt, ht) => {
+          setP({ ...p, ...(pt ? { powerZoneMode: 'abs' as const, powerZoneWatts: pt } : {}), ...(ht ? { hrZoneMode: 'abs' as const, hrZoneTops: ht } : {}) });
+          toast({ ok: true, text: 'The suggested zones are in the tables above. Change any number, then press Save.' });
+        }} />}
 
         </div>
 

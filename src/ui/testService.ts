@@ -27,13 +27,28 @@ export function zonesFollowFtp(p: Pick<Profile, 'powerZoneMode' | 'powerZonePcts
  * Intervals.icu. The words say what happened, as Settings does.
  */
 export async function takeThreshold(change: { ftp?: number; lthr?: number }): Promise<{ ok: boolean; text: string }> {
+  const what = [change.ftp != null ? `FTP ${change.ftp} W` : '', change.lthr != null ? `threshold heart rate ${change.lthr} bpm` : ''].filter(Boolean).join(' and ');
+  return applyNumbers(change, what);
+}
+
+/** The coach's zone tables (tops of zones 1-6), applied as watts and bpm: saved and sent to Intervals.icu. */
+export async function applyZones(powerTops?: number[], hrTops?: number[]): Promise<{ ok: boolean; text: string }> {
+  const patch: Partial<Profile> = {
+    ...(powerTops ? { powerZoneMode: 'abs' as const, powerZoneWatts: powerTops } : {}),
+    ...(hrTops ? { hrZoneMode: 'abs' as const, hrZoneTops: hrTops } : {}),
+  };
+  const what = [powerTops ? 'the power zones' : '', hrTops ? 'the heart-rate zones' : ''].filter(Boolean).join(' and ');
+  return applyNumbers(patch, what);
+}
+
+/** Save numbers on the profile, freshen the coach's note, and send them to Intervals.icu, saying what happened as Settings does. */
+async function applyNumbers(change: Partial<Profile>, what: string): Promise<{ ok: boolean; text: string }> {
   const before = await db.profile.get('me');
   if (!before) return { ok: false, text: 'No profile on this device yet.' };
   const next: Profile = { ...before, ...change };
   await saveProfile(next);
   await setSetting('coachNote', null);
   notify();
-  const what = [change.ftp != null ? `FTP ${change.ftp} W` : '', change.lthr != null ? `threshold heart rate ${change.lthr} bpm` : ''].filter(Boolean).join(' and ');
   const c = await credentials();
   if (!c?.apiKey) return { ok: true, text: `Saved: ${what}. Connect Intervals.icu in Settings to send it there too.` };
   try {

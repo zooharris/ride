@@ -13,10 +13,13 @@ export { testLines } from '../player/tests';
 import { fmtDate } from './derived';
 import { resendRides, sentRidesAhead, takeThreshold, zonesFollowFtp } from './testService';
 import { toast } from './Toast';
+import { CoachZones } from './ThresholdAdvice';
+import { useHasKey } from './thresholdService';
 
 export function TestResults({ result, profile, onChange, compact }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean }) {
   const r = result;
   const ramp = r.kind === 'ramp';
+  const hasKey = useHasKey();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [ahead, setAhead] = useState<Array<{ p: PlannedWorkout; w: Workout }>>([]);
@@ -97,6 +100,12 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
         </div>
       )}
       {ramp && r.hrAtFtp != null && <p class="muted small test-row" style="margin:0">Heart rate when you passed your new FTP: <b class="num">{r.hrAtFtp} bpm</b>.</p>}
+      {hasKey && r.ftpEstimate != null && (
+        <div class="test-row">
+          <p class="small" style="margin:0">Want the coach to check your zones against this test?</p>
+          <CoachZones profile={profile} label="Analyse my zones with this test" />
+        </div>
+      )}
     </div>
   );
 }

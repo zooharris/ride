@@ -456,3 +456,104 @@ export function readVerdict(v: { applyChanges?: unknown; skip?: unknown; verdict
 export function noteSignature(d: { sessions: string[]; noteText?: string; badWellness?: boolean; wellnessToday: boolean; band: Readiness['band']; plan?: CoachPlan }): string {
   return `v5|${d.sessions.join(',')}|${d.noteText ?? ''}|${d.badWellness ? 'bad' : ''}|${d.wellnessToday ? d.band : 'nowellness'}|${d.plan ? `${d.plan.name}:${d.plan.phase ?? ''}` : ''}`;
 }
+
+// ── Step 2 (29 Oct): FTP estimate and zone analysis ────────────────────────
+
+export type ThresholdMode = 'ftp' | 'zones';
+export type Confidence = 'settled' | 'mixed' | 'thin';
+
+export interface FtpAdvice { mode: 'ftp'; ftp?: number; why: string; confidence: Confidence; needsTest?: string; failed?: string }
+export interface ZoneAdvice { mode: 'zones'; powerTops?: number[]; hrTops?: number[]; why: string[]; trust: string; confidence: Confidence; needsTest?: string; failed?: string }
+export type ThresholdAdvice = FtpAdvice | ZoneAdvice;
+
+/** The question for each mode, after the coach's introduction and the evidence (the lines from `gatherEvidence`). */
+export function thresholdPrompt(profile: Profile, date: string, evidence: string[], mode: ThresholdMode): string {
+  const ask = mode === 'ftp'
+    ? `Give your best estimate of the rider's FTP today, in whole watts, and say in two or three plain sentences which evidence you leaned on and why. If the sources disagree by more than 5%, say so in "needsTest" and say which a fresh ramp test would settle; otherwise leave "needsTest" empty. Never suggest a number above the best 20-minute power × 0.97 or below the best 60-minute power. If there is too little evidence, say so plainly in "why", set "confidence" to "thin", and give your best number anyway only if one source is solid; otherwise give 0.`
+    : `Propose a power zone table (the tops of zones 1 to 6 in whole watts, each higher than the last) and a heart-rate zone table (the tops of zones 1 to 6 in whole bpm, each higher than the last, all below max heart rate; zone 7 runs to max) for this rider. Keep a boundary where it is unless the rider's own data say otherwise (the heart rate on rides in each power zone, drift on steady rides, where their time falls, any recent test); when you move one, give one plain sentence for it in "why", naming the zone and the number, from and to. Where the power table and the heart-rate table disagree about the same effort, say in "trust" which to trust and why, in one or two sentences; otherwise say they agree. If the evidence is too thin to move a boundary, leave it as it is, set "confidence" to "thin" and say in "why" what would be enough evidence (how many more rides of what kind, or a ramp test). Say in "needsTest" if a ramp test would settle something; otherwise leave it empty.`;
+  return `${coachIntro(profile, date)} You are reviewing the rider's training thresholds. Write to the rider in the second person, in plain English: every number with its unit, no abbreviations a non-specialist would not know (say "training load", not "CTL"). Answer in the JSON form given.
+
+${ask}
+
+The evidence:
+${evidence.map((l) => '- ' + l).join('\n')}`;
+}
+
+const CONFIDENCE = { type: 'string', enum: ['settled', 'mixed', 'thin'], description: 'settled: the evidence agrees; mixed: it disagrees; thin: too little of it.' };
+const FTP_SCHEMA = {
+  type: 'object',
+  properties: {
+    ftp: { type: 'integer', description: 'The FTP estimate in watts; 0 when there is too little evidence to give one.' },
+    why: { type: 'string', description: 'Two or three plain sentences: which evidence, and why.' },
+    confidence: CONFIDENCE,
+    needsTest: { type: 'string', description: 'What a ramp test would settle, in one sentence; empty when nothing.' },
+  },
+  required: ['ftp', 'why', 'confidence', 'needsTest'],
+  additionalProperties: false,
+};
+const ZONE_SCHEMA = {
+  type: 'object',
+  properties: {
+    powerTops: { type: 'array', items: { type: 'integer' }, description: 'Tops of power zones 1-6 in watts.' },
+    hrTops: { type: 'array', items: { type: 'integer' }, description: 'Tops of heart-rate zones 1-6 in bpm.' },
+    why: { type: 'array', items: { type: 'string' }, description: 'One sentence per boundary moved; or what evidence would be enough.' },
+    trust: { type: 'string', description: 'Where the two tables disagree, which to trust and why; or that they agree.' },
+    confidence: CONFIDENCE,
+    needsTest: { type: 'string', description: 'What a ramp test would settle; empty when nothing.' },
+  },
+  required: ['powerTops', 'hrTops', 'why', 'trust', 'confidence', 'needsTest'],
+  additionalProperties: false,
+};
+
+const ascending = (xs: unknown): number[] | undefined => {
+  if (!Array.isArray(xs) || xs.length !== 6) return undefined;
+  const n = xs.map((x) => Math.round(Number(x)));
+  for (let i = 0; i < 6; i++) if (!(n[i] > 0) || (i > 0 && n[i] <= n[i - 1])) return undefined;
+  return n;
+};
+const conf = (x: unknown): Confidence => (x === 'settled' || x === 'mixed' || x === 'thin' ? x : 'mixed');
+const str = (x: unknown): string | undefined => (typeof x === 'string' && x.trim() ? x.trim() : undefined);
+
+/**
+ * The coach's answer, checked: an FTP outside what the best efforts allow is
+ * brought inside them; zone tables must be six rising tops (heart rate below
+ * max) or they are dropped. A reply that can't be read says why.
+ */
+export function readThreshold(mode: ThresholdMode, data: { content?: Array<{ type: string; text?: string }>; stop_reason?: string }, limits: { best20?: number; best60?: number; maxHr?: number } = {}): ThresholdAdvice {
+  const raw = (data.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
+  let v: Record<string, unknown> | undefined;
+  if (data.stop_reason !== 'max_tokens') { try { const j = JSON.parse(raw); if (j && typeof j === 'object') v = j; } catch { /* below */ } }
+  const failed = !v ? (data.stop_reason === 'max_tokens' ? 'the reply was cut off before it finished' : 'the reply could not be read') : undefined;
+  if (mode === 'ftp') {
+    if (!v) return { mode, why: '', confidence: 'thin', failed };
+    let ftp = Math.round(Number(v.ftp));
+    if (!(ftp > 0)) ftp = 0;
+    if (ftp && limits.best20) ftp = Math.min(ftp, Math.round(limits.best20 * 0.97));
+    if (ftp && limits.best60) ftp = Math.max(ftp, limits.best60);
+    const why = str(v.why);
+    if (!why) return { mode, why: '', confidence: 'thin', failed: 'the reply was missing its reasoning' };
+    return { mode, ftp: ftp || undefined, why, confidence: conf(v.confidence), needsTest: str(v.needsTest) };
+  }
+  if (!v) return { mode, why: [], trust: '', confidence: 'thin', failed };
+  const powerTops = ascending(v.powerTops);
+  let hrTops = ascending(v.hrTops);
+  if (hrTops && limits.maxHr && hrTops[5] >= limits.maxHr) hrTops = undefined;
+  const why = Array.isArray(v.why) ? v.why.map(str).filter((x): x is string => !!x) : [];
+  return { mode, powerTops, hrTops, why, trust: str(v.trust) ?? '', confidence: conf(v.confidence), needsTest: str(v.needsTest), failed: !powerTops && !hrTops && !why.length ? 'the reply had no zones and no reasons' : undefined };
+}
+
+/** Ask the coach for an FTP estimate or a zone analysis, from the evidence lines. */
+export async function askThreshold(apiKey: string, profile: Profile, date: string, evidence: string[], mode: ThresholdMode, limits: { best20?: number; best60?: number; maxHr?: number } = {}): Promise<ThresholdAdvice> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({
+      model: MODEL, max_tokens: 8000,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: mode === 'ftp' ? FTP_SCHEMA : ZONE_SCHEMA } },
+      messages: [{ role: 'user', content: thresholdPrompt(profile, date, evidence, mode) }],
+    }),
+  });
+  if (!res.ok) throw new Error(await apiError(res));
+  return readThreshold(mode, await res.json(), limits);
+}

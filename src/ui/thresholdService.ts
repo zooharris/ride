@@ -4,7 +4,8 @@
  * periodic check live here too (Parts B and C).
  */
 import { useEffect, useState } from 'preact/hooks';
-import { db } from '../data/db';
+import { db, getSetting, setSetting } from '../data/db';
+import { askThreshold, type ThresholdAdvice, type ThresholdMode } from '../coach/claude';
 import { today } from '../engine/load';
 import { gatherEvidence, type TestInput, type ThresholdEvidence } from '../engine/thresholdEvidence';
 import { testResultKey, type TestResult } from '../player/tests';
@@ -56,4 +57,33 @@ export function useEvidence(data: AppData): ThresholdEvidence | undefined {
     return () => { alive = false; };
   }, [data.rides, data.profile, data.dayNotes]);
   return ev;
+}
+
+/** The last advice of each kind, with its date and what the rider did with it (synced like other settings). */
+export interface StoredAdvice { date: string; advice: ThresholdAdvice; choice?: 'updated' | 'applied' | 'kept' }
+export const adviceKey = (mode: ThresholdMode) => `thresholdAdvice:${mode}`;
+export const getAdvice = (mode: ThresholdMode) => getSetting<StoredAdvice | null>(adviceKey(mode), null);
+export async function setAdviceChoice(mode: ThresholdMode, choice: StoredAdvice['choice']): Promise<void> {
+  const a = await getAdvice(mode);
+  if (a) await setSetting(adviceKey(mode), { ...a, choice });
+}
+
+/** Ask the coach (needs the API key), keep the answer, and return it. */
+export async function askCoachThreshold(data: AppData, mode: ThresholdMode): Promise<StoredAdvice> {
+  const key = (await getSetting<string>('claudeKey', '')).trim();
+  if (!key) throw new Error('Add a Claude API key in Settings first.');
+  const ev = await loadEvidence(data);
+  if (!ev || !data.profile) throw new Error('No profile on this device yet.');
+  const best = (s: number) => ev.bests.find((b) => b.seconds === s)?.watts;
+  const advice = await askThreshold(key, data.profile, ev.today, ev.lines, mode, { best20: best(1200), best60: best(3600), maxHr: data.profile.maxHr });
+  const stored: StoredAdvice = { date: ev.today, advice };
+  if (!advice.failed) await setSetting(adviceKey(mode), stored);
+  return stored;
+}
+
+/** Whether the coach can be asked on this device. */
+export function useHasKey(): boolean {
+  const [has, setHas] = useState(false);
+  useEffect(() => { void getSetting<string>('claudeKey', '').then((k) => setHas(!!k.trim())); }, []);
+  return has;
 }

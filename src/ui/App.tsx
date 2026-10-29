@@ -127,14 +127,14 @@ export function App() {
   return (
     <div class="shell">
       <nav class="nav">
-        <div class="brand"><Logo height={30} /></div>
+        <div class="brand"><Logo height={54} tag="below" /></div>
         {TABS.map((t) => [
           <a key={t.path} href={`#/${t.path}`} aria-current={active === t.path ? 'page' : undefined} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>,
           'groupEnd' in t && t.groupEnd ? <div key={`${t.path}-sep`} class="nav-sep" /> : null,
         ])}
       </nav>
       <header class="topbar">
-        <Logo height={22} />
+        <Logo height={26} tag="beside" />
         <a href="#/help" class="help-link" aria-label="Help"><Icon.help size={20} /></a>
         <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>
       </header>

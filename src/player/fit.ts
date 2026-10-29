@@ -102,7 +102,7 @@ export function encodeFit(rec: Recording, t: Totals): Uint8Array {
   const end = rec.samples.length ? rec.samples[rec.samples.length - 1].t + 1 : 0;
 
   define(w, FILE_ID);
-  data(w, FILE_ID, { 0: 4, 1: 255, 2: 1, 3: (rec.startMs / 1000) >>> 0, 4: at(0), 8: 'AntoVelo' });
+  data(w, FILE_ID, { 0: 4, 1: 255, 2: 1, 3: (rec.startMs / 1000) >>> 0, 4: at(0), 8: 'Antogo' });
 
   define(w, EVENT);
   data(w, EVENT, { 253: at(0), 0: EV_TIMER, 1: ET_START });

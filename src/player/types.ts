@@ -54,6 +54,6 @@ export interface Recording {
   error?: string;
   /** The Garmin recorded the same ride and its recording was kept: its activity id. The file stays here 30 days for Undo. */
   supersededBy?: string;
-  /** The rider chose AntoVelo's recording over the Garmin's. */
+  /** The rider chose Antogo's recording over the Garmin's. */
   keepVeloiq?: boolean;
 }

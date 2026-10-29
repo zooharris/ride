@@ -20,7 +20,7 @@ import { startRide } from '../rideController';
 import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
-import { APP_NAME } from '../../appName';
+import { APP_SHORT_NAME } from '../../appName';
 import { addSensor, addSimulated, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
 import { pickSources, type Metric, type Supplied } from '../../player/sources';
 import { chooseFreeMode, chooseMode } from '../../player/mode';
@@ -98,7 +98,7 @@ function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }
   return (
     <div class={`player${fit ? ' fit' : ''}`}>
       <header class="pl-head">
-        <Logo height={24} />
+        <Logo height={54} tag="below" />
         <span class="pl-head-sep" />
         <span class="pl-head-name">Ride player</span>
         <span style="flex:1" />
@@ -112,10 +112,10 @@ function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }
 function NoBluetooth() {
   const where = platform();
   const [head, text] = where === 'iphone'
-    ? ['Riding with a trainer needs a computer or an iPad', <>An iPhone's browsers can't reach Bluetooth, so they can't talk to a smart trainer or sensors. Open {APP_NAME} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook), or in the free <b>Bluefy</b> browser on an iPad.</>]
+    ? ['Riding with a trainer needs a computer or an iPad', <>An iPhone's browsers can't reach Bluetooth, so they can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook), or in the free <b>Bluefy</b> browser on an iPad.</>]
     : where === 'ipad'
-      ? ['Riding with a trainer on an iPad needs the Bluefy browser', <>Safari on an iPad can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_NAME} in the free <b>Bluefy</b> browser on this iPad, or in <b>Chrome</b> or <b>Edge</b> on a computer.</>]
-      : ['Riding with a trainer needs Chrome or Edge', <>This browser can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_NAME} in <b>Chrome</b> or <b>Edge</b> on this computer (Mac, Windows or Chromebook).</>];
+      ? ['Riding with a trainer on an iPad needs the Bluefy browser', <>Safari on an iPad can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in the free <b>Bluefy</b> browser on this iPad, or in <b>Chrome</b> or <b>Edge</b> on a computer.</>]
+      : ['Riding with a trainer needs Chrome or Edge', <>This browser can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in <b>Chrome</b> or <b>Edge</b> on this computer (Mac, Windows or Chromebook).</>];
   return (
     <div class="pl-empty">
       <div class="panel" style="max-width:560px">

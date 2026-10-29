@@ -550,7 +550,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     setState(r.ok ? 'saved' : 'waiting');
     if (!r.superseded) toast({ ok: r.ok, text: r.text });
   };
-  // The Garmin's recording was kept; the rider would rather have AntoVelo's.
+  // The Garmin's recording was kept; the rider would rather have Antogo's.
   const ours = async () => {
     setState('saving');
     const r = await keepVeloiqInstead(rec.id);
@@ -669,7 +669,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             <div class="rd-grow" />
             {state === 'saved' ? (
               <div class="rd-saved"><span class="rd-state on">{garmins ? "Garmin's kept" : 'Saved'}</span><span class="small">{said || 'In Intervals.icu.'}</span>
-                {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save AntoVelo's instead</button>}</div>
+                {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save Antogo's instead</button>}</div>
             ) : (
               <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save to Intervals.icu'}</button>
             )}

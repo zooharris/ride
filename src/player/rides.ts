@@ -43,7 +43,7 @@ export function rideFile(r: Recording): Uint8Array {
 }
 
 export function fileName(r: Recording): string {
-  return `AntoVelo ${r.date} ${r.name}`.replace(/[^\w .-]+/g, '').replace(/\s+/g, '-') + '.fit';
+  return `Antogo ${r.date} ${r.name}`.replace(/[^\w .-]+/g, '').replace(/\s+/g, '-') + '.fit';
 }
 
 /** Offer the ride file to the browser to save. */
@@ -60,7 +60,7 @@ export function downloadRide(r: Recording): void {
 }
 
 export interface UploadResult { ok: boolean; text: string; activityId?: string; matched?: string; tooShort?: boolean;
-  /** The Garmin's recording of the same ride was kept; AntoVelo's was not uploaded. */
+  /** The Garmin's recording of the same ride was kept; Antogo's was not uploaded. */
   superseded?: boolean }
 
 /** How long the ride lasted, start to finish: the larger of the timer and the recording's last second. */
@@ -102,7 +102,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   if (!r.keepVeloiq) { const g = await garminFirst(r); if (g) return g; }
   let activityId: string;
   try {
-    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}${r.keepVeloiq ? '-kept' : ''}`, fileName: fileName(r), description: 'Ridden with the AntoVelo ride player.' });
+    activityId = await uploadActivityFile(c, rideFile(r), { name: r.name, externalId: `veloiq-${r.id}${r.keepVeloiq ? '-kept' : ''}`, fileName: fileName(r), description: 'Ridden with the Antogo ride player.' });
   } catch (e) {
     const why = (e as Error).message;
     await patchRecording(id, { status: 'finished', error: why });

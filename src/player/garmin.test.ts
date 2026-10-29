@@ -44,7 +44,7 @@ beforeEach(async () => {
   await db.planned.add({ id: 'p1', date: d, workoutId: w.id, basis: 'power', status: 'sent' });
 });
 
-/** AntoVelo's ride uploaded and done (as the player leaves it), before any Garmin recording. */
+/** Antogo's ride uploaded and done (as the player leaves it), before any Garmin recording. */
 async function uploadedP(o: Partial<Recording> = {}, withFile = true) {
   await db.rides.put(ride('P', t0, 3600, { averagePower: 200 }));
   await markPlayerMade('P', d);
@@ -53,20 +53,20 @@ async function uploadedP(o: Partial<Recording> = {}, withFile = true) {
 }
 
 describe('the same ride', () => {
-  it('the Garmin\'s covers at least half of AntoVelo\'s ride', () => {
+  it('the Garmin\'s covers at least half of Antogo\'s ride', () => {
     const a = { startMs: 0, seconds: 3600 };
-    expect(sameRide(a, { startMs: 1800_000, seconds: 3600 })).toBe(true);   // exactly half of AntoVelo's hour
+    expect(sameRide(a, { startMs: 1800_000, seconds: 3600 })).toBe(true);   // exactly half of Antogo's hour
     expect(sameRide(a, { startMs: 1801_000, seconds: 3600 })).toBe(false);
     expect(sameRide(a, { startMs: 1200_000, seconds: 600 })).toBe(false);   // a 10-minute fragment inside the hour
     expect(sameRide(a, { startMs: 600_000, seconds: 2100 })).toBe(true);    // 35 minutes of it
   });
-  it('two Garmin rides overlapping one of AntoVelo\'s: the longer overlap wins', () => {
+  it('two Garmin rides overlapping one of Antogo\'s: the longer overlap wins', () => {
     const g1 = ride('G1', t0 + 1500_000, 3600), g2 = ride('G2', t0 - 60_000, 3600);
     expect(garminTwin({ startMs: t0, seconds: 3600 }, [g1, g2], new Set())?.id).toBe('G2');
   });
 });
 
-describe('Garmin first: its recording is in when AntoVelo saves', () => {
+describe('Garmin first: its recording is in when Antogo saves', () => {
   it('does not upload, and the Garmin\'s ride completes the session', async () => {
     await db.rides.put(ride('G', t0 - 30_000, 3660));
     await db.recordings.put(rec());
@@ -76,14 +76,14 @@ describe('Garmin first: its recording is in when AntoVelo saves', () => {
     expect(await db.planned.get('p1')).toMatchObject({ status: 'completed', activityId: 'G' });
     expect(await db.recordings.get('rec1')).toMatchObject({ status: 'superseded', supersededBy: 'G' });
   });
-  it('"Save AntoVelo\'s instead" uploads AntoVelo\'s, which completes the session; the Garmin\'s counts no load', async () => {
+  it('"Save Antogo\'s instead" uploads Antogo\'s, which completes the session; the Garmin\'s counts no load', async () => {
     await db.rides.put(ride('G', t0, 3600));
     await db.recordings.put(rec());
     await uploadRide('rec1');
     const r = await keepVeloiqInstead('rec1');
     expect(r.ok).toBe(true);
     expect(calls.uploads).toEqual(['veloiq-rec1-kept']);
-    // It holds AntoVelo's recording; the pull that follows the upload marks it done, as for any upload.
+    // It holds Antogo's recording; the pull that follows the upload marks it done, as for any upload.
     expect(await db.planned.get('p1')).toMatchObject({ activityId: r.activityId, matchedByHand: true });
     expect((await db.activityEdits.get('G'))?.excluded).toBe(true);
     expect(await db.activityEdits.get(r.activityId!)).toMatchObject({ source: 'veloiq', keepVeloiq: true });
@@ -97,7 +97,7 @@ describe('Garmin first: its recording is in when AntoVelo saves', () => {
 });
 
 describe('the Garmin rule at sync: the Garmin\'s arrives later', () => {
-  it('moves the session to the Garmin\'s ride and deletes AntoVelo\'s, with Undo', async () => {
+  it('moves the session to the Garmin\'s ride and deletes Antogo\'s, with Undo', async () => {
     await uploadedP();
     await db.rides.put(ride('G', t0 + 20_000, 3600));
     const swaps = await applyGarminRule();
@@ -107,7 +107,7 @@ describe('the Garmin rule at sync: the Garmin\'s arrives later', () => {
     expect(await db.planned.get('p1')).toMatchObject({ status: 'completed', activityId: 'G', matchedByHand: true });
     expect((await db.activityEdits.get('G'))?.replaced).toMatchObject({ name: w.name, recordingId: 'rec1', playerActivityId: 'P' });
   });
-  it('still swaps once AntoVelo\'s file is gone (after 30 days), without Undo', async () => {
+  it('still swaps once Antogo\'s file is gone (after 30 days), without Undo', async () => {
     await uploadedP({}, false);
     await db.rides.put(ride('G', t0, 3600, { averagePower: 190 }));
     const swaps = await applyGarminRule();
@@ -115,7 +115,7 @@ describe('the Garmin rule at sync: the Garmin\'s arrives later', () => {
     expect((await db.activityEdits.get('G'))?.replaced).toMatchObject({ playerActivityId: 'P' });
     expect((await db.activityEdits.get('G'))?.replaced?.recordingId).toBeUndefined();
   });
-  it('Undo brings AntoVelo\'s back, and the rule never swaps that pair again', async () => {
+  it('Undo brings Antogo\'s back, and the rule never swaps that pair again', async () => {
     await uploadedP();
     await db.rides.put(ride('G', t0, 3600));
     await applyGarminRule();
@@ -125,7 +125,7 @@ describe('the Garmin rule at sync: the Garmin\'s arrives later', () => {
     expect(await applyGarminRule()).toEqual([]);
     expect(calls.deleted).toEqual(['P']);
   });
-  it('leaves AntoVelo\'s alone when the rider chose to keep it', async () => {
+  it('leaves Antogo\'s alone when the rider chose to keep it', async () => {
     await uploadedP({ keepVeloiq: true });
     await db.rides.put(ride('G', t0, 3600));
     expect(await applyGarminRule()).toEqual([]);
@@ -143,8 +143,8 @@ describe('the Garmin rule at sync: the Garmin\'s arrives later', () => {
   });
 });
 
-describe('a Garmin fragment never replaces AntoVelo\'s ride', () => {
-  it('a 10-minute Garmin recording inside a 60-minute player ride: AntoVelo\'s is uploaded at Save', async () => {
+describe('a Garmin fragment never replaces Antogo\'s ride', () => {
+  it('a 10-minute Garmin recording inside a 60-minute player ride: Antogo\'s is uploaded at Save', async () => {
     await db.rides.put(ride('G', t0 + 1200_000, 600));
     await db.recordings.put(rec());
     const r = await uploadRide('rec1');
@@ -152,7 +152,7 @@ describe('a Garmin fragment never replaces AntoVelo\'s ride', () => {
     expect(calls.uploads).toEqual(['veloiq-rec1']);
     expect(await db.planned.get('p1')).toMatchObject({ activityId: r.activityId });
   });
-  it('nor is AntoVelo\'s swapped for it at sync', async () => {
+  it('nor is Antogo\'s swapped for it at sync', async () => {
     await uploadedP();
     await db.rides.put(ride('G', t0 + 1200_000, 600));
     expect(await applyGarminRule()).toEqual([]);
@@ -166,8 +166,8 @@ describe('a Garmin fragment never replaces AntoVelo\'s ride', () => {
 });
 
 describe('Undo is on the computer that has the file, whichever device made the swap', () => {
-  it('a swap made by another device is adopted here, and Keep AntoVelo\'s works from it', async () => {
-    // This computer: AntoVelo's ride uploaded, its file here. The phone did the swap: P is gone, G carries the note.
+  it('a swap made by another device is adopted here, and Keep Antogo\'s works from it', async () => {
+    // This computer: Antogo's ride uploaded, its file here. The phone did the swap: P is gone, G carries the note.
     await db.recordings.put(rec({ status: 'uploaded', activityId: 'P' }));
     await db.rides.put(ride('G', t0, 3600));
     await upsertEdit('G', d, { replaced: { name: w.name, at: d, playerActivityId: 'P' } });

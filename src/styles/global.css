@@ -42,9 +42,9 @@
   --on-color: #0A1220;      /* ink on a filled status colour (a done tick) */
   --map-tint: rgba(3, 8, 20, .25);
 
-  /* the AntoVelo logo: the wordmark's blue, and the mark's A brightened so it holds on navy */
+  /* the Antogo logo, on dark: near-white "anto", brightened blue and teal so they hold on navy */
   --brand-blue: #3D9BFF;
-  --mk-a2: #0F6FEA; --mk-a3: #1259D4; --mk-a4: #1E62DA; --mk-n1: #163E78;
+  --logo-teal: #19C6E8; --logo-blue: #3B8FFF; --logo-orange: #FF9636; --logo-anto: #F3F6FB; --logo-go: #3B8FFF; --logo-tag: #9AA8BF;
 
   /* chart gridlines: quieter than borders, so the data reads first */
   --grid: color-mix(in srgb, var(--line-2) 70%, transparent);
@@ -67,7 +67,8 @@
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
   --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
   --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
-  --brand-blue: #0A74F5; --mk-a2: #0E6CE1; --mk-a3: #103F86; --mk-a4: #0C2743; --mk-n1: #0E2A4C;
+  --brand-blue: #0A74F5;
+  --logo-teal: #00B5DB; --logo-blue: #0575F6; --logo-orange: #FD8C23; --logo-anto: #0A2552; --logo-go: #0575F6; --logo-tag: #5A6A85;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -79,7 +80,8 @@
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
     --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
     --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
-    --brand-blue: #0A74F5; --mk-a2: #0E6CE1; --mk-a3: #103F86; --mk-a4: #0C2743; --mk-n1: #0E2A4C;
+    --brand-blue: #0A74F5;
+  --logo-teal: #00B5DB; --logo-blue: #0575F6; --logo-orange: #FD8C23; --logo-anto: #0A2552; --logo-go: #0575F6; --logo-tag: #5A6A85;
     color-scheme: light;
   }
 }
@@ -316,7 +318,7 @@ p { margin: 0; }
 @media (min-width: 900px) { .month-cell { min-height: 96px; } .month-item { font-size: 12px; } }
 
 /* ---- design pass ---- */
-.topbar { display: flex; align-items: center; gap: 9px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 6px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; color: var(--ink); }
+.topbar { display: flex; align-items: center; gap: 9px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 4px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; color: var(--ink); }
 @media (min-width: 900px) { .topbar { display: none; } }
 .kind-tile { border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 
@@ -650,9 +652,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 /* first run */
 .main.onboard { max-width: 600px; margin: 0 auto; padding-top: max(32px, env(safe-area-inset-top)); }
-.ob-brand { color: var(--ink); margin: 8px 0 18px; }
-.ob-tagline, .help-tagline { margin: 10px 0 0; font-size: 12px; font-weight: 600; letter-spacing: .28em; text-transform: uppercase; color: var(--ink-3); }
-.help-about { color: var(--ink); padding-top: 18px; border-top: 1px solid var(--line); }
+.ob-brand { color: var(--ink); margin: 8px 0 18px; display: inline-flex; flex-direction: column; align-items: center; }
+.ob-tagline, .help-tagline { margin: 12px 0 0; font-size: 15px; font-weight: 600; color: var(--ink-3); }
+.help-about { color: var(--ink); padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; }
 .ob-lede { font-size: 17px; line-height: 26px; color: var(--ink-2); margin-bottom: 22px; }
 .ob-steps { list-style: none; padding: 0; margin: 0 0 16px; display: flex; gap: 18px; font-size: 13px; color: var(--ink-3); }
 .ob-steps li { display: flex; align-items: center; gap: 8px; }

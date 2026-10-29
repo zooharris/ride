@@ -8,7 +8,7 @@ import { addDays, today } from '../engine/load';
 
 (globalThis as { navigator?: unknown }).navigator ??= { userAgent: 'test' };
 
-const doc = (over: Partial<SyncDoc>): SyncDoc => ({ app: 'AntoVelo', schema: 2, exportedAt: '2026-10-19T00:00:00Z', profile: undefined, settings: [], workouts: [], planned: [], tombstones: [], ...over });
+const doc = (over: Partial<SyncDoc>): SyncDoc => ({ app: 'Antogo Cycling', schema: 2, exportedAt: '2026-10-19T00:00:00Z', profile: undefined, settings: [], workouts: [], planned: [], tombstones: [], ...over });
 const av = { hours: [1, 1, 1, 1, 1, 1, 1], outdoor: [false, false, false, false, false, false, false], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
 const plan = (id: string, over: Partial<ActivePlan> = {}): ActivePlan => ({ id, name: `Plan ${id}`, goal: { kind: 'general', weeks: 8 }, availability: av, masters: true, start: addDays(today(), -7), goalDate: addDays(today(), 50), requiredCtl: 60, projection: [], appliedAt: '2026-10-18T00:00:00Z', ...over } as ActivePlan);
 const session = (id: string, date: string, planId: string, over: Record<string, unknown> = {}) => ({ id, date, workoutId: 'w', basis: 'power' as const, status: 'planned' as const, planId, ...over });

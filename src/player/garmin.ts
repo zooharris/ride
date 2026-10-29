@@ -3,12 +3,12 @@
  * is the one kept: it is the one in Garmin Connect, and two copies would count
  * the ride's load twice.
  *
- * - At Save: if the Garmin's recording is already in, VeloIQ's is not
+ * - At Save: if the Garmin's recording is already in, AntoVelo's is not
  *   uploaded; the Garmin's completes the session.
  * - At every sync and at launch: a ride the player uploaded is swapped for the
  *   Garmin's recording of the same ride whenever that arrives, however late.
- *   Until then VeloIQ's stays as the done session. Undo (for 30 days, while the
- *   ride's file is on this computer) brings VeloIQ's back.
+ *   Until then AntoVelo's stays as the done session. Undo (for 30 days, while the
+ *   ride's file is on this computer) brings AntoVelo's back.
  *
  * Only activities the player made (marked `source: 'veloiq'`) are ever deleted.
  */
@@ -22,7 +22,7 @@ import { calendarEntryFor, getRecording, patchRecording, rideSeconds, uploadRide
 import { garminTwin, playerMade, spanOf } from './twin';
 import type { Recording } from './types';
 
-export const KEPT_GARMIN = "Your Garmin recorded this ride too, so VeloIQ kept the Garmin's: it's the one in Garmin Connect.";
+export const KEPT_GARMIN = "Your Garmin recorded this ride too, so AntoVelo kept the Garmin's: it's the one in Garmin Connect.";
 
 /** Mark an activity as the player's own (synced, so every device knows). */
 export async function markPlayerMade(activityId: string, date: string, keep?: boolean): Promise<void> {
@@ -38,13 +38,13 @@ const near = (date: string) => db.rides.where('date').between(addDays(date, -1),
 
 /**
  * At Save, before uploading: is the Garmin's recording of this ride already
- * in? If so, it completes the session and VeloIQ's is not uploaded.
+ * in? If so, it completes the session and AntoVelo's is not uploaded.
  */
 export async function garminFirst(r: Recording): Promise<UploadResult | undefined> {
   try { await syncAll(); } catch { /* offline: upload as usual, and the rule catches a twin later */ }
   const g = garminTwin({ startMs: r.startMs, seconds: rideSeconds(r) }, await near(r.date), await mineNow());
   if (!g) return undefined;
-  // A twin covers at least half of VeloIQ's ride; should it still be too short to count as the workout, keep VeloIQ's.
+  // A twin covers at least half of AntoVelo's ride; should it still be too short to count as the workout, keep AntoVelo's.
   const workouts = await db.workouts.toArray();
   const want = r.workoutId ? plannedSeconds(findWorkout(workouts, r.workoutId)) : 0;
   const enough = g.seconds >= TRIVIAL_SECONDS && (!want || g.seconds >= want * 0.2);
@@ -67,14 +67,14 @@ async function release(p: PlannedWorkout, gid: string): Promise<void> {
 }
 
 /**
- * Keep VeloIQ's recording instead of the Garmin's (Ride complete's "Save
- * VeloIQ's instead", and Undo): VeloIQ's is uploaded and completes the
+ * Keep AntoVelo's recording instead of the Garmin's (Ride complete's "Save
+ * AntoVelo's instead", and Undo): AntoVelo's is uploaded and completes the
  * session; the Garmin's stays in Garmin Connect and Intervals.icu, left out of
  * training load so the ride counts once. The rule never swaps this pair again.
  */
 export async function keepVeloiqInstead(recordingId: string, garminId?: string): Promise<UploadResult> {
   const r = await getRecording(recordingId);
-  if (!r) return { ok: false, text: "VeloIQ's recording of that ride is no longer on this computer." };
+  if (!r) return { ok: false, text: "AntoVelo's recording of that ride is no longer on this computer." };
   const gid = r.supersededBy ?? garminId;
   if (gid) for (const p of (await db.planned.toArray()).filter((x) => x.activityId === gid)) await release(p, gid);
   await patchRecording(recordingId, { status: 'finished', supersededBy: undefined, activityId: undefined, keepVeloiq: true });
@@ -89,7 +89,7 @@ export interface Swap { name: string; garminId: string; recordingId?: string; no
 /** The one way the rule deletes anything: an activity the player made, and nothing else. */
 export async function deletePlayerRide(id: string): Promise<void> {
   const e = await db.activityEdits.get(id);
-  if (e?.source !== 'veloiq') throw new Error('Only a ride the VeloIQ player made can be removed by the Garmin rule.');
+  if (e?.source !== 'veloiq') throw new Error('Only a ride the AntoVelo player made can be removed by the Garmin rule.');
   await deleteActivityHere(id);
 }
 
@@ -114,7 +114,7 @@ export async function applyGarminRule(): Promise<Swap[]> {
     const g = garminTwin(spanOf(p), rides, mine);
     if (!g) continue;
     try {
-      // The session, its record and effort move to the Garmin's ride; then VeloIQ's goes.
+      // The session, its record and effort move to the Garmin's ride; then AntoVelo's goes.
       for (const pl of (await db.planned.toArray()).filter((x) => x.activityId === p.id)) {
         const w = findWorkout(workouts, pl.workoutId);
         if (w) await matchByHand(pl, w, (await db.rides.get(g.id)) ?? g);
@@ -147,7 +147,7 @@ export async function markEarlierPlayerRides(): Promise<void> {
 
 /**
  * Another device may have done the swap (whichever pulls first does). This
- * computer then still holds VeloIQ's recording marked as uploaded, pointing at
+ * computer then still holds AntoVelo's recording marked as uploaded, pointing at
  * an activity that is gone: mark it superseded by the Garmin's, so Undo is
  * offered here, where the file is.
  */
@@ -169,7 +169,7 @@ const UNDO_DAYS_MS = 30 * 86_400_000;
 
 /**
  * The recording on this computer that can be kept instead of the Garmin's, if
- * any: VeloIQ's file of the same ride, within 30 days. Whichever device did the
+ * any: AntoVelo's file of the same ride, within 30 days. Whichever device did the
  * swap, the computer that has the file offers it.
  */
 export async function keepableRecording(g: Pick<Ride, 'id'>, replaced?: ActivityEdit['replaced']): Promise<Recording | undefined> {
@@ -179,7 +179,7 @@ export async function keepableRecording(g: Pick<Ride, 'id'>, replaced?: Activity
   return r && r.samples.length > 0 && Date.now() - r.startMs < UNDO_DAYS_MS ? r : undefined;
 }
 
-/** Whether the swap is recent enough that VeloIQ's file may still be on the computer the ride was ridden on. */
+/** Whether the swap is recent enough that AntoVelo's file may still be on the computer the ride was ridden on. */
 export function undoWindowOpen(replaced: NonNullable<ActivityEdit['replaced']>, todayIso = today()): boolean {
   return (Date.parse(todayIso) - Date.parse(replaced.at)) < UNDO_DAYS_MS;
 }

@@ -115,7 +115,7 @@ describe('the ride file', () => {
     expect(decoder.checkIntegrity()).toBe(true);
     const { messages, errors } = decoder.read();
     expect(errors).toEqual([]);
-    expect(messages.fileIdMesgs![0]).toMatchObject({ type: 'activity', manufacturer: 'development', productName: 'VeloIQ' });
+    expect(messages.fileIdMesgs![0]).toMatchObject({ type: 'activity', manufacturer: 'development', productName: 'AntoVelo' });
     expect(messages.recordMesgs!).toHaveLength(1800);
     expect(messages.recordMesgs![700]).toMatchObject({ power: 221, cadence: 90 });
     expect(messages.lapMesgs!).toHaveLength(2);

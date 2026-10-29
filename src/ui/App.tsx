@@ -1,4 +1,3 @@
-import { APP_NAME } from '../appName';
 import { useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
@@ -26,7 +25,7 @@ import { Player } from './screens/Player';
 import { sendWaitingRides, tidyRecordings } from '../player/rides';
 import { watchGarminRule } from './garminWatch';
 import { Icon } from './icons';
-import { Logo, Mark } from './Brand';
+import { Logo } from './Brand';
 import { toast, Toaster } from './Toast';
 import { UpdateBanner } from './UpdateBanner';
 import { Skeleton } from './PageHead';
@@ -128,15 +127,14 @@ export function App() {
   return (
     <div class="shell">
       <nav class="nav">
-        <div class="brand"><Logo height={26} /></div>
+        <div class="brand"><Logo height={30} /></div>
         {TABS.map((t) => [
           <a key={t.path} href={`#/${t.path}`} aria-current={active === t.path ? 'page' : undefined} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>,
           'groupEnd' in t && t.groupEnd ? <div key={`${t.path}-sep`} class="nav-sep" /> : null,
         ])}
       </nav>
       <header class="topbar">
-        <Mark size={24} />
-        <span>{APP_NAME}</span>
+        <Logo height={22} />
         <a href="#/help" class="help-link" aria-label="Help"><Icon.help size={20} /></a>
         <a href="#/settings" class="help-link" aria-label="Settings" style="margin-left:0"><Icon.settings size={20} /></a>
       </header>

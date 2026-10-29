@@ -45,7 +45,7 @@ export function PageHead({ title, eyebrow, back, help, children }: {
 export function Empty({ title, children, action }: { title: string; children?: ComponentChildren; action?: ComponentChildren }) {
   return (
     <div class="empty">
-      <span class="empty-mark"><Mark size={40} title="" /></span>
+      <span class="empty-mark"><Mark size={26} title="" mono /></span>
       <b>{title}</b>
       {children && <p class="small muted">{children}</p>}
       {action && <div style="margin-top:6px">{action}</div>}

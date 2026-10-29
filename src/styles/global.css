@@ -42,6 +42,10 @@
   --on-color: #0A1220;      /* ink on a filled status colour (a done tick) */
   --map-tint: rgba(3, 8, 20, .25);
 
+  /* the AntoVelo logo: the wordmark's blue, and the mark's A brightened so it holds on navy */
+  --brand-blue: #3D9BFF;
+  --mk-a2: #0F6FEA; --mk-a3: #1259D4; --mk-a4: #1E62DA; --mk-n1: #163E78;
+
   --font: 'Archivo', system-ui, -apple-system, sans-serif;
   --radius: 12px;
   --radius-s: 8px;
@@ -60,6 +64,7 @@
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
   --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
   --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
+  --brand-blue: #0A74F5; --mk-a2: #0E6CE1; --mk-a3: #103F86; --mk-a4: #0C2743; --mk-n1: #0E2A4C;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -71,6 +76,7 @@
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
     --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
     --shadow: 0 10px 30px rgba(11, 26, 51, .12); --on-color: #FFFFFF; --map-tint: rgba(11, 26, 51, .12);
+    --brand-blue: #0A74F5; --mk-a2: #0E6CE1; --mk-a3: #103F86; --mk-a4: #0C2743; --mk-n1: #0E2A4C;
     color-scheme: light;
   }
 }
@@ -642,6 +648,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 /* first run */
 .main.onboard { max-width: 600px; margin: 0 auto; padding-top: max(32px, env(safe-area-inset-top)); }
 .ob-brand { color: var(--ink); margin: 8px 0 18px; }
+.ob-tagline, .help-tagline { margin: 10px 0 0; font-size: 12px; font-weight: 600; letter-spacing: .28em; text-transform: uppercase; color: var(--ink-3); }
+.help-about { color: var(--ink); padding-top: 18px; border-top: 1px solid var(--line); }
 .ob-lede { font-size: 17px; line-height: 26px; color: var(--ink-2); margin-bottom: 22px; }
 .ob-steps { list-style: none; padding: 0; margin: 0 0 16px; display: flex; gap: 18px; font-size: 13px; color: var(--ink-3); }
 .ob-steps li { display: flex; align-items: center; gap: 8px; }

@@ -7,7 +7,7 @@ import { completionWins, localDoc, mergeRemote, type SyncDoc } from './devicesyn
 (globalThis as { navigator?: unknown }).navigator ??= { userAgent: 'test' };
 
 const planned = (id: string, date: string, updatedAt?: string) => ({ id, date, workoutId: 'lib-spin-30', basis: 'power' as const, status: 'planned' as const, updatedAt });
-const doc = (over: Partial<SyncDoc>): SyncDoc => ({ app: 'VeloIQ', schema: 2, exportedAt: '2026-10-19T00:00:00Z', profile: undefined, settings: [], workouts: [], planned: [], tombstones: [], ...over });
+const doc = (over: Partial<SyncDoc>): SyncDoc => ({ app: 'AntoVelo', schema: 2, exportedAt: '2026-10-19T00:00:00Z', profile: undefined, settings: [], workouts: [], planned: [], tombstones: [], ...over });
 
 beforeEach(async () => {
   await db.delete();

@@ -1,4 +1,6 @@
-# VeloIQ 2.0 — how it works
+# AntoVelo (formerly VeloIQ) 2.0 — how it works
+
+Renamed AntoVelo on 28 October 2026 (logo rebuilt from the approved design board; masters in `art/`). Stored data, the sync note, the web address and technical identifiers keep their VeloIQ-era names on purpose.
 
 Written 18 October 2026, at the point the app reached usable form; updated the same night after the plan, library and print work, on 19 October after the coach, day-note and sync-security work, and on 20 October (seven-pattern strength with gym equipment, recording plausibility, update checks, the record of what was done, moving sessions, the same history on every device); a Ride player section added 28 October. This is the reference for anyone (including a future Claude session) who needs to understand the app without reading the code: what it is for, how it is built, how the training engine thinks, and the standing requirements that shaped it.
 

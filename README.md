@@ -1,4 +1,4 @@
-# VeloIQ 2.0
+# AntoVelo (formerly VeloIQ) 2.0
 
 A personal cycling training app for masters riders: plan the week, send each ride to a Garmin, pull the results back, and adapt the plan. Runs entirely in the browser; installs on an iPhone home screen as a PWA.
 

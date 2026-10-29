@@ -3,6 +3,7 @@ import { DEFAULT_PROFILE, saveProfile, setSetting } from '../../data/db';
 import type { Basis, Profile } from '../../engine/types';
 import { notify } from '../store';
 import { Logo } from '../Brand';
+import { TAGLINE } from '../../appName';
 import { applyAthleteNumbers, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
 import { fetchAutoBackup, restoreBackup } from '../../data/backup';
@@ -49,7 +50,7 @@ export function Onboarding() {
 
   return (
     <main class="main onboard">
-      <div class="ob-brand"><Logo height={40} /></div>
+      <div class="ob-brand"><Logo height={40} /><p class="ob-tagline">{TAGLINE}</p></div>
       <p class="ob-lede">Plan your training from your own data, send every session to your Garmin, and see what each one did for you.</p>
       <ol class="ob-steps" aria-label="Setup steps">
         <li class={step === 'connect' ? 'on' : 'done'}><span>1</span>Connect Intervals.icu</li>

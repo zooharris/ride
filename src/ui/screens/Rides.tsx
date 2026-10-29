@@ -543,16 +543,16 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
 function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced'] }) {
   const [name, setName] = useState(r.name);
   const [busy, setBusy] = useState(false);
-  // The Garmin rule removed VeloIQ's copy of this ride: within 30 days, on the computer that has its file, it can come back.
+  // The Garmin rule removed AntoVelo's copy of this ride: within 30 days, on the computer that has its file, it can come back.
   const [keepable, setKeepable] = useState<string | undefined>();
   useEffect(() => { void keepableRecording(r, replaced).then((x) => setKeepable(x?.id)); }, [r.id, replaced?.playerActivityId, replaced?.recordingId]);
   const keepOurs = async () => {
-    if (!confirm(`Keep VeloIQ's recording of ${replaced!.name} instead?\n\nVeloIQ's is saved to Intervals.icu and completes the session. This Garmin recording stays in Garmin Connect and Intervals.icu, left out of training load so the ride counts once.`)) return;
+    if (!confirm(`Keep AntoVelo's recording of ${replaced!.name} instead?\n\nAntoVelo's is saved to Intervals.icu and completes the session. This Garmin recording stays in Garmin Connect and Intervals.icu, left out of training load so the ride counts once.`)) return;
     setBusy(true);
     const res = await keepVeloiqInstead(keepable!, r.id);
     setBusy(false);
     notify();
-    toast({ ok: res.ok, text: res.ok ? `Kept VeloIQ's recording of ${replaced!.name}.` : res.text });
+    toast({ ok: res.ok, text: res.ok ? `Kept AntoVelo's recording of ${replaced!.name}.` : res.text });
   };
   useEffect(() => setName(r.name), [r.name]);
   // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
@@ -572,8 +572,8 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { r
       <div class="panel stack" style="gap:16px;margin-top:8px">
         {replaced && (
           <div class="row wrap" style="gap:8px 12px;align-items:center">
-            <span class="small" style="flex:1;min-width:220px">Your Garmin and VeloIQ's ride player both recorded this ride. This one, your Garmin's, was kept, since it's the one in Garmin Connect, and VeloIQ's copy was removed so the ride counts once.{!keepable && undoWindowOpen(replaced) ? " To keep VeloIQ's instead, open this recording on the computer you rode on." : ''}</span>
-            {keepable && <button class="btn sm" disabled={busy} onClick={() => void keepOurs()}>Keep VeloIQ's instead…</button>}
+            <span class="small" style="flex:1;min-width:220px">Your Garmin and AntoVelo's ride player both recorded this ride. This one, your Garmin's, was kept, since it's the one in Garmin Connect, and AntoVelo's copy was removed so the ride counts once.{!keepable && undoWindowOpen(replaced) ? " To keep AntoVelo's instead, open this recording on the computer you rode on." : ''}</span>
+            {keepable && <button class="btn sm" disabled={busy} onClick={() => void keepOurs()}>Keep AntoVelo's instead…</button>}
           </div>
         )}
         <div class="row wrap" style="gap:8px;align-items:flex-end">

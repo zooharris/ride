@@ -15,11 +15,11 @@ export default defineConfig({
     { name: 'version-json', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD }) }); } },
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icon.svg', 'mark.svg', 'apple-touch-icon.png'],
+      includeAssets: ['icon.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         name: APP_NAME,
         short_name: APP_SHORT_NAME,
-        description: 'Plan, ride, and adapt. A personal cycling coach.',
+        description: 'Adaptive cycling training and fitness. Better rides. Fitter you.',
         theme_color: '#0A1220',
         background_color: '#0A1220',
         display: 'standalone',
@@ -28,8 +28,9 @@ export default defineConfig({
         scope: '/ride/',
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

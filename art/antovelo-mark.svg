@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 882 484" width="882" height="484"><defs>
+<linearGradient id="gA" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#0277F8"/><stop offset="0.5" stop-color="#0E6CE1"/><stop offset="0.78" stop-color="#103F86"/><stop offset="1" stop-color="#0C2743"/></linearGradient>
+<linearGradient id="gN" x1="450" y1="62" x2="700" y2="440" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0E2A4C"/><stop offset="0.45" stop-color="#1460A3"/><stop offset="1" stop-color="#0C9EE2"/></linearGradient>
+<linearGradient id="gC" x1="400" y1="100" x2="680" y2="530" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1A8EF8"/><stop offset="0.45" stop-color="#16C1FC"/><stop offset="1" stop-color="#00B4E6"/></linearGradient>
+<linearGradient id="gT" x1="900" y1="232" x2="680" y2="525" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#049A90"/><stop offset="1" stop-color="#00877F"/></linearGradient>
+</defs><g transform="translate(0.00 0.00) scale(1.00000) translate(-58 -58)"><path d="M383 62 L505 62 Q520 62 527 76 L757 522 L622 528 Z" fill="url(#gN)"/>
+<path d="M383 62 L757 522 Q760 530 748 530 L628 530 Q616 530 610 518 L430 180 Z" fill="url(#gC)"/>
+<path d="M80 537 Q62 537 70 522 L352 72 Q358 62 372 62 L383 62 L440 192 L250 522 Q243 534 230 537 Z" fill="url(#gA)"/>
+<path d="M790 232 L922 232 Q936 232 929 244 L762 518 Q756 528 748 522 L668 420 L752 256 Q764 232 790 232 Z" fill="url(#gT)" opacity="0.92"/>
+<circle cx="848" cy="137" r="66" fill="#FD8218"/></g></svg>

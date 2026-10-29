@@ -28,10 +28,11 @@ describe('the record of what was done', () => {
     r.exercises![0].weight = 35; r.exercises![0].unit = 'lb';
     r.exercises![1].skipped = true;
     const t = recordText('Strength A', r, 7, 'imperial');
-    expect(t).toBe('Strength A — what was done\nGoblet squat · 3 × 10–12 · 35 lb\nSide plank · skipped\nEffort 7/10\n— VeloIQ');
+    expect(t).toBe('Strength A — what was done\nGoblet squat · 3 × 10–12 · 35 lb\nSide plank · skipped\nEffort 7/10\n— AntoVelo');
     expect(mayWriteDescription('')).toBe(true);
     expect(mayWriteDescription(t)).toBe(true);
     expect(mayWriteDescription('Felt strong today')).toBe(false);
+    expect(mayWriteDescription('Strength A — what was done\nEffort 6/10\n— VeloIQ')).toBe(true); // written before the rename
   });
   it('finds the last weight used, latest first, ignoring skipped and later days', () => {
     const p = (date: string, weight: number | undefined, skipped = false): PlannedWorkout => ({ id: date, date, workoutId: 'w', basis: 'power', status: 'completed',

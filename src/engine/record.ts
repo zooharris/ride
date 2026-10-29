@@ -67,7 +67,9 @@ export function exerciseLine(e: DoneExercise, unit: 'lb' | 'kg' = 'lb'): string 
 }
 
 /** The text written to the activity's description in Intervals.icu. Ends with the app's mark so it can be updated later. */
-export const RECORD_MARK = '— VeloIQ';
+export const RECORD_MARK = '— AntoVelo';
+/** The mark written before the rename (Oct 2026): descriptions ending in it are still the app's own. */
+const OLD_RECORD_MARKS = ['— VeloIQ'];
 export function recordText(workoutName: string, rec: DoneRecord, rpe: number | undefined, units: 'imperial' | 'metric' | undefined): string {
   const unit = unitOf(units);
   const lines = [`${workoutName} — what was done`];
@@ -83,7 +85,8 @@ export function recordText(workoutName: string, rec: DoneRecord, rpe: number | u
 
 /** Whether the app may write its record into an activity's description: only an empty one, or its own earlier text. */
 export function mayWriteDescription(existing: string | undefined): boolean {
-  return !existing?.trim() || existing.trim().endsWith(RECORD_MARK);
+  const t = existing?.trim();
+  return !t || [RECORD_MARK, ...OLD_RECORD_MARKS].some((m) => t.endsWith(m));
 }
 
 export interface LastTime { weight: number; unit: 'lb' | 'kg'; sets?: number; reps?: string; date: string }

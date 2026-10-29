@@ -5,7 +5,8 @@
  * itself when the rider stops pedalling. It never touches Bluetooth or
  * storage, so it is tested with a fake clock; the controller does the rest.
  */
-import { ergWatts, stepAt, totalSeconds, type TimelineStep } from './timeline';
+import { endRamp, ergWatts, stepAt, totalSeconds, type TimelineStep } from './timeline';
+import { rampGaveOut } from './tests';
 import { guardStep, type GuardState } from './erg';
 import type { Lap, RideEvent, Sample } from './types';
 import type { TrainerCommand } from './hub';
@@ -69,6 +70,8 @@ export class RideEngine {
   private guardState: GuardState = { eased: false };
   private lastCommand?: string;
   private lastWall = 0;
+  /** The Ramp Test: where in the workout the ramp ended (seconds), once it has. */
+  rampEndAt?: number;
 
   constructor(private o: EngineOptions, private startMs: number) {
     this.mode = o.mode;
@@ -194,8 +197,33 @@ export class RideEngine {
       p: this.position,
     });
     this.timer += 1;
+    // The Ramp Test ends by itself when the power falls well short of the step for ten seconds.
+    if (step?.ramp && this.rampEndAt == null) {
+      const target = ergWatts(step, this.o.ftp, this.scale);
+      if (rampGaveOut(this.samples.slice(-10).map((x) => x.w), target, this.position - step.start, step.ramp) && this.endTest(now, 'auto')) {
+        out.note = 'Legs went \u2014 test over. Cooling down.';
+      }
+    }
     out.command = this.send(now / 1000, live.cadence);
     return out;
+  }
+
+  /**
+   * End the Ramp Test now (the rider's button, or by itself): the step being
+   * ridden ends here and the cool-down starts at once. The timeline is changed
+   * in place, so everything reading it sees the cool-down next. False when the
+   * ramp isn't being ridden (warm-up, cool-down, or already ended).
+   */
+  endTest(now: number, by: 'rider' | 'auto'): boolean {
+    const s = this.step;
+    if (!s?.ramp || this.rampEndAt != null || this.phase === 'finished' || this.phase === 'countdown') return false;
+    const at = this.position;
+    const next = endRamp(this.o.timeline, at);
+    this.o.timeline.splice(0, this.o.timeline.length, ...next);
+    this.rampEndAt = at;
+    this.lastCommand = undefined;
+    this.event(this.wall(now), 'test', by);
+    return true;
   }
 
   pause(now: number, auto = false): void {

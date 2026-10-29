@@ -11,7 +11,7 @@ import { today } from '../engine/load';
 import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { RideEngine, type TrainerMode } from '../player/engine';
-import { buildTimeline, hrZoneOf, targetBand, type TimelineStep } from '../player/timeline';
+import { buildTimeline, hrZoneOf, rampRef, targetBand, type TimelineStep } from '../player/timeline';
 import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, startWatts, type HrCtl, type HrPowerTable, type HrStep } from '../player/hrControl';
 import { getSetting, setSetting } from '../data/db';
 import { putRecording, patchRecording } from '../player/rides';
@@ -100,7 +100,9 @@ function localIso(ms: number): string {
 export function startRide(setup: RideSetup): void {
   if (active && active.engine.phase !== 'finished') return;
   const now = Date.now();
-  const timeline = setup.workout ? buildTimeline(setup.workout, setup.profile) : [];
+  // The Ramp Test with no FTP yet is built in watts against a reference FTP, so the trainer still gets its watts.
+  if (setup.workout?.test === 'ramp' && !(setup.profile.ftp > 0)) setup = { ...setup, profile: { ...setup.profile, ftp: rampRef(setup.profile.ftp) } };
+  const timeline = setup.workout ? buildTimeline(setup.workout, setup.profile, { rampStep: setup.rampStep }) : [];
   const targetOf = setup.basis === 'hr'
     ? (s: TimelineStep, scale: number) => targetBand(s, 'hr', setup.profile, scale).mid
     : undefined;
@@ -305,7 +307,7 @@ function beep(kind: 'count' | 'go') {
 
 function snapshot(a: ActiveRide): Recording {
   const e = a.engine;
-  return { ...a.rec, samples: e.samples, laps: [...e.laps], events: e.events, timerSeconds: e.timer, distanceM: Math.round(e.distanceM) };
+  return { ...a.rec, samples: e.samples, laps: [...e.laps], events: e.events, timerSeconds: e.timer, distanceM: Math.round(e.distanceM), rampEndAt: e.rampEndAt };
 }
 
 function save() { if (active) void putRecording(snapshot(active)); }
@@ -314,6 +316,14 @@ function save() { if (active) void putRecording(snapshot(active)); }
 
 export function pauseRide() { if (active) { active.engine.pause(Date.now()); push(); } }
 export function resumeRide() { if (active) { active.engine.resume(Date.now()); if (active.hr) active.hr = { ...active.hr, st: hrResumed(active.hr.st) }; push(); } }
+/** The Ramp Test's Stop button: the ramp ends now and the cool-down starts. */
+export function stopTest() {
+  const a = active;
+  if (!a || !a.engine.endTest(Date.now(), 'rider')) return;
+  toast({ ok: true, text: 'Test over. Cooling down.' });
+  save();
+  push();
+}
 export function skipStep() { if (active) { active.engine.skip(Date.now()); push(); } }
 export function lapNow() { if (active) { active.engine.lap(Date.now()); toast({ ok: true, text: 'Lap.' }); emit(); } }
 export function setRideScale(scale: number) { if (active) { active.engine.setScale(Date.now(), scale); push(); } }

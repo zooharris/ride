@@ -12,7 +12,7 @@ import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { Logo } from '../Brand';
 import { Empty } from '../PageHead';
 import { getSetting, setSetting } from '../../data/db';
-import { buildTimeline, rampFirstStep } from '../../player/timeline';
+import { buildTimeline, rampBlocks, rampExpectedSteps, rampFirstStep, rampRef } from '../../player/timeline';
 import { getRecording, patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
@@ -83,7 +83,7 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
     if (!recovered) return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It has already been saved or discarded.</Empty></div></Frame>;
     const w = recovered.workoutId ? findWorkout(data.mine, recovered.workoutId) : undefined;
     const p = recovered.plannedId ? data.planned.find((x) => x.id === recovered.plannedId) : undefined;
-    return <RideDone rec={recovered} workout={w} planned={p} timeline={w ? buildTimeline(w, profile) : []} profile={profile} recovered />;
+    return <RideDone rec={recovered} workout={w} planned={p} timeline={w ? buildTimeline(w, profile, { rampStep: recovered.rampStep, rampEndAt: recovered.rampEndAt }) : []} profile={profile} recovered />;
   }
   const bt = bluetoothAvailable();
   if (!bt && !sim) return <Frame><NoBluetooth /></Frame>;
@@ -136,7 +136,14 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const { sensors, now } = useSensors();
   const sources = pickSources(sensors, now, getSlots());
   const choice = chooseMode(basis, sensors, sources, allowsHr);
-  const s = workoutStats(workout.blocks);
+  const ramp = workout.test === 'ramp';
+  const [rampStep, setRampStep] = useState(RAMP_STEP_DEFAULT);
+  useEffect(() => { if (ramp) getSetting<number>(RAMP_STEP_KEY, RAMP_STEP_DEFAULT).then((v) => setRampStep(RAMP_STEPS.includes(v) ? v : RAMP_STEP_DEFAULT)); }, [ramp]);
+  const pickRampStep = (v: number) => { setRampStep(v); void setSetting(RAMP_STEP_KEY, v); };
+  // The Ramp Test is drawn as it will be ridden at the chosen step, as far as a typical rider gets; it goes on until the rider stops.
+  const shown: Workout = ramp ? { ...workout, blocks: rampBlocks(profile.ftp, rampStep, rampExpectedSteps(profile.ftp, rampStep)) } : workout;
+  const shownProfile: Profile = ramp ? { ...profile, ftp: rampRef(profile.ftp) } : profile;
+  const s = workoutStats(shown.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power';
   // A test measures power, so no other ride stands in for it: no heart-rate alternatives.
@@ -157,10 +164,6 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
-  const ramp = workout.test === 'ramp';
-  const [rampStep, setRampStep] = useState(RAMP_STEP_DEFAULT);
-  useEffect(() => { if (ramp) getSetting<number>(RAMP_STEP_KEY, RAMP_STEP_DEFAULT).then((v) => setRampStep(RAMP_STEPS.includes(v) ? v : RAMP_STEP_DEFAULT)); }, [ramp]);
-  const pickRampStep = (v: number) => { setRampStep(v); void setSetting(RAMP_STEP_KEY, v); };
   const start = () => startRide({
     workout, planned, basis, profile, scale, level, rampStep: ramp ? rampStep : undefined,
     mode: trainerRuns ? mode : 'self',
@@ -186,13 +189,14 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             ) : <span class="faint small">Power only</span>}
           </div>
           <div class="pl-figures">
-            <div><div class="caption">Duration</div><div class="pl-fig num">{clock(s.seconds)}</div></div>
-            <div><div class="caption">Training load</div><div class="pl-fig num">{s.tss}<small> TSS</small></div></div>
+            <div><div class="caption">{ramp ? 'Expected duration' : 'Duration'}</div><div class="pl-fig num">{ramp && <small>about </small>}{clock(s.seconds)}</div></div>
+            <div><div class="caption">{ramp ? 'Expected load' : 'Training load'}</div><div class="pl-fig num">{ramp && <small>about </small>}{s.tss}<small> TSS</small></div></div>
             <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power ? 'FTP' : 'threshold'}</small></div></div>
             <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>
           </div>
-          <WorkoutChart workout={workout} profile={profile} basis={basis} seconds={s.seconds} />
-          <StepList workout={workout} profile={profile} basis={basis} />
+          <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} />
+          {ramp && <p class="faint small" style="margin:6px 0 0">Drawn as far as most riders get. The steps keep climbing until you stop, so yours may be shorter or longer.</p>}
+          <StepList workout={shown} profile={shownProfile} basis={basis} />
         </section>
 
         <aside class={`pl-side${choice.needsPower ? ' needs' : ''}`}>

@@ -1045,6 +1045,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .rd-pill.lost i, .rd-pill.connecting i { background: var(--warn); }
 .rd-pill.offline i { background: var(--ink-3); }
 .rd-pause { min-width: 116px; justify-content: center; gap: 9px; }
+.rd-stoptest { min-height: 46px; padding: 0 22px; font-size: 16px; font-weight: 700; border-width: 2px; border-color: var(--ink-2); }
 .rd-keys { min-width: 300px; font-size: 13.5px; }
 .rd-keys > div:not(.menu-title) { padding: 6px 10px; color: var(--ink-2); }
 .rd-keys kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 2px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; font: 600 12px var(--font); color: var(--ink); text-align: center; }

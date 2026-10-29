@@ -20,7 +20,7 @@ export interface Sample {
 
 export interface Lap { start: number; end: number; step?: number; manual?: boolean }
 
-export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue';
+export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue' | 'test';
 export interface RideEvent { t: number; type: RideEventType; value?: string | number }
 
 export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded' | 'superseded';
@@ -58,4 +58,6 @@ export interface Recording {
   keepVeloiq?: boolean;
   /** The Ramp Test: watts added each minute (what the ramp was built from). */
   rampStep?: number;
+  /** The Ramp Test: where in the workout (seconds) the ramp ended, by the rider or by itself; the cool-down follows from there. */
+  rampEndAt?: number;
 }

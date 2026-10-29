@@ -9,7 +9,7 @@ import { toast } from '../Toast';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
-import { hrZoneOf, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
+import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
 import { deleteRecording, downloadRide, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
@@ -18,7 +18,7 @@ import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import {
-  answerHr, clearRide, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, subscribeRide, type ActiveRide,
+  answerHr, clearRide, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
 } from '../rideController';
 
 export function useRide(): ActiveRide | undefined {
@@ -53,7 +53,10 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
   const then = next ? tl[next.index + 1] : undefined;
   const byHr = ride.setup.basis === 'hr';
   const t = totals(e.samples, profile.ftp, profile.lthr, undefined, ride.setup.basis);
-  const planned = ride.setup.workout ? workoutStats(ride.setup.workout.blocks) : undefined;
+  const testing = ride.setup.workout?.test === 'ramp';
+  // An open-ended test has no planned length or load to measure against.
+  const planned = ride.setup.workout && !testing ? workoutStats(ride.setup.workout.blocks) : undefined;
+  const onRamp = !!step?.ramp && e.rampEndAt == null;
   const trainer = controlledTrainer();
   const paused = e.phase === 'paused';
   const zoneTime = byHr && tl.length ? timeInZone(e.samples, tl, (s) => targetBand(s, 'hr', profile)) : undefined;
@@ -82,7 +85,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
         <Mark size={20} />
         <div class="rd-title">
           <div class="rd-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
-          <div class="rd-sub">{ride.setup.workout?.subtitle ?? 'No workout: ride as you like'}</div>
+          <div class="rd-sub">{ride.setup.workout ? (ride.setup.workout.subtitle ?? '') : 'No workout: ride as you like'}</div>
         </div>
         <span style="flex:1" />
         <div class="rd-pills">{sensors.map((s) => <SensorPill key={s.id} s={s} mode={e.mode} byHr={byHr && ride.timeline.length > 0} />)}</div>
@@ -92,6 +95,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
             : <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor" /><rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor" /></svg>}
           {paused ? 'Resume' : 'Pause'}
         </button>
+        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
         <button class="btn" onClick={() => void askEnd()}>End ride</button>
         <KeysHelp />
       </header>
@@ -146,9 +150,9 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
               <span class="rd-key"><i class="ln hr" />Heart rate</span>
             </>}
             <span style="flex:1" />
-            {step && <button class="btn sm quiet" onClick={skipStep}>Skip this step ›</button>}
+            {step && !step.ramp && <button class="btn sm quiet" onClick={skipStep}>Skip this step ›</button>}
           </div>
-          <RideChart timeline={tl} samples={e.samples} profile={profile} position={e.position} live by={ride.setup.basis} />
+          <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={ride.setup.basis} />
         </section>
       </main>
 
@@ -395,8 +399,8 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
   return (
     <section class="rd-card rd-dial">
       <div class="row between" style="align-self:stretch">
-        <span class="caption">Step {index} of {of}</span>
-        {(() => { const z = ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone; return <span class="rd-zone" style={`--c:${ZONE_VAR[z - 1]}`}>Zone {z} · {step.name}</span>; })()}
+        <span class="caption">{step.ramp ? `Ramp step ${step.ramp}` : `Step ${index} of ${of}`}</span>
+        {(() => { const z = ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone; return <span class="rd-zone" style={`--c:${ZONE_VAR[z - 1]}`}>Zone {z}{step.ramp ? '' : ` · ${step.name}`}</span>; })()}
       </div>
       <div class="rd-ring">
         <svg viewBox="0 0 260 260" aria-hidden="true">
@@ -411,7 +415,8 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
           <span class="faint small">{mmss(done)} of {mmss(step.seconds)} done{step.setNote ? <><br />{step.setNote}</> : null}</span>
         </div>
       </div>
-      {step.cadence ? <p class="rd-cue">Hold about {step.cadence} rpm.</p> : <p class="rd-cue">{step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
+      {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
+        : step.cadence ? <p class="rd-cue">Hold about {step.cadence} rpm.</p> : <p class="rd-cue">{step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
       <div class="rd-grow" />
       <div class="rd-next">
         {next ? <div><span class="caption">Next</span><i style={`background:${ZONE_VAR[(ride.setup.basis === 'hr' ? hrZoneOf(next, profile) : next.zone) - 1]}`} /><b>{next.name}</b><span class="num muted">{mmss(next.seconds)} · {band(next)}</span></div>

@@ -25,6 +25,10 @@ export interface TimelineStep {
   /** A work step (not warm-up, recovery or cool-down): the ones the summary tables. */
   work: boolean;
   step: WorkoutStep;
+  /** The Ramp Test: this step's number on the ramp (1, 2, …). */
+  ramp?: number;
+  /** The Ramp Test's cool-down while the ramp is still open (before the test ends): it is moved up when it does. */
+  rampOpen?: boolean;
 }
 
 /** A step without a name of its own: inside a set, the set's name for the work and "Recovery" for the easy part; elsewhere, its zone. */
@@ -34,7 +38,26 @@ export function stepName(st: WorkoutStep, zone: number, setLabel?: string): stri
 
 const EASY = /warm|cool|recover|easy|spin/i;
 
-export function buildTimeline(workout: Workout, profile: Profile): TimelineStep[] {
+export interface TimelineOptions {
+  /** The Ramp Test: watts added each minute (default 20). */
+  rampStep?: number;
+  /** The Ramp Test ended at this point of the workout (seconds): the ramp stops there and the cool-down follows. */
+  rampEndAt?: number;
+}
+
+export function buildTimeline(workout: Workout, profile: Profile, opts: TimelineOptions = {}): TimelineStep[] {
+  if (workout.test === 'ramp') {
+    const ref = rampRef(profile.ftp);
+    const tl = plainTimeline({ ...workout, blocks: rampBlocks(profile.ftp, opts.rampStep ?? 20, RAMP_STEPS_MAX) }, { ...profile, ftp: ref });
+    tl.forEach((s, i) => { if (i > 0 && i < tl.length - 1) s.ramp = i; });
+    tl[tl.length - 1].rampOpen = true;
+    if (opts.rampEndAt != null) { const at = stepAt(tl, opts.rampEndAt); if (at?.ramp) return endRamp(tl, opts.rampEndAt); }
+    return tl;
+  }
+  return plainTimeline(workout, profile);
+}
+
+function plainTimeline(workout: Workout, profile: Profile): TimelineStep[] {
   const ladder = ridePowerZones(profile);
   let t = 0;
   return flattenStepsWithSets(workout.blocks).map(({ step, set }, index) => {
@@ -98,4 +121,60 @@ export function hrZoneOf(s: TimelineStep, profile: Profile): number {
 /** The Ramp Test's first ramp step in watts: 46% of FTP plus one step, or a fixed 100 W with no FTP. */
 export function rampFirstStep(ftp: number, step: number): number {
   return ftp > 0 ? Math.round(ftp * 0.46) + step : 100;
+}
+
+// ── The Ramp Test ──────────────────────────────────────────────────────────
+
+/** Ramp steps laid out ahead: far more than anyone rides, so in practice the ramp never runs out. */
+export const RAMP_STEPS_MAX = 60;
+/** With no FTP the ramp is built in watts against this reference, so the trainer still gets its watts. */
+export const RAMP_REF = 200;
+export const rampRef = (ftp: number): number => (ftp > 0 ? ftp : RAMP_REF);
+
+/**
+ * The Ramp Test as blocks: five minutes' warm-up (46% of FTP, or 60 W with no
+ * FTP), then `count` one-minute steps from the first step up by `step` watts,
+ * then ten minutes' cool-down at 40%. Intensities are shares of FTP (or of the
+ * 200 W reference with no FTP), so the trainer holds exact watts.
+ */
+export function rampBlocks(ftp: number, step: number, count: number): WorkoutStep[] {
+  const ref = rampRef(ftp);
+  const first = rampFirstStep(ftp, step);
+  const warm = ftp > 0 ? 0.46 : 60 / ref;
+  const out: WorkoutStep[] = [{ kind: 'step', seconds: 300, intensity: warm, label: 'Warm up' }];
+  for (let n = 1; n <= count; n++) out.push({ kind: 'step', seconds: 60, intensity: (first + (n - 1) * step) / ref, label: `Step ${n}` });
+  out.push({ kind: 'step', seconds: 600, intensity: 0.4, label: 'Cool down' });
+  return out;
+}
+
+/** How many ramp steps a typical rider reaches: up to about 135% of FTP (the best minute of a ramp is usually 125–140%). For the picture before the ride. */
+export function rampExpectedSteps(ftp: number, step: number): number {
+  const ref = rampRef(ftp);
+  const first = rampFirstStep(ftp, step);
+  return Math.max(5, Math.ceil((ref * 1.35 - first) / step) + 1);
+}
+
+/**
+ * The test is over at `at` (seconds into the workout): the step being ridden
+ * ends there, the steps not reached are dropped, and the cool-down starts at
+ * once. Indices stay continuous, so the recording's steps and laps still match.
+ */
+export function endRamp(tl: TimelineStep[], at: number): TimelineStep[] {
+  const cur = stepAt(tl, at);
+  if (!cur?.ramp) return tl;
+  const kept = tl.slice(0, cur.index + 1).map((s) => ({ ...s }));
+  const last = kept[kept.length - 1];
+  if (at <= last.start) kept.pop(); else { last.end = at; last.seconds = at - last.start; }
+  const coolSrc = tl[tl.length - 1];
+  const cool: TimelineStep = { ...coolSrc, index: kept.length, start: at, end: at + coolSrc.seconds, rampOpen: undefined };
+  return [...kept, cool];
+}
+
+/** What a chart shows of a ramp while it is open: the warm-up, the steps ridden and the next three, not the sixty laid out ahead. */
+export function rampView(tl: TimelineStep[], at: number): TimelineStep[] {
+  const cool = tl[tl.length - 1];
+  if (!cool?.rampOpen) return tl;
+  const cur = stepAt(tl, at);
+  const upTo = Math.max(cur?.index ?? 0, 1) + 3;
+  return tl.filter((s) => !s.rampOpen && s.index <= upTo);
 }

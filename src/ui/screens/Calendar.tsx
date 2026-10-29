@@ -264,7 +264,7 @@ export function MonthDone({ r, data, title }: { r: Ride; data: AppData; title: s
 }
 
 /** A planned session's picture in a list row, in the same 88-pixel slot as a done one: the ride's diagram, else two exercise pictures, else the kind's tile. */
-function PlanPicture({ w }: { w: Workout }) {
+export function PlanPicture({ w }: { w: Workout }) {
   if (w.kind === 'ride') return <span class="act-pic plan"><WorkoutProfile blocks={w.blocks} height={34} ratio={2.6} /></span>;
   if (w.exercises && picturedCount(w.exercises) > 0) return <span class="act-pic ex" style="width:88px"><ExerciseRow w={w} max={2} /></span>;
   return <span class="act-pic" style="width:88px"><KindDot kind={w.kind} big /></span>;

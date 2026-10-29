@@ -58,7 +58,7 @@ export function BarChart({ categories, series, outline, outlineName = 'planned',
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); setHover(i >= 0 && i < n ? i : null); }}
         onMouseLeave={() => setHover(null)}>
         <defs><pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="4" fill="var(--bg-2)" fill-opacity="0.55" /></pattern></defs>
-        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{normalise ? `${t}%` : yFormat(t)}</text></g>)}
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{normalise ? `${t}%` : yFormat(t)}</text></g>)}
         <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">{yTitle}</text>
         {h != null && <rect x={padL + h * cw} y={padT} width={cw} height={H - padT - padB} fill="var(--ink)" fill-opacity="0.05" />}
         {outline && outline.map((v, i) => v > 0 ? <rect key={`o${i}`} x={x(i) + 0.5} y={y(v) + 0.5} width={Math.max(0, bw - 1)} height={Math.max(0, H - padB - y(v) - 0.5)} rx="2" fill="none" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="2 2" /> : null)}

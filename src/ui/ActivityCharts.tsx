@@ -144,7 +144,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
         onMouseLeave={() => onHover(null)}
         onTouchStart={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}
         onTouchMove={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}>
-        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
           const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp, powerZones) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1), hrZones);

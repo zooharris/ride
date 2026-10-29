@@ -184,7 +184,7 @@ export function PlanTimeline({ weeks, goalDate, event, bars = false, height }: {
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" role="img" aria-label={`Plan of ${n} weeks: ${phasesUsed.map((p) => PHASE_WORD[p]).join(', ')}`}
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); setHover(i >= 0 && i < n ? i : null); }}
         onMouseLeave={() => setHover(null)}>
-        {bars && [0, step, 2 * step, 3 * step].filter((v) => v <= top).map((v) => <g key={v}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="var(--line)" /><text x={padL - 5} y={y(v) + 3} font-size="10" text-anchor="end" fill="var(--ink-3)">{v}</text></g>)}
+        {bars && [0, step, 2 * step, 3 * step].filter((v) => v <= top).map((v) => <g key={v}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 5} y={y(v) + 3} font-size="10" text-anchor="end" fill="var(--ink-3)">{v}</text></g>)}
         {bars && <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">planned TSS a week</text>}
         {weeks.map((w, i) => {
           const x = padL + i * cw + gap / 2, cwid = cw - gap;

@@ -6,7 +6,7 @@ import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
+import { distance, fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
 import { db, getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
 import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from '../store';
@@ -18,7 +18,7 @@ import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { StepsTable } from '../StepsTable';
 import { addDays } from '../../engine/load';
-import { KIND_LABEL, KindDot, ReplanView } from './Plan';
+import { KIND_LABEL, ReplanView } from './Plan';
 import { useRecommended } from '../useRecommended';
 import { StatusPill, statusOf } from '../StatusMark';
 import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan, type SavedReview } from '../planService';
@@ -31,6 +31,9 @@ import { RideNotices } from '../RideNotices';
 import { Icon } from '../icons';
 import { ChangeSheet } from '../ChangeSheet';
 import { PictureStrip } from '../ExercisePictures';
+import { ActivityPicture, RouteThumb, EffortThumb, useThumb } from '../Thumbs';
+import { PlanPicture } from './Calendar';
+import type { Profile, Ride } from '../../engine/types';
 import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
 import { playerOffered } from '../../player/platform';
@@ -50,6 +53,7 @@ export function Today({ data }: { data: AppData }) {
   const rideNo = (p: PlannedWorkout) => withW.filter((x) => x.w!.kind === 'ride').findIndex((x) => x.p.id === p.id) + 1;
   const plan = ridePlan?.p;
   const workout = ridePlan?.w;
+  const doneRide = plan?.status === 'completed' && plan.activityId ? data.rides.find((r) => r.id === plan.activityId) : undefined;
   const stats = workout ? workoutStats(workout.blocks) : undefined;
   // What is on today's calendar, in one string: the coach note is remade when this changes.
   const recOf = (p: { activityId?: string }) => (p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined);
@@ -253,8 +257,9 @@ export function Today({ data }: { data: AppData }) {
           </div>
           <h2 style="font-size:28px;line-height:32px;font-weight:700;letter-spacing:-0.02em;margin:12px 0 2px">{workout.name}</h2>
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
-          <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>
-          <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>
+          {!doneRide && <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>}
+          {doneRide ? <DoneHero ride={doneRide} profile={profile} fallback={<WorkoutProfile blocks={workout.blocks} height={96} />} />
+            : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>}
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
             {plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
@@ -278,7 +283,7 @@ export function Today({ data }: { data: AppData }) {
             {rest.map(({ p, w }) => { const rs = w!.kind === 'ride' ? workoutStats(w!.blocks) : undefined; return (
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>
-                {rs ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
+                {(() => { const r = p.status === 'completed' && p.activityId ? data.rides.find((x) => x.id === p.activityId) : undefined; return r ? <ActivityPicture ride={r} w={w} profile={profile} height={52} width={88} exMax={2} /> : <PlanPicture w={w!} />; })()}
                 <div class="t"><b>{w!.name}</b>{rs ? <span>{clock(rs.seconds)} · {rs.tss} TSS · {w!.subtitle ?? FAMILY_LABEL[w!.family]}{p.status === 'completed' ? ' · done' : ''}{rideCount > 1 ? ` · Ride ${rideNo(p)} of ${rideCount}` : ''}</span> : <span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span>}</div>
                 <StatusPill status={statusOf(p.status)} />
                 {(w!.kind === 'strength' || w!.kind === 'mobility') && w!.exercises && <PictureStrip exercises={w!.exercises} max={5} under />}
@@ -344,7 +349,7 @@ function NextUp({ data, date }: { data: AppData; date: string }) {
       <div class="stack" style="margin-top:8px">
         {items.map(({ p, w }) => (
           <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, w!.id, 'today', nextDate, data.rides)}>
-            {w!.kind === 'ride' ? <WorkoutProfile blocks={w!.blocks} height={28} ratio={2.2} /> : <KindDot kind={w!.kind} big />}
+            <PlanPicture w={w!} />
             <div class="t"><b>{w!.name}</b><span>{w!.kind === 'ride' ? `${clock(workoutStats(w!.blocks).seconds)} · ${workoutStats(w!.blocks).tss} TSS` : `${KIND_LABEL[w!.kind]}${w!.minutes ? ` · ${w!.minutes} min` : ''}`}{p.note ? ` · ${p.note}` : ''}{p.userEdited ? ' · changed by you' : ''}</span></div>
             <StatusPill status={statusOf(p.status)} />
           </a>
@@ -494,6 +499,24 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
           </a>
         );
       })}
+    </div>
+  );
+}
+
+/** Today's main session once it's done: the route on a map (else the ride's effort), with its three headline numbers. */
+function DoneHero({ ride, profile, fallback }: { ride: Ride; profile: Profile; fallback: preact.JSX.Element }) {
+  const t = useThumb(ride);
+  const numbers: Array<[string, string]> = [
+    ['time', clock(ride.seconds)],
+    ride.distanceM ? ['distance', distance(ride.distanceM, profile)] : ride.averageHr ? ['average heart rate', `${ride.averageHr} bpm`] : ['', ''],
+    ['training load', ride.tss != null ? `${ride.tss} TSS` : '–'],
+  ];
+  if (ride.normalizedPower) numbers.splice(2, 0, ['normalized power', `${ride.normalizedPower} W`]);
+  const pic = t?.route ? <RouteThumb route={t.route} height={150} /> : t?.profile ? <div class="act-pic eff" style="height:96px"><EffortThumb thumb={t.profile} profile={profile} height={90} /></div> : t === undefined ? <div class="skeleton" style="height:150px;border-radius:8px" /> : fallback;
+  return (
+    <div class="done-hero">
+      {pic}
+      <div class="dh-nums">{numbers.filter(([k]) => k).map(([k, v]) => <div key={k}><b class="num">{v}</b><span>{k}</span></div>)}</div>
     </div>
   );
 }

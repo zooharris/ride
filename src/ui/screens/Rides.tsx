@@ -217,6 +217,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   return (
     <div>
       <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
+      <SummaryStrip items={items} />
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
@@ -599,5 +600,18 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { r
         </label>
       </div>
     </section>
+  );
+}
+
+/** The headline numbers across the top of an activity, before the detail: the few a rider looks for first. The full list stays under Numbers. */
+const HEADLINE = ['Moving time', 'Time', 'Distance', 'Training load (TSS)', 'Normalized power', 'Average heart rate', 'Total climbing', 'Average pace'];
+const SHORT: Record<string, string> = { 'Moving time': 'moving time', Time: 'time', Distance: 'distance', 'Training load (TSS)': 'training load (TSS)', 'Normalized power': 'normalized power', 'Average heart rate': 'average heart rate', 'Total climbing': 'climbing', 'Average pace': 'average pace' };
+function SummaryStrip({ items }: { items: Array<[string, string | number | undefined, string?]> }) {
+  const shown = HEADLINE.map((k) => items.find(([n, v]) => n === k && v !== undefined && v !== '')).filter((x): x is [string, string | number, string?] => !!x).slice(0, 5);
+  if (shown.length < 2) return null;
+  return (
+    <div class="sum-strip">
+      {shown.map(([k, v, hint]) => <div key={k} title={hint}><b class="num">{v}</b><span>{SHORT[k]}</span></div>)}
+    </div>
   );
 }

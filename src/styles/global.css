@@ -46,6 +46,9 @@
   --brand-blue: #3D9BFF;
   --mk-a2: #0F6FEA; --mk-a3: #1259D4; --mk-a4: #1E62DA; --mk-n1: #163E78;
 
+  /* chart gridlines: quieter than borders, so the data reads first */
+  --grid: color-mix(in srgb, var(--line-2) 70%, transparent);
+
   --font: 'Archivo', system-ui, -apple-system, sans-serif;
   --radius: 12px;
   --radius-s: 8px;
@@ -1351,3 +1354,13 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .cal-item .act-pic.plan .profile { width: 88px; flex: 0 0 88px; }
 .cal-item .act-pic.ex .ex-row { justify-content: center; }
 .act-pic.eff { overflow: hidden; }
+.done-hero { margin: 14px 0 12px; }
+.done-hero .route-thumb { border-radius: 10px; }
+.dh-nums { display: flex; flex-wrap: wrap; gap: 6px 28px; margin-top: 12px; }
+.dh-nums > div { display: flex; flex-direction: column; }
+.dh-nums b { font-size: 22px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.dh-nums span { font-size: 12px; color: var(--ink-3); }
+.sum-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 1px; margin-top: 14px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.sum-strip > div { background: var(--bg-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.sum-strip b { font-size: 22px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.sum-strip span { font-size: 12px; color: var(--ink-3); }

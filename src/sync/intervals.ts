@@ -393,6 +393,7 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  * Returns the event id, which is how the ride is later paired back.
  */
 export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: HrProfile): Promise<number> {
+  if (workout.trainerOnly) throw new Error(`${workout.name} is ridden on the trainer in Antogo, so it isn't sent to the Garmin.`);
   const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
     : workout.kind === 'run' ? runEvent(workout, date, profile)
     : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)

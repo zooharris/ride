@@ -94,3 +94,8 @@ export function hrZoneOf(s: TimelineStep, profile: Profile): number {
   const mid = s.noFloor ? b.high * 0.97 : b.mid;
   return hrZone(mid / profile.lthr, rideHrZones(profile));
 }
+
+/** The Ramp Test's first ramp step in watts: 46% of FTP plus one step, or a fixed 100 W with no FTP. */
+export function rampFirstStep(ftp: number, step: number): number {
+  return ftp > 0 ? Math.round(ftp * 0.46) + step : 100;
+}

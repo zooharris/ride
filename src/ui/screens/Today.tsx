@@ -36,7 +36,7 @@ import { PlanPicture } from './Calendar';
 import type { Profile, Ride } from '../../engine/types';
 import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
-import { playerOffered } from '../../player/platform';
+import { playerOffered, TRAINER_ONLY_ELSEWHERE } from '../../player/platform';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -262,14 +262,15 @@ export function Today({ data }: { data: AppData }) {
             : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>}
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
-            {plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
-            {plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
-            {plan.status !== 'completed' && playerOffered() && <a class="btn" href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
+            {!workout.trainerOnly && plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
+            {!workout.trainerOnly && plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
+            {plan.status !== 'completed' && playerOffered() && <a class={`btn${workout.trainerOnly ? ' primary' : ''}`} href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
             <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
             {plan.status === 'completed' && plan.activityId && data.rides.some((r) => r.id === plan.activityId) && <a class="btn primary" href={`#/rides/${plan.activityId}`}>See the recording</a>}
             <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>{plan.status === 'completed' ? 'The plan' : 'Details'}</a>
             {plan.status !== 'completed' && <button class="icon-btn" style="margin-left:auto" onClick={() => setChanging(plan)} title="Move, replace or remove" aria-label="Move, replace or remove"><Icon.more /></button>}
           </div>
+          {workout.trainerOnly && plan.status !== 'completed' && !playerOffered() && <p class="faint small" style="margin:10px 0 0">{TRAINER_ONLY_ELSEWHERE}</p>}
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>
       ) : rest.length === 0 ? (

@@ -182,3 +182,12 @@ export function relaxFloors(w: Workout): Workout {
   const relax = (s: WorkoutStep): WorkoutStep => (s.intensity < 0.6 && (s.intensityHigh ?? s.intensity) <= 0.65 ? { ...s, noFloor: true } : s);
   return { ...w, blocks: w.blocks.map((b) => b.kind === 'step' ? relax(b) : { ...b, steps: b.steps.map(relax) }) };
 }
+
+/**
+ * Whether a session can be sent to the Garmin: every kind the app sends, except
+ * a trainer-only workout (the Ramp Test), which only the ride player can run.
+ */
+export function garminSendable(w?: Pick<Workout, 'kind' | 'trainerOnly'>): boolean {
+  if (!w || w.trainerOnly) return false;
+  return w.kind === 'ride' || w.kind === 'walk' || w.kind === 'run' || w.kind === 'strength' || w.kind === 'mobility';
+}

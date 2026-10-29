@@ -16,6 +16,7 @@ import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
 import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
 import { playerOffered } from '../../player/platform';
+import { TrainerOnlyTag } from '../Thumbs';
 
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks'], ['run', 'Runs']];
@@ -87,8 +88,8 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
     <div class="wcard ride">
       <a class="wcard-main" href={`#/workout/${w.id}?from=library`}>
         <div class="row between">
-          <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
-          <span class="faint small">{w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>
+          <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
+          {!w.trainerOnly && <span class="faint small" style="white-space:nowrap">{w.bases.includes('hr') ? 'power or HR' : 'power only'}</span>}
         </div>
         <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} targets={profile ? { profile, basis } : undefined} /></div>
         <h3>{w.name}</h3>

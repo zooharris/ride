@@ -35,6 +35,8 @@ export interface RideSetup {
   smoothing: number;
   /** A free ride in ERG: the watts to start at. */
   freeWatts?: number;
+  /** The Ramp Test: watts added each minute. */
+  rampStep?: number;
 }
 
 export interface ActiveRide {
@@ -109,7 +111,7 @@ export function startRide(setup: RideSetup): void {
   const rec: Recording = {
     id: newId(), status: 'recording', startedAt: localIso(now), startMs: now, date: today(),
     plannedId: setup.planned?.id, workoutId: setup.workout?.id, name: setup.workout?.name ?? 'Free ride',
-    basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr,
+    basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr, rampStep: setup.rampStep,
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
   active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {}, hrTable: {} };

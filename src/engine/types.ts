@@ -147,6 +147,10 @@ export interface Workout {
   /** Intended duration for non-ride sessions. */
   minutes?: number;
   source: 'library' | 'mine' | 'generated';
+  /** Ridden only in the ride player on a trainer: never sent to the Garmin (a Garmin workout is a fixed list of steps; it can't run until you fail). */
+  trainerOnly?: boolean;
+  /** A fitness test whose recording the app turns into results (FTP, VO2max, threshold heart rate). */
+  test?: 'ramp' | '20min';
 }
 
 export interface WorkoutStats {

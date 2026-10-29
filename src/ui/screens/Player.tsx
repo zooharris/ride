@@ -12,7 +12,7 @@ import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { Logo } from '../Brand';
 import { Empty } from '../PageHead';
 import { getSetting, setSetting } from '../../data/db';
-import { buildTimeline } from '../../player/timeline';
+import { buildTimeline, rampFirstStep } from '../../player/timeline';
 import { getRecording, patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
@@ -156,8 +156,12 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
+  const ramp = workout.test === 'ramp';
+  const [rampStep, setRampStep] = useState(RAMP_STEP_DEFAULT);
+  useEffect(() => { if (ramp) getSetting<number>(RAMP_STEP_KEY, RAMP_STEP_DEFAULT).then((v) => setRampStep(RAMP_STEPS.includes(v) ? v : RAMP_STEP_DEFAULT)); }, [ramp]);
+  const pickRampStep = (v: number) => { setRampStep(v); void setSetting(RAMP_STEP_KEY, v); };
   const start = () => startRide({
-    workout, planned, basis, profile, scale, level,
+    workout, planned, basis, profile, scale, level, rampStep: ramp ? rampStep : undefined,
     mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   });
@@ -200,6 +204,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             </>
           ) : (
           <ScrollMore class="pl-side-body">
+          {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={profile.ftp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
           <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
@@ -257,6 +262,35 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
         </aside>
       </main>
     </>
+  );
+}
+
+/** The Ramp Test's step size, remembered on this computer. */
+const RAMP_STEP_KEY = 'rampStep';
+const RAMP_STEPS = [10, 15, 20, 25];
+const RAMP_STEP_DEFAULT = 20;
+
+/**
+ * The Ramp Test's one choice, above the devices: how big each minute's step is.
+ * The first step and the climb are shown in watts; with no FTP the test starts at
+ * a fixed 100 watts. In ERG the trainer holds each step; otherwise the rider is told.
+ */
+function RampCard({ step, onStep, ftp, ergOff, startable }: { step: number; onStep: (v: number) => void; ftp: number; ergOff: boolean; startable: boolean }) {
+  const first = rampFirstStep(ftp, step);
+  const share = ftp > 0 ? Math.round((step / ftp) * 200) / 2 : undefined; // to the nearest half percent
+  return (
+    <section class="pl-card pl-runs-card">
+      <h2 class="pl-h2">The test</h2>
+      <div class="pl-runs-row">
+        <span>Step size</span>
+        <div class="seg" role="group" aria-label="Step size">
+          {RAMP_STEPS.map((v) => <button key={v} class={step === v ? 'on' : ''} aria-pressed={step === v} onClick={() => onStep(v)}>{v === RAMP_STEP_DEFAULT ? `${v} W (standard)` : `${v} W`}</button>)}
+        </div>
+      </div>
+      <p class="pl-runs muted small" style="margin:0">Standard is 20 watts. Smaller steps make a longer, gentler test; the FTP rule was worked out on the standard step, so smaller steps read a little low.</p>
+      <p class="pl-runs" style="margin:0">{ftp > 0 ? <>First step <b class="num">{first} W</b>, then +{step} W every minute{share ? <span class="muted"> (about {share}% of your FTP)</span> : null}, until you can't hold it. Press <b>Stop the test</b> when you're done.</> : <>No FTP yet, so the test starts at <b class="num">100 watts</b> and climbs {step} W every minute until you can't hold it.</>}</p>
+      {startable && ergOff && <p class="pl-runs muted small" style="margin:0">The test works best with the trainer holding each step (ERG). You can carry on and hold each step's watts yourself.</p>}
+    </section>
   );
 }
 

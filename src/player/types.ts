@@ -56,4 +56,6 @@ export interface Recording {
   supersededBy?: string;
   /** The rider chose Antogo's recording over the Garmin's. */
   keepVeloiq?: boolean;
+  /** The Ramp Test: watts added each minute (what the ramp was built from). */
+  rampStep?: number;
 }

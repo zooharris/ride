@@ -7,7 +7,7 @@ import type { AppData } from '../store';
 import { alreadyText, findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
-import { clock, workoutStats } from '../../engine/workout';
+import { clock, garminSendable, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
 import { db } from '../../data/db';
 import type { PlannedWorkout, Ride, Workout } from '../../engine/types';
@@ -31,7 +31,6 @@ function shortName(name: string): string {
   return n.length > 14 ? `${n.slice(0, 13).trimEnd()}…` : n;
 }
 
-const sendable = (k?: string) => k === 'ride' || k === 'walk' || k === 'run' || k === 'strength' || k === 'mobility';
 
 export function Calendar({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;
@@ -90,7 +89,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     const c = await credentials();
     if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
     const end = addDays(ws, 6);
-    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind));
+    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && garminSendable(findWorkout(data.mine, p.workoutId)));
     if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
     setBusy(ws);
     let sent = 0;
@@ -162,7 +161,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
         const wk = weekSummary(ws, data.planned, data.rides, data.mine);
-        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && sendable(findWorkout(data.mine, p.workoutId)?.kind)).length;
+        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && garminSendable(findWorkout(data.mine, p.workoutId))).length;
         return (
           <section class="section" key={ws} style={offset ? '' : 'margin-top:0'}>
             <WeekBar week={wk}>

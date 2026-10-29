@@ -141,11 +141,13 @@ const CORE: Workout[] = [
     blocks: [warm(15), rep(4, 'VO2max', step(5, 1.08, { intensityHigh: 1.15 }), step(5, 0.5)), cool(10)] }),
 
   // Tests
-  lib({ id: 'lib-ramp', name: 'Ramp Test', family: 'test', phases: ['any'], bases: ['power'],
-    purpose: 'Start easy and add six percent every minute until you cannot. FTP is estimated as seventy-five percent of the best one-minute power. Takes twenty minutes and needs no pacing judgement; do it at the start of each block.',
-    physiology: 'FTP estimate.',
-    blocks: [step(5, 0.46), step(1, 0.52), step(1, 0.58), step(1, 0.64), step(1, 0.7), step(1, 0.76), step(1, 0.82), step(1, 0.88), step(1, 0.94), step(1, 1.0), step(1, 1.06), step(1, 1.12), step(1, 1.18), step(1, 1.24), step(1, 1.3), step(1, 1.36), cool(10)] }),
-  lib({ id: 'lib-20min', name: '20-Minute FTP Test', family: 'test', phases: ['any'], bases: ['power', 'hr'],
+  // 29 Oct 2026 (Step 1): a real test. The player builds its own open-ended ramp from the step size the rider picks;
+  // these blocks only draw the familiar shape in the Library and on the calendar.
+  lib({ id: 'lib-ramp', name: 'Ramp Test', family: 'test', phases: ['any'], bases: ['power'], trainerOnly: true, test: 'ramp',
+    purpose: 'Start easy and add a step every minute until you can’t hold it. Antogo works out your FTP from your best minute and offers to update it. About twenty minutes; ride it on the trainer at the start of each block.',
+    physiology: 'FTP and VO2max estimates.',
+    blocks: [step(5, 0.46, { label: 'Warm up' }),step(1, 0.52), step(1, 0.58), step(1, 0.64), step(1, 0.7), step(1, 0.76), step(1, 0.82), step(1, 0.88), step(1, 0.94), step(1, 1.0), step(1, 1.06), step(1, 1.12), step(1, 1.18), step(1, 1.24), step(1, 1.3), step(1, 1.36), cool(10)] }),
+  lib({ id: 'lib-20min', name: '20-Minute FTP Test', family: 'test', phases: ['any'], bases: ['power', 'hr'], test: '20min',
     purpose: 'A thorough warm-up, then twenty minutes as hard as you can hold evenly. FTP is ninety-five percent of the result; on heart rate, your average over the last fifteen minutes is a good LTHR. Harder than the ramp test, closer to the truth for steady-state riders.',
     physiology: 'FTP and LTHR estimate.',
     blocks: [warm(15), step(5, 1.05, { label: 'Blow out' }), step(10, 0.5), step(20, 1.0, { label: 'Test' }), cool(10)] }),

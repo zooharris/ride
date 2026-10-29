@@ -155,3 +155,8 @@ export function ActivityPicture({ ride, profile, height, width }: { ride: Ride; 
   if (kind === 'ride' && t?.profile) return <span class="act-pic eff" style={`height:${height}px${width ? `;width:${width}px` : ''}`}><EffortThumb thumb={t.profile} profile={profile} height={height - 6} /></span>;
   return tile;
 }
+
+/** The small tag beside a workout's family on a trainer-only workout (the Ramp Test). */
+export function TrainerOnlyTag() {
+  return <span class="tag" style="--c:var(--ink-2);white-space:nowrap" title="Ridden on the trainer in the ride player; not sent to the Garmin">Trainer only</span>;
+}

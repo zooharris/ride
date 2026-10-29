@@ -25,7 +25,9 @@ import { Empty } from '../PageHead';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
 import { ExercisePictures } from '../ExercisePictures';
-import { playerOffered } from '../../player/platform';
+import { playerOffered, TRAINER_ONLY_ELSEWHERE } from '../../player/platform';
+import { TrainerOnlyTag } from '../Thumbs';
+import { APP_SHORT_NAME } from '../../appName';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -63,7 +65,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     <div>
       <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
       <div class="row between" style="margin-bottom:6px">
-        <span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>
+        <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
         {w.bases.length > 1 ? (
           <div class="seg">
             <button class={basis === 'power' ? 'on' : ''} onClick={() => setBasis('power')}>Power</button>
@@ -79,22 +81,25 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
-        <button class="btn primary" onClick={() => schedule(today())}>Ride today</button>
+        {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
+        <button class={`btn${w.trainerOnly ? '' : ' primary'}`} onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
-        {playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
+        {!w.trainerOnly && playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
         {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         <label class="btn" style="position:relative;overflow:hidden">Pick a date
           <input type="date" min={today()} style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) schedule(v); }} />
         </label>
       </div>
+      {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (
         <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
       )}
 
       <section class="section">
         <h2>Steps</h2>
-        <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}<span class="wide-only">; the other column is there to read</span><span class="narrow-only">; on a phone only that column shows{w.bases.length > 1 ? `, and ${basis === 'power' ? 'Heart rate' : 'Power'} at the top switches to the other` : ''}</span>.</p>
+        {w.test === 'ramp' ? <p class="faint small" style="margin:4px 0 8px">The standard ramp, each step as a share of FTP (yours is {profile.ftp} W). In the ride player you choose the step size, the trainer holds each step, and the steps keep climbing until you stop.</p>
+        : <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}<span class="wide-only">; the other column is there to read</span><span class="narrow-only">; on a phone only that column shows{w.bases.length > 1 ? `, and ${basis === 'power' ? 'Heart rate' : 'Power'} at the top switches to the other` : ''}</span>.</p>}
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
@@ -112,10 +117,10 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         </section>
       )}
 
-      <section class="section">
+      {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
         {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(w, basis)}</pre>}
-      </section>
+      </section>}
       {changeSheet}
     </div>
   );

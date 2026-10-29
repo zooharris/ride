@@ -514,8 +514,7 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
       })}
       {ramp && (
         <a class="rd-row" title="Your training load over the last week is well above your last four weeks. The score takes 5 off until it settles." href={RD_LINK['Load climbing fast']} aria-label="Readiness over time">
-          <span class="rd-name">Load climbing fast</span>
-          <span class="rd-spark" />
+          <span class="rd-name wide">Load climbing fast</span>
           <span class="rd-val num small">{ramp.value.replace('last 7 days ', '').replace(' your 4-week average', '')}</span>
           <span class="rd-delta small" style="color:var(--bad)">−5<span class="rd-go" aria-hidden="true"> ›</span></span>
         </a>

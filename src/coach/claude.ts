@@ -135,14 +135,16 @@ export function activityLine(r: Ride): string {
 const EFFECT_WORDS: Record<'up' | 'down' | 'flat', string> = { up: 'better than normal', down: 'worse than normal', flat: 'normal' };
 
 /**
- * One readiness input in words that cannot be misread: "HRV 25 ms vs 2-week normal 26 ms
- * (normal)". A normal resting on fewer than five mornings is not called better or worse.
+ * One readiness input in words that cannot be misread: "HRV 25 ms vs 4-week normal 26 ms
+ * (normal)", with anything extra the score took into account ("below normal two mornings
+ * running"). The load line is said as it is.
  */
 export function driverWords(d: ReadinessDriver): string {
+  const note = d.note ? `; ${d.note}` : '';
+  if (d.name === 'Load climbing fast') return `training load climbing fast (${d.value}; takes 5 off the score)`;
   const today = d.today ?? d.value;
-  if (d.normal == null) return `${d.name} ${today}${d.unit ?? ''} (${EFFECT_WORDS[d.effect]})`;
-  if ((d.days ?? 0) < 5) return `${d.name} ${today}${d.unit ?? ''} (no normal yet: ${d.days ?? 0} days of history)`;
-  return `${d.name} ${today}${d.unit ?? ''} vs 2-week normal ${d.normal}${d.unit ?? ''} (${EFFECT_WORDS[d.effect]})`;
+  if (d.normal == null) return `${d.name} ${today}${d.unit ?? ''} (${EFFECT_WORDS[d.effect]}${note})`;
+  return `${d.name} ${today}${d.unit ?? ''} vs 4-week normal ${d.normal}${d.unit ?? ''} (${EFFECT_WORDS[d.effect]}${note})`;
 }
 
 /** The day as the coach sees it: readiness, plan, notes, calendar, tomorrow, recent activities. Shared by the daily note and questions. */
@@ -164,7 +166,7 @@ Last activities:\n${rides || 'none synced yet'}`;
 export const MEDICAL_RULE = "You are not a doctor. If the rider's notes or question mention illness, fever, chest pain or pressure, dizziness, fainting, an irregular heartbeat or an injury, recommend rest and seeing a doctor, and give no training advice for that day beyond that.";
 
 /** What the numbers mean, so "form −12" is read on a scale. */
-export const SCALE = 'Fitness and fatigue are 42-day and 7-day weighted averages of daily training load (TSS); form is fitness minus fatigue. Form between −30 and −10 is a normal training build; below −30 is overreaching; between −10 and +5 is fresh enough for quality work; above +5 is fresh (tapered or rested). Readiness 0–100 is the app\'s morning score from HRV, sleep, resting heart rate and form against the rider\'s own 2-week normal.';
+export const SCALE = 'Fitness and fatigue are 42-day and 7-day weighted averages of daily training load (TSS); form is fitness minus fatigue. Form between −30 and −10 is a normal training build; below −30 is overreaching; between −10 and +5 is fresh enough for quality work; above +5 is fresh (tapered or rested). Readiness 0–100 is the app\'s morning score from HRV, sleep (length and score), resting and sleeping heart rate, breathing rate and form, each against the rider\'s own normal range over the last four weeks; a morning at the rider\'s normal scores about 70. Bands: go (Ready) 65 and up, ease (ease off a little) 50–64, easy (keep it easy) 35–49, rest below 35.';
 
 /** Rules for everything the coach writes: the note, answers, chart answers and the review. */
 export const SHARED_RULES = `Use the rider's name only exactly as given above, never shortened or guessed. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar is the rider's plan, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one. Never describe who placed a session on the calendar or how it was recorded or synced; notes in brackets are background for you, not things to say. Do not invent numbers. ${MEDICAL_RULE} ${SCALE}`;

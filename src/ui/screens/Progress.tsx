@@ -17,7 +17,7 @@ import { LineChart } from '../LineChart';
 import { BarChart } from '../BarChart';
 import { db, getSetting, setSetting, type PowerCurve } from '../../data/db';
 import { addDays, today } from '../../engine/load';
-import { fitnessFromRides, fmtDate, weekStart } from '../derived';
+import { fitnessFromRides, fmtDate, readinessSeries, weekStart } from '../derived';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { aerobicPoints, bestCurve, CURVE_LABELS, dailyLoad, ftpByDay, monthlyTotals, rollingDays, rollingMean, weekStreak, weeklyLoad, weeklyZones, wellnessDays } from '../../engine/progress';
 import { buildPowerCurves } from '../powerCurves';
@@ -390,6 +390,7 @@ function overlayAvailability(data: AppData, from: string, to: string): Record<Ov
   return {
     fitness: true, fatigue: true, form: true,
     load: new Set(rides.filter((r) => (r.tss ?? 0) > 0).map((r) => r.date)).size >= 3,
+    readiness: readinessSeries(data.wellness, fitnessFromRides(data.rides), data.rides, from, to).length >= 3,
     hrv: days((w) => w.hrv) >= 3, sleep: days((w) => w.sleepSeconds) >= 3, restinghr: days((w) => w.restingHr) >= 3, weight: days((w) => w.weightKg) >= 3,
     efficiency: pts.filter((p) => p.ef != null).length >= 3, drift: pts.filter((p) => p.drift != null).length >= 3,
   };
@@ -424,6 +425,14 @@ function chartFacts(on: OverlayKey[], from: string, to: string, series: Fitness[
     const lo = pts.reduce((m, p) => (p.v < m.v ? p : m)), hi = pts.reduce((m, p) => (p.v > m.v ? p : m));
     lines.push(`${label} (${unit}): 7-day average from ${fmt(avg[0] ?? pts[0].v)} to ${fmt(avg[avg.length - 1] ?? pts[pts.length - 1].v)}; lowest ${fmt(lo.v)} on ${lo.d} (${after(lo.d)}); highest ${fmt(hi.v)} on ${hi.d} (${after(hi.d)})`);
   };
+  if (on.includes('readiness')) {
+    const rs = readinessSeries(data.wellness, series, data.rides, from, to);
+    if (rs.length) {
+      const lo = rs.reduce((m, p) => (p.score < m.score ? p : m)), hi = rs.reduce((m, p) => (p.score > m.score ? p : m));
+      const count = (b: string) => rs.filter((r) => r.band === b).length;
+      lines.push(`Readiness (0–100; Ready 65+, Ease off 50–64, Keep it easy 35–49, Rest under 35; worked out on today's calibration for every day): ${rs[0].score} on ${rs[0].date}, ${rs[rs.length - 1].score} on ${rs[rs.length - 1].date}; lowest ${lo.score} on ${lo.date} (${after(lo.date)}); highest ${hi.score} on ${hi.date}; ${count('go')} Ready days, ${count('ease')} Ease off, ${count('easy')} Keep it easy, ${count('rest')} Rest`);
+    }
+  }
   wl('hrv', 'HRV', 'ms', (w) => w.hrv, (v) => `${Math.round(v)}`);
   wl('sleep', 'Sleep', 'hours', (w) => (w.sleepSeconds ? w.sleepSeconds / 3600 : undefined), (v) => v.toFixed(1));
   wl('restinghr', 'Resting heart rate', 'bpm', (w) => w.restingHr, (v) => `${Math.round(v)}`);

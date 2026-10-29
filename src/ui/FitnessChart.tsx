@@ -7,6 +7,16 @@ import { FORM_BANDS, LineChart, type ChartMarker, type ChartSeries } from './Lin
 import { findWorkout } from './store';
 import { plannedTss } from './week';
 import { GLOSSARY } from './glossary';
+import { readinessSeries } from './derived';
+
+/** Readiness's bands, shaded behind its line when form's bands are not on (the dial's colours). */
+const READINESS_BANDS = [
+  { from: 65, to: 100, label: 'Ready', color: 'var(--good)', explain: 'Ready: 65 and up' },
+  { from: 50, to: 65, label: 'Ease off', color: 'var(--warn)', explain: 'Ease off a little: 50 to 64' },
+  { from: 35, to: 50, label: 'Keep it easy', color: 'var(--z5)', explain: 'Keep it easy: 35 to 49' },
+  { from: 0, to: 35, label: 'Rest', color: 'var(--bad)', explain: 'Rest: under 35' },
+];
+const BAND_NAME = { go: 'Ready', ease: 'Ease off a little', easy: 'Keep it easy', rest: 'Rest' } as const;
 
 export type RangeKey = '6w' | '3m' | '6m' | '1y' | 'all';
 export const RANGE_DAYS: Record<RangeKey, number> = { '6w': 42, '3m': 91, '6m': 182, '1y': 365, all: 100000 };
@@ -25,12 +35,13 @@ export function RangePicker({ value, onChange, keys = ['6w', '3m', '6m', '1y'] }
 export const CHART_CAPTION = 'Fitness, fatigue and form share the left axis. Each other line is drawn on its own scale, as a shape; hover or touch the chart to read its number for any day. Dashed lines carry fitness, fatigue, form and planned load forward over your calendar.';
 
 /** Everything that can be laid over the fitness chart, in the order the chips show them. */
-export type OverlayKey = 'fitness' | 'fatigue' | 'form' | 'load' | 'hrv' | 'sleep' | 'restinghr' | 'weight' | 'efficiency' | 'drift';
+export type OverlayKey = 'fitness' | 'fatigue' | 'form' | 'load' | 'readiness' | 'hrv' | 'sleep' | 'restinghr' | 'weight' | 'efficiency' | 'drift';
 export const OVERLAYS: Array<{ key: OverlayKey; label: string; color: string; bars?: boolean; dotted?: boolean }> = [
   { key: 'fitness', label: 'Fitness', color: 'var(--info)' },
   { key: 'fatigue', label: 'Fatigue', color: 'var(--z5)' },
   { key: 'form', label: 'Form', color: 'var(--ink-3)' },
   { key: 'load', label: 'Daily load', color: 'var(--ride)', bars: true },
+  { key: 'readiness', label: 'Readiness', color: 'var(--accent)' },
   { key: 'hrv', label: 'HRV', color: 'var(--aqua)' },
   { key: 'sleep', label: 'Sleep', color: 'var(--info)', dotted: true },
   { key: 'restinghr', label: 'Resting HR', color: 'var(--z6)' },
@@ -124,6 +135,13 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
       lines.push({ name: `${label}, each morning`, group: label, color, values: pad(day), dots: true, opacity: 0.35, scale: 'own', scaleKey: key, unit, hideInLegend: true, ...extra });
       lines.push({ name: `${label}, 7-day average`, group: `${label} 7-day`, color, values: pad(avg.map((v) => (v == null ? null : Math.round(v * 10) / 10))), width: 2.2, scale: 'own', scaleKey: key, unit, connectGaps: false, ...extra });
     };
+    // Readiness: worked out for every day on the current calibration (it is never stored), on its own 0–100 scale.
+    if (has('readiness')) {
+      const rs = new Map(readinessSeries(data.wellness, series, data.rides, histDates[0], histDates[histDates.length - 1]).map((r) => [r.date, r]));
+      const vals = [...histDates.map((d) => rs.get(d)?.score ?? null), ...Array(all.length - n).fill(null)];
+      lines.push({ name: 'readiness', group: 'readiness', color: 'var(--accent)', values: vals, width: 2, scale: 'own', scaleKey: 'readiness', ownRange: [0, 100], ownBands: has('form') ? undefined : READINESS_BANDS,
+        explain: GLOSSARY.readiness.short, format: (v) => { const b = v >= 65 ? 'go' : v >= 50 ? 'ease' : v >= 35 ? 'easy' : 'rest'; return `${Math.round(v)} (${BAND_NAME[b]})`; } });
+    }
     if (has('hrv')) wellnessPair('hrv', 'HRV', 'var(--aqua)', (w) => w.hrv, 'ms', { format: (v) => `${Math.round(v)}` });
     if (has('sleep')) wellnessPair('sleep', 'sleep', 'var(--info)', (w) => (w.sleepSeconds ? w.sleepSeconds / 3600 : undefined), '', { format: hm, ownFloor: 0, dash: '1 3', width: 2 });
     if (has('restinghr')) wellnessPair('restinghr', 'resting HR', 'var(--z6)', (w) => w.restingHr, 'bpm', { format: (v) => `${Math.round(v)}` });

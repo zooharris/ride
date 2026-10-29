@@ -84,23 +84,23 @@ export const GLOSSARY = {
   },
   hrv: {
     term: 'HRV',
-    short: 'Heart-rate variability this morning against your two-week average. Higher than normal means recovered; lower means stress or fatigue.',
+    short: 'Heart-rate variability this morning against your four-week normal. Higher than normal means recovered; lower means stress or fatigue.',
     long: 'Heart-rate variability overnight, in milliseconds. Higher than your normal usually means recovered; lower means stress, fatigue or illness.',
   },
   sleep: {
     term: 'Sleep',
-    short: 'Last night against your two-week average.',
-    long: 'Last night’s sleep against your two-week average.',
+    short: 'Last night against your four-week normal.',
+    long: 'Last night’s sleep against your four-week normal.',
   },
   restingHr: {
     term: 'Resting heart rate',
-    short: 'Resting heart rate this morning against your two-week average. Higher than normal is a fatigue or illness signal.',
-    long: 'Resting heart rate this morning against your two-week average. Higher than normal is a fatigue or illness signal.',
+    short: 'Resting heart rate this morning against your four-week normal. Higher than normal is a fatigue or illness signal.',
+    long: 'Resting heart rate this morning against your four-week normal. Higher than normal is a fatigue or illness signal.',
   },
   readiness: {
     term: 'Readiness',
-    short: 'HRV, sleep, resting heart rate and form against your own two-week normal, as a score out of 100',
-    long: 'HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own two-week normal, as a score out of 100: 75 and up Ready, 55–74 Ease off a little, 35–54 Keep it easy, under 35 Rest.',
+    short: 'HRV, sleep, heart rate overnight, breathing rate and form against your own four-week normal, as a score out of 100',
+    long: 'HRV (35%), sleep (25%, length and the sleep score), resting and sleeping heart rate (20% between them), breathing rate (5%) and form (15%), each against your own normal range over the last four weeks, as a score out of 100. A morning at your normal scores about 70: 65 and up Ready, 50–64 Ease off a little, 35–49 Keep it easy, under 35 Rest. Two low mornings running count extra, a breathing rate well above normal moves the band down a step, and a fast climb in training load takes 5 off.',
   },
   effort: {
     term: 'Effort',
@@ -117,5 +117,7 @@ export const READINESS_HELP: Record<string, string> = {
   HRV: GLOSSARY.hrv.short,
   Sleep: GLOSSARY.sleep.short,
   'Resting HR': GLOSSARY.restingHr.short,
+  'Sleeping HR': 'Your average heart rate while asleep. Lower than your normal means recovered; a few beats higher means strain, a late meal or drink, heat, or illness coming on.',
+  'Breathing rate': 'Breaths a minute while asleep. It barely moves from night to night, so a rise of one or two above your normal is one of the earliest signs of illness.',
   Form: 'Fitness minus fatigue. Negative while building, positive when fresh; +5 to +20 is the window for an event.',
 };

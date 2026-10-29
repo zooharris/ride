@@ -43,7 +43,7 @@ export function Today({ data }: { data: AppData }) {
   const date = today();
   const series = fitnessFromRides(data.rides);
   const fit = fitnessOn(series, date);
-  const ready = readinessToday(data.wellness, fit);
+  const ready = readinessToday(data.wellness, fit, date, data.rides);
   const todayNote = data.dayNotes.find((n) => n.date === date);
   const wellnessSetAside = !!todayNote?.badWellness && data.wellnessAll.some((w) => w.date === date);
   const plans = plannedOn(data.planned, date, (id) => findWorkout(data.mine, id)?.kind ?? 'ride');
@@ -305,14 +305,14 @@ export function Today({ data }: { data: AppData }) {
         <h2 style="margin-bottom:12px">Readiness</h2>
         <div class="panel readiness">
           <div class="rd-top">
-            <a href="#/progress?on=hrv,restinghr,sleep&r=6w" class="rd-dial-link" aria-label="HRV, resting heart rate and sleep over time"><ReadinessDial score={ready.score} band={ready.band} waiting={waiting} /></a>
+            <a href="#/progress?on=readiness,fatigue,load&r=6w" class="rd-dial-link" aria-label="Readiness over time"><ReadinessDial score={ready.score} band={ready.band} waiting={waiting} /></a>
             <p class="rd-advice">{waiting ? gap : <>{bandText}.{gap && <> <span class="faint">{gap}</span></>}</>}</p>
           </div>
           <ReadinessRows data={data} date={date} series={series} drivers={ready.drivers} />
           {wellnessSetAside ? (
-            <p class="small" style="margin-top:10px;color:var(--warn)">The day is also left out of your two-week averages.</p>
+            <p class="small" style="margin-top:10px;color:var(--warn)">The day is also left out of your four-week normal.</p>
           ) : (
-            <p class="faint small" style="margin-top:10px">The score blends HRV (40%), sleep (30%), resting heart rate (15%) and form (15%), each against your own two-week normal. Lines show the last two weeks; green is better than normal, red worse.</p>
+            <p class="faint small" style="margin-top:10px">Each number is compared with your own normal range over the last four weeks; a morning at your normal is Ready. The score weighs HRV most, then sleep, heart rate overnight, breathing rate and form. Lines show the last two weeks; green is better than normal, red worse. Tap the dial for readiness over time.</p>
           )}
           {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
           <DayNoteEditor date={date} note={todayNote} hasWellness={data.wellnessAll.some((w) => w.date === date)} />
@@ -449,9 +449,9 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
 }
 
 /**
- * The four inputs to readiness, each with this morning's value, its last two
- * weeks as a line, and the difference from the two-week normal, coloured by
- * whether that difference helps.
+ * The inputs to readiness, each with this morning's value, its last two weeks
+ * as a line, and the difference from the four-week normal, coloured by whether
+ * that difference helps.
  */
 /** A sleep difference in hours, shown as minutes under an hour ("37 min"), else hours and minutes ("1h05"). */
 function sleepDiff(h: number): string {
@@ -465,40 +465,61 @@ const RD_LINK: Record<string, string> = {
   Sleep: '#/progress?on=sleep,fatigue,load&r=6w',
   'Resting HR': '#/progress?on=restinghr,fatigue,load&r=6w',
   Form: '#/progress?on=fitness,fatigue,form&r=6w',
+  'Sleeping HR': '#/progress?on=readiness,restinghr,load&r=6w',
+  'Breathing rate': '#/progress?on=readiness,fatigue,load&r=6w',
+  'Load climbing fast': '#/progress?on=readiness,fatigue,load&r=6w',
 };
 
 function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: ReadinessDriver[] }) {
+  // The lines show the last two weeks; "vs normal" is against the four weeks before today, as the score is.
   const days = Array.from({ length: 15 }, (_, i) => addDays(date, i - 14));
+  const normalDays = Array.from({ length: 28 }, (_, i) => addDays(date, i - 28));
   const w = (d: string) => data.wellness.find((x) => x.date === d);
   const mean = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  // Form is negative as often as not, so its normal is the plain mean of the two weeks.
+  // Form is negative as often as not, so its normal is the plain mean.
   const meanSigned = (xs: Array<number | null>) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  const rows: Array<{ name: string; vals: Array<number | null>; fmt: (v: number) => string; unit: string; help: string }> = [
-    { name: 'HRV', vals: days.map((d) => w(d)?.hrv ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
-    { name: 'Sleep', vals: days.map((d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }), fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
-    { name: 'Resting HR', vals: days.map((d) => w(d)?.restingHr ?? null), fmt: (v) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Resting HR'] },
-    { name: 'Form', vals: days.map((d) => series.find((f) => f.date === d)?.tsb ?? null), fmt: (v) => { const n = Math.round(v); return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`; }, unit: '', help: READINESS_HELP.Form },
+  const has = (name: string) => drivers.some((d) => d.name === name);
+  type Row = { name: string; get: (d: string) => number | null; fmt: (v: number) => string; unit: string; help: string; signed?: boolean };
+  const rows: Row[] = [
+    { name: 'HRV', get: (d) => w(d)?.hrv ?? null, fmt: (v) => `${Math.round(v)}`, unit: 'ms', help: READINESS_HELP.HRV },
+    { name: 'Sleep', get: (d) => { const s = w(d)?.sleepSeconds; return s ? s / 3600 : null; }, fmt: (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, unit: '', help: READINESS_HELP.Sleep },
+    { name: 'Resting HR', get: (d) => w(d)?.restingHr ?? null, fmt: (v) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Resting HR'] },
+    ...(has('Sleeping HR') ? [{ name: 'Sleeping HR', get: (d: string) => w(d)?.avgSleepingHr ?? null, fmt: (v: number) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Sleeping HR'] }] : []),
+    ...(has('Breathing rate') ? [{ name: 'Breathing rate', get: (d: string) => w(d)?.respiration ?? null, fmt: (v: number) => v.toFixed(1), unit: '/min', help: READINESS_HELP['Breathing rate'] }] : []),
+    { name: 'Form', get: (d) => series.find((f) => f.date === d)?.tsb ?? null, fmt: (v) => { const n = Math.round(v); return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`; }, unit: '', help: READINESS_HELP.Form, signed: true },
   ];
+  const ramp = drivers.find((d) => d.name === 'Load climbing fast');
   return (
     <div class="rd-rows">
-      <div class="rd-row rd-head caption" aria-hidden="true"><span /><span class="rd-spark" /><span class="rd-val">Today</span><span class="rd-delta">vs 2-week normal</span></div>
+      <div class="rd-row rd-head caption" aria-hidden="true"><span /><span class="rd-spark" /><span class="rd-val">Today</span><span class="rd-delta">vs 4-week normal</span></div>
       {rows.map((r) => {
-        const todayV = r.vals[14];
-        const base = r.name === 'Form' ? meanSigned(r.vals.slice(0, 14)) : mean(r.vals.slice(0, 14));
-        const eff = drivers.find((d) => d.name === r.name)?.effect ?? 'flat';
+        const vals = days.map(r.get);
+        const todayV = vals[14];
+        const base = r.signed ? meanSigned(normalDays.map(r.get)) : mean(normalDays.map(r.get));
+        const drv = drivers.find((d) => d.name === r.name);
+        const eff = drv?.effect ?? 'flat';
         const color = eff === 'up' ? 'var(--good)' : eff === 'down' ? 'var(--bad)' : 'var(--ink-2)';
         const raw = todayV != null && base != null ? todayV - base : null;
         // round before choosing the sign, so a difference under half a unit reads ±0, not −0
-        const diff = raw == null ? null : r.name === 'Sleep' ? Math.round(raw * 60) / 60 : Math.round(raw);
+        const diff = raw == null ? null : r.name === 'Sleep' ? Math.round(raw * 60) / 60 : r.name === 'Breathing rate' ? Math.round(raw * 10) / 10 : Math.round(raw);
+        const shown = diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : r.name === 'Breathing rate' ? Math.abs(diff).toFixed(1) : Math.abs(Math.round(diff))}`;
         return (
-          <a class="rd-row" key={r.name} title={r.help} href={RD_LINK[r.name]} aria-label={`${r.name} over time`}>
+          <a class="rd-row" key={r.name} title={drv?.note ? `${r.help} Today: ${drv.note}.` : r.help} href={RD_LINK[r.name]} aria-label={`${r.name} over time`}>
             <span class="rd-name">{r.name}</span>
-            <span class="rd-spark"><Sparkline values={r.vals} width={56} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} /></span>
+            <span class="rd-spark"><Sparkline values={vals} width={56} color={r.name === 'Form' ? 'var(--ink-3)' : 'var(--aqua)'} label={`${r.name}, last two weeks`} /></span>
             <span class="rd-val num">{todayV != null ? r.fmt(todayV) : '–'}{todayV != null && r.unit ? <span class="rd-unit">{r.unit}</span> : null}</span>
-            <span class="rd-delta small" style={`color:${color}`}>{diff == null ? 'none today' : `${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${r.name === 'Sleep' ? sleepDiff(Math.abs(diff)) : Math.abs(Math.round(diff))}`}<span class="rd-go" aria-hidden="true"> ›</span></span>
+            <span class="rd-delta small" style={`color:${color}`}>{shown}<span class="rd-go" aria-hidden="true"> ›</span></span>
           </a>
         );
       })}
+      {ramp && (
+        <a class="rd-row" title="Your training load over the last week is well above your last four weeks. The score takes 5 off until it settles." href={RD_LINK['Load climbing fast']} aria-label="Readiness over time">
+          <span class="rd-name">Load climbing fast</span>
+          <span class="rd-spark" />
+          <span class="rd-val num small">{ramp.value.replace('last 7 days ', '').replace(' your 4-week average', '')}</span>
+          <span class="rd-delta small" style="color:var(--bad)">−5<span class="rd-go" aria-hidden="true"> ›</span></span>
+        </a>
+      )}
     </div>
   );
 }

@@ -10,7 +10,7 @@ const angie: Profile = { ...todd, name: 'Angie', birthYear: undefined, masters: 
 const base: Wellness[] = Array.from({ length: 14 }, (_, i) => ({ date: `2026-10-${String(7 + i).padStart(2, '0')}`, hrv: 26, sleepSeconds: 7 * 3600, restingHr: 54 }));
 const ctx = (over: Partial<CoachContext> = {}): CoachContext => ({
   profile: todd, date: '2026-10-21', fitness: { date: '2026-10-21', ctl: 40, atl: 52, tsb: -12 },
-  readiness: readiness({ date: '2026-10-21', hrv: 25, sleepSeconds: 7 * 3600, restingHr: 54 }, base, -12),
+  readiness: readiness({ date: '2026-10-21', hrv: 26, sleepSeconds: 7 * 3600, restingHr: 54 }, base, -12),
   todaySessions: [], recentRides: [], missedThisWeek: 0,
   plan: { name: 'Spring century', goal: 'Hunter Mill Century on 2027-04-18 (a century)', phase: 'Base 2', recoveryWeek: false, daysToGo: 179, eventName: 'Hunter Mill Century' },
   tomorrow: ['Reston (ride); planned duration 1 h 00 min'],
@@ -61,14 +61,20 @@ describe('one rider, one voice', () => {
 describe('the day in words that cannot be misread', () => {
   it('readiness drivers name the normal and say better or worse, never up or down', () => {
     const facts = dayFacts(ctx());
-    expect(facts).toMatch(/HRV 25 ms vs 2-week normal 26 ms \(normal\)/);
-    expect(facts).toMatch(/Resting HR 54 bpm vs 2-week normal 54 bpm \(normal\)/);
+    expect(facts).toMatch(/HRV 26 ms vs 4-week normal 26 ms \(normal\)/);
+    expect(facts).toMatch(/Resting HR 54 bpm vs 4-week normal 54 bpm \(normal\)/);
     expect(facts).toMatch(/Form -12 \(normal\)/);
     expect(facts).not.toMatch(/\((up|down)\)/);
   });
-  it('a normal from fewer than five mornings is said to be no normal yet', () => {
+  it('with under a week of mornings an input has no normal: left out, and never called missing', () => {
     const r = readiness({ date: '2026-10-21', hrv: 20 }, base.slice(0, 3), 0);
-    expect(driverWords(r.drivers.find((d) => d.name === 'HRV')!)).toBe('HRV 20 ms (no normal yet: 3 days of history)');
+    expect(r.drivers.map((d) => d.name)).toEqual(['Form']);
+    expect(r.missing).toEqual([]);
+  });
+  it('the extra things the score weighed are said in words', () => {
+    const low = readiness({ date: '2026-10-21', hrv: 20, sleepSeconds: 7 * 3600, restingHr: 54 }, base, -12, { yesterday: { date: '2026-10-20', hrv: 20 }, yesterdayBaseline: base, loadRatio: 1.5 });
+    expect(driverWords(low.drivers.find((d) => d.name === 'HRV')!)).toMatch(/worse than normal; below normal two mornings running/);
+    expect(driverWords(low.drivers.find((d) => d.name === 'Load climbing fast')!)).toMatch(/training load climbing fast \(last 7 days 1\.5× your 4-week average; takes 5 off the score\)/);
   });
   it('the plan and tomorrow are in the facts', () => {
     const facts = dayFacts(ctx());

@@ -146,6 +146,9 @@ async function pullAll(): Promise<SyncResult> {
 
   const wellness = await fetchWellness(c, oldest, newest);
   await db.wellness.bulkPut(wellness);
+  // Once, after the update that added sleeping heart rate and breathing rate: fetch them for the older
+  // mornings already on this device, so readiness over time has them too. Runs in the background.
+  if (!first) void backfillWellnessFields(c);
   if (first) await noteLoadedFrom(oldest);
 
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined, lastErrorAt: undefined });
@@ -360,6 +363,39 @@ export function scoreActivity(r: Ride, profile: Pick<Profile, 'ftp' | 'lthr'> & 
     else if (hrOnly) set(hrOnly, 'heart-rate');
     else set(Math.round(r.seconds / 3600 * 8), 'estimate');
   }
+}
+
+/**
+ * Sleeping heart rate and breathing rate for the mornings this device already
+ * holds (they were not pulled before 29 Oct 2026), once. Only those two fields
+ * and the sleep score are written into existing days, so nothing the day
+ * already carries is overwritten. In 60-day pieces; if it stops, the next sync
+ * starts it again.
+ */
+let backfilling = false;
+async function backfillWellnessFields(c: IntervalsCredentials): Promise<void> {
+  if (backfilling || (await getSetting<boolean>('wellnessFieldsV2', false))) return;
+  backfilling = true;
+  try {
+    const firstW = await db.wellness.orderBy('date').first();
+    const end = addDays(today(), -14);
+    let from = firstW?.date ?? addDays(today(), -120);
+    while (from <= end) {
+      const to = addDays(from, 59) < end ? addDays(from, 59) : end;
+      const got = await fetchWellness(c, from, to);
+      await db.transaction('rw', db.wellness, async () => {
+        for (const w of got) {
+          const patch: Partial<typeof w> = {};
+          if (w.avgSleepingHr) patch.avgSleepingHr = w.avgSleepingHr;
+          if (w.respiration) patch.respiration = w.respiration;
+          if (w.sleepScore) patch.sleepScore = w.sleepScore;
+          if (Object.keys(patch).length) await db.wellness.update(w.date, patch);
+        }
+      });
+      from = addDays(to, 1);
+    }
+    await setSetting('wellnessFieldsV2', true);
+  } catch { /* tried again on the next sync */ } finally { backfilling = false; }
 }
 
 /** The earliest day this device has activities or wellness for, or undefined before the first sync. */

@@ -368,6 +368,8 @@ interface IcuWellness {
   restingHR?: number;
   sleepSecs?: number;
   sleepScore?: number;
+  avgSleepingHR?: number;
+  respiration?: number;
   weight?: number;
 }
 
@@ -379,6 +381,8 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
     restingHr: w.restingHR,
     sleepSeconds: w.sleepSecs,
     sleepScore: w.sleepScore,
+    avgSleepingHr: w.avgSleepingHR || undefined,
+    respiration: w.respiration || undefined,
     weightKg: w.weight,
   }));
 }

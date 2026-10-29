@@ -19,6 +19,10 @@ export interface ChartSeries {
   unit?: string; format?: (v: number) => string; group?: string; connectGaps?: boolean; opacity?: number; hideInLegend?: boolean;
   /** Own-scale series with the same key share one scale (a metric's daily dots and its 7-day line). */
   scaleKey?: string;
+  /** Own-scale series: a fixed scale instead of one fitted to the values (readiness, 0 to 100). */
+  ownRange?: [number, number];
+  /** Bands shaded on this series' own scale (readiness's Ready / Ease off / Keep it easy / Rest). */
+  ownBands?: ChartBand[];
 }
 export interface ChartMarker { index: number; label: string; color?: string }
 export interface ChartRefLine { value: number; label: string; color?: string }
@@ -67,6 +71,7 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
     if ((s.scale ?? 'shared') === 'shared' && s.kind !== 'bars') return y;
     const vs = (s.scaleKey ? series.filter((o) => o.scaleKey === s.scaleKey) : [s]).flatMap((o) => o.values.filter((v): v is number => v != null));
     if (s.kind === 'bars') { const mx = Math.max(1, ...vs); const base = H - padB, top = (H - padT - padB) * 0.35; return (v: number) => base - (v / mx) * top; }
+    if (s.ownRange) { const [a, b] = s.ownRange; return (v: number) => padT + (1 - (v - a) / (b - a)) * (H - padT - padB); }
     let a = s.ownFloor ?? Math.min(...vs), b = Math.max(...vs);
     if (!isFinite(a) || !isFinite(b)) { a = 0; b = 1; }
     if (b === a) { a -= 1; b += 1; }
@@ -92,6 +97,7 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
         onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
         onMouseLeave={() => setHover(null)}>
         {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">{b.label}</text>}</g>; })}
+        {series.filter((s) => s.ownBands?.length).slice(0, 1).flatMap((s) => { const yy = yOf(s); return s.ownBands!.map((b) => { const top = yy(b.to), bot = yy(b.from); if (bot <= top) return null; return <g key={`own-${b.label}`}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.08"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">{b.label}</text>}</g>; }); })}
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{fmtStep(t, step)}</text></g>)}
         {xTicks.map(([i, t]) => <text key={i} x={x(i)} y={H - 6} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{t}</text>)}
         <text transform={`translate(9 ${(H - padB) / 2 + padT}) rotate(-90)`} fill="var(--ink-3)" font-size="10" text-anchor="middle">{yTitle}</text>

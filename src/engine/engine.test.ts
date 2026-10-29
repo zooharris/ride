@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { HR_ZONES, POWER_ZONES, defaultHrZoneTops, footHrZones, footLthr, hrZone, ladderFor, ladderPcts, ladderTops, powerToHrFraction, powerZone, rideHrZones, ridePowerZones, validTops, zoneTable } from './zones';
 import { bandBpm, bandFractions, bandTssPerHour, bandZoneWords, stepBand, walkBand } from './foot';
 import { flattenSteps, formatDuration, renderIntervalsText, workoutStats } from './workout';
-import { estimatedRideTss, fitnessSeries, hrIntensity, hrTss, looksLikeADrive, powerTss, rideIntensity, rideTss } from './load';
+import { addDays, estimatedRideTss, fitnessSeries, hrIntensity, hrTss, looksLikeADrive, powerTss, rideIntensity, rideTss } from './load';
 import { hrToPowerFraction } from './zones';
 import { scoreRide } from './compliance';
-import { readiness } from './readiness';
-import type { Profile, Ride, Workout } from './types';
+import { bandOf, formScore, readiness } from './readiness';
+import type { Profile, Ride, Wellness, Workout } from './types';
 
 const profile: Profile = {
   name: 'Test', ftp: 250, lthr: 160, maxHr: 180, restingHr: 50, weightKg: 80,
@@ -224,24 +224,75 @@ describe('compliance', () => {
 });
 
 describe('readiness', () => {
-  const base = Array.from({ length: 7 }, (_, i) => ({ date: `2026-10-0${i + 1}`, hrv: 50, sleepSeconds: 7 * 3600, restingHr: 50 }));
-  it('is neutral at baseline', () => {
-    const r = readiness({ date: '2026-10-10', hrv: 50, sleepSeconds: 7 * 3600, restingHr: 50 }, base, -5);
-    expect(r.score).toBeGreaterThan(45);
-    expect(r.score).toBeLessThan(65);
+  // Four weeks of an ordinary rider: HRV 46–54 ms, sleep 6h45–7h15, resting HR 49–51.
+  const base: Wellness[] = Array.from({ length: 28 }, (_, i) => ({ date: addDays('2026-10-10', -28 + i), hrv: 50 + ((i % 5) - 2) * 2, sleepSeconds: 7 * 3600 + ((i % 3) - 1) * 900, restingHr: 50 + ((i % 3) - 1) }));
+  const normal = { date: '2026-10-10', hrv: 50, sleepSeconds: 7 * 3600, restingHr: 50 };
+  it('a morning at the rider\'s normal is Ready, about 70', () => {
+    const r = readiness(normal, base, -5);
+    expect(r.band).toBe('go');
+    expect(r.score).toBeGreaterThanOrEqual(66);
+    expect(r.score).toBeLessThanOrEqual(74);
   });
-  it('drops with low HRV, short sleep and high resting HR', () => {
-    const r = readiness({ date: '2026-10-10', hrv: 35, sleepSeconds: 5 * 3600, restingHr: 58 }, base, -30);
-    expect(r.band === 'rest' || r.band === 'easy').toBe(true);
+  it('HRV 10% below normal on its own: Ease off a little', () => {
+    const r = readiness({ ...normal, hrv: 45 }, base, -5);
+    expect(r.band).toBe('ease');
     expect(r.drivers.find((d) => d.name === 'HRV')?.effect).toBe('down');
+  });
+  it('a small wobble inside the normal range changes little', () => {
+    const r = readiness({ ...normal, hrv: 48 }, base, -5);
+    expect(r.band).toBe('go');
+    expect(r.drivers.find((d) => d.name === 'HRV')?.effect).toBe('flat');
+  });
+  it('everything two spreads worse, two mornings running: Keep it easy', () => {
+    const bad = { hrv: 44, sleepSeconds: 7 * 3600 - 2 * 1500, restingHr: 53 };
+    const one = readiness({ date: '2026-10-10', ...bad }, base, -5);
+    const two = readiness({ date: '2026-10-10', ...bad }, base, -5, { yesterday: { date: '2026-10-09', ...bad }, yesterdayBaseline: base });
+    expect(two.score).toBeLessThan(one.score);
+    expect(two.band).toBe('easy');
+    expect(two.drivers.find((d) => d.name === 'HRV')?.note).toBe('below normal two mornings running');
+  });
+  it('drops to Rest with very low HRV, short sleep, high resting HR and deep fatigue', () => {
+    const r = readiness({ date: '2026-10-10', hrv: 35, sleepSeconds: 5 * 3600, restingHr: 58 }, base, -35);
+    expect(r.band).toBe('rest');
+  });
+  it('a breathing rate two spreads above normal moves the band down a step', () => {
+    const withRr = base.map((w, i) => ({ ...w, respiration: 14 + ((i % 3) - 1) * 0.3 }));
+    const calm = readiness({ ...normal, respiration: 14 }, withRr, -5);
+    const high = readiness({ ...normal, respiration: 16.5 }, withRr, -5);
+    expect(calm.band).toBe('go');
+    expect(high.band).toBe('ease');
+    expect(high.drivers.find((d) => d.name === 'Breathing rate')?.note).toMatch(/illness/);
+  });
+  it('sleeping heart rate counts when present, and a normal morning stays about 70 either way', () => {
+    const withShr = base.map((w, i) => ({ ...w, avgSleepingHr: 55 + ((i % 3) - 1) }));
+    const a = readiness(normal, base, -5), b = readiness({ ...normal, avgSleepingHr: 55 }, withShr, -5);
+    expect(Math.abs(a.score - b.score)).toBeLessThanOrEqual(1);
+    expect(b.drivers.map((d) => d.name)).toEqual(['HRV', 'Sleep', 'Resting HR', 'Sleeping HR', 'Form']);
+    expect(readiness({ ...normal, avgSleepingHr: 62 }, withShr, -5).score).toBeLessThan(b.score);
+  });
+  it('the sleep score is blended with sleep length', () => {
+    const withScore = base.map((w) => ({ ...w, sleepScore: 80 + ((w.hrv! - 50) / 2) }));
+    const good = readiness({ ...normal, sleepScore: 80 }, withScore, -5), poor = readiness({ ...normal, sleepScore: 60 }, withScore, -5);
+    expect(poor.score).toBeLessThan(good.score);
+    expect(poor.drivers.find((d) => d.name === 'Sleep')?.value).toMatch(/sleep score 60/);
+  });
+  it('a fast climb in load takes 5 off, but only when there is overnight data', () => {
+    const r = readiness(normal, base, -5), fast = readiness(normal, base, -5, { loadRatio: 1.5 });
+    expect(r.score - fast.score).toBe(5);
+    expect(fast.drivers.some((d) => d.name === 'Load climbing fast')).toBe(true);
+    expect(readiness(undefined, base, -5, { loadRatio: 1.5 }).drivers.some((d) => d.name === 'Load climbing fast')).toBe(false);
+  });
+  it('form scores 70 across an ordinary training state', () => {
+    expect(formScore(-10)).toBe(70); expect(formScore(5)).toBe(70);
+    expect(formScore(-25)).toBe(40); expect(formScore(-35)).toBe(20); expect(formScore(15)).toBe(100);
   });
   it('works with no wellness at all', () => {
     const r = readiness(undefined, [], 0);
-    expect(r.score).toBeGreaterThanOrEqual(0);
+    expect(r.score).toBe(70);
     expect(r.drivers).toHaveLength(1);
   });
   it('lists nothing missing when every input has arrived', () => {
-    const r = readiness({ date: '2026-10-10', hrv: 50, sleepSeconds: 7 * 3600, restingHr: 50 }, base, -5);
+    const r = readiness(normal, base, -5);
     expect(r.missing).toEqual([]);
     expect(r.formOnly).toBe(false);
   });
@@ -255,9 +306,9 @@ describe('readiness', () => {
     const r = readiness(undefined, base, 2.7);
     expect(r.missing).toEqual(['HRV', 'Sleep', 'Resting HR']);
     expect(r.formOnly).toBe(true);
-    expect(r.score).toBe(75);   // the iPhone's 75 of 25 Oct: form +3 alone
+    expect(r.score).toBe(70);
   });
-  it('an input the rider never has is not missing (no HRV device)', () => {
+  it('an input the rider never has is not missing (no HRV device, no sleeping HR or breathing rate)', () => {
     const noHrv = base.map(({ hrv: _h, ...w }) => w);
     const r = readiness({ date: '2026-10-10', sleepSeconds: 7 * 3600, restingHr: 50 }, noHrv, -5);
     expect(r.missing).toEqual([]);
@@ -269,6 +320,9 @@ describe('readiness', () => {
     const r = readiness(undefined, [], 0);
     expect(r.missing).toEqual([]);
     expect(r.formOnly).toBe(false);
+  });
+  it('the bands', () => {
+    expect([65, 64, 50, 49, 35, 34].map(bandOf)).toEqual(['go', 'ease', 'ease', 'easy', 'easy', 'rest']);
   });
 });
 

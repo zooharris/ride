@@ -290,6 +290,10 @@ export interface Wellness {
   restingHr?: number;
   sleepSeconds?: number;
   sleepScore?: number;
+  /** Average heart rate while asleep (bpm), when the watch sends it. */
+  avgSleepingHr?: number;
+  /** Breathing rate overnight (breaths per minute), when the watch sends it. */
+  respiration?: number;
   weightKg?: number;
 }
 

@@ -9,7 +9,8 @@ import type { SessionType } from '../engine/generate';
 import { addDays, rideIntensity, today } from '../engine/load';
 import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase, type QualityScores } from '../engine/planner';
 import { weeklyLoad } from '../engine/progress';
-import type { Basis, Equipment, Fitness, PlannedWorkout, Profile, Workout } from '../engine/types';
+import type { Basis, Equipment, Fitness, PlannedWorkout, Profile, StrengthDose, StrengthQuality, Workout } from '../engine/types';
+import { pickStrength, strengthReason } from '../engine/shop';
 import { newId } from '../engine/workout';
 import { retargetWorkout } from '../engine/sessions';
 import { sameWithin, snap } from '../engine/snap';
@@ -18,7 +19,7 @@ import { autoBackup } from '../data/backup';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './derived';
 import type { AppData } from './store';
-import { alreadyOnDay, findWorkout, notify } from './store';
+import { alreadyOnDay, findWorkout, getCurrentEquipment, loadAppData, notify, readyMade } from './store';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
@@ -45,7 +46,7 @@ export interface ActivePlan {
 type PlanRequestKeep = { scores: QualityScores; byWeek: Record<string, SessionType[]> };
 const QUALITY_FAMILIES = new Set(['sweetspot', 'tempo', 'threshold', 'vo2max', 'anaerobic']);
 
-export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number }
+export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number; /** The week in one sentence, as the plan built it (30 Oct 2026). */ summary?: string }
 
 /** Every plan on the calendar, oldest first. Plans never overlap in time. */
 export async function getPlans(): Promise<ActivePlan[]> {
@@ -194,9 +195,21 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed' && p.planId).map((p) => p.activityId));
     const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality });
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality, recentPicks: recentPicks(data, t) });
   }
-  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine) });
+  return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine), recentPicks: recentPicks(data, notBefore) });
+}
+
+/** What was on the calendar in the three weeks before a date, as Library ids, so the plan does not repeat it straight away. */
+function recentPicks(data: AppData, before: string): Array<{ date: string; id: string }> {
+  const from = addDays(before, -21);
+  const out: Array<{ date: string; id: string }> = [];
+  for (const p of data.planned) {
+    if (p.date >= before || p.date < from) continue;
+    const w = findWorkout(data.mine, p.workoutId);
+    if (w) out.push({ date: p.date, id: w.libraryId ?? w.id });
+  }
+  return out;
 }
 
 /**
@@ -267,7 +280,11 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   const toAdd: Array<{ s: typeof incoming[number]['s']; label: string }> = [];
   for (const item of incoming) {
     const k = sig(item.s.date, item.s.kind, item.s.workout.name);
-    if (existing.has(k) && !keep.has(k)) { keep.set(k, true); kept++; }
+    if (existing.has(k) && !keep.has(k)) {
+      keep.set(k, true); kept++;
+      const p = existing.get(k)!;
+      if (p.reason !== item.s.reason) await db.planned.update(p.id, { reason: item.s.reason });   // the same session, kept: its reason follows the plan
+    }
     else if (allowed(key(item.s.date, item.s.kind))) toAdd.push(item);
   }
   for (const [k, p] of existing) {
@@ -279,11 +296,11 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     removed++;
   }
   const rows: PlannedWorkout[] = [];
-  for (const x of toAdd) rows.push({ id: newId(), date: x.s.date, workoutId: await storeSessionWorkout(x.s.workout), basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name });
+  for (const x of toAdd) rows.push({ id: newId(), date: x.s.date, workoutId: await storeSessionWorkout(x.s.workout), basis: profile.basis, status: 'planned' as const, note: x.label, planId, planName: name, reason: x.s.reason });
   await db.planned.bulkAdd(rows);
   added = toAdd.length;
   await pruneOrphanWorkouts();
-  const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
+  const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss), ...(w.summary ? { summary: w.summary.replace(/^Week \d+: /, '') } : {}) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
   const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks, qualityScores: existingPlan?.qualityScores ?? plan.qualityScores };
   await putPlan(active);
@@ -376,7 +393,7 @@ export async function retireCreatedWorkouts(): Promise<number> {
  */
 export async function storeSessionWorkout(w: Workout): Promise<string> {
   if (w.source === 'mine' || (w.source === 'library' && w.kind === 'ride')) return w.id;
-  if (w.source === 'library') { const id = `gen-${newId()}`; await db.workouts.put({ ...w, id, source: 'generated' }); return id; }
+  if (w.source === 'library') { const id = `gen-${newId()}`; await db.workouts.put({ ...w, id, source: 'generated', libraryId: w.libraryId ?? w.id }); return id; }
   await db.workouts.put(w);
   return w.id;
 }
@@ -456,7 +473,7 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
   const c = await credentials();
   if (p.icuEventId && c) { try { await deleteEvent(c, p.icuEventId); } catch { /* harmless */ } }
   let workoutId = w.id;
-  if (w.source === 'library' && w.kind !== 'ride') { workoutId = `gen-${newId()}`; await db.workouts.put({ ...w, id: workoutId, source: 'generated' }); }
+  if (w.source === 'library' && w.kind !== 'ride') { workoutId = `gen-${newId()}`; await db.workouts.put({ ...w, id: workoutId, source: 'generated', libraryId: w.libraryId ?? w.id }); }
   await db.planned.put({ ...p, workoutId, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned', icuEventId: undefined, activityId: undefined, userEdited: p.planId ? true : p.userEdited });
   await pruneOrphanWorkouts();
   notify();
@@ -885,4 +902,87 @@ export async function freshData(data: AppData): Promise<AppData> {
 /** The planned load of one workout: a ride from its steps, anything else from its estimate. */
 export function plannedTss(w: Workout): number {
   return w.kind === 'ride' ? workoutStats(w.blocks).tss : w.estimatedTss ?? 0;
+}
+
+/** A strength session the planner built before 30 Oct 2026 ("Strength A: legs and trunk"), or one of the Library's old level copies ("Build B: …"). */
+const OLD_STRENGTH = /^(Strength|Foundation|Build|Maintain|Light) ([AB]): /;
+
+/** The level an old strength session was built at, from its name or its first exercise's sets and reps. */
+function oldDose(w: Workout): StrengthDose {
+  const m = OLD_STRENGTH.exec(w.name);
+  const word = m?.[1].toLowerCase();
+  if (word && word !== 'strength') return word as StrengthDose;
+  const e = (w.exercises ?? []).find((x) => x.sets && x.reps);
+  if (!e) return 'maintain';
+  if (e.sets! >= 4) return 'build';
+  if (e.sets === 3) return 'foundation';
+  return /10/.test(e.reps ?? '') ? 'light' : 'maintain';
+}
+
+export interface LibraryMove { date: string; from: string; to: string; sent: boolean }
+
+/**
+ * 30 Oct 2026 (the plan engine, 2D): strength sessions a plan put on the calendar before plans were built
+ * from the Library ("Strength A: legs and trunk") are replaced by the Library session the plan would pick
+ * for that week: the same focus (A legs, B upper body) and level, of the quality the week asks for. Date,
+ * plan and sent status are kept; a session already on the Garmin is sent again, replacing the old copy
+ * (without Intervals.icu credentials on this device such a session waits for a device that has them).
+ * Done sessions and sessions added by hand are left alone. Idempotent: a replaced session carries its
+ * Library id and never qualifies again. `dryRun` lists what would change and changes nothing.
+ */
+export async function moveSessionsToLibrary(opts: { dryRun?: boolean } = {}): Promise<{ moves: LibraryMove[]; resent: number; failed: number }> {
+  const out = { moves: [] as LibraryMove[], resent: 0, failed: 0 };
+  const t = today();
+  const planned = (await db.planned.toArray()).filter((p) => p.planId && p.status !== 'completed' && p.date >= t);
+  if (!planned.length) return out;
+  const workouts = new Map((await db.workouts.toArray()).map((w) => [w.id, w]));
+  const old = planned.filter((p) => { const w = workouts.get(p.workoutId); return !!w && w.kind === 'strength' && !w.libraryId && !w.strength && OLD_STRENGTH.test(w.name); });
+  if (!old.length) return out;
+  const c = await credentials();
+  const data = await loadAppData();
+  const plans = await getPlans();
+  // The quality each week asks for, from the plan as it would be built today; heavy when it cannot be worked out.
+  const qualityOf = new Map<string, StrengthQuality>();
+  for (const plan of plans) {
+    try {
+      const layout = await planLayout(data, plan);
+      const built = await buildPlan(data, plan.goal, plan.availability, plan.masters, plan.start, plan.goalDate, plan.away, layout);
+      for (const w of built.weeks) if (w.needs) qualityOf.set(`${plan.id}|${w.start}`, w.needs.strength.quality);
+    } catch { /* heavy, below */ }
+  }
+  const equipmentOf = (planId: string) => plans.find((x) => x.id === planId)?.availability.equipment ?? getCurrentEquipment();
+  const usedInWeek = new Map<string, Set<string>>();
+  for (const p of old.sort((a, b) => a.date.localeCompare(b.date))) {
+    const w = workouts.get(p.workoutId)!;
+    if (p.status === 'sent' && p.icuEventId && !c) continue;   // waits for a device that can send it again
+    const ws = weekStart(p.date);
+    const focus = OLD_STRENGTH.exec(w.name)?.[2] === 'B' ? 'upper' : 'legs';
+    const dose = oldDose(w);
+    const quality = qualityOf.get(`${p.planId}|${ws}`) ?? 'heavy';
+    const eq = equipmentOf(p.planId!);
+    const avoid = usedInWeek.get(ws) ?? new Set<string>();
+    const lib = pickStrength(readyMade(eq).filter((x) => x.kind === 'strength' && x.strength), eq, quality, focus, dose, avoid);
+    if (!lib) continue;
+    avoid.add(lib.id); usedInWeek.set(ws, avoid);
+    out.moves.push({ date: p.date, from: w.name, to: `${lib.name} (${lib.subtitle ?? ''})`, sent: p.status === 'sent' });
+    if (opts.dryRun) continue;
+    const reason = strengthReason(lib.strength!.quality, lib.strength!.focus, dose);
+    const workoutId = await storeSessionWorkout(lib);
+    await db.planned.update(p.id, { workoutId, reason });
+    if (p.status === 'sent' && p.icuEventId && c) {
+      const profile = await db.profile.get('me');
+      try { await sendPlanned(c, { ...p, workoutId }, (await db.workouts.get(workoutId))!, profile ?? undefined); out.resent++; }
+      catch {
+        try { await deleteEvent(c, p.icuEventId); } catch { /* already gone */ }
+        await db.planned.update(p.id, { status: 'planned', icuEventId: undefined });
+        out.failed++;
+      }
+    }
+  }
+  if (!opts.dryRun && out.moves.length) {
+    await pruneOrphanWorkouts();
+    await setSetting('libraryMoveLog', { at: new Date().toISOString(), ...out });
+    notify();
+  }
+  return out;
 }

@@ -146,10 +146,9 @@ describe('Batch 6 A6/A7: the calendar is converted once, and what was on the Gar
 describe('Batch 6 B: plan sessions are stored as Library workouts', () => {
   beforeEach(async () => { await db.delete(); await db.open(); vi.restoreAllMocks(); });
 
-  it('a Library ride by id; a ready-made walk as its own copy; strength as generated; nothing is ever added to the Library', async () => {
+  it('a Library ride by id; a ready-made walk or strength session as its own copy, remembering its Library session; nothing is ever added to the Library', async () => {
     const { storeSessionWorkout } = await import('../ui/planService');
     const { LIBRARY } = await import('../library/workouts');
-    const { generateStrength } = await import('../engine/sessions');
     const lib = LIBRARY.find((w) => w.id === 'trail-long-180')!;
     expect(await storeSessionWorkout(lib)).toBe('trail-long-180');
     expect(await db.workouts.count()).toBe(0);                                   // never copied
@@ -157,9 +156,10 @@ describe('Batch 6 B: plan sessions are stored as Library workouts', () => {
     const copy = await storeSessionWorkout(ready);
     expect(copy).toMatch(/^gen-/);
     expect((await db.workouts.get(copy))?.name).toBe('Easy walk 30 min');
-    const str = generateStrength({ level: 'build', minutes: 40, equipment: ['bodyweight'], variant: 'A', weekInBlock: 2, reason: 'r' });
-    expect(await storeSessionWorkout(str)).toBe(str.id);
-    expect((await db.workouts.get(str.id))?.source).toBe('generated');
+    const str = readyMadeSessions(['bodyweight']).find((w) => w.id === 'lib-sq-endurance-legs')!;
+    const sid = await storeSessionWorkout(str);
+    expect(sid).toMatch(/^gen-/);
+    expect((await db.workouts.get(sid))).toMatchObject({ source: 'generated', libraryId: 'lib-sq-endurance-legs', name: 'Legs: endurance' });
     expect((await db.workouts.toArray()).filter((w) => w.source === 'mine')).toEqual([]);
   });
 

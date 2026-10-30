@@ -124,6 +124,13 @@ export interface RunStep {
 }
 export interface RunSpec { steps: RunStep[]; where?: 'outdoor' | 'treadmill' }
 
+/** What a strength session trains, apart from the muscles (30 Oct 2026). */
+export type StrengthQuality = 'heavy' | 'power' | 'endurance' | 'stability';
+/** How much of it: Foundation 3 × 10–12 moderate, Build 4 × 6–8 heavier, Maintain 2 × 8 at Build weights, Light 2 × 10 light. */
+export type StrengthDose = 'foundation' | 'build' | 'maintain' | 'light';
+/** Legs and trunk, or upper body and posterior chain, or the whole body. */
+export type StrengthFocus = 'legs' | 'upper' | 'full';
+
 export interface Workout {
   updatedAt?: string;
   /** The descriptive form of a named library ride ("Sweet Spot 3 × 12"); the name itself is a place. */
@@ -155,6 +162,14 @@ export interface Workout {
   trainerOnly?: boolean;
   /** A fitness test whose recording the app turns into results (FTP, VO2max, threshold heart rate). */
   test?: 'ramp' | '20min';
+  /**
+   * A Library strength session's quality, focus and equipment (30 Oct 2026). `dose` is set on the copy
+   * a plan or the rider puts on the calendar; the Library's own session carries none and is shown at
+   * whatever level the rider picks.
+   */
+  strength?: { quality: StrengthQuality; focus: StrengthFocus; needs: Equipment[]; dose?: StrengthDose };
+  /** For a calendar copy of a Library session: the Library session it came from. */
+  libraryId?: string;
 }
 
 export interface WorkoutStats {
@@ -184,6 +199,8 @@ export interface PlannedWorkout {
   userEdited?: boolean;
   /** When a session was moved here, the date it came from. */
   movedFrom?: string;
+  /** Why the plan put this session here, in one plain sentence (30 Oct 2026); hand-added sessions have none. */
+  reason?: string;
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */
   rpe?: number;
   loggedSeconds?: number;

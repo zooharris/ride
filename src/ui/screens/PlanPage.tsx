@@ -142,6 +142,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
                   <span class="small"><b>Week of {fmtDate(w.start, { month: 'short', day: 'numeric' })}</b> <span class="muted">· {w.label || w.phase}{away ? ' · away part of the week' : ''}</span></span>
                   <span class="faint small">{ws.length} session{ws.length === 1 ? '' : 's'} · {w.tss} TSS</span>
                 </summary>
+                {w.summary && <p class="small muted" style="margin:8px 0 0">{w.summary.charAt(0).toUpperCase() + w.summary.slice(1)}</p>}
                 <div class="stack" style="gap:6px;margin-top:10px">
                   {ws.length === 0 && <span class="faint small">Nothing planned this week.</span>}
                   {ws.map((p) => {
@@ -151,7 +152,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
                       <a class={`cal-item ${p.status}`} key={p.id} href={sessionHref(p, wk.id, 'calendar', p.date, data.rides)}>
                         <StatusMark status={statusOf(p.status)} />
                         <KindDot kind={wk.kind} big />
-                        <div class="t"><b>{wk.name}</b><span>{fmtDate(p.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {KIND_LABEL[wk.kind]}{wk.purpose ? ` · ${wk.purpose}` : ''}</span></div>
+                        <div class="t"><b>{wk.name}</b><span>{fmtDate(p.date, { weekday: 'short', month: 'short', day: 'numeric' })} · {KIND_LABEL[wk.kind]}{p.reason ? ` · ${p.reason}` : wk.purpose ? ` · ${wk.purpose}` : ''}</span></div>
                         <StatusPill status={statusOf(p.status)} />
                       </a>
                     );
@@ -183,7 +184,7 @@ function weeksOf(plan: ActivePlan, sessions: PlannedWorkout[], mine: Workout[]):
     const st = stored.get(ws);
     const lab = st?.label || label.get(ws) || '';
     const phase = st?.phase ?? ((['recovery', 'taper', 'peak', 'build', 'base'] as const).find((ph) => lab.toLowerCase().startsWith(ph)) ?? 'base');
-    return { start: ws, phase, label: lab, tss: Math.round(load.get(ws) ?? 0) };
+    return { start: ws, phase, label: lab, tss: Math.round(load.get(ws) ?? 0), summary: st?.summary };
   });
 }
 

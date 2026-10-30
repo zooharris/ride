@@ -187,6 +187,19 @@ const CORE: Workout[] = [
     purpose: 'Six two-minute efforts well above threshold with four minutes easy between. Heart rate will not settle in two minutes, so the watch\'s target is a floor to pass, not a band to hold: go by feel, as hard as you can keep even for the whole two minutes.',
     physiology: 'Anaerobic capacity; tolerance of hard efforts.',
     blocks: [warm(12), rep(6, 'Anaerobic', step(2, 1.2, { intensityHigh: 1.3 }), step(4, 0.5, { label: 'Easy' })), step(4, 0.62, { label: 'Zone 2' }), cool(8)] }),
+  // 30 Oct 2026 (the plan engine, from the sweep): short hard rides for 45-minute days, by heart rate and by power.
+  lib({ id: 'lib-vo2-hr-45', name: 'Short VO2max 4 x 4 by heart rate', family: 'vo2max', phases: ['build', 'peak'], bases: ['power', 'hr'],
+    purpose: 'Four four-minute efforts in forty-five minutes: VO2max for a rider training by heart rate on a short day. Start each effort hard and hold it; the heart rate takes a minute to get there.',
+    physiology: 'Maximal oxygen uptake.',
+    blocks: [warm(10), rep(4, 'VO2max', step(4, 1.1, { intensityHigh: 1.18 }), step(3, 0.5, { label: 'Easy' })), cool(7)] }),
+  lib({ id: 'lib-anaerobic-45', name: 'Short anaerobic 6 x 1', family: 'anaerobic', phases: ['peak'], bases: ['power'],
+    purpose: 'Six one-minute efforts far above threshold in forty-five minutes, three minutes easy between: the capacity to attack or bridge, on a short day.',
+    physiology: 'Anaerobic capacity and buffering.',
+    blocks: [warm(12), rep(6, 'Anaerobic', step(1, 1.3, { intensityHigh: 1.4 }), step(3, 0.5)), cool(9)] }),
+  lib({ id: 'lib-anaerobic-hr-45', name: 'Short anaerobic 5 x 2 by heart rate', family: 'anaerobic', phases: ['peak'], bases: ['power', 'hr'],
+    purpose: 'Five two-minute efforts well above threshold in forty-five minutes. Heart rate will not settle in two minutes, so its target is a floor to pass: go by feel, as hard as you can keep even for the whole two minutes.',
+    physiology: 'Anaerobic capacity; tolerance of hard efforts.',
+    blocks: [warm(10), rep(5, 'Anaerobic', step(2, 1.2, { intensityHigh: 1.3 }), step(3, 0.5, { label: 'Easy' })), cool(10)] }),
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */

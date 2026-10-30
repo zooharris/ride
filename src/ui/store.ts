@@ -88,12 +88,12 @@ export function useAppData(): AppData {
 }
 
 /** Ready-made strength, mobility and walk sessions, built for the equipment the rider told the planner about. */
-let readyCache: { key: string; list: Workout[] } = { key: '', list: [] };
+const readyCache = new Map<string, Workout[]>();
 export const DEFAULT_EQUIPMENT: Equipment[] = ['bodyweight', 'dumbbells', 'bench', 'outdoor-walk'];
 export function readyMade(equipment: Equipment[] = currentEquipment): Workout[] {
   const key = [...equipment].sort().join(',');
-  if (readyCache.key !== key) readyCache = { key, list: readyMadeSessions(equipment) };
-  return readyCache.list;
+  if (!readyCache.has(key)) readyCache.set(key, readyMadeSessions(equipment));
+  return readyCache.get(key)!;
 }
 let currentEquipment: Equipment[] = DEFAULT_EQUIPMENT;
 export function setCurrentEquipment(e: Equipment[]): void { if (e.length) currentEquipment = e; }
@@ -105,8 +105,10 @@ export function allWorkouts(mine: Workout[]): Workout[] {
 }
 
 export function findWorkout(mine: Workout[], id: string): Workout | undefined {
-  return mine.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id) ?? readyMade().find((w) => w.id === id);
+  // A session the rider's equipment does not allow (shown under "Everything, gym included") is still found.
+  return mine.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id) ?? readyMade().find((w) => w.id === id) ?? readyMade(EVERY_EQUIPMENT).find((w) => w.id === id);
 }
+const EVERY_EQUIPMENT: Equipment[] = ['bodyweight', 'dumbbells', 'bench', 'kettlebell', 'band', 'barbell', 'pullup-bar', 'dip-bars', 'treadmill', 'outdoor-walk'];
 
 /**
  * Put a workout on a date. A ready-made session is stored as its own copy
@@ -119,7 +121,7 @@ export async function scheduleWorkout(w: Workout, date: string, basis: 'power' |
   let id = w.id;
   if (w.source === 'library' && w.kind !== 'ride') {
     id = `gen-${newId()}`;
-    await db.workouts.put({ ...w, id, source: 'generated' });
+    await db.workouts.put({ ...w, id, source: 'generated', libraryId: w.libraryId ?? w.id });
   }
   await db.planned.put({ id: newId(), date, workoutId: id, basis: w.bases.includes(basis) ? basis : w.bases[0], status: 'planned' });
   notify();

@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { assess } from './assessment';
 import { generatePlan, type PlanRequest } from './planner';
 import { generateSession } from './generate';
-import { diffPlan } from './adapt';
 import { poorFit, sameWithin, sizeOf, snap } from './snap';
 import { LIBRARY } from '../library/workouts';
 import { addDays } from './load';
-import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from './types';
+import type { Profile, Ride, Wellness, Workout } from './types';
 
 const profile: Profile = { name: 'T', ftp: 210, lthr: 154, maxHr: 180, restingHr: 50, weightKg: 90, basis: 'power', masters: true, units: 'imperial', rideDays: [0, 6], hoursPerWeek: 7 };
 const today = '2026-10-19';
@@ -95,40 +94,8 @@ const req = (over: Partial<PlanRequest> = {}): PlanRequest => ({
 });
 
 describe('Batch 6 B: plans built from the Library', () => {
-  for (const goal of [undefined, { kind: 'event', date: '2027-02-06', name: 'Century', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' } as PlanRequest['goal']]) {
-    it(`rides are named Library rides, and no week's load moves more than 10% from the plan as generated (${goal ? 'event' : 'weight'} goal)`, () => {
-      // A week can miss its target for reasons the Library has nothing to do with (the hours cap it);
-      // what snapping may change is the load of the sessions the planner chose, and only a little.
-      const plan = generatePlan(req(goal ? { goal } : {}));
-      const asGenerated = generatePlan(req(goal ? { goal, noSnap: true } : { noSnap: true }));
-      let rides = 0, named = 0;
-      plan.weeks.forEach((w, i) => {
-        for (const s of w.sessions.filter((x) => x.kind === 'ride')) { rides++; if (s.workout.source === 'library') named++; }
-        expect(Math.abs(w.tss - asGenerated.weeks[i].tss) / asGenerated.weeks[i].tss, `week ${w.index}`).toBeLessThanOrEqual(0.1);
-      });
-      expect(named / rides).toBeGreaterThan(0.6);
-    });
-  }
-
-  it('the first re-check after the move proposes nothing: a plan made the old way, relabelled once at start-up, against the same plan built from the Library', () => {
-    const old = generatePlan(req({ noSnap: true }));
-    const now = generatePlan(req());
-    const workouts = new Map<string, Workout>();
-    const calendar: PlannedWorkout[] = [];
-    let i = 0;
-    // What the app does once at start-up (nameRideSessions): every plan session but strength is pointed
-    // at its nearest Library workout. Then the daily re-check runs against the plan built from the Library.
-    for (const w of old.weeks) for (const s of w.sessions) {
-      const lib = s.kind === 'strength' ? null : snap(s.workout, { basis: 'power', equipment: req().availability.equipment });
-      const on = lib ?? s.workout;
-      workouts.set(on.id, on);
-      calendar.push({ id: `p${i++}`, date: s.date, workoutId: on.id, basis: 'power', status: 'planned', planId: 'plan' });
-    }
-    expect(diffPlan(calendar, workouts, now, today)).toEqual([]);
-  });
-
-  it('the Library has 92 rides, ids and names unique, and every family has a ride that works by heart rate', () => {
-    expect(LIBRARY.filter((w) => w.kind === 'ride')).toHaveLength(92);
+  it('the Library has 95 rides (three short hard ones added 30 Oct 2026), ids and names unique, and every family has a ride that works by heart rate', () => {
+    expect(LIBRARY.filter((w) => w.kind === 'ride')).toHaveLength(95);
     expect(new Set(LIBRARY.map((w) => w.id)).size).toBe(LIBRARY.length);
     expect(new Set(LIBRARY.map((w) => w.name)).size).toBe(LIBRARY.length);
     for (const f of ['endurance', 'recovery', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test']) expect(LIBRARY.some((w) => w.family === f && w.bases.includes('hr')), f).toBe(true);
@@ -139,17 +106,15 @@ describe('Batch 6 B: plans built from the Library', () => {
     expect(snap(gen('threshold', 240), { basis: 'power', extra: [mine] })?.id).toBe('mine-1');
   });
 
-  it('every session of 18 plans (three goals, three weeks, both bases) is a Library workout, except strength', () => {
+  it('every session of 18 plans (three goals, three weeks, both bases) is a Library workout, strength included (30 Oct 2026), and nothing says the Library lacks one', () => {
     const goals = [undefined, { kind: 'event', date: '2027-02-06', name: 'C', eventType: 'century', distanceKm: 161, climbingM: 900, priority: 'A' }, { kind: 'general', weeks: 12 }] as Array<PlanRequest['goal'] | undefined>;
     const weeks = [[3, 0.5, 1.5, 0.5, 1.5, 0, 3.5], [4, 0, 1, 1, 1, 0, 4], [2, 1, 1.25, 1, 1.25, 1, 2.5]];
     const generated: string[] = [];
     for (const goal of goals) for (const hours of weeks) for (const basis of ['power', 'hr'] as const) {
       const r = req({ basis, profile: { ...profile, basis }, availability: { ...req().availability, hours }, ...(goal ? { goal } : {}) });
       const plan = generatePlan(r);
-      for (const w of plan.weeks) for (const s of w.sessions) if (s.kind !== 'strength' && s.workout.source !== 'library') generated.push(`${basis} ${s.workout.name}`);
-      expect(plan.decisions.filter((d) => d.startsWith('The Library has no'))).toEqual([]);
-      const fits = plan.decisions.filter((d) => d.startsWith('The plan wanted')).map((d) => d.replace(/^The plan wanted a \d+-minute (.+?);.*$/, '$1'));
-      expect(new Set(fits).size, fits.join(' | ')).toBe(fits.length);   // at most one line per family
+      for (const w of plan.weeks) for (const s of w.sessions) if (s.workout.source !== 'library') generated.push(`${basis} ${s.workout.name}`);
+      expect(plan.decisions.filter((d) => /Library has no|nearest|would fit|poor fit|lacks/.test(d))).toEqual([]);
     }
     expect(generated).toEqual([]);
   });

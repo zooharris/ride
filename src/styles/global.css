@@ -1389,3 +1389,20 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .coach-zt caption { text-align: left; font-weight: 600; font-size: 13px; color: var(--ink-2); padding-bottom: 4px; }
 .coach-zt th, .coach-zt td { padding: 3px 8px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
 .coach-zt tr.moved td { font-weight: 700; }
+
+/* Library, Strength tab (30 Oct 2026): two switches, then sessions grouped by what they train. */
+.str-switches { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 0 0 10px; }
+.str-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.str-switch .seg { flex-wrap: wrap; max-width: 100%; }
+.str-switch .seg button { padding: 7px 10px; }
+.str-group { margin: 0 0 24px; }
+.str-group h2 { margin-bottom: 4px; }
+.str-lead { margin: 0 0 12px; max-width: 66ch; }
+.pref-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.pref-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.pref-row > span { min-width: 72px; }
+.pref-row .seg button { padding: 6px 10px; font-size: 13px; }
+/* Today: why the plan put a session here (30 Oct 2026), under the row, aligned with the name. */
+.cal-item .cal-why { flex: 0 0 100%; margin: 0 0 0 98px; max-width: calc(100% - 98px); line-height: 1.35; white-space: normal; }
+.cal-item > a.row:has(> .cal-why) { flex-wrap: wrap; row-gap: 4px; }
+@media (max-width: 560px) { .cal-item .cal-why, .ex-strip.under { margin-left: 0; max-width: 100%; } }

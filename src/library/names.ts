@@ -6,7 +6,7 @@
  * toward Washington; indoor rides take the loops near home, shortest first.
  * Tests keep their plain names. The descriptive name becomes the subtitle.
  *
- * Unused names (23 Oct 2026, after Batch 6 B2): Jones Point (27) east. More names are needed
+ * Unused names: none (30 Oct 2026: Jones Point, Pimmit Run and Chain Bridge went to the short hard rides). More names are needed
  * for more rides; the plan never adds rides itself (Batch 6, B2).
  */
 export const RIDE_NAMES: Record<string, string> = {
@@ -104,4 +104,8 @@ export const RIDE_NAMES: Record<string, string> = {
   'lib-vo2-hr-4x4': 'Ashburn',
   'lib-vo2-hr-5x5': 'Sterling',
   'lib-anaerobic-hr': 'Shirlington',
+  // 30 Oct 2026 (the plan engine): short hard rides for 45-minute days.
+  'lib-vo2-hr-45': 'Jones Point',
+  'lib-anaerobic-45': 'Pimmit Run',
+  'lib-anaerobic-hr-45': 'Chain Bridge',
 };

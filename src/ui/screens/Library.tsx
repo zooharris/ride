@@ -17,6 +17,7 @@ import { PictureStrip, picturedCount } from '../ExercisePictures';
 import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
 import { playerOffered } from '../../player/platform';
 import { TrainerOnlyTag } from '../Thumbs';
+import { StrengthLibrary } from '../StrengthLibrary';
 
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks'], ['run', 'Runs']];
@@ -53,10 +54,11 @@ export function Library({ data }: { data: AppData }) {
           {ready.length === 0 && mine.length === 0 && <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length, pick another type, or clear the search.</span></div>}
           <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} />)}</div>
         </>
+      ) : tab === 'strength' ? (
+        <StrengthLibrary f={f} onAdd={setAdding} />
       ) : (
         <>
           <p class="muted small" style="margin:0 0 14px;max-width:62ch">
-            {tab === 'strength' && 'Built for your equipment from the planner’s own sessions: the same lifts, sets and reps a plan would give you, at each level. Add one to any date, or make your own with New workout.'}
             {tab === 'mobility' && 'Stretching routines by what cycling tightens. Each one names the stretches and how long to hold them. Add one to any date, or make your own with New workout.'}
             {tab === 'walk' && 'Walks for days the bike is out, treadmill or outdoors, with or without a pack. Most are easy (no minimum, up to the top of zone 2); the Zone 2, Brisk, Hill and Incline walks get the heart rate up with speed or grade. Add one to any date, or make your own with New workout.'}
             {tab === 'run' && 'Runs by heart rate, sent to your Garmin as running workouts: easy, long, strides, tempo and hills. Add one to any date, whether or not your plan schedules runs; the plan itself only ever places the easy ones. With a threshold pace in Settings, each run also shows the pace its bands imply, as a guide.'}

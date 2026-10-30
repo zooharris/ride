@@ -59,6 +59,8 @@ function sameShape(a: Workout, b: Workout, comparePack = true): boolean {
  * next two weeks) allows 15 minutes / 15%.
  */
 export function sameWithin(before: Workout, after: Workout, wide = false): boolean {
+  // A strength session at another level is a different session for the rider (30 Oct 2026).
+  if (before.kind === 'strength' && after.kind === 'strength' && (before.strength?.dose ?? '') !== (after.strength?.dose ?? '') && before.strength && after.strength) return false;
   if (before.id === after.id || before.name === after.name) return true;
   if (before.kind === 'strength' || !sameShape(before, after)) return false;
   const b = sizeOf(before), a = sizeOf(after);

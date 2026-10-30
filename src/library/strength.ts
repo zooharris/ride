@@ -1,4 +1,4 @@
-import type { Equipment, Exercise } from '../engine/types';
+import type { Equipment, Exercise, StrengthQuality } from '../engine/types';
 
 /**
  * Strength exercises for cyclists, by movement pattern. Each one says how to do
@@ -6,6 +6,15 @@ import type { Equipment, Exercise } from '../engine/types';
  * so a rider with only bodyweight still gets a complete session.
  */
 export type Pattern = 'squat' | 'hinge' | 'single-leg' | 'push' | 'pull' | 'carry' | 'rotate' | 'trunk' | 'hip';
+
+/**
+ * What a strength exercise trains, apart from the muscles (30 Oct 2026): heavy strength
+ * (loadable lifts done for few, hard reps), power (moved fast), strength endurance (holds,
+ * carries, high reps) and stability (one leg or one side at a time, resisting rotation).
+ * Each exercise has one or two; a session's quality is what most of its exercises share.
+ */
+export type { StrengthQuality } from '../engine/types';
+export const QUALITY_LABEL: Record<StrengthQuality, string> = { heavy: 'Heavy strength', power: 'Power', endurance: 'Strength endurance', stability: 'One leg at a time' };
 
 export interface ExerciseDef extends Omit<Exercise, 'sets' | 'reps' | 'load'> {
   id: string;
@@ -17,10 +26,36 @@ export interface ExerciseDef extends Omit<Exercise, 'sets' | 'reps' | 'load'> {
   reps?: string;
   /** An explosive move that goes first in any session that includes it, while the legs are fresh (swings). */
   first?: true;
+  /** What it trains: heavy strength, power, strength endurance, stability (one or two). */
+  qualities: StrengthQuality[];
 }
 
 const E = (id: string, pattern: Pattern, name: string, equipment: Equipment[], cue: string, why: string, loadable = true, unilateral = false, reps?: string): ExerciseDef =>
-  ({ id, pattern, name, equipment, cue, why, loadable, unilateral, ...(reps ? { reps } : {}) });
+  ({ id, pattern, name, equipment, cue, why, loadable, unilateral, qualities: QUALITIES[id] ?? [], ...(reps ? { reps } : {}) });
+
+/** Each exercise's qualities (30 Oct 2026). Kept beside the list so the list itself reads as before. */
+const QUALITIES: Record<string, StrengthQuality[]> = {
+  // squat
+  'goblet-squat': ['heavy'], 'bw-squat': ['endurance'], 'db-front-squat': ['heavy'], 'wall-sit': ['endurance'], 'back-squat': ['heavy'], 'kb-goblet-squat': ['heavy'],
+  // hinge
+  'db-rdl': ['heavy'], 'hip-thrust': ['heavy'], 'glute-bridge': ['endurance'], 'single-leg-rdl': ['stability'], 'single-leg-bridge': ['stability', 'endurance'],
+  'db-swing': ['power'], 'db-deadlift': ['heavy'], 'bb-deadlift': ['heavy'], 'bb-good-morning': ['heavy'], 'band-good-morning': ['endurance'],
+  'kb-swing': ['power'], 'kb-deadlift': ['heavy'], 'kb-sl-rdl': ['stability'],
+  // single leg
+  'split-squat': ['stability', 'heavy'], 'reverse-lunge': ['stability'], 'step-up': ['power', 'stability'], 'lateral-lunge': ['stability'], 'walking-lunge': ['endurance', 'stability'], 'kb-rack-lunge': ['stability', 'heavy'],
+  // push
+  'db-bench': ['heavy'], 'pushup': ['endurance', 'power'], 'db-overhead': ['heavy', 'power'], 'floor-press': ['heavy'], 'dip': ['heavy'], 'bench-dip': ['endurance'], 'kb-press': ['power', 'heavy'],
+  // pull
+  'one-arm-row': ['heavy'], 'bent-row': ['heavy', 'power'], 'band-pull-apart': ['endurance'], 'reverse-fly': ['endurance'], 'band-row': ['endurance'], 'db-pullover': ['endurance'],
+  'pull-up': ['heavy'], 'band-lat-pulldown': ['endurance'], 'bb-row': ['heavy'], 'band-face-pull': ['endurance', 'stability'], 'kb-row': ['heavy'],
+  // trunk and rotation
+  'dead-bug': ['stability'], 'plank': ['endurance'], 'side-plank': ['stability', 'endurance'], 'bird-dog': ['stability'], 'hollow-hold': ['endurance'], 'kb-get-up': ['power', 'stability'],
+  pallof: ['stability'], 'band-woodchop': ['power'], 'russian-twist': ['endurance'], 'kb-halo': ['power', 'stability'],
+  // hips and calves
+  clamshell: ['stability'], 'side-lying-leg-raise': ['stability'], 'calf-raise': ['endurance'], 'monster-walk': ['stability', 'endurance'],
+  // carries
+  'farmer-carry': ['endurance', 'heavy'], 'suitcase-carry': ['stability'], 'overhead-carry': ['stability'], 'kb-suitcase-carry': ['stability'], 'kb-rack-carry': ['endurance'],
+};
 
 export const EXERCISES: ExerciseDef[] = [
   // Squat

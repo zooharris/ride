@@ -3,7 +3,7 @@ import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { autoSync, credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
-import { coachReviewAfterSync, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
+import { coachReviewAfterSync, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -68,6 +68,14 @@ export function App() {
       // Batch 6 B4: rides the plan put on the calendar before plans were built from the Library take
       // their Library names, after the walk re-target above.
       try { if (await nameRideSessions() && c) await syncDevices(c); } catch { /* runs again at the next start */ }
+      // 30 Oct 2026 (the plan engine): strength the planner built itself moves onto the Library's sessions, once.
+      try {
+        const r = await moveSessionsToLibrary();
+        if (r.moves.length) {
+          if (c) await syncDevices(c);
+          toast({ ok: !r.failed, text: `Your plan’s sessions now come from the Library.${r.resent ? ` ${r.resent} re-sent to your Garmin.` : ''}${r.failed ? ` ${r.failed} could not be re-sent: use Send on the Calendar.` : ''}` });
+        }
+      } catch { /* runs again at the next start */ }
       // Batch 6 B2.6: workouts Part B briefly let a plan add to the Library are retired.
       // Rides recorded by the player that have not reached Intervals.icu yet go up now (quietly; Today shows any still waiting).
       try { const r = await sendWaitingRides(); if (r.sent) { notify(); toast({ ok: true, text: `Saved ${r.sent} recorded ride${r.sent === 1 ? '' : 's'} to Intervals.icu.` }); } await tidyRecordings(); } catch { /* tried again next time */ }

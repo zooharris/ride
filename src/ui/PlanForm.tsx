@@ -1,5 +1,6 @@
 import { addDays, today } from '../engine/load';
 import { mayOf, type Availability, type AwayRange, type MaySchedule } from '../engine/planner';
+import { DEFAULT_PREFS } from '../engine/shop';
 import type { EventType, Goal } from '../engine/goals';
 import type { Equipment, Profile, SessionKind } from '../engine/types';
 import { toast } from './Toast';
@@ -71,6 +72,7 @@ export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate,
   );
 }
 
+const PREF_LABEL = { prefer: 'Prefer', fine: 'Fine', needed: 'Only if needed' } as const;
 const NEVER_LABEL = { ride: 'Ride', strength: 'Strength', walk: 'Walk', run: 'Run', mobility: 'Mobility' } as const;
 
 /** The rider's week: hours, where they can ride, standing commitments, equipment, recovery rhythm. */
@@ -97,6 +99,19 @@ export function WeekFields({ av, setAv, masters, setMasters, profile }: { av: Av
             {(['strength', 'walk', 'run', 'mobility'] as const).map((k) => <button key={k} class={`chip${may[k] ? ' on' : ''}`} aria-pressed={may[k]} onClick={() => setMay(k)}>{MAY_LABEL[k]}</button>)}
           </div>
           <span class="faint small">Turn off anything you never want planned. Per day, "Always" places a kind every week and "Never" keeps it off that day.</span>
+          {(['walk', 'run', 'mobility'] as const).some((k) => may[k]) && (
+            <div class="pref-rows">
+              {(['walk', 'run', 'mobility'] as const).filter((k) => may[k]).map((k) => (
+                <div class="pref-row" key={k}>
+                  <span class="small"><b>{MAY_LABEL[k]}</b></span>
+                  <div class="seg" role="group" aria-label={`${MAY_LABEL[k]}: how much`}>
+                    {(['prefer', 'fine', 'needed'] as const).map((p) => <button key={p} class={(av.prefs?.[k] ?? 'fine') === p ? 'on' : ''} aria-pressed={(av.prefs?.[k] ?? 'fine') === p} onClick={() => setAv({ ...av, prefs: { ...DEFAULT_PREFS, ...av.prefs, [k]: p } })}>{PREF_LABEL[p]}</button>)}
+                  </div>
+                </div>
+              ))}
+              <span class="faint small">Prefer: a walk or run takes a short day an easy ride would otherwise fill, and mobility gets more time on rest days. Only if needed: just the days the bike can’t be used (for mobility, only after the long ride and strength).</span>
+            </div>
+          )}
         </div>
         <div class="week-table">
           <div class="week-head"><span>Day</span><span>Hours</span><span title="Outdoors: the ride can be shaped for the road or trail. Indoors: trainer-shaped. No bike: no ride that day; strength, a walk or mobility can still go there.">Where you can ride</span><span title="A standing commitment the plan must keep. Everything else is the app's choice.">Commitment</span></div>

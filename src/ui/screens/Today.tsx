@@ -261,6 +261,7 @@ export function Today({ data }: { data: AppData }) {
           {!doneRide && <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>}
           {doneRide ? <DoneHero ride={doneRide} profile={profile} fallback={<WorkoutProfile blocks={workout.blocks} height={96} />} />
             : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>}
+          {plan.reason && <p style="font-size:14px;margin:0 0 4px">{plan.reason}</p>}
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
             {!workout.trainerOnly && plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
@@ -288,6 +289,7 @@ export function Today({ data }: { data: AppData }) {
                 {(() => { const r = p.status === 'completed' && p.activityId ? data.rides.find((x) => x.id === p.activityId) : undefined; return r ? <ActivityPicture ride={r} w={w} profile={profile} height={52} width={88} /> : <PlanPicture w={w!} />; })()}
                 <div class="t"><b>{w!.name}</b>{rs ? <span>{clock(rs.seconds)} · {rs.tss} TSS · {w!.subtitle ?? FAMILY_LABEL[w!.family]}{p.status === 'completed' ? ' · done' : ''}{rideCount > 1 ? ` · Ride ${rideNo(p)} of ${rideCount}` : ''}</span> : <span>{KIND_LABEL[w!.kind]}{w!.minutes ? ` · ${w!.minutes} min` : ''}{w!.kind === 'run' ? ` · ${runBandText(w!, profile)}` : ''}{p.status === 'completed' ? (p.activityId && data.rides.some((r) => r.id === p.activityId) ? ' · tap for the recording' : ' · logged by hand') : ' · tap to see it or log it'}</span>}</div>
                 <StatusPill status={statusOf(p.status)} />
+                {p.reason && p.status !== 'completed' && <span class="small muted cal-why">{p.reason}</span>}
                 {(w!.kind === 'strength' || w!.kind === 'mobility') && w!.exercises && <PictureStrip exercises={w!.exercises} max={5} under />}
               </a>
               {p.status !== 'completed' && <button class="icon-btn" onClick={() => setChanging(p)} title="Move, replace or remove" aria-label={`Move, replace or remove ${w!.name}`}><Icon.more /></button>}

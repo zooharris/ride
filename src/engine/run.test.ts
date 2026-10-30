@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generatePlan, type Availability, type PlanRequest } from './planner';
-import { generateRun, generateStrength } from './sessions';
+import { generateRun } from './sessions';
 import { runMinutes, runSeconds, runStepsLine, paceHint, parsePace, formatPace } from './run';
 import { runEvent } from '../sync/intervals';
 import { assess } from './assessment';
@@ -135,14 +135,16 @@ describe('runs: the planner', () => {
 });
 
 describe('the swing goes first', () => {
-  it('a legs day with a kettlebell starts with the swing whenever the swing is in it', () => {
-    for (let wk = 0; wk < 6; wk++) {
-      const ex = generateStrength({ level: 'foundation', minutes: 45, equipment: ['bodyweight', 'dumbbells', 'bench', 'kettlebell'], variant: 'A', weekInBlock: wk, reason: '' }).exercises!.map((e) => e.name);
+  it('every Library strength session with a swing in it starts with the swing', async () => {
+    const { readyMadeSessions } = await import('../library/sessions');
+    const all = readyMadeSessions(['bodyweight', 'dumbbells', 'bench', 'kettlebell', 'band', 'barbell', 'pullup-bar', 'dip-bars']).filter((w) => w.kind === 'strength');
+    let seen = 0;
+    for (const w of all) {
+      const ex = w.exercises!.map((e) => e.name);
       const i = ex.findIndex((n) => /swing/i.test(n));
-      if (i >= 0) expect(i).toBe(0);
+      if (i >= 0) { seen++; expect(i, w.name).toBe(0); }
     }
-    const a0 = generateStrength({ level: 'foundation', minutes: 45, equipment: ['bodyweight', 'dumbbells', 'bench', 'kettlebell'], variant: 'A', weekInBlock: 0, reason: '' }).exercises!.map((e) => e.name);
-    expect(a0[0]).toBe('Kettlebell swing');
+    expect(seen).toBeGreaterThan(3);
   });
 });
 

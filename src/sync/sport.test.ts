@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { durationFor, intensityFraction, sessionSteps, sportOf } from './intervals';
-import { readyMadeSessions } from '../library/sessions';
+import { readyMadeSessions, strengthTss } from '../library/sessions';
+import { redose } from '../library/strengthSessions';
 import type { Ride } from '../engine/types';
 
 describe('activity types from Intervals.icu', () => {
@@ -38,9 +39,9 @@ describe('the duration the app counts', () => {
 describe('strength and mobility as Garmin steps', () => {
   const all = readyMadeSessions(['bodyweight', 'dumbbells', 'bench', 'treadmill']);
   it('sets end on a lap press, rests and holds are timed, ranges are written with "to"', () => {
-    const w = all.find((x) => x.kind === 'strength' && /Foundation A/.test(x.name))!;
+    const w = redose(all.find((x) => x.kind === 'strength' && x.name === 'Heavy legs')!, 'foundation', strengthTss);
     const lines = sessionSteps(w);
-    expect(lines.some((l) => /^- Press lap Goblet squat 10 to 12 reps 50s$/.test(l))).toBe(true);
+    expect(lines.some((l) => /^- Press lap Dumbbell front squat 10 to 12 reps \d+s$/.test(l)), lines.join('\n')).toBe(true);
     // Step text carries no symbols and no bare ranges, which Intervals.icu could read as targets; numerals are fine.
     for (const l of lines.filter((x) => /^- /.test(x))) expect(l.replace(/ \S+$/, '')).toMatch(/^- [A-Za-z0-9 ]+$/);
     expect(lines).toContain('- Rest 1m30s');

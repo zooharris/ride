@@ -1,7 +1,18 @@
 import type { Equipment, Exercise, Workout } from '../engine/types';
-import { estimateSessionTss, generateMobility, generateRun, generateStrength, generateWalk } from '../engine/sessions';
+import { estimateSessionTss, generateMobility, generateRun, generateWalk } from '../engine/sessions';
 import { exercisesFor, firstFirst, lightLoad, type Pattern } from './strength';
 import { MOBILITY } from './mobility';
+import { STRENGTH_SESSIONS, hasNeeds, strengthWorkout } from './strengthSessions';
+
+/** Load estimate for a strength session of these minutes and effort. */
+export const strengthTss = (minutes: number, effort: number) => estimateSessionTss({ kind: 'strength', minutes, effort });
+
+/**
+ * Themed sessions retired on 30 Oct 2026: each is the same session as one of the strength sessions by
+ * quality under a near-identical name ("Legs: heavy" beside "Heavy legs"), which is the duplication the
+ * tab was rebuilt to remove. Calendar entries keep their own copies.
+ */
+const RETIRED_THEMED = new Set(['heavy-legs', 'power', 'kb-legs', 'balance']);
 
 /**
  * Ready-made non-riding sessions for the Library. The level-based strength
@@ -15,21 +26,11 @@ const NAMED_BY_MINUTES = new Set(['before-long-ride', 'after-trainer', 'feet-ank
 export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   const eq = equipment.length ? equipment : ['bodyweight' as Equipment];
   const fix = (w: Workout, id: string, prefix?: string): Workout => ({ ...w, id, source: 'library', name: prefix ? w.name.replace(/^Strength /, `${prefix} `) : w.name });
-  const LEVEL: Record<string, string> = { foundation: 'Foundation', build: 'Build', maintain: 'Maintain', light: 'Light' };
   const out: Workout[] = [];
 
-  // Strength by level, the planner's own A/B days
-  const levels: Array<['foundation' | 'build' | 'maintain' | 'light', string]> = [
-    ['foundation', 'Moderate loads, 3 sets: learn the movements, early in a block.'],
-    ['build', 'Heavier, 4 sets: the off-season strength builder.'],
-    ['maintain', 'Two sets at a working weight: keeps strength while the riding gets hard.'],
-    ['light', 'Light and quick: recovery and taper weeks.'],
-  ];
-  for (const [level, reason] of levels) {
-    const minutes = level === 'build' ? 50 : level === 'light' ? 30 : 40;
-    out.push(fix(generateStrength({ level, minutes, equipment: eq, variant: 'A', weekInBlock: 0, reason }), `lib-str-${level}-a`, LEVEL[level]));
-    out.push(fix(generateStrength({ level, minutes, equipment: eq, variant: 'B', weekInBlock: 1, reason }), `lib-str-${level}-b`, LEVEL[level]));
-  }
+  // Strength by quality and focus (30 Oct 2026): fixed sessions with the equipment they need. A
+  // rider sees those their equipment allows; the plan picks from the same list and sets the level.
+  for (const d of STRENGTH_SESSIONS) if (hasNeeds(d.needs, eq)) out.push(strengthWorkout(d, 'build', strengthTss));
 
   // Themed strength sessions
   const themed: Array<{ id: string; name: string; minutes: number; purpose: string; physiology?: string; patterns: Pattern[]; sets: number; reps: string; load: string; only?: Equipment[]; needs?: Equipment; needsAny?: Equipment[]; prefer?: string[]; effort: number }> = [
@@ -52,6 +53,7 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
     { id: 'aero-trunk', effort: 4, name: 'Trunk for the aero position (20 min)', minutes: 20, purpose: 'A front and side trunk that holds a low position for hours.', physiology: 'Holding the aero position is a long isometric effort for the trunk; when it tires, the lower back and shoulders take over and the position collapses.', patterns: ['trunk', 'trunk', 'rotate', 'trunk', 'hip'], sets: 3, reps: '12', load: 'Bodyweight; holds of 40 seconds, breathing through every one', prefer: ['hollow-hold', 'side-plank', 'pallof|russian-twist', 'bird-dog', 'clamshell'] },
   ];
   for (const t of themed) {
+    if (RETIRED_THEMED.has(t.id)) continue;
     if (t.needs && !eq.includes(t.needs)) continue;
     if (t.needsAny && !t.needsAny.some((q) => eq.includes(q))) continue;
     const have = t.only ?? eq;

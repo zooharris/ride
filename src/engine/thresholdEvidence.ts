@@ -2,22 +2,23 @@
  * Step 2 (29 Oct): everything the FTP estimate and the zone analysis read,
  * gathered from the rider's own data, and the app's own FTP estimate from it.
  * Pure: the caller loads the rides, power curves, test results and notes.
- * The AI reads `lines`; the app uses the structured fields.
+ * The AI reads `lines`; the app uses the structured fields. Everything here is
+ * the app's own measurement: no FTP estimate from Intervals.icu is read.
  */
 import type { Profile, Ride } from './types';
 import { addDays } from './load';
 import { CURVE_SECONDS, aerobicPoints } from './progress';
 import { ladderTops, powerZone, rideHrZones, ridePowerZones } from './zones';
+import { fitCp, FIT_SECONDS, FTP_OF_CP, type CpFit } from './cpFit';
 
 export const EVIDENCE_WEEKS = 8;
 /** Fewer rides with power than this in the window: too little to estimate from. */
 export const THIN_RIDES = 6;
 
-/** How a best effort of each length implies FTP. Only lengths the power curves hold (no 8 minutes). */
-export const CURVE_RULES: Array<{ seconds: number; label: string; factor: number }> = [
-  { seconds: 300, label: '5 minutes', factor: 0.78 },
-  { seconds: 1200, label: '20 minutes', factor: 0.95 },
+/** When the fit can't be trusted: the single best effort that most directly shows FTP. */
+export const FALLBACK_RULES: Array<{ seconds: number; label: string; factor: number }> = [
   { seconds: 3600, label: '60 minutes', factor: 1.0 },
+  { seconds: 1200, label: '20 minutes', factor: 0.95 },
 ];
 
 export interface CurveInput { id: string; date: string; w: number[] }
@@ -30,12 +31,10 @@ export interface ThresholdEvidence {
   thin: boolean;
   /** Best power over the window at 1, 5, 20 and 60 minutes, with the ride it came from. */
   bests: Array<{ label: string; seconds: number; watts: number; date: string; rideName?: string }>;
-  /** FTP each best effort implies. */
-  implied: Array<{ label: string; ftp: number }>;
-  /** Intervals.icu's per-ride FTP estimates, newest first, up to ten. */
-  icu: Array<{ date: string; ftp: number }>;
-  icuMedian?: number;
-  icuTrend?: 'rising' | 'flat' | 'falling';
+  /** The critical power fit through the best 2 to 30 minute efforts, when there are enough of them. */
+  fit?: CpFit;
+  /** What the estimate rests on: the fit, a recent test, or one best effort when the fit can't be trusted. */
+  basis?: 'fit' | 'test' | 'effort';
   tests: TestInput[];
   /** Share of riding time in each zone (power, and heart rate), over the window. */
   powerZoneShare?: number[];
@@ -44,9 +43,11 @@ export interface ThresholdEvidence {
   hrByPowerZone: Array<{ zone: number; rides: number; hr: number }>;
   steady: Array<{ date: string; name: string; ef?: number; drift?: number }>;
   notes: string[];
-  /** The app's own FTP estimate, and how far its sources agree. */
+  /** The app's own FTP estimate. Settled: a good fit, or a recent test; mixed: one best effort only; thin: too little to go on. */
   estimate?: number;
   confidence: 'settled' | 'mixed' | 'thin';
+  /** The FTP the rider's efforts prove they can at least ride (the fit when it is good), for the upward check. */
+  proven?: number;
   /** Which sources the estimate came from, in words. */
   sources: string[];
   lines: string[];
@@ -91,21 +92,11 @@ export function gatherEvidence(o: {
     return top;
   };
   const bests: ThresholdEvidence['bests'] = [];
-  for (const [label, seconds] of [['1 minute', 60], ['5 minutes', 300], ['20 minutes', 1200], ['60 minutes', 3600]] as const) {
+  for (const [label, seconds] of [['1 minute', 60], ['2 minutes', 120], ['5 minutes', 300], ['10 minutes', 600], ['20 minutes', 1200], ['30 minutes', 1800], ['60 minutes', 3600]] as const) {
     const b = best(seconds);
     if (b) bests.push({ label, seconds, ...b });
   }
-  const implied = CURVE_RULES.flatMap((r) => { const b = bests.find((x) => x.seconds === r.seconds); return b ? [{ label: r.label, ftp: Math.round(b.watts * r.factor) }] : []; });
-
-  const icu = rides.filter((r) => (r.eftp ?? 0) > 0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map((r) => ({ date: r.date, ftp: Math.round(r.eftp!) }));
-  const icuMedian = median(icu.map((x) => x.ftp));
-  let icuTrend: ThresholdEvidence['icuTrend'];
-  if (icu.length >= 4) {
-    const newer = median(icu.slice(0, Math.floor(icu.length / 2)).map((x) => x.ftp))!;
-    const older = median(icu.slice(Math.floor(icu.length / 2)).map((x) => x.ftp))!;
-    icuTrend = newer > older * 1.02 ? 'rising' : newer < older * 0.98 ? 'falling' : 'flat';
-  }
-
+  const fit = fitCp(bests.filter((x) => FIT_SECONDS.includes(x.seconds)));
   const tests = o.tests.filter((t) => t.date >= addDays(today, -12 * 7) && t.date <= today).sort((a, b) => b.date.localeCompare(a.date));
 
   const share = (key: 'powerZoneSeconds' | 'hrZoneSeconds') => {
@@ -127,23 +118,21 @@ export function gatherEvidence(o: {
   const steady = aerobicPoints(rides, () => undefined, p.lthr, rideHrZones(p)).slice(-5);
   const notes = o.notes.filter((n) => n.date >= from && n.text && ILLNESS.test(n.text)).map((n) => `${n.date}: ${n.text}`);
 
-  // The app's estimate: curve rules weigh 1 each, Intervals.icu's median 1, a test under 8 weeks old 2.
+  // The app's estimate: a recent test is the anchor unless the efforts since prove more; otherwise the fit;
+  // otherwise the single best 60 or 20 minutes. Never anything from Intervals.icu.
   const recentTest = tests.find((t) => t.ftpEstimate && t.date >= addDays(today, -8 * 7));
-  const items: Array<{ value: number; weight: number }> = [
-    ...implied.map((x) => ({ value: x.ftp, weight: 1 })),
-    ...(icuMedian ? [{ value: icuMedian, weight: 1 }] : []),
-    ...(recentTest ? [{ value: recentTest.ftpEstimate!, weight: 2 }] : []),
-  ];
-  const est = weightedMedian(items);
-  const estimate = est != null ? Math.round(est) : undefined;
-  const values = items.map((x) => x.value);
-  const spread = values.length && estimate ? (Math.max(...values) - Math.min(...values)) / estimate : 0;
-  const confidence: ThresholdEvidence['confidence'] = thin && !recentTest ? 'thin' : spread <= 0.03 ? 'settled' : 'mixed';
-  const sources = [
-    ...(implied.length ? [`your best ${implied.map((x) => x.label).join(', ').replace(/, ([^,]*)$/, ' and $1')}`] : []),
-    ...(icuMedian ? ["Intervals.icu's estimates"] : []),
-    ...(recentTest ? [`your ${recentTest.kind === 'ramp' ? 'ramp test' : '20-minute test'} of ${recentTest.date}`] : []),
-  ];
+  const fallback = FALLBACK_RULES.map((r) => { const x = bests.find((b) => b.seconds === r.seconds); return x ? { label: r.label, ftp: Math.round(x.watts * r.factor), date: x.date } : undefined; }).find(Boolean);
+  const goodFit = fit?.ok ? fit : undefined;
+  const proven = goodFit?.ftp;
+  let estimate: number | undefined, basis: ThresholdEvidence['basis'], confidence: ThresholdEvidence['confidence'];
+  if (recentTest && !(proven && proven >= recentTest.ftpEstimate! * 1.03)) { estimate = recentTest.ftpEstimate; basis = 'test'; confidence = 'settled'; }
+  else if (goodFit && !thin) { estimate = goodFit.ftp; basis = 'fit'; confidence = 'settled'; }
+  else if (fallback && !thin) { estimate = fallback.ftp; basis = 'effort'; confidence = 'mixed'; }
+  else { estimate = undefined; basis = undefined; confidence = 'thin'; }
+  const fitWords = (f: CpFit) => `your best ${f.points.map((x) => `${x.seconds / 60}`).join(', ').replace(/, ([^,]*)$/, ' and $1')} minutes`;
+  const sources = basis === 'test' ? [`your ${recentTest!.kind === 'ramp' ? 'ramp test' : '20-minute test'} of ${recentTest!.date}`]
+    : basis === 'fit' ? [fitWords(goodFit!)]
+    : basis === 'effort' ? [`your best ${fallback!.label} (${fallback!.date})`] : [];
 
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const lines: string[] = [
@@ -152,8 +141,7 @@ export function gatherEvidence(o: {
     `Power zone tops now (zones 1-6, watts): ${ladderTops(ladder, p.ftp).join(', ')} (${p.powerZoneMode === 'abs' ? 'set in watts' : 'set as shares of FTP'}).`,
     `Heart-rate zone tops now (zones 1-6, bpm; zone 7 to max): ${ladderTops(rideHrZones(p), p.lthr).join(', ')} (${p.hrZoneMode === 'abs' ? 'set in bpm' : 'set as shares of threshold heart rate'}).`,
     bests.length ? `Best power in the window: ${bests.map((b) => `${b.label} ${b.watts} W (${b.date}${b.rideName ? `, ${b.rideName}` : ''})`).join('; ')}.` : 'Best power in the window: none recorded.',
-    implied.length ? `FTP those imply: ${implied.map((x) => `${x.label} rule ${x.ftp} W`).join('; ')} (5 min × 0.78, 20 min × 0.95, 60 min × 1.0).` : '',
-    icu.length ? `Intervals.icu's per-ride FTP estimates (newest first): ${icu.map((x) => `${x.ftp} W on ${x.date}`).join(', ')}; median ${Math.round(icuMedian!)} W${icuTrend ? `, ${icuTrend}` : ''}.` : "Intervals.icu's per-ride FTP estimates: none in the window.",
+    fit ? `The app's critical power fit through the best ${fit.points.map((x) => `${x.seconds / 60} min ${x.watts} W`).join(', ')}: sustainable level (critical power) ${fit.cp} W, reserve ${Math.round(fit.wPrime / 1000)} kJ, largest miss ${Math.round(fit.worstMiss * 100)}%; ${fit.ok ? `a good fit, FTP about ${fit.ftp} W (${Math.round(FTP_OF_CP * 100)}% of critical power)` : `not trustworthy: ${fit.problem}`}.` : 'Critical power fit: not enough hard efforts between 2 and 30 minutes to fit.',
     tests.length ? `Tests in the last 12 weeks: ${tests.map((t) => `${t.kind === 'ramp' ? 'ramp test' : '20-minute test'} ${t.date}: FTP estimate ${t.ftpEstimate ?? '?'} W${t.lthrEstimate ? `, threshold heart rate ${t.lthrEstimate} bpm` : ''}${t.vo2maxMlKgMin ? `, VO2max ${t.vo2maxMlKgMin} ml/kg/min` : ''}${t.ftpAction ? ` (rider ${t.ftpAction} their FTP)` : ''}`).join('; ')}.` : 'Tests in the last 12 weeks: none.',
     (() => { const s = share('powerZoneSeconds'); return s ? `Riding time by power zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
     (() => { const s = share('hrZoneSeconds'); return s ? `Riding time by heart-rate zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
@@ -161,12 +149,12 @@ export function gatherEvidence(o: {
     steady.length ? `Steady rides of an hour or more (efficiency factor, heart-rate drift): ${steady.map((x) => `${x.date} ${x.name}: EF ${x.ef?.toFixed(2) ?? '?'}, drift ${x.drift != null ? `${x.drift.toFixed(1)}%` : '?'}`).join('; ')}.` : '',
     notes.length ? `The rider's notes mentioning illness or tiredness: ${notes.join(' | ')}.` : '',
     o.readinessBand ? `Readiness today: ${o.readinessBand}.` : '',
-    estimate != null ? `The app's own FTP estimate from these: ${estimate} W (${confidence}).` : '',
+    estimate != null ? `The app's own FTP estimate: ${estimate} W (${confidence}; from ${sources.join(', ')}).` : "The app's own FTP estimate: none (too little evidence).",
   ].filter(Boolean);
 
   return {
-    today, from, ridesWithPower: withPower.length, thin, bests, implied, icu, icuMedian: icuMedian != null ? Math.round(icuMedian) : undefined, icuTrend, tests,
+    today, from, ridesWithPower: withPower.length, thin, bests, fit, basis, tests,
     powerZoneShare: share('powerZoneSeconds'), hrZoneShare: share('hrZoneSeconds'), hrByPowerZone, steady, notes,
-    estimate, confidence, sources, lines,
+    estimate, confidence, proven, sources, lines,
   };
 }

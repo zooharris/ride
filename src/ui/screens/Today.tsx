@@ -13,6 +13,7 @@ import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from 
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { runBandText } from '../../engine/run';
 import { CoachPanel } from '../CoachPanel';
+import { FtpCheckPanel } from '../FtpCheckPanel';
 import { FitnessChart, RangePicker, valueDaysAgo, type RangeKey } from '../FitnessChart';
 import { ReadinessDial, Sparkline, WeekStrip } from '../Glance';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
@@ -300,6 +301,7 @@ export function Today({ data }: { data: AppData }) {
       {changing && <ChangeSheet data={data} planned={changing} onClose={() => setChanging(null)} />}
 
       {planRead && <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />}
+      {date === today() && <FtpCheckPanel data={data} />}
       </div>
       <div class="today-side">
       <section class="section">

@@ -551,7 +551,7 @@ function FtpFromRiding({ data, ftp, edited, onTaken }: { data: AppData; ftp: num
   const [busy, setBusy] = useState(false);
   if (!ev || ev.estimate == null || ev.confidence === 'thin' || edited) return null;
   const word = ev.confidence === 'settled' ? 'settled' : 'mixed evidence';
-  const from = ev.sources.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  const from = ev.sources.join('; ');
   if (Math.abs(ev.estimate - ftp) <= Math.max(2, ftp * 0.01)) {
     return <p class="faint small" style="margin:6px 0 0">Your riding agrees with this ({ev.estimate} W from {from}).</p>;
   }

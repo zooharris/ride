@@ -30,7 +30,7 @@ async function load(id: string): Promise<Thumb | null> {
   if (kept && kept.v === THUMB_VERSION) return kept;
   // A recording already opened on this device has everything needed.
   const st = await db.streams.get(id);
-  if (st && st.v === STREAMS_VERSION) { const t = buildThumb(id, st); await db.thumbs.put(t); return t; }
+  if (st && (st.v ?? 0) >= 2 && (st.v ?? 0) <= STREAMS_VERSION) { const t = buildThumb(id, st); await db.thumbs.put(t); return t; }
   const c = await credentials();
   if (!c) return null;
   const t = buildThumb(id, await fetchThumbStreams(c, id));

@@ -21,10 +21,11 @@ import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
 import { APP_SHORT_NAME } from '../../appName';
-import { addSensor, addSimulated, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
-import { pickSources, type Metric, type Supplied } from '../../player/sources';
+import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
+import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
 import { chooseFreeMode, chooseMode } from '../../player/mode';
-import { cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
+import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
+import { toast } from '../Toast';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
@@ -195,7 +196,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>
           </div>
           <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} />
-          {ramp && <p class="faint small" style="margin:6px 0 0">Drawn as far as most riders get. The steps keep climbing until you stop, so yours may be shorter or longer.</p>}
+          {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={profile.ftp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
           <StepList workout={shown} profile={shownProfile} basis={basis} />
         </section>
 
@@ -203,13 +204,12 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
           {choice.needsPower ? (
             <>
               {blocked && <Blocked b={blocked} alternatives={alternatives} />}
-              <ScrollMore class="pl-side-body">
+              <div class="pl-side-body">
               <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
-              </ScrollMore>
+              </div>
             </>
           ) : (
-          <ScrollMore class="pl-side-body">
-          {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={profile.ftp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
+          <div class="pl-side-body">
           <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
           <section class="pl-card pl-runs-card">
             <h2 class="pl-h2">How the ride runs</h2>
@@ -253,7 +253,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             )}
           </section>
-          </ScrollMore>
+          </div>
           )}
           {choice.needsPower ? null : blocked ? <Blocked b={blocked} /> : (
             <>
@@ -284,16 +284,16 @@ function RampCard({ step, onStep, ftp, ergOff, startable }: { step: number; onSt
   const first = rampFirstStep(ftp, step);
   const share = ftp > 0 ? Math.round((step / ftp) * 200) / 2 : undefined; // to the nearest half percent
   return (
-    <section class="pl-card pl-runs-card">
-      <h2 class="pl-h2">The test</h2>
+    <section class="pl-ramp">
       <div class="pl-runs-row">
-        <span>Step size</span>
+        <span><b>The test</b> · step size</span>
         <div class="seg" role="group" aria-label="Step size">
           {RAMP_STEPS.map((v) => <button key={v} class={step === v ? 'on' : ''} aria-pressed={step === v} onClick={() => onStep(v)}>{v === RAMP_STEP_DEFAULT ? `${v} W (standard)` : `${v} W`}</button>)}
         </div>
       </div>
-      <p class="pl-runs muted small" style="margin:0">Standard is 20 watts. Smaller steps make a longer, gentler test; the FTP rule was worked out on the standard step, so smaller steps read a little low.</p>
+
       <p class="pl-runs" style="margin:0">{ftp > 0 ? <>First step <b class="num">{first} W</b>, then +{step} W every minute{share ? <span class="muted"> (about {share}% of your FTP)</span> : null}, until you can't hold it. Press <b>Stop the test</b> when you're done.</> : <>No FTP yet, so the test starts at <b class="num">100 watts</b> and climbs {step} W every minute until you can't hold it.</>}</p>
+      <p class="pl-runs muted small pl-ramp-why" style="margin:0">Smaller steps make a longer, gentler test that reads a little low (the FTP rule was worked out on 20 W). The diagram shows as far as most riders get.</p>
       {startable && ergOff && <p class="pl-runs muted small" style="margin:0">The test works best with the trainer holding each step (ERG). You can carry on and hold each step's watts yourself.</p>}
     </section>
   );
@@ -307,6 +307,8 @@ function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; 
   const tick = seconds <= 90 * 60 ? 600 : seconds <= 150 * 60 ? 900 : seconds <= 240 * 60 ? 1800 : 3600;
   const ticks: number[] = [];
   for (let t = 0; t <= seconds + 1; t += tick) ticks.push(t);
+  // The end gets its own label; a regular one too close before it would collide with it.
+  if (ticks.length > 1 && seconds - ticks[ticks.length - 1] > 1 && seconds - ticks[ticks.length - 1] < tick * 0.6) ticks.pop();
   return (
     <div class="pl-chart">
       <div class="pl-chart-y" aria-hidden="true">
@@ -429,6 +431,8 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
   const known = knownNow();
   const chosen = getSlots();
   const pill = pillFor(sensors, allSet);
+  // The one diagnostic in the app: a strap connected but silent for 30 seconds.
+  const quietStrap = sensors.find((x) => breathQuiet(x, Date.now()));
   const ref = useRef<HTMLElement>(null);
   // The list floats over the page beside its box, so a scrolling panel never cuts it off; it opens upward when there is no room below.
   const [at, setAt] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
@@ -478,14 +482,18 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
     const name = d ? cleanName(d.name) : undefined;
     const opts = optionsFor(slot, sensors, known, sources);
     const isOpen = open === slot;
+    const quiet = slot === 've' && !!d && breathQuiet(d, Date.now());
     return (
-      <div key={slot} class={`menu pl-devcell${slot === 'trainer' ? ' wide' : ''}`} data-slot={slot}>
+      <div key={slot} class="menu pl-devcell" data-slot={slot}>
         <button class={`pl-dev ${v.state}`} aria-haspopup="menu" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : slot)}>
           <span class="pl-dev-k">{SLOT_CAPTION[slot]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
           {v.state === 'connected' && <>
             <span class="pl-dev-name">{name}</span>
+            {slot === 'trainer' && <span class={`pl-dev-ctl${d?.controllable ? '' : ' off'}`} title={d?.controllable ? 'The player sets the resistance' : 'Another app has the trainer, or it does not take control from the browser'}>{d?.controllable ? 'In control' : 'Not in control'}</span>}
             {slot !== 'trainer' && v.value != null && <span class="pl-dev-v num">{fmtValue(slot, v.value, profile)}<small> {unitOf(slot, profile)}</small></span>}
-            <span class="pl-dev-s"><span class="pl-dot ok" />Connected{slot === 'trainer' ? (d?.controllable ? ' · controls the resistance' : ' · not in control') : ''}</span>
+            {slot === 've' && quiet
+              ? <span class="pl-dev-s warn"><span class="pl-dot connecting" />Connected · no breathing yet</span>
+              : <span class="pl-dev-s"><span class="pl-dot ok" />Connected{slot === 've' && d?.battery != null ? ` · battery ${d.battery}%` : ''}</span>}
             {slot === 'trainer' && d?.warning && <span class="pl-dev-warn">{d.warning}</span>}
           </>}
           {v.state === 'waiting' && <>
@@ -495,7 +503,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
           {v.state === 'off' && <span class="pl-dev-none">None for this ride</span>}
           {v.state === 'empty' && <>
             <span class="pl-dev-none">Not connected</span>
-            {v.lastUsed && <span class="pl-dev-hint">Last used: {cleanName(v.lastUsed)}</span>}
+            {v.lastUsed ? <span class="pl-dev-hint">Last used: {cleanName(v.lastUsed)}</span> : slot === 've' ? <span class="pl-dev-hint">{BREATH_OPTIONAL}</span> : null}
           </>}
           <span class="pl-dev-act">{v.state === 'connected' || v.state === 'waiting' ? 'Change…' : 'Choose…'}</span>
         </button>
@@ -529,12 +537,26 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
         <span class={`pl-pill ${pill.ok ? 'ok' : 'wait'}`}><span class="pl-dot" />{pill.text}</span>
       </div>
       <div class="pl-devgrid">
-        {box('trainer')}
-        {box('watts')}{box('bpm')}{box('cadence')}{box('speedKmh')}
+        {box('trainer')}{box('watts')}{box('bpm')}
+        {box('cadence')}{box('speedKmh')}{box('ve')}
       </div>
+      {quietStrap && (
+        <div class="pl-dev-quiet" role="status">
+          <span>{BREATH_QUIET}</span>
+          <button class="btn sm" onClick={() => copyDetails(quietStrap.id)}>Copy details</button>
+        </div>
+      )}
       {!known.length && !sensors.length && <p class="pl-note">Click a box to choose the device for it. Your browser asks before connecting each one, and this computer remembers them for next time.</p>}
     </section>
   );
+}
+
+/** The strap's last 20 packets and its name, for the rider to paste to us. */
+function copyDetails(id: string): void {
+  const text = breathDetails(id);
+  const done = () => toast({ ok: true, text: 'Copied. Paste it into a message to us.' });
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => window.prompt('Copy these details:', text));
+  else window.prompt('Copy these details:', text);
 }
 
 function fmtValue(m: Metric, v: number, profile: Profile): string {
@@ -543,7 +565,7 @@ function fmtValue(m: Metric, v: number, profile: Profile): string {
 }
 
 function unitOf(m: Metric, profile: Profile): string {
-  return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : profile.units === 'imperial' ? 'mph' : 'km/h';
+  return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : m === 've' ? 'L/min' : m === 'br' ? 'a minute' : m === 'tv' ? 'L' : profile.units === 'imperial' ? 'mph' : 'km/h';
 }
 
 

@@ -9,6 +9,7 @@ import { toast } from '../Toast';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
+import { cleanName } from '../../player/devices';
 import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
@@ -64,6 +65,12 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
   const paused = e.phase === 'paused';
   const zoneTime = byHr && tl.length ? timeInZone(e.samples, tl, (s) => targetBand(s, 'hr', profile)) : undefined;
   const hasPower = t.avgPower != null;
+  // Step 3 (30 Oct): with a breathing strap connected, breathing takes cadence's tile and cadence joins the strip.
+  const strap = sensors.find((s) => s.kind === 'breath' && s.status === 'connected');
+  const ves = e.samples.map((x) => x.ve).filter((x): x is number => x != null);
+  const avgVe = ves.length ? Math.round(ves.reduce((x, y) => x + y, 0) / ves.length) : undefined;
+  const cadenceCell = strap && <div><span class="caption">Cadence · speed</span><div><b class="num">{ride.live.cadence != null ? Math.round(ride.live.cadence) : '—'}</b><small> rpm · </small><b class="num">{ride.live.speedKmh != null ? mph(ride.live.speedKmh, profile) : '—'}</b><small> {speedUnit(profile)}</small></div></div>;
+  const veCell = strap && <div><span class="caption">Average ventilation</span><div><b class="num">{avgVe ?? '—'}</b><small> L/min</small></div></div>;
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -110,17 +117,17 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
           {tl.length ? <Dial ride={ride} step={step} next={next} then={then} profile={profile} /> : <FreeCard ride={ride} trainerOk={!!trainer} />}
           <div class="rd-col">
             {byHr ? <PowerTile watts={ride.shownWatts} sensors={sensors} /> : <HrTile bpm={ride.live.bpm} samples={e.samples} profile={profile} />}
-            <section class="rd-card rd-tile">
+            {strap ? <BreathTile shown={ride.shownBreath} name={cleanName(strap.name)} /> : <section class="rd-card rd-tile">
               <span class="caption">Cadence</span>
               <div class="rd-big2 num">{ride.live.cadence != null ? Math.round(ride.live.cadence) : '—'}<small> rpm</small></div>
               <div class="rd-grow" />
               <div class="rd-tile-foot"><span>{step?.cadence ? `Target ${step.cadence} rpm` : 'Any comfortable cadence'}</span><span><b class="num">{ride.live.speedKmh != null ? mph(ride.live.speedKmh, profile) : '—'}</b> {speedUnit(profile)}</span></div>
-            </section>
+            </section>}
           </div>
         </section>
 
         {byHr ? (
-          <section class="rd-card rd-strip" style={`grid-template-columns:repeat(${hasPower ? 6 : 5}, minmax(0, 1fr))`}>
+          <section class={`rd-card rd-strip${strap ? ' tight' : ''}`} style={`grid-template-columns:repeat(${(hasPower ? 6 : 5) + (strap ? 1 : 0)}, minmax(0, 1fr))${strap ? ' minmax(0, 1.4fr)' : ''}`}>
             <div><span class="caption">Elapsed time</span><div><b class="num">{mmss(e.timer)}</b>{planned && <small> of {clock(planned.seconds)}</small>}</div></div>
             {zoneTime ? <div><span class="caption">Time in target zone</span><div><b class="num">{mmss(zoneTime.seconds)}</b>{zoneTime.share != null && <small> · {pct(zoneTime.share)} of steps</small>}</div></div>
               : <div><span class="caption">Highest heart rate</span><div><b class="num">{t.maxHr ?? '—'}</b><small> bpm</small></div></div>}
@@ -128,15 +135,17 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
             <div><span class="caption">Training load so far</span><div><b class="num">{t.tss}</b><small>{planned ? ` of ${planned.tss} planned` : ' TSS'}</small></div></div>
             {hasPower && <div><span class="caption">Average power</span><div><b class="num">{t.avgPower}</b><small> W</small></div></div>}
             <div><span class="caption">Distance</span><div><b class="num">{distText(t.distanceM, profile).split(' ')[0]}</b><small> {profile.units === 'imperial' ? 'mi' : 'km'}</small></div></div>
+            {veCell}{cadenceCell}
           </section>
         ) : (
-          <section class="rd-card rd-strip">
+          <section class={`rd-card rd-strip${strap ? ' tight' : ''}`} style={strap ? 'grid-template-columns:repeat(7, minmax(0, 1fr)) minmax(0, 1.4fr)' : undefined}>
             <div><span class="caption">Elapsed time</span><div><b class="num">{mmss(e.timer)}</b>{planned && <small> of {clock(planned.seconds)}</small>}</div></div>
             <div><span class="caption">Average power</span><div><b class="num">{t.avgPower ?? '—'}</b><small> W</small></div></div>
             <div><span class="caption">Normalized power</span><div><b class="num">{t.np ?? '—'}</b><small> W</small></div></div>
             <div><span class="caption">Training load so far</span><div><b class="num">{t.tss}</b><small>{planned ? ` of ${planned.tss} planned` : ' TSS'}</small></div></div>
             <div><span class="caption">Average heart rate</span><div><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></div></div>
             <div><span class="caption">Work done</span><div><b class="num">{t.kj ?? '—'}</b><small> kJ</small></div></div>
+            {veCell}{cadenceCell}
           </section>
         )}
 
@@ -177,7 +186,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
 }
 
 function SensorPill({ s, mode, byHr }: { s: SensorState; mode: TrainerMode; byHr?: boolean }) {
-  const word = s.kind === 'trainer' ? `Trainer · ${!s.controllable ? 'not in control' : byHr && mode === 'erg' ? 'adjusting to heart rate' : MODE_WORD[mode]}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : 'Cadence';
+  const word = s.kind === 'trainer' ? `Trainer · ${!s.controllable ? 'not in control' : byHr && mode === 'erg' ? 'adjusting to heart rate' : MODE_WORD[mode]}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : s.kind === 'breath' ? 'Breathing' : 'Cadence';
   return <span class={`rd-pill ${s.status}`}><i />{word}</span>;
 }
 const MODE_WORD: Record<TrainerMode, string> = { erg: 'ERG', resistance: 'Resistance', free: 'Free ride', self: 'your gears' };
@@ -274,6 +283,18 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
           {ride.timeline.length > 0 && e.mode === 'resistance' && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Breathing (Step 3): ventilation over 30 seconds, large; breaths a minute and breath size over 10 seconds under it. No zones yet. */
+function BreathTile({ shown, name }: { shown?: { ve?: number; br?: number; tv?: number }; name: string }) {
+  return (
+    <section class="rd-card rd-tile rd-breath">
+      <div class="row between" style="gap:8px;min-width:0"><span class="caption">Breathing · 30-second average</span><span class="faint small rd-breath-from" title={name}>{name}</span></div>
+      <div class="rd-big2 num">{shown?.ve != null ? Math.round(shown.ve) : '—'}<small> L/min</small></div>
+      <div class="rd-grow" />
+      <div class="rd-tile-foot"><span><b class="num">{shown?.br != null ? Math.round(shown.br) : '—'}</b> breaths a minute</span><span><b class="num">{shown?.tv != null ? shown.tv.toFixed(1) : '—'}</b> L a breath</span></div>
     </section>
   );
 }

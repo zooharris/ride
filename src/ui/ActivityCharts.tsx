@@ -8,7 +8,7 @@ import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, 
 import { clock } from '../engine/workout';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
-export interface Sample { t: number; d: number; watts?: number; hr?: number; cad?: number; speed?: number; alt?: number; temp?: number; lat?: number; lng?: number }
+export interface Sample { t: number; d: number; watts?: number; hr?: number; cad?: number; speed?: number; alt?: number; temp?: number; lat?: number; lng?: number; ve?: number; br?: number; tv?: number }
 
 export function resample(s: StreamSet, points = 600): Sample[] {
   const n = s.time.length;
@@ -16,25 +16,45 @@ export function resample(s: StreamSet, points = 600): Sample[] {
   const span = s.time[n - 1] || 1;
   const bucket = Math.max(1, span / points);
   const out: Sample[] = [];
-  const acc = { watts: [0, 0], hr: [0, 0], cad: [0, 0], speed: [0, 0], alt: [0, 0], temp: [0, 0] } as Record<string, [number, number]>;
+  const acc = { watts: [0, 0], hr: [0, 0], cad: [0, 0], speed: [0, 0], alt: [0, 0], temp: [0, 0], ve: [0, 0], br: [0, 0], tv: [0, 0] } as Record<string, [number, number]>;
+  // Breathing (Step 3): ventilation as a 30-second average, as the ride screen shows it.
+  const ve30 = s.ve ? trailingMean(s.time, s.ve, 30) : undefined;
   const addTo = (k: string, v: number | undefined) => { if (typeof v === 'number' && !Number.isNaN(v)) { acc[k][0] += v; acc[k][1]++; } };
   let b = 0, lastI = 0;
   const flush = (i: number) => {
     const mean = (k: string) => (acc[k][1] ? acc[k][0] / acc[k][1] : undefined);
-    out.push({ t: s.time[i], d: s.distance?.[i] ?? 0, watts: mean('watts'), hr: mean('hr'), cad: mean('cad'), speed: mean('speed'), alt: mean('alt'), temp: mean('temp'), lat: s.lat?.[i], lng: s.lng?.[i] });
+    out.push({ t: s.time[i], d: s.distance?.[i] ?? 0, watts: mean('watts'), hr: mean('hr'), cad: mean('cad'), speed: mean('speed'), alt: mean('alt'), temp: mean('temp'), lat: s.lat?.[i], lng: s.lng?.[i], ve: mean('ve'), br: mean('br'), tv: mean('tv') });
     for (const k of Object.keys(acc)) acc[k] = [0, 0];
   };
   for (let i = 0; i < n; i++) {
     const k = Math.floor(s.time[i] / bucket);
     if (k !== b) { flush(lastI); b = k; }
-    addTo('watts', s.watts?.[i]); addTo('hr', s.heartrate?.[i]); addTo('cad', s.cadence?.[i]); addTo('speed', s.velocity?.[i]); addTo('alt', s.altitude?.[i]); addTo('temp', s.temp?.[i]);
+    addTo('watts', s.watts?.[i]); addTo('hr', s.heartrate?.[i]); addTo('cad', s.cadence?.[i]); addTo('speed', s.velocity?.[i]); addTo('alt', s.altitude?.[i]); addTo('temp', s.temp?.[i]); addTo('ve', ve30?.[i]); addTo('br', s.br?.[i]); addTo('tv', s.tv?.[i]);
     lastI = i;
   }
   flush(lastI);
   return out;
 }
 
+/** A trailing mean over `seconds`, skipping gaps (NaN or absent); NaN where the window has nothing. */
+export function trailingMean(time: number[], v: number[], seconds: number): number[] {
+  const out: number[] = new Array(v.length);
+  let sum = 0, n = 0, lo = 0;
+  for (let i = 0; i < v.length; i++) {
+    const x = v[i];
+    if (x != null && isFinite(x)) { sum += x; n++; }
+    while (time[lo] <= time[i] - seconds) { const y = v[lo]; if (y != null && isFinite(y)) { sum -= y; n--; } lo++; }
+    out[i] = n ? sum / n : NaN;
+  }
+  return out;
+}
+
 type Axis = 'time' | 'distance';
+type PanelDef = { key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }>;
+  /** A second line on its own axis (breathing rate on the breathing chart). */
+  second?: { get: (p: Sample) => number | undefined; color: string; unit: string };
+  /** The readout's words for this chart, when not just its value. */
+  readout?: (p: Sample) => string | undefined };
 
 /**
  * The recording as stacked charts that share one cursor: power, heart rate,
@@ -56,9 +76,12 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   const fmtX = (v: number) => (axis === 'distance' && hasDist ? `${(imperial ? v / 1609.344 : v / 1000).toFixed(1)} ${imperial ? 'mi' : 'km'}` : clock(Math.round(v)));
   const h = hover != null ? samples[hover] : null;
   const panels = useMemo(() => {
-    const list: Array<{ key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> }> = [];
+    const list: PanelDef[] = [];
     if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP; shaded bands are planned targets when the ride was from a plan.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
     if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
+    if (ride && samples.some((s) => s.ve != null)) list.push({ key: 've', title: 'Breathing', unit: 'L/min', color: 'var(--z2)', get: (p) => p.ve, second: { get: (p) => p.br, color: 'var(--ink-3)', unit: 'breaths a minute' },
+      explain: 'From your breathing strap. The line is ventilation, the litres of air you breathe a minute, as a 30-second average; the thinner line is breaths a minute, on its own scale at the right.',
+      readout: (p) => [p.ve != null ? `ventilation ${Math.round(p.ve)} L/min` : '', p.br != null ? `${Math.round(p.br)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined });
     if (ride && samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     // A run reads as pace, minutes per mile or km (standing still has no pace, so it is a gap).
     if (run && samples.some((s) => s.speed != null)) list.push({ key: 'pace', title: 'Pace', unit: imperial ? 'min/mi' : 'min/km', color: 'var(--run)', get: (p) => (p.speed == null || p.speed < 1 ? undefined : (imperial ? 1609.344 : 1000) / p.speed / 60), explain: 'Minutes per ' + (imperial ? 'mile' : 'kilometre') + '; lower is faster. Pace drifts on hills and in heat at the same heart rate, which is why runs are set by heart rate.' });
@@ -69,6 +92,8 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   }, [samples, profile.ftp, profile.lthr, profile.footLthr, imperial, kind]);
 
   if (samples.length < 2) return <div class="empty small">No recording to draw.</div>;
+  // Every chart keeps the same width of plot, so the cursor lines up down the stack; room at the right for a second scale when one has it.
+  const padR = panels.some((p) => p.second) ? 30 : 6;
 
   return (
     <div>
@@ -81,12 +106,12 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
       <div class="rec-readout panel small" aria-live="off">
         {h ? <>
           <b class="num">{fmtX(xOf(h))}</b>
-          {panels.map((p) => { const v = p.get(h); return v == null ? null : <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{p.key === 'speed' ? v.toFixed(1) : Math.round(v)}</b> <span class="faint">{p.unit}</span></span>; })}
+          {panels.map((p) => { const v = p.get(h); if (p.readout) { const words = p.readout(h); return words ? <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{words}</b></span> : null; } return v == null ? null : <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{p.key === 'speed' ? v.toFixed(1) : Math.round(v)}</b> <span class="faint">{p.unit}</span></span>; })}
         </> : <span class="faint">Move the mouse, or a finger, across any chart to read every value at that point; the map follows.</span>}
       </div>
       <div class="stack" style="gap:4px">
         {panels.map((p, idx) => (
-          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
+          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} padR={padR} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
         ))}
       </div>
     </div>
@@ -98,12 +123,12 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
  * compact height, so a wide window shows more of the ride rather than taller
  * charts, and the text stays the same size at any width.
  */
-function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp, lthr, hrZones, powerZones, basis, showXAxis }: {
-  samples: Sample[]; panel: { title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }> };
-  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
+function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR = 6, ftp, lthr, hrZones, powerZones, basis, showXAxis }: {
+  samples: Sample[]; panel: PanelDef;
+  xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; padR?: number; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
 }) {
   const [box, W] = useWidth(480);
-  const H = showXAxis ? 86 : 66, padL = 34, padR = 6, padT = 6, padB = showXAxis ? 18 : 4;
+  const H = showXAxis ? 86 : 66, padL = 34, padT = 6, padB = showXAxis ? 18 : 4;
   const vals = samples.map(panel.get);
   const present = vals.filter((v): v is number => v != null);
   // Power starts at zero (coasting is real); heart rate, cadence, speed and elevation start just under
@@ -118,6 +143,13 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
   const y = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
   let d = '';
   samples.forEach((p, i) => { const v = vals[i]; if (v == null) return; d += `${d && vals[i - 1] != null ? 'L' : 'M'}${x(xOf(p)).toFixed(1)} ${y(Math.max(lo, v)).toFixed(1)}`; });
+  // The second line on its own scale, labelled at the right.
+  const vals2 = panel.second ? samples.map(panel.second.get) : [];
+  const pres2 = vals2.filter((v): v is number => v != null && isFinite(v));
+  const lo2 = pres2.length ? Math.max(0, Math.min(...pres2) * 0.9) : 0, hi2 = pres2.length ? Math.max(...pres2) * 1.08 : 1;
+  const y2 = (v: number) => padT + (1 - (v - lo2) / ((hi2 - lo2) || 1)) * (H - padT - padB);
+  let d2 = '';
+  samples.forEach((p, i) => { const v = vals2[i]; if (v == null || !isFinite(v)) return; d2 += `${d2 && vals2[i - 1] != null ? 'L' : 'M'}${x(xOf(p)).toFixed(1)} ${y2(v).toFixed(1)}`; });
   const area = panel.area ? `M${x(xOf(samples[0])).toFixed(1)} ${H - padB} ${samples.map((p, i) => `L${x(xOf(p)).toFixed(1)} ${y(vals[i] ?? lo).toFixed(1)}`).join(' ')} L${x(xOf(samples[samples.length - 1])).toFixed(1)} ${H - padB} Z` : '';
   const step = (() => { const raw = (hi - lo) / 2; const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const r = raw / p; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p; })();
   const ticks: number[] = [];
@@ -138,7 +170,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
   };
   return (
     <div style="position:relative" ref={box}>
-      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit})</span></span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
+      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit}{panel.second ? `; thin line, ${panel.second.unit}` : ''})</span></span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
         onMouseMove={(e) => pick(e.currentTarget as SVGSVGElement, e.clientX)}
         onMouseLeave={() => onHover(null)}
@@ -153,6 +185,8 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, ftp,
         })}
         {panel.refs?.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.v)} y2={y(r.v)} stroke="var(--line-2)" stroke-dasharray="3 4" /><text x={W - padR - 2} y={y(r.v) - 2} fill="var(--ink-3)" font-size="10" text-anchor="end">{r.label}</text></g>)}
         {area && <path d={area} fill={panel.color} fill-opacity="0.18" />}
+        {d2 && <path d={d2} fill="none" stroke={panel.second!.color} stroke-width="0.9" stroke-linejoin="round" />}
+        {d2 && [lo2, (lo2 + hi2) / 2, hi2].map((t, i) => <text key={`r${i}`} x={W - 2} y={Math.min(H - padB, Math.max(padT + 8, y2(t) + 3))} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text>)}
         <path d={d} fill="none" stroke={panel.color} stroke-width="1.4" stroke-linejoin="round" />
         {hover != null && <line x1={x(xOf(samples[hover]))} x2={x(xOf(samples[hover]))} y1={padT} y2={H - padB} stroke="var(--accent)" />}
         {hover != null && hv != null && <circle cx={x(xOf(samples[hover]))} cy={y(hv)} r="3" fill="var(--accent)" />}

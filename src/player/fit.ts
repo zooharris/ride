@@ -3,7 +3,9 @@
  * Intervals.icu, Strava and Garmin Connect all read. Written from the public
  * FIT protocol description; only the messages a recorded indoor ride needs:
  * file id, timer events, one record a second, a lap per workout step, the
- * session and the activity.
+ * session and the activity. A ride with a breathing strap (Step 3, 30 Oct)
+ * carries breathing as developer fields in Tymewear's own layout, so
+ * Intervals.icu, Tymewear's dashboard and any FIT tool read them alike.
  */
 import type { Recording } from './types';
 import type { Totals } from './summary';
@@ -13,13 +15,24 @@ const FIT_EPOCH_MS = Date.UTC(1989, 11, 31, 0, 0, 0);
 export const fitTime = (ms: number) => Math.round((ms - FIT_EPOCH_MS) / 1000);
 
 // Base types: [code, size]
-const ENUM = [0x00, 1], UINT8 = [0x02, 1], UINT16 = [0x84, 2], UINT32 = [0x86, 4], UINT32Z = [0x8c, 4];
+const ENUM = [0x00, 1], UINT8 = [0x02, 1], UINT16 = [0x84, 2], UINT32 = [0x86, 4], UINT32Z = [0x8c, 4], BYTE = (n: number) => [0x0d, n];
 const STRING = (n: number) => [0x07, n];
 type BaseType = number[];
 const INVALID: Record<number, number> = { 0x00: 0xff, 0x02: 0xff, 0x84: 0xffff, 0x86: 0xffffffff, 0x8c: 0 };
 
 interface FieldDef { num: number; type: BaseType }
-interface MesgDef { global: number; local: number; fields: FieldDef[] }
+interface DevFieldDef { num: number; size: number; index: number }
+interface MesgDef { global: number; local: number; fields: FieldDef[]; dev?: DevFieldDef[] }
+
+/** Tymewear's developer application id and its four record fields (float32), as its own files carry them. */
+export const TYME_APP_ID = '0101020358030d69223759ffff7962ff';
+export const TYME_FIELDS = [
+  { num: 0, name: 'tyme_breath_rate', units: 'brpm', key: 'br' },
+  { num: 1, name: 'tyme_tidal_volume', units: 'vol/br', key: 'tv' },
+  { num: 2, name: 'tyme_minute_volume', units: 'vol/min', key: 've' },
+  { num: 3, name: 'tyme_inhale_exhale_ratio', units: 'sec/sec', key: 'ie' },
+] as const;
+const FLOAT32 = 0x88;
 
 const CRC_TABLE = [0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401, 0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400];
 export function fitCrc(bytes: Uint8Array, start = 0, end = bytes.length, crc = 0): number {
@@ -49,23 +62,34 @@ class Writer {
   u8(v: number) { this.grow(1); this.buf[this.len++] = v & 0xff; }
   u16(v: number) { this.u8(v); this.u8(v >> 8); }
   u32(v: number) { this.u16(v & 0xffff); this.u16((v >>> 16) & 0xffff); }
+  f32(v: number | undefined) {
+    if (v == null || !Number.isFinite(v)) { this.u32(0xffffffff); return; }
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setFloat32(0, v, true);
+    b.forEach((x) => this.u8(x));
+  }
   bytes() { return this.buf.subarray(0, this.len); }
 }
 
 function define(w: Writer, d: MesgDef) {
-  w.u8(0x40 | d.local);
+  w.u8(0x40 | (d.dev?.length ? 0x20 : 0) | d.local);
   w.u8(0); // reserved
   w.u8(0); // little-endian
   w.u16(d.global);
   w.u8(d.fields.length);
   for (const f of d.fields) { w.u8(f.num); w.u8(f.type[1]); w.u8(f.type[0]); }
+  if (d.dev?.length) { w.u8(d.dev.length); for (const f of d.dev) { w.u8(f.num); w.u8(f.size); w.u8(f.index); } }
 }
 
-function data(w: Writer, d: MesgDef, values: Record<number, number | string | undefined>) {
+function data(w: Writer, d: MesgDef, values: Record<number, number | string | Uint8Array | undefined>, dev: Array<number | undefined> = []) {
   w.u8(d.local);
   for (const f of d.fields) {
     const [code, size] = f.type;
     const v = values[f.num];
+    if (code === 0x0d) {
+      for (let i = 0; i < size; i++) w.u8(v instanceof Uint8Array && i < v.length ? v[i] : 0xff);
+      continue;
+    }
     if (code === 0x07) {
       const s = typeof v === 'string' ? new TextEncoder().encode(v).subarray(0, size - 1) : new Uint8Array();
       for (let i = 0; i < size; i++) w.u8(i < s.length ? s[i] : 0);
@@ -74,6 +98,7 @@ function data(w: Writer, d: MesgDef, values: Record<number, number | string | un
     const n = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : INVALID[code];
     if (size === 1) w.u8(Math.min(n, 0xff)); else if (size === 2) w.u16(Math.min(n, 0xffff)); else w.u32(Math.min(n, 0xffffffff));
   }
+  (d.dev ?? []).forEach((_, i) => w.f32(dev[i]));
 }
 
 const FILE_ID: MesgDef = { global: 0, local: 0, fields: [{ num: 0, type: ENUM }, { num: 1, type: UINT16 }, { num: 2, type: UINT16 }, { num: 3, type: UINT32Z }, { num: 4, type: UINT32 }, { num: 8, type: STRING(20) }] };
@@ -89,6 +114,11 @@ const SESSION: MesgDef = { global: 18, local: 4, fields: [
   { num: 16, type: UINT8 }, { num: 17, type: UINT8 }, { num: 18, type: UINT8 }, { num: 20, type: UINT16 }, { num: 21, type: UINT16 },
   { num: 25, type: UINT16 }, { num: 26, type: UINT16 }, { num: 28, type: ENUM }, { num: 34, type: UINT16 }, { num: 35, type: UINT16 },
   { num: 36, type: UINT16 }, { num: 45, type: UINT16 }, { num: 48, type: UINT32 }] };
+const DEV_DATA_ID: MesgDef = { global: 207, local: 6, fields: [{ num: 1, type: BYTE(16) }, { num: 3, type: UINT8 }] };
+const FIELD_DESC: MesgDef = { global: 206, local: 7, fields: [{ num: 0, type: UINT8 }, { num: 1, type: UINT8 }, { num: 2, type: UINT8 }, { num: 3, type: STRING(32) }, { num: 8, type: STRING(16) }] };
+const RECORD_BREATH: MesgDef = { ...RECORD, dev: TYME_FIELDS.map((f) => ({ num: f.num, size: 4, index: 0 })) };
+const hexBytes = (hex: string) => new Uint8Array(hex.match(/../g)!.map((h) => parseInt(h, 16)));
+
 const ACTIVITY: MesgDef = { global: 34, local: 5, fields: [{ num: 253, type: UINT32 }, { num: 0, type: UINT32 }, { num: 1, type: UINT16 }, { num: 2, type: ENUM }, { num: 3, type: ENUM }, { num: 4, type: ENUM }, { num: 5, type: UINT32 }] };
 
 const EV_TIMER = 0, EV_LAP = 9, EV_SESSION = 8, EV_ACTIVITY = 26;
@@ -107,7 +137,16 @@ export function encodeFit(rec: Recording, t: Totals): Uint8Array {
   define(w, EVENT);
   data(w, EVENT, { 253: at(0), 0: EV_TIMER, 1: ET_START });
 
-  define(w, RECORD);
+  // Breathing: the developer's id and its fields' descriptions come before the record definition that uses them.
+  const breathing = rec.samples.some((s) => s.ve != null);
+  if (breathing) {
+    define(w, DEV_DATA_ID);
+    data(w, DEV_DATA_ID, { 1: hexBytes(TYME_APP_ID), 3: 0 });
+    define(w, FIELD_DESC);
+    for (const f of TYME_FIELDS) data(w, FIELD_DESC, { 0: 0, 1: f.num, 2: FLOAT32, 3: f.name, 8: f.units });
+  }
+  const recordDef = breathing ? RECORD_BREATH : RECORD;
+  define(w, recordDef);
   const pauses = rec.events.filter((e) => e.type === 'pause' || e.type === 'resume');
   let p = 0;
   for (const s of rec.samples) {
@@ -115,7 +154,8 @@ export function encodeFit(rec: Recording, t: Totals): Uint8Array {
       data(w, EVENT, { 253: at(pauses[p].t), 0: EV_TIMER, 1: pauses[p].type === 'pause' ? ET_STOP_ALL : ET_START });
       p++;
     }
-    data(w, RECORD, { 253: at(s.t), 7: s.w, 3: s.hr, 4: s.cad, 6: s.spd != null ? (s.spd / 3.6) * 1000 : undefined, 5: s.d != null ? s.d * 100 : undefined });
+    data(w, recordDef, { 253: at(s.t), 7: s.w, 3: s.hr, 4: s.cad, 6: s.spd != null ? (s.spd / 3.6) * 1000 : undefined, 5: s.d != null ? s.d * 100 : undefined },
+      breathing ? [s.br, s.tv, s.ve, s.ie] : []);
   }
 
   define(w, LAP);

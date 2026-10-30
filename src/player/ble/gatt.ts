@@ -9,6 +9,7 @@ export const SERVICE = {
   cyclingPower: 0x1818,
   heartRate: 0x180d,
   csc: 0x1816,
+  battery: 0x180f,
 } as const;
 
 export const CHAR = {
@@ -25,4 +26,6 @@ export const CHAR = {
   heartRateMeasurement: 0x2a37,
   // Cycling Speed and Cadence
   cscMeasurement: 0x2a5b,
+  // Battery
+  batteryLevel: 0x2a19,
 } as const;

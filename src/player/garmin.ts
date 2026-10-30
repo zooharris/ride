@@ -25,8 +25,8 @@ import type { Recording } from './types';
 export const KEPT_GARMIN = "Your Garmin recorded this ride too, so Antogo kept the Garmin's: it's the one in Garmin Connect.";
 
 /** Mark an activity as the player's own (synced, so every device knows). */
-export async function markPlayerMade(activityId: string, date: string, keep?: boolean): Promise<void> {
-  await upsertEdit(activityId, date, { source: 'veloiq', keepVeloiq: keep || undefined });
+export async function markPlayerMade(activityId: string, date: string, keep?: boolean, breathSensor?: string): Promise<void> {
+  await upsertEdit(activityId, date, { source: 'veloiq', keepVeloiq: keep || undefined, ...(breathSensor ? { breathSensor } : {}) });
 }
 
 async function mineNow(): Promise<Set<string>> {

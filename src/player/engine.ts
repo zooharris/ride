@@ -17,6 +17,8 @@ export type TrainerMode = 'erg' | 'resistance' | 'free' | 'self';
 
 export interface Live {
   watts?: number; cadence?: number; speedKmh?: number; bpm?: number;
+  /** A breathing strap's last breath, held until the next: ventilation L/min, breaths a minute, breath size L. */
+  ve?: number; br?: number; tv?: number; ie?: number;
   /** Whether any connected sensor can tell that the rider is moving (a trainer, a power meter, a speed or cadence sensor). Without one, the ride never pauses itself. Absent means yes. */
   canMove?: boolean;
 }
@@ -191,6 +193,7 @@ export class RideEngine {
       hr: live.bpm != null ? Math.round(live.bpm) : undefined,
       cad: live.cadence != null ? Math.round(live.cadence) : undefined,
       spd: live.speedKmh != null ? Math.round(live.speedKmh * 10) / 10 : undefined,
+      ...(live.ve != null ? { ve: Math.round(live.ve * 10) / 10, br: live.br != null ? Math.round(live.br * 10) / 10 : undefined, tv: live.tv != null ? Math.round(live.tv * 100) / 100 : undefined, ie: live.ie != null ? Math.round(live.ie * 100) / 100 : undefined } : {}),
       d: Math.round(this.distanceM),
       tgt,
       s: step?.index,

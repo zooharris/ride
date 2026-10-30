@@ -16,6 +16,12 @@ export interface Sample {
   s?: number;
   /** where in the workout this second was (seconds; skips move it on), for drawing the ride over the plan */
   p?: number;
+  /** Breathing strap (Step 3): ventilation L/min, breaths a minute, breath size L; each breath held until the next. */
+  ve?: number;
+  br?: number;
+  tv?: number;
+  /** inhale time over exhale time */
+  ie?: number;
 }
 
 export interface Lap { start: number; end: number; step?: number; manual?: boolean }
@@ -60,6 +66,9 @@ export interface Recording {
   rampStep?: number;
   /** The Ramp Test: where in the workout (seconds) the ramp ended, by the rider or by itself; the cool-down follows from there. */
   rampEndAt?: number;
+  /** Any second has breathing (a breathing strap was connected), and the strap's name. */
+  breathing?: boolean;
+  breathSensor?: string;
   /** A fitness test's results, and what the rider did with each suggestion. */
   test?: import('./tests').TestResult;
 }

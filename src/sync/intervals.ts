@@ -682,6 +682,9 @@ export interface FetchedStreams {
   temp?: number[];          // °C
   lat?: number[];
   lng?: number[];
+  ve?: number[];
+  br?: number[];
+  tv?: number[];
   intervals: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
 }
 
@@ -700,8 +703,12 @@ export async function fetchThumbStreams(c: IntervalsCredentials, activityId: str
 }
 
 /** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
-export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams> {
-  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng`);
+/** The custom streams Intervals.icu makes of a breathing strap's FIT developer fields, by their field names. */
+export const BREATH_STREAMS = { ve: 'tyme_minute_volume', br: 'tyme_breath_rate', tv: 'tyme_tidal_volume' } as const;
+
+export async function fetchStreams(c: IntervalsCredentials, activityId: string, o: { breathing?: boolean } = {}): Promise<FetchedStreams> {
+  const extra = o.breathing ? `,${Object.values(BREATH_STREAMS).join(',')}` : '';
+  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng${extra}`);
   const find = (t: string) => list.find((x) => x.type === t);
   const by = (t: string) => find(t)?.data;
   const time = by('time') ?? [];
@@ -722,7 +729,16 @@ export async function fetchStreams(c: IntervalsCredentials, activityId: string):
   return {
     time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), distance: by('distance'), altitude: by('altitude'),
     velocity: by('velocity_smooth'), temp: by('temp'), lat: ll?.data, lng: ll?.data2, intervals,
+    ...(o.breathing && by(BREATH_STREAMS.ve)?.length ? { ve: by(BREATH_STREAMS.ve), br: by(BREATH_STREAMS.br), tv: by(BREATH_STREAMS.tv) } : {}),
   };
+}
+
+/** The activity's original file as uploaded (for reading breathing out of it when Intervals.icu has no streams of it). */
+export async function fetchActivityFile(c: IntervalsCredentials, activityId: string): Promise<Uint8Array> {
+  let res: Response;
+  try { res = await fetch(`${BASE}/activity/${activityId}/file`, { headers: headers(c) }); } catch { throw new IntervalsError('Could not reach intervals.icu. Check your connection.'); }
+  if (!res.ok) throw new IntervalsError(`Intervals.icu answered ${res.status}.`, res.status);
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 /**

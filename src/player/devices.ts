@@ -9,10 +9,11 @@
  */
 import type { Metric, SensorKind, SensorSnapshot, Supplied } from './sources';
 
-export type Slot = 'trainer' | Metric;
-export const SLOTS: Slot[] = ['trainer', 'watts', 'bpm', 'cadence', 'speedKmh'];
+/** The boxes: the trainer, one per number, and (Step 3, 30 Oct) the breathing strap, filed under its ventilation. */
+export type Slot = 'trainer' | 'watts' | 'bpm' | 'cadence' | 'speedKmh' | 've';
+export const SLOTS: Slot[] = ['trainer', 'watts', 'bpm', 'cadence', 'speedKmh', 've'];
 
-type Sensor = SensorSnapshot & { controllable?: boolean; warning?: string };
+type Sensor = SensorSnapshot & { controllable?: boolean; warning?: string; battery?: number; connectedAt?: number };
 export interface Known { id: string; name: string; kind: SensorKind; lastUsed?: string; reports?: Metric[] }
 
 export interface SlotView {
@@ -45,11 +46,11 @@ export function cleanName(name: string): string {
 /** What a remembered device can supply: what it has been seen to report, else what its kind usually does. */
 export function reportsOf(d: Pick<Known, 'kind' | 'reports'>): Metric[] {
   if (d.reports?.length) return d.reports;
-  return d.kind === 'trainer' ? ['speedKmh', 'watts'] : d.kind === 'power' ? ['watts', 'cadence'] : d.kind === 'hr' ? ['bpm'] : ['cadence', 'speedKmh'];
+  return d.kind === 'trainer' ? ['speedKmh', 'watts'] : d.kind === 'power' ? ['watts', 'cadence'] : d.kind === 'hr' ? ['bpm'] : d.kind === 'breath' ? ['ve', 'br', 'tv', 'ie'] : ['cadence', 'speedKmh'];
 }
 
 /** Which kind of device the browser's list shows when finding one for a box. */
-export const FIND_KIND: Record<Slot, SensorKind> = { trainer: 'trainer', watts: 'power', bpm: 'hr', cadence: 'csc', speedKmh: 'csc' };
+export const FIND_KIND: Record<Slot, SensorKind> = { trainer: 'trainer', watts: 'power', bpm: 'hr', cadence: 'csc', speedKmh: 'csc', ve: 'breath' };
 
 const canFill = (slot: Slot, kind: SensorKind, reports: Metric[]) => (slot === 'trainer' ? kind === 'trainer' : reports.includes(slot));
 const byRecent = (a: Known, b: Known) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? '');
@@ -64,6 +65,11 @@ export function slotView(slot: Slot, sensors: Sensor[], known: Known[], sources:
   const src = sources[slot];
   if (src) return { slot, state: 'connected', device: sensors.find((s) => s.id === src.from), value: src.value };
   if (chosen[slot] === 'none') return { slot, state: 'off' };
+  // A strap is connected between breaths too, and while no breathing arrives at all (its box says so).
+  if (slot === 've') {
+    const strap = sensors.find((s) => s.kind === 'breath' && s.status === 'connected' && (!chosen.ve || chosen.ve === s.id));
+    if (strap) return { slot, state: 'connected', device: strap };
+  }
   const on = (s: Sensor) => s.id === chosen[slot] || (!chosen[slot] && canFill(slot, s.kind, reportsOf(known.find((k) => k.id === s.id) ?? s)));
   const coming = sensors.find((s) => s.status !== 'connected' && s.status !== 'offline' && on(s));
   if (coming) return { slot, state: 'waiting', device: coming };
@@ -97,16 +103,21 @@ export function pillFor(sensors: Sensor[], ready: boolean): { ok: boolean; text:
   return { ok: false, text: 'Not ready yet' };
 }
 
-export const SLOT_CAPTION: Record<Slot, string> = { trainer: 'Smart trainer', watts: 'Power', bpm: 'Heart rate', cadence: 'Cadence', speedKmh: 'Speed' };
-export const KIND_NOUN: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed or cadence sensor' };
+export const SLOT_CAPTION: Record<Slot, string> = { trainer: 'Smart trainer', watts: 'Power', bpm: 'Heart rate', cadence: 'Cadence', speedKmh: 'Speed', ve: 'Breathing strap' };
+export const KIND_NOUN: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed or cadence sensor', breath: 'Breathing strap' };
 export const FIND_WORDS: Record<Slot, string> = {
   trainer: 'Find a smart trainer nearby…',
   watts: 'Find a power meter nearby…',
   bpm: 'Find another heart-rate monitor nearby…',
   cadence: 'Find a cadence sensor nearby…',
   speedKmh: 'Find a speed sensor nearby…',
+  ve: 'Find a breathing strap nearby…',
 };
 /** The one line some lists carry: what makes the device appear. */
 export const WAKE: Partial<Record<Slot, string>> = {
   bpm: 'Wake it first: put the strap on, or turn on Broadcast heart rate on your watch.',
+  ve: 'Put the strap on and close the Tymewear app first: the strap connects to one app at a time.',
 };
+/** The breathing box, empty: it is never needed. */
+export const BREATH_OPTIONAL = 'Optional. A Tymewear VitalPro; close the Tymewear app first.';
+export const BREATH_QUIET = 'Connected, but no breathing is arriving. Check the strap is snug and that the Tymewear app is closed.';

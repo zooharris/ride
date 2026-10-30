@@ -10,12 +10,13 @@ import { newId } from '../engine/workout';
 import { today } from '../engine/load';
 import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
 import { pickSources } from '../player/sources';
+import { cleanName } from '../player/devices';
 import { RideEngine, type TrainerMode } from '../player/engine';
 import { buildTimeline, hrZoneOf, rampRef, targetBand, type TimelineStep } from '../player/timeline';
 import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, startWatts, type HrCtl, type HrPowerTable, type HrStep } from '../player/hrControl';
 import { getSetting, setSetting } from '../data/db';
 import { putRecording, patchRecording } from '../player/rides';
-import { bandOf, ewma, settle, type Settled } from '../player/smooth';
+import { bandOf, breathShown, ewma, settle, type Settled } from '../player/smooth';
 import type { Recording } from '../player/types';
 import { hrCue, type Cue, type CueState } from '../player/hrCue';
 import { toast } from './Toast';
@@ -52,6 +53,8 @@ export interface ActiveRide {
   bandStep?: number;
   /** Heart rate averaged over the chosen seconds, for the big number on a ride by heart rate. */
   shownBpm?: number;
+  /** Breathing strap: ventilation over the last 30 seconds, breaths a minute and breath size over the last 10. */
+  shownBreath?: { ve?: number; br?: number; tv?: number };
   /** A smoother heart rate for the marker on the zone bar. */
   markerBpm?: number;
   /** On a ride by heart rate with your gears: the cue on screen, if any. */
@@ -64,7 +67,7 @@ export interface ActiveRide {
   /** Heart rate missing since (ms); after a minute the trainer stops adjusting until it returns. */
   hrMissingSince?: number;
   hrLost?: boolean;
-  live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number };
+  live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number; ve?: number; br?: number; tv?: number; ie?: number };
 }
 
 let active: ActiveRide | undefined;
@@ -75,6 +78,7 @@ let audio: AudioContext | undefined;
 let wake: { release(): Promise<void> } | undefined;
 const recent: number[] = [];
 const recentHr: number[] = [];
+const recentBreath: Array<{ ve: number; br?: number; tv?: number }> = [];
 let offControl: (() => void) | undefined;
 export const HR_TABLE = 'hrPowerTable';
 
@@ -120,6 +124,7 @@ export function startRide(setup: RideSetup): void {
   if (setup.basis === 'hr') void getSetting<HrPowerTable>(HR_TABLE, {}).then((t) => { if (active?.rec.id === rec.id) active.hrTable = t ?? {}; });
   recent.length = 0;
   recentHr.length = 0;
+  recentBreath.length = 0;
   resetTrainerSession();
   if (setup.sound) { try { audio ??= new AudioContext(); void audio.resume(); } catch { audio = undefined; } }
   void holdScreenOn();
@@ -167,7 +172,13 @@ function loop() {
 function second(now: number) {
   const a = active!;
   const src = pickSources(getSensors(), Date.now(), getSlots());
-  a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value };
+  a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value, ve: src.ve?.value, br: src.br?.value, tv: src.tv?.value, ie: src.ie?.value };
+  if (a.live.ve != null) {
+    recentBreath.push({ ve: a.live.ve, br: a.live.br, tv: a.live.tv });
+    while (recentBreath.length > 30) recentBreath.shift();
+    if (!a.rec.breathSensor) { const strap = getSensors().find((x) => x.id === src.ve!.from); if (strap) a.rec = { ...a.rec, breathSensor: cleanName(strap.name) }; }
+  } else recentBreath.length = 0;
+  a.shownBreath = recentBreath.length ? breathShown(recentBreath) : undefined;
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
   if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(30, a.setup.smoothing)) recentHr.shift(); }
@@ -307,8 +318,10 @@ function beep(kind: 'count' | 'go') {
 
 function snapshot(a: ActiveRide): Recording {
   const e = a.engine;
-  return { ...a.rec, samples: e.samples, laps: [...e.laps], events: e.events, timerSeconds: e.timer, distanceM: Math.round(e.distanceM), rampEndAt: e.rampEndAt };
+  const breathing = e.samples.some((x) => x.ve != null) || undefined;
+  return { ...a.rec, samples: e.samples, laps: [...e.laps], events: e.events, timerSeconds: e.timer, distanceM: Math.round(e.distanceM), rampEndAt: e.rampEndAt, breathing, breathSensor: breathing ? a.rec.breathSensor : undefined };
 }
+
 
 function save() { if (active) void putRecording(snapshot(active)); }
 

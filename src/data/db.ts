@@ -29,9 +29,14 @@ export interface StreamSet {
   temp?: number[];          // °C
   lat?: number[];
   lng?: number[];
+  /** Breathing strap (Step 3): ventilation L/min, breaths a minute, breath size L; NaN where a second has none. */
+  ve?: number[];
+  br?: number[];
+  tv?: number[];
   intervals?: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
 }
-export const STREAMS_VERSION = 2;
+/** 3 (30 Oct 2026): breathing read for player rides with a strap; a 2 is still good for any other activity. */
+export const STREAMS_VERSION = 3;
 
 /** A ride's mean-maximal power at CURVE_SECONDS, computed once from its power stream (a cache; rebuilt if lost). */
 export interface PowerCurve {

@@ -10,6 +10,7 @@ import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/pa
 import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Metric, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
 import { reportsOf } from './devices';
+import { packetLine } from './ble/breath';
 
 export interface SensorState extends SensorSnapshot {
   warning?: string;
@@ -17,6 +18,10 @@ export interface SensorState extends SensorSnapshot {
   controllable?: boolean;
   powerRange?: Range;
   rollrSince?: number;
+  /** When it last became connected, ms: a breathing strap silent for 30 s after this says so. */
+  connectedAt?: number;
+  /** Breathing straps: battery, percent. */
+  battery?: number;
 }
 
 /**
@@ -73,7 +78,7 @@ async function saved(): Promise<SavedDevice[]> {
 async function writeSaved(list: SavedDevice[]): Promise<void> { savedCache = list; await setSetting(DEVICES_KEY, list); emitNow(); }
 
 /** A device's way in: a trainer before a power meter before a heart-rate monitor before a speed/cadence sensor. */
-const RANK: Record<SensorKind, number> = { trainer: 0, power: 1, hr: 2, csc: 3 };
+const RANK: Record<SensorKind, number> = { trainer: 0, power: 1, hr: 2, csc: 3, breath: 4 };
 
 /** Remember a device, once by id, keeping what was learned about it; never forgets others of its kind. */
 async function remember(d: SavedDevice): Promise<void> {
@@ -102,7 +107,7 @@ export function migrateSaved(list: SavedDevice[]): SavedDevice[] {
 const learned = new Map<string, Set<Metric>>();
 function learn(id: string, r: Omit<Reading, 'at'>): void {
   const seen = learned.get(id) ?? new Set<Metric>();
-  const fresh = (['watts', 'cadence', 'speedKmh', 'bpm'] as Metric[]).filter((m) => r[m] != null && !seen.has(m));
+  const fresh = (['watts', 'cadence', 'speedKmh', 'bpm', 've', 'br', 'tv', 'ie'] as Metric[]).filter((m) => r[m] != null && !seen.has(m));
   if (!fresh.length) return;
   fresh.forEach((m) => seen.add(m));
   learned.set(id, seen);
@@ -149,7 +154,9 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
   emitNow();
   drivers.set(id, attach(device, kind, {
     reading: (r) => onReading(id, r),
-    status: (status: SensorStatus) => { update(id, status === 'connected' ? { status } : { status, reading: undefined }); if (status === 'connected') void touch(id); },
+    status: (status: SensorStatus) => { update(id, status === 'connected' ? { status, connectedAt: Date.now() } : { status, reading: undefined }); if (status === 'connected') void touch(id); },
+    raw: (bytes) => { const list = rawPackets.get(id) ?? []; list.push(packetLine(bytes)); if (list.length > 20) list.shift(); rawPackets.set(id, list); },
+    battery: (pct) => update(id, { battery: pct }, true),
     control: (c) => {
       update(id, {
         controllable: c.controllable,
@@ -161,6 +168,16 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
   }));
 }
 
+/** A breathing strap's last 20 packets as they came, for Copy details. */
+const rawPackets = new Map<string, string[]>();
+
+/** What Copy details puts on the clipboard: the strap's name and its last 20 packets. */
+export function breathDetails(id: string): string {
+  const s = sensors.find((x) => x.id === id);
+  const list = rawPackets.get(id) ?? [];
+  return [`Breathing strap: ${s?.name ?? 'unknown'}`, `Status: ${s?.status ?? 'gone'}${s?.battery != null ? `, battery ${s.battery}%` : ''}`, `Packets received: ${list.length ? `the last ${list.length}` : 'none'}`, ...list].join('\n');
+}
+
 const controlListeners = new Set<() => void>();
 /**
  * Called each time a trainer (re)gains control: on first connecting and after
@@ -169,7 +186,7 @@ const controlListeners = new Set<() => void>();
  */
 export function onTrainerControl(fn: () => void): () => void { controlListeners.add(fn); return () => { controlListeners.delete(fn); }; }
 
-const KIND_FALLBACK: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed/cadence sensor' };
+const KIND_FALLBACK: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed/cadence sensor', breath: 'Breathing strap' };
 
 /**
  * Opens the browser's list of devices nearby of one kind (call from a click)
@@ -212,7 +229,7 @@ export async function restoreSaved(): Promise<void> {
   const latest = (fits: (d: SavedDevice) => boolean) => list.filter(fits).sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? ''))[0]?.id;
   const want = new Set<string>();
   const t = latest((d) => d.kind === 'trainer'); if (t) want.add(t);
-  for (const m of ['watts', 'bpm', 'cadence', 'speedKmh'] as Metric[]) {
+  for (const m of ['watts', 'bpm', 'cadence', 'speedKmh', 've'] as Metric[]) {
     const id = s[m] && s[m] !== 'none' ? s[m] : latest((d) => reportsOf(d).includes(m));
     if (id) want.add(id);
   }
@@ -251,12 +268,12 @@ export function setRiderNumbers(p: RiderNumbers): void {
   if (rider) rider.setNumbers(p); else rider = new SimRider(p);
 }
 
-const SIM_NAME: Record<SensorKind, string> = { trainer: 'Simulated trainer', power: 'Simulated power meter', hr: 'Simulated heart rate', csc: 'Simulated cadence sensor' };
+const SIM_NAME: Record<SensorKind, string> = { trainer: 'Simulated trainer', power: 'Simulated power meter', hr: 'Simulated heart rate', csc: 'Simulated cadence sensor', breath: 'Simulated breathing strap' };
 
 export function addSimulated(kind: SensorKind): void {
   const id = `sim-${kind}`;
   for (const s of sensors.filter((x) => x.kind === kind)) drop(s.id);
-  sensors = [...sensors, { id, kind, name: SIM_NAME[kind], status: 'connected', simulated: true, controllable: kind === 'trainer' ? true : undefined, powerRange: kind === 'trainer' ? { min: 0, max: 2000, step: 1 } : undefined }];
+  sensors = [...sensors, { id, kind, name: SIM_NAME[kind], status: 'connected', simulated: true, connectedAt: Date.now(), controllable: kind === 'trainer' ? true : undefined, powerRange: kind === 'trainer' ? { min: 0, max: 2000, step: 1 } : undefined }];
   rider ??= new SimRider({ ftp: 220, lthr: 160, restingHr: 55, maxHr: 180 });
   simTimer ??= setInterval(simTick, 1000);
   emitNow();
@@ -268,9 +285,12 @@ function simTick(): void {
   const at = Date.now();
   sensors = sensors.map((s) => {
     if (!s.simulated) return s;
+    // A strap the screenshots and checks have silenced (no breath arriving): its last reading stays as it was.
+    if (s.kind === 'breath' && (globalThis as { __antogoQuietStrap?: boolean }).__antogoQuietStrap) return s;
     const reading: Reading = s.kind === 'trainer' ? { watts: r.watts, cadence: r.cadence, speedKmh: r.speedKmh, at }
       : s.kind === 'power' ? { watts: r.watts, cadence: r.cadence, at }
       : s.kind === 'hr' ? { bpm: r.bpm, at }
+      : s.kind === 'breath' ? { ve: r.ve, br: r.br, tv: r.tv, ie: r.ie, at }
       : { cadence: r.cadence, speedKmh: r.speedKmh, at };
     return { ...s, reading };
   });

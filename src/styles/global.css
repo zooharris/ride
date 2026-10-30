@@ -981,8 +981,18 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .player.fit .pl-steps-wrap { flex: 1; min-height: 0; }
   .player.fit .pl-steps { height: 100%; overflow-y: auto; padding-bottom: 36px; overscroll-behavior: contain; }
   .player.fit .pl-side { min-height: 0; overflow: hidden; }
-  .player.fit .pl-side-body-wrap { flex: 1; min-height: 0; }
-  .player.fit .pl-side-body { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; }
+  /* Step 3 (30 Oct): the right column has no scroll of its own to find; devices, how the ride runs and Start are all in view. */
+  .player.fit .pl-side-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 2px; }
+  .player.fit .pl-pre { grid-template-columns: minmax(0, 1.25fr) minmax(420px, 1fr); gap: 18px; }
+  .player.fit .pl-devgrid { gap: 8px; margin-top: 10px; }
+  .player.fit .pl-dev { min-height: 96px; padding: 10px 12px; }
+  .player.fit .pl-dev-v { font-size: 22px; }
+  .player.fit .pl-dev { gap: 2px; }
+  .player.fit .pl-dev-s { font-size: 12px; }
+  .player.fit .pl-side, .player.fit .pl-side-body { gap: 12px; }
+  .player.fit .pl-side .pl-card { padding: 16px 18px; }
+  .player.fit .pl-runs-card { gap: 8px; }
+  .player.fit .pl-start { min-height: 54px; }
   .player.fit .pl-steps.more, .player.fit .pl-side-body.more {
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent); }
 }
@@ -1003,6 +1013,11 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .player.fit .pl-devices { margin-top: 8px; }
   .player.fit .pl-runs { margin-top: 4px; }
   .player.fit .pl-start { min-height: 50px; }
+}
+/* A short laptop window: the line under Start goes (Help says where the ride is saved), so everything else stays in view. */
+@media (min-width: 1100px) and (min-height: 650px) and (max-height: 760px) {
+  .player.fit .pl-start-note { display: none; }
+  .player.fit .pl-ramp-why { display: none; }
 }
 
 /* one column (an iPad upright, a narrow window): getting ready comes first, since that is what this screen is for */
@@ -1108,6 +1123,15 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .rd-strip > div:first-child { border-left: 0; }
 .rd-strip b { font-size: 24px; font-stretch: 112%; letter-spacing: -0.02em; }
 .rd-strip small { font-size: 13px; color: var(--ink-3); }
+/* With a breathing strap: eight numbers, a little tighter (Step 3, 30 Oct). */
+.rd-strip.tight > div { padding: 12px 14px; }
+.rd-strip.tight b { font-size: 22px; }
+.rd-strip.tight .caption { display: block; line-height: 1.25; }
+.rd-breath > .row > .caption { flex: none; white-space: nowrap; }
+@media (max-width: 1439px) { .rd-strip.tight > div { padding: 10px 11px; } .rd-strip.tight b { font-size: 20px; } .rd-strip.tight small { font-size: 12px; } }
+.rd-strip.tight > div > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-breath-from { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.rd-breath .rd-big2 { color: color-mix(in srgb, var(--accent) 70%, var(--ink)); }
 .rd-chartcard { flex: 1 1 30%; min-height: 150px; display: flex; flex-direction: column; gap: 6px; padding: 12px 20px 10px; }
 .rd-chart-head { display: flex; align-items: center; gap: 16px; min-height: 28px; flex-wrap: wrap; }
 .rd-key { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
@@ -1228,7 +1252,17 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .pl-alts-card .pl-alts .pl-alt { flex: none; }
 
 /* Your devices (28 Oct): one box per kind of device, each a button that adds, connects, or opens its menu. */
-.pl-devgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.pl-devgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 600px) { .pl-devgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pl-dev-s.warn { color: var(--warn); }
+.pl-dev-ctl { font-size: 13px; line-height: 1.3; color: var(--ink-2); min-height: 0; }
+.pl-dev-ctl.off { color: var(--warn); }
+/* The Ramp Test's one choice sits with the workout, above its steps (Step 3, 30 Oct: the right column never scrolls). */
+.pl-ramp { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); flex: none; }
+.pl-ramp .pl-runs-row .seg button { padding: 6px 9px; font-size: 13px; }
+.pl-ramp .pl-runs { margin: 0; font-size: 13.5px; line-height: 1.45; }
+.pl-dev-quiet { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, var(--bg-2)); font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.pl-dev-quiet .btn { flex: none; white-space: nowrap; }
 .pl-devcell { position: relative; display: flex; min-width: 0; }
 .pl-dev { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; padding: 12px 14px; min-height: 112px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink); font: inherit; cursor: pointer; }
 .pl-dev:hover, .pl-dev[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }

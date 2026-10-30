@@ -26,3 +26,10 @@ export function settle(prev: Settled, now: BandState, need = 3): Settled {
   const count = prev.pending === now ? prev.count + 1 : 1;
   return count >= need ? { state: now, count: 0 } : { state: prev.state, pending: now, count };
 }
+
+/** The breathing tile's numbers: ventilation over the last 30 seconds, rate and size over the last 10. */
+export function breathShown(xs: Array<{ ve: number; br?: number; tv?: number }>): { ve: number; br?: number; tv?: number } {
+  const mean = (v: Array<number | undefined>) => { const n = v.filter((x): x is number => x != null); return n.length ? n.reduce((p, q) => p + q, 0) / n.length : undefined; };
+  const last10 = xs.slice(-10);
+  return { ve: mean(xs.map((x) => x.ve))!, br: mean(last10.map((x) => x.br)), tv: mean(last10.map((x) => x.tv)) };
+}

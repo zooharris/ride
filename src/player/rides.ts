@@ -111,7 +111,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   }
   await patchRecording(id, { status: 'uploaded', activityId, uploadedAt: new Date().toISOString(), error: undefined });
   if (r.test) await setSetting(testResultKey(activityId), r.test);
-  await markPlayerMade(activityId, r.date, r.keepVeloiq);
+  await markPlayerMade(activityId, r.date, r.keepVeloiq, r.breathing ? (r.breathSensor ?? 'Breathing strap') : undefined);
 
   // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the
   // automatic pairing cannot hand it to another session planned that day. Nothing on other days is touched.

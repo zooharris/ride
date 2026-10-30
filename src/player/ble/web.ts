@@ -10,20 +10,29 @@ import {
   parseHeartRate, parseIndoorBikeData, parsePowerRange, WHEEL_M, type ControlResponse, type Range,
 } from './parse';
 import type { Reading, SensorKind, SensorStatus } from '../sources';
+import { BREATH_DATA, BREATH_NAMES, BREATH_SERVICE, breathTimestamp, parseBreathPacket } from './breath';
 
 export const bluetoothAvailable = (): boolean => typeof navigator !== 'undefined' && 'bluetooth' in navigator && !!navigator.bluetooth;
 
 /** Remembering a device across visits needs getDevices(), which not every Chrome has switched on. */
 export const canRemember = (): boolean => bluetoothAvailable() && typeof navigator.bluetooth.getDevices === 'function';
 
-const PRIMARY: Record<SensorKind, number> = { trainer: SERVICE.ftms, power: SERVICE.cyclingPower, hr: SERVICE.heartRate, csc: SERVICE.csc };
+const PRIMARY: Record<SensorKind, BluetoothServiceUUID> = { trainer: SERVICE.ftms, power: SERVICE.cyclingPower, hr: SERVICE.heartRate, csc: SERVICE.csc, breath: BREATH_SERVICE };
 
-/** Opens the browser's chooser, showing only devices that offer this kind's service (and, with a name, only that device). Must run from a click. */
+/**
+ * Opens the browser's chooser, showing only devices that offer this kind's
+ * service (and, with a name, only that device). A breathing strap is also
+ * found by its name, in case it does not advertise its service. Must run from a click.
+ */
 export async function chooseDevice(kind: SensorKind, name?: string): Promise<BluetoothDevice> {
-  return navigator.bluetooth.requestDevice({
+  const filters: BluetoothLEScanFilter[] = name
     // With a name, the list shows only that device: confirming one used before.
-    filters: [name ? { services: [PRIMARY[kind]], name } : { services: [PRIMARY[kind]] }],
-    optionalServices: [SERVICE.ftms, SERVICE.cyclingPower, SERVICE.heartRate, SERVICE.csc],
+    ? [kind === 'breath' ? { name } : { services: [PRIMARY[kind]], name }]
+    : kind === 'breath' ? [{ services: [BREATH_SERVICE] }, ...BREATH_NAMES.map((namePrefix) => ({ namePrefix }))]
+    : [{ services: [PRIMARY[kind]] }];
+  return navigator.bluetooth.requestDevice({
+    filters,
+    optionalServices: [SERVICE.ftms, SERVICE.cyclingPower, SERVICE.heartRate, SERVICE.csc, SERVICE.battery, BREATH_SERVICE],
   });
 }
 
@@ -38,6 +47,10 @@ export interface DriverEvents {
   status(s: SensorStatus): void;
   /** Trainers only: whether the player has control, and why not. */
   control?(c: { controllable: boolean; busy?: boolean; powerRange?: Range }): void;
+  /** Breathing straps: every packet as it came, for Copy details. */
+  raw?(bytes: Uint8Array): void;
+  /** Breathing straps: battery, percent. */
+  battery?(pct: number): void;
 }
 
 export interface Driver {
@@ -62,7 +75,7 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
     if (v) { try { fn(v); } catch { /* a malformed packet is skipped */ } }
   };
 
-  const listen = async (svc: BluetoothRemoteGATTService, char: number, fn: (v: DataView) => void) => {
+  const listen = async (svc: BluetoothRemoteGATTService, char: BluetoothCharacteristicUUID, fn: (v: DataView) => void) => {
     const c = await svc.getCharacteristic(char);
     c.addEventListener('characteristicvaluechanged', onValue(fn));
     await c.startNotifications();
@@ -116,6 +129,24 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
         const speedKmh = m.wheel ? wheel.update(m.wheel.revs, m.wheel.time, now) * WHEEL_M * 3.6 : undefined;
         ev.reading({ watts: m.watts, cadence, speedKmh });
       });
+    } else if (kind === 'breath') {
+      const svc = await server.getPrimaryService(BREATH_SERVICE);
+      let prev: number | undefined;
+      await listen(svc, BREATH_DATA, (v) => {
+        const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+        ev.raw?.(bytes);
+        const b = parseBreathPacket(bytes, prev);
+        const ts = breathTimestamp(bytes);
+        if (ts != null) prev = ts;
+        if (b) ev.reading({ ve: Math.round(b.ventilation * 10) / 10, br: Math.round(b.rate * 10) / 10, tv: Math.round(b.size * 100) / 100, ie: Math.round(b.ieRatio * 100) / 100 });
+      });
+      try {
+        const bat = await server.getPrimaryService(SERVICE.battery);
+        const level = await bat.getCharacteristic(CHAR.batteryLevel);
+        ev.battery?.((await level.readValue()).getUint8(0));
+        level.addEventListener('characteristicvaluechanged', onValue((v) => ev.battery?.(v.getUint8(0))));
+        await level.startNotifications().catch(() => undefined);
+      } catch { /* battery is optional */ }
     } else if (kind === 'hr') {
       const svc = await server.getPrimaryService(SERVICE.heartRate);
       await listen(svc, CHAR.heartRateMeasurement, (v) => ev.reading({ bpm: parseHeartRate(v) }));

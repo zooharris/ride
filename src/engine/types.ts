@@ -255,6 +255,8 @@ export interface ActivityEdit {
   source?: 'veloiq';
   /** The rider chose to keep Antogo's recording over the Garmin's: the Garmin rule leaves it alone. */
   keepVeloiq?: boolean;
+  /** Ridden with a breathing strap (its name): every device reads the breathing back for the activity's page. */
+  breathSensor?: string;
   /** On the Garmin's recording: Antogo's copy of the same ride was removed in its favour. */
   replaced?: { name: string; at: string; playerActivityId?: string; recordingId?: string };
 }

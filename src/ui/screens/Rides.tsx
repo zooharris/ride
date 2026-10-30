@@ -15,7 +15,8 @@ import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go } from '../router';
-import { fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
+import { fetchActivityFile, fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
+import { fillBreathing, hasBreathing } from '../../player/breathRead';
 import { StatusPill } from '../StatusMark';
 import { analyseRide, type Analysis } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
@@ -141,13 +142,17 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      // A player ride with a breathing strap (known on every device from its edit, or here from the recording) is read with its breathing.
+      const local = (await db.recordings.toArray()).find((x) => x.activityId === r.id);
+      const breathing = !!data.edits.find((e) => e.id === r.id)?.breathSensor || !!local?.breathing;
       const cached = await db.streams.get(r.id);
-      if (cached && cached.v === STREAMS_VERSION) { if (alive) setStreams(cached); return; }
+      if (cached && (cached.v === STREAMS_VERSION || (cached.v === 2 && !breathing))) { if (alive) setStreams(cached); return; }
       const cred = await credentials();
       if (!cred) { if (alive) setStreams(cached ?? null); return; }
       try {
-        const st = await fetchStreams(cred, r.id);
-        const set: StreamSet = { id: r.id, v: STREAMS_VERSION, ...st };
+        const st = await fetchStreams(cred, r.id, { breathing });
+        let set: StreamSet = { id: r.id, v: STREAMS_VERSION, ...st };
+        if (breathing) set = await fillBreathing(set, local, () => fetchActivityFile(cred, r.id));
         await db.streams.put(set);
         if (alive) setStreams(set);
       } catch (e) {
@@ -340,7 +345,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
-      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} />
+      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'Breathing strap' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
@@ -551,7 +556,7 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
 }
 
 /** The activity's name, what it was (when the device got it wrong), and whether it counts toward training load. */
-function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced'] }) {
+function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced, breathSensor }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced']; breathSensor?: string }) {
   const [name, setName] = useState(r.name);
   const [busy, setBusy] = useState(false);
   // The Garmin rule removed Antogo's copy of this ride: within 30 days, on the computer that has its file, it can come back.
@@ -581,6 +586,7 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced }: { r
     <section class="section">
       <h2>About this activity</h2>
       <div class="panel stack" style="gap:16px;margin-top:8px">
+        {breathSensor && <div class="small"><span class="faint">Breathing strap:</span> {breathSensor}</div>}
         {replaced && (
           <div class="row wrap" style="gap:8px 12px;align-items:center">
             <span class="small" style="flex:1;min-width:220px">Your Garmin and Antogo's ride player both recorded this ride. This one, your Garmin's, was kept, since it's the one in Garmin Connect, and Antogo's copy was removed so the ride counts once.{!keepable && undoWindowOpen(replaced) ? " To keep Antogo's instead, open this recording on the computer you rode on." : ''}</span>

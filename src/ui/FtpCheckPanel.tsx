@@ -1,6 +1,6 @@
 /**
  * Today's FTP panel (Step 2, Part C as reworked 29 Oct). Appears only when the
- * rider's own best efforts prove a higher FTP than the setting, with Update or
+ * rider's own best efforts point to a higher FTP than the setting, with Update or
  * Keep; or, when FTP hasn't changed in six weeks and no test was ridden, one
  * quiet line suggesting a ramp test. Riding alone never lowers FTP. No AI call:
  * the number is the app's own fit; with a key, the coach can be asked in Settings.
@@ -53,7 +53,7 @@ export function FtpCheckPanel({ data }: { data: AppData }) {
   };
   return (
     <section class="panel" style="margin-top:14px;padding:14px 16px;border-left:4px solid var(--good)">
-      <h3 style="margin:0 0 6px;font-size:16px">Your riding shows a higher FTP</h3>
+      <h3 style="margin:0 0 6px;font-size:16px">Your riding points to a higher FTP</h3>
       <p class="small" style="margin:0">Your best {fit.points.map((x) => `${x.seconds / 60}-minute (${x.watts} W)`).join(', ').replace(/, ([^,]*)$/, ' and $1')} efforts in the last eight weeks line up on a sustainable level of {fit.cp} W, which puts your FTP at about <b class="num">{check.estimate} W</b>. Yours is set at {p.ftp} W.</p>
       <div class="row wrap" style="gap:8px;margin-top:10px">
         <button class="btn primary" onClick={() => void update()}>Update my FTP to {check.estimate} W</button>

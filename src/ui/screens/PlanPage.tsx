@@ -3,7 +3,8 @@ import type { AppData } from '../store';
 import { findWorkout, sessionHref, setCurrentEquipment } from '../store';
 import { applyPlan, buildPlan, cancelPlan, changeSig, freshData, getActivePlan, getPlans, plannedTss, putPlan, rejectChanges, renamePlan, replan, type ActivePlan, type PlanWeekSummary } from '../planService';
 import { changeKeys, diffPlan, type Change, type Replan } from '../../engine/adapt';
-import type { Availability, AwayRange, Plan as GeneratedPlan } from '../../engine/planner';
+import { weekSummary, type Availability, type AwayRange, type Plan as GeneratedPlan, type PlannedSession } from '../../engine/planner';
+import { contribution } from '../../engine/contribution';
 import type { Goal } from '../../engine/goals';
 import type { PlannedWorkout, Workout } from '../../engine/types';
 import { addDays, today } from '../../engine/load';
@@ -184,7 +185,10 @@ function weeksOf(plan: ActivePlan, sessions: PlannedWorkout[], mine: Workout[]):
     const st = stored.get(ws);
     const lab = st?.label || label.get(ws) || '';
     const phase = st?.phase ?? ((['recovery', 'taper', 'peak', 'build', 'base'] as const).find((ph) => lab.toLowerCase().startsWith(ph)) ?? 'base');
-    return { start: ws, phase, label: lab, tss: Math.round(load.get(ws) ?? 0), summary: st?.summary };
+    // The week's sentence is read from the calendar as it stands, so a plan placed before the sentences existed, and a week rearranged by hand, both read true.
+    const inWeek = sessions.filter((s) => weekStart(s.date) === ws);
+    const summary = inWeek.length ? calendarWeekSummary(inWeek, mine, ws) : st?.summary;
+    return { start: ws, phase, label: lab, tss: Math.round(load.get(ws) ?? 0), summary };
   });
 }
 
@@ -306,4 +310,23 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
       )}
     </div>
   );
+}
+
+/** "3½ hours easy, a 3-hour long ride, two hard days (threshold), one strength session, mobility, two rest days." from what is on the calendar. */
+function calendarWeekSummary(entries: PlannedWorkout[], mine: Workout[], ws: string): string {
+  const items = entries.map((p) => ({ p, w: findWorkout(mine, p.workoutId) })).filter((x): x is { p: PlannedWorkout; w: Workout } => !!x.w);
+  const rides = items.filter((x) => x.w.kind === 'ride');
+  const minutesOf = (w: Workout) => contribution(w).minutes;
+  // The long ride: the week's longest mostly-easy ride of an hour and a half or more, and a second of two hours or more.
+  const easyShaped = rides.filter((x) => { const c = contribution(x.w); return c.minutes >= 90 && c.at.easy >= c.minutes * 0.55; }).sort((a, b) => minutesOf(b.w) - minutesOf(a.w));
+  const longs = new Set(easyShaped.filter((x, i) => i === 0 || minutesOf(x.w) >= 120).slice(0, 2).map((x) => x.p.id));
+  const HARD = ['tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic'];
+  const sessions: PlannedSession[] = items.map(({ p, w }) => {
+    const c = contribution(w);
+    const type = w.kind !== 'ride' ? w.kind : longs.has(p.id) ? 'long' : w.family === 'test' ? 'test' : /openers/i.test(`${w.name} ${w.subtitle ?? ''}`) ? 'openers' : HARD.includes(w.family) ? w.family : w.family === 'recovery' ? 'recovery' : 'endurance';
+    return { date: p.date, kind: w.kind, type: type as PlannedSession['type'], workout: w, seconds: Math.round(c.minutes * 60), tss: Math.round(c.tss), reason: p.reason ?? '' };
+  });
+  const days = new Set(entries.map((p) => p.date));
+  const rest = [0, 1, 2, 3, 4, 5, 6].map((k) => addDays(ws, k)).filter((d) => !days.has(d) && d >= today()).length;
+  return weekSummary(0, sessions, rest).replace(/^Week 0: /, '');
 }

@@ -53,3 +53,21 @@ describe('30 Oct 2026: planned strength moves onto Library sessions', () => {
     expect((await db.planned.get('s1'))?.workoutId).toBe('gen-s');
   });
 });
+
+describe('30 Oct 2026: a plan placed before reasons were stored gets them', () => {
+  it('sessions still to come get a reason once; done ones and ones that have one are left', async () => {
+    const { fillPlanReasons, putPlan } = await import('../ui/planService');
+    const t = today();
+    await putPlan({ id: 'plan', name: 'P', goal: { kind: 'general', weeks: 8 }, availability: { hours: [3, 1, 1, 1, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] }, masters: true, start: t, goalDate: addDays(t, 55), requiredCtl: 0, projection: [], appliedAt: new Date().toISOString() });
+    await db.planned.bulkPut([
+      { id: 'a', date: addDays(t, 1), workoutId: 'lib-thr-2x20', basis: 'power', status: 'planned', planId: 'plan' },
+      { id: 'b', date: addDays(t, 2), workoutId: 'lib-z2-60', basis: 'power', status: 'planned', planId: 'plan', reason: 'Kept.' },
+      { id: 'c', date: addDays(t, -1), workoutId: 'lib-z2-60', basis: 'power', status: 'completed', planId: 'plan' },
+    ]);
+    expect(await fillPlanReasons()).toBeGreaterThanOrEqual(1);
+    expect((await db.planned.get('a'))!.reason).toMatch(/^Threshold work/);
+    expect((await db.planned.get('b'))!.reason).toBe('Kept.');
+    expect((await db.planned.get('c'))!.reason).toBeUndefined();
+    expect(await fillPlanReasons()).toBe(0);   // once
+  });
+});

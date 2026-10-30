@@ -92,9 +92,10 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         </label>
       </div>
       {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
-      {plannedEntry && (
+      {plannedEntry && (<>
         <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
-      )}
+        {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
+      </>)}
 
       <section class="section">
         <h2>Steps</h2>
@@ -153,6 +154,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
       {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
+      {planned?.reason && <p style="margin:8px 0 0;font-size:15px"><b>Why it’s on your plan:</b> {planned.reason}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
 

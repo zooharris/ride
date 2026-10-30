@@ -986,3 +986,59 @@ export async function moveSessionsToLibrary(opts: { dryRun?: boolean } = {}): Pr
   }
   return out;
 }
+
+/** A reason for a ride from what it is, for a calendar entry the plan's rebuild does not match by name. */
+function rideReason(w: Workout, longest: boolean): string | undefined {
+  const m = Math.round(workoutStats(w.blocks).seconds / 60);
+  switch (w.family) {
+    case 'endurance': return longest && m >= 90 ? 'The long ride: steady zone 2, fuel from the first half hour.' : 'Easy riding: zone 2, the quiet work that makes everything else possible.';
+    case 'recovery': return /openers/i.test(`${w.name} ${w.subtitle ?? ''}`) ? 'Openers: short efforts that wake the legs without adding fatigue.' : 'An easy spin: blood through the legs, nothing more.';
+    case 'tempo': return 'Tempo: brisk but sustainable, the pace of a strong group ride.';
+    case 'sweetspot': return 'Sweet spot: just under FTP, the most fitness per minute.';
+    case 'threshold': return 'Threshold work: efforts at FTP, which raise it directly.';
+    case 'vo2max': return 'VO2max work: hard efforts above FTP that lift the ceiling.';
+    case 'anaerobic': return 'Short, sharp efforts well above FTP: the power to attack and bridge.';
+    case 'test': return 'A test: it sets the numbers every target is built on.';
+    default: return undefined;
+  }
+}
+
+/**
+ * 30 Oct 2026: plans placed before reasons were stored have none on their sessions. Once, each session
+ * still to come gets the reason the plan gives it today when the plan, rebuilt, has the same session that
+ * day; a ride it doesn't match gets a sentence from what the ride is. Sessions that already have a reason
+ * are left alone.
+ */
+export async function fillPlanReasons(): Promise<number> {
+  if (await getSetting<boolean>('planReasonsFilled', false)) return 0;
+  const t = today();
+  const plans = await getPlans();
+  const planned = (await db.planned.toArray()).filter((p) => p.planId && !p.reason && p.status !== 'completed' && p.date >= t);
+  if (!planned.length || !plans.length) { await setSetting('planReasonsFilled', true); return 0; }
+  const data = await loadAppData();
+  let n = 0;
+  for (const plan of plans) {
+    const mine = planned.filter((p) => p.planId === plan.id);
+    if (!mine.length) continue;
+    const reasons = new Map<string, string>();
+    try {
+      const layout = await planLayout(data, plan);
+      const built = await buildPlan(data, plan.goal, plan.availability, plan.masters, plan.start, plan.goalDate, plan.away, layout);
+      for (const w of built.weeks) for (const s of w.sessions) reasons.set(`${s.date}|${s.workout.libraryId ?? s.workout.id}`, s.reason);
+    } catch { /* fall back to the ride's own sentence below */ }
+    for (const p of mine) {
+      const w = findWorkout(data.mine, p.workoutId);
+      if (!w) continue;
+      let reason = reasons.get(`${p.date}|${w.libraryId ?? w.id}`);
+      if (!reason && w.kind === 'ride') {
+        const week = data.planned.filter((x) => weekStart(x.date) === weekStart(p.date)).map((x) => findWorkout(data.mine, x.workoutId)).filter((x): x is Workout => x?.kind === 'ride');
+        const longest = Math.max(...week.map((x) => workoutStats(x.blocks).seconds));
+        reason = rideReason(w, workoutStats(w.blocks).seconds >= longest);
+      }
+      if (reason) { await db.planned.update(p.id, { reason }); n++; }
+    }
+  }
+  await setSetting('planReasonsFilled', true);
+  if (n) notify();
+  return n;
+}

@@ -82,13 +82,21 @@ const W: Record<Ability, number> = { easy: 0, tempo: 1, sweetspot: 1.2, threshol
 const W_EASY_IN_HARD = 0.25;
 const HARD_FAMILIES: Family[] = ['tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic'];
 const FAMILY_ABILITY: Partial<Record<Family, Ability>> = { tempo: 'tempo', sweetspot: 'sweetspot', threshold: 'threshold', vo2max: 'vo2', anaerobic: 'anaerobic' };
-const ABILITY_FAMILY: Record<Ability, Family> = { easy: 'endurance', tempo: 'tempo', sweetspot: 'sweetspot', threshold: 'threshold', vo2: 'vo2max', anaerobic: 'anaerobic' };
 const isOpeners = (w: Workout) => w.name === 'Openers' || w.subtitle === 'Openers';
 const prev = (dow: number) => (dow + 6) % 7;
 const next = (dow: number) => (dow + 1) % 7;
 
-export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): ShopResult {
-  const slots = slotsIn.filter((s) => s.minutes > 0 && s.pin !== 'rest');
+/**
+ * Days already behind us in the week under way (a re-check): nothing new is placed before `before`, and the
+ * calendar's sessions on those days count as placed, toward the week's needs, its hard days, its strength,
+ * its test and its load (30 Oct 2026, the steady re-check).
+ */
+export interface FixedDays { before: string; sessions: PlannedSession[] }
+
+export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext, fixed?: FixedDays): ShopResult {
+  const allSlots = slotsIn.filter((s) => s.minutes > 0 && s.pin !== 'rest');
+  const isFixed = (s: Slot) => !!fixed && s.date < fixed.before;
+  const slots = allSlots.filter((s) => !isFixed(s));
   const sessions: PlannedSession[] = [];
   const unmet: Unmet[] = [];
   const rem: Minutes = { ...needs.minutes };
@@ -129,28 +137,62 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
   // ---- (0) Rest days: the days with no time count; more are taken from the days with least time, but only
   // while the days left can still carry the week's load (a rider who gives six days and needs most of them keeps them). ----
   const restDates: string[] = [];
-  const timeDays = slots.length;
+  const timeDays = allSlots.length;
   let extraRest = Math.max(0, needs.restDays - (7 - timeDays));
   const restDows = new Set<number>();
   if (extraRest > 0) {
-    const biggest = [...slots].sort((a, b) => b.minutes - a.minutes)[0]?.dow;
-    const capacity = (except: Set<number>) => slots.filter((s) => rideable(s) && !except.has(s.dow)).reduce((t, s) => t + s.minutes * 62 / 60 * 0.8, 0);
-    const cands = slots.filter((s) => !s.pin && s.dow !== biggest).sort((a, b) => a.minutes - b.minutes || (a.dow === next(biggest ?? -9) ? -1 : 1));
+    const biggest = [...allSlots].sort((a, b) => b.minutes - a.minutes)[0]?.dow;
+    const capacity = (except: Set<number>) => allSlots.filter((s) => rideable(s) && !except.has(s.dow)).reduce((t, s) => t + s.minutes * 62 / 60 * 0.8, 0);
+    const cands = allSlots.filter((s) => !s.pin && s.dow !== biggest).sort((a, b) => a.minutes - b.minutes || (a.dow === next(biggest ?? -9) ? -1 : 1));
     for (const s of cands) {
       if (extraRest <= 0) break;
       const trial = new Set([...restDows, s.dow]);
       if (capacity(trial) < needs.budgetTss * 1.15) break;
-      restDows.add(s.dow); restDates.push(s.date); extraRest--;
+      restDows.add(s.dow); if (!isFixed(s)) restDates.push(s.date); extraRest--;
     }
   }
-  for (let d = 0; d < 7; d++) if (!byDow.has(d)) { const date = slotsIn.find((s) => s.dow === d)?.date; if (date) restDates.push(date); }
+  for (let d = 0; d < 7; d++) if (!allSlots.some((s) => s.dow === d)) { const date = slotsIn.find((s) => s.dow === d)?.date; if (date && !(fixed && date < fixed.before)) restDates.push(date); }
   const open = (s: Slot) => !restDows.has(s.dow);
+
+  // ---- The days already behind us this week (a re-check): what the calendar has there counts as placed. ----
+  let preTss = 0, hardDone = 0, strengthDone = 0, preMobility = 0, testDone = false, openersDone = false;
+  const preLongs: number[] = [];
+  const doneFoci: StrengthFocus[] = [];
+  const deferred: Contribution[] = [];
+  const bigDows = [...allSlots].filter((x) => rideable(x)).sort((a, b) => b.minutes - a.minutes || a.dow - b.dow).slice(0, 2).map((x) => x.dow);
+  for (const x of fixed?.sessions ?? []) {
+    const w = x.workout, c = contribution(w), dw = new Date(x.date + 'T00:00:00').getDay();
+    preTss += x.tss;
+    usedIds.add(w.libraryId ?? w.id);
+    if (w.kind === 'ride') {
+      rideDays.add(dw);
+      // In the order the week was shopped: the long ride first, the hard rides after it (below), the rest last.
+      const mostlyEasy = c.minutes >= 85 && c.at.easy >= c.minutes * 0.55;
+      const isLong = !HARD_FAMILIES.includes(w.family) || mostlyEasy;
+      if (isLong) { for (const a of QUALITY_ABILITIES) rem[a] = Math.max(0, rem[a] - c.at[a]); rem.easy = Math.max(0, rem.easy - c.at.easy); }
+      else deferred.push(c);
+      if (w.family === 'test') { testDone = true; hardDays.push(dw); hardDone++; }
+      else if (isOpeners(w)) { openersDone = true; hardDays.push(dw); hardDone++; }
+      else if (HARD_FAMILIES.includes(w.family) && c.work >= 10 && c.at.easy < c.minutes * 0.55) { hardDays.push(dw); hardDone++; }
+      // The week's long ride: placed as one, or (an older calendar entry) a mostly easy ride of an hour and a half or more on
+      // one of the week's two biggest days, where the long ride always goes.
+      else if (x.type === 'long' || (x.type !== 'endurance' || !x.reason || /long ride|long day/i.test(x.reason)) && mostlyEasy && bigDows.includes(dw)) { longDays.push(dw); preLongs.push(c.minutes); }
+    } else if (w.kind === 'strength') { strengthDays.push(dw); strengthDone++; doneFoci.push(c.focus ?? 'legs'); }
+    else if (w.kind === 'mobility') preMobility += c.minutes;
+  }
 
   // ---- (1) The long ride(s). ----
   const rideSlots = slots.filter((s) => rideable(s) && open(s));
   const bySize = [...rideSlots].sort((a, b) => b.minutes - a.minutes || a.dow - b.dow);
-  const longWants = [needs.longRideSeconds, needs.secondLongRideSeconds].filter((x) => x > 0);
-  longWants.forEach((wantSec, k) => {
+  // Quality types held from the calendar (a re-check): a long ride of a quality family (a long ride with sweet spot)
+  // and the days already behind us take theirs; the rest choose the hard days' families below.
+  const heldLeft: Family[] = (ctx.heldFamilies ?? []).filter((f) => FAMILY_ABILITY[f]);
+  const unhold = (f: Family) => { const i = heldLeft.indexOf(f); if (i >= 0) heldLeft.splice(i, 1); };
+  for (const x of fixed?.sessions ?? []) if (x.workout.kind === 'ride') unhold(x.workout.family);
+  // A long ride already ridden this week is the week's first long ride; what is left is the second, if any.
+  const longWants = [needs.longRideSeconds, needs.secondLongRideSeconds].filter((x) => x > 0).slice(preLongs.length);
+  longWants.forEach((wantSec, k0) => {
+    const k = k0 + preLongs.length;
     const s = bySize.find((x) => !rideDays.has(x.dow) && x.minutes >= 90);
     if (!s) return;
     const want = Math.min(wantSec / 60, s.minutes);
@@ -179,8 +221,11 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
     if (bestC.minutes < want * 0.85) unmet.push({ kind: 'ride', want: 'long', minutes: Math.round(want), short: Math.round(want - bestC.minutes), slotMinutes: s.minutes, setting: s.outdoor ? 'outdoor' : 'indoor', nearest: label(best) });
     const reason = longReason(needs, ctx, wantSec, bestC, k);
     place(s, best, needs.label === 'recovery' ? 'endurance' : 'long', reason);
+    unhold(best.family);
     longDays.push(s.dow);
   });
+
+  for (const c of deferred) { for (const a of QUALITY_ABILITIES) rem[a] = Math.max(0, rem[a] - c.at[a]); rem.easy = Math.max(0, rem.easy - c.at.easy); }
 
   // ---- (2) Quality rides, hardest first, on the days that cost least. ----
   const cost = (s: Slot) => {
@@ -194,13 +239,13 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
     if (s.minutes < 90) c += 0.5;
     return c;
   };
-  for (let k = 0; k < needs.hardSessions; k++) {
+  for (let k = hardDone; k < needs.hardSessions; k++) {
     const cands = rideSlots.filter((s) => !rideDays.has(s.dow) && s.minutes >= 45);
     if (!cands.length) break;
     const s = [...cands].sort((x, y) => cost(x) - cost(y) || y.minutes - x.minutes)[0];
     if (hardDays.length > 0 && cost(s) >= 2.5) break;
-    const isTest = needs.test && k === 0;
-    const isOpenersDay = needs.openers && k === 0;
+    const isTest = needs.test && !testDone && k === hardDone;
+    const isOpenersDay = needs.openers && !openersDone && k === hardDone;
     let pick: Workout | null = null;
     let reason = '';
     let type: SessionType = 'endurance';
@@ -218,11 +263,21 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
       }
     }
     if (!pick) {
-      const held = ctx.heldFamilies?.[k];
-      const target = held && FAMILY_ABILITY[held] ? FAMILY_ABILITY[held]! : [...QUALITY_ABILITIES].reverse().find((a) => rem[a] >= 8);
+      // The quality types the calendar already holds this week (a re-check that keeps them): the pick for each hard day
+      // is made as it was, among rides of the held family nearest in hardness to what the week asks for next.
+      const target0 = [...QUALITY_ABILITIES].reverse().find((a) => rem[a] >= 8);
+      let family: Family | undefined;
+      if (heldLeft.length) {
+        const rank = (a: Ability) => QUALITY_ABILITIES.indexOf(a);
+        const want = target0 ?? 'tempo';
+        family = [...heldLeft].sort((x, y) => Math.abs(rank(FAMILY_ABILITY[x]!) - rank(want)) - Math.abs(rank(FAMILY_ABILITY[y]!) - rank(want)) || rank(FAMILY_ABILITY[y]!) - rank(FAMILY_ABILITY[x]!))[0];
+        heldLeft.splice(heldLeft.indexOf(family), 1);
+      }
+      // Held types choose the family; they never add a hard day the week no longer asks for.
+      const target = target0;
       if (!target) break;
       const before = rem[target];
-      const r = bestQuality(rides, s, target, rem, ctx, variety, okBasis, fitsSetting, sessions);
+      const r = bestQuality(rides, s, target, rem, ctx, variety, okBasis, fitsSetting, [...(fixed?.sessions ?? []), ...sessions], family);
       if (!r) { unmet.push({ kind: 'ride', want: target, minutes: Math.round(before), short: Math.round(before), slotMinutes: s.minutes, setting: s.outdoor ? 'outdoor' : 'indoor', noCandidate: true }); continue; }
       pick = r;
       const c = contribution(r);
@@ -258,13 +313,16 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
     if (pinnedStrength.includes(s.dow)) c -= 6;
     return c;
   };
-  for (let k = 0; k < strengthCount; k++) {
+  for (let k = strengthDone; k < strengthCount; k++) {
     const minNeed = 25;
     const cands = slots.filter((s) => !strengthDays.includes(s.dow) && !never(s, 'strength') && (ctx.may.strength || pinnedStrength.includes(s.dow)) && free(s) >= minNeed && (open(s) || pinnedStrength.includes(s.dow)));
     if (!cands.length) break;
     const s = [...cands].sort((x, y) => strengthCost(x) - strengthCost(y) || y.minutes - x.minutes)[0];
     if (strengthCost(s) >= 4 && !pinnedStrength.includes(s.dow)) break;
-    const focus: StrengthFocus = k % 2 === 0 ? 'legs' : 'upper';
+    // Legs then upper body, alternating; a focus already lifted this week (the days behind us) is not repeated first.
+    const order: StrengthFocus[] = ['legs', 'upper', 'legs', 'upper'];
+    for (const f of doneFoci) order.splice(order.indexOf(f), 1);
+    const focus: StrengthFocus = order[k - strengthDone] ?? (k % 2 === 0 ? 'legs' : 'upper');
     const r = bestStrength(ctx, needs.strength.quality, focus, needs.strength.dose, free(s), variety);
     if (!r) { unmet.push({ kind: 'strength', want: needs.strength.quality, focus, minutes: 30, short: 30, slotMinutes: free(s), equipment: ctx.equipment, noCandidate: true }); continue; }
     if (r.mismatch) unmet.push({ kind: 'strength', want: needs.strength.quality, focus, minutes: Math.round(contribution(r.w).minutes), short: Math.round(contribution(r.w).minutes), slotMinutes: free(s), equipment: ctx.equipment, nearest: r.w.name });
@@ -327,10 +385,10 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
   // ---- (5) Mobility: after the long ride, after strength, then up to the week's floor. ----
   const mobilityOn = ctx.may.mobility;
   const mobilityFloor = !mobilityOn ? 0 : ctx.prefs.mobility === 'prefer' ? 45 : ctx.prefs.mobility === 'needed' ? 0 : needs.mobilityMinutes;
-  let mobility = 0;
+  let mobility = preMobility;
   const pairDays: Array<{ s: Slot; after: 'long' | 'strength' }> = [];
-  if (needs.pairedMobility.afterLongRide) for (const d of longDays) pairDays.push({ s: byDow.get(d)!, after: 'long' });
-  if (needs.pairedMobility.afterStrength) for (const d of strengthDays) pairDays.push({ s: byDow.get(d)!, after: 'strength' });
+  if (needs.pairedMobility.afterLongRide) for (const d of longDays) if (byDow.has(d)) pairDays.push({ s: byDow.get(d)!, after: 'long' });
+  if (needs.pairedMobility.afterStrength) for (const d of strengthDays) if (byDow.has(d)) pairDays.push({ s: byDow.get(d)!, after: 'strength' });
   for (const { s, after } of pairDays) {
     if (!mobilityOn || never(s, 'mobility') || sessions.some((x) => x.date === s.date && x.kind === 'mobility')) continue;
     const w = pairedMobility(ctx.library.mobility, after, variety);
@@ -357,7 +415,7 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext): S
   }
 
   // ---- (6) Rebalance: swap the fill rides longer or shorter until the week is within 5% of its budget. ----
-  const total = () => sessions.reduce((t, x) => t + x.tss, 0);
+  const total = () => preTss + sessions.reduce((t, x) => t + x.tss, 0);
   for (let pass = 0; pass < 12 && fills.length && needs.budgetTss > 0; pass++) {
     const t = total();
     if (Math.abs(t - needs.budgetTss) <= needs.budgetTss * 0.05) break;
@@ -397,9 +455,8 @@ function sessionOf(s: Slot, w: Workout, type: PlannedSession['type'], reason: st
 const label = (w: Workout) => (w.subtitle ? `${w.name} (${w.subtitle})` : w.name);
 
 function bestQuality(rides: Workout[], s: Slot, target: Ability, rem: Minutes, ctx: ShopContext, variety: (w: Workout) => number,
-  okBasis: (w: Workout) => boolean, fitsSetting: (w: Workout, s: Slot) => boolean, already: PlannedSession[]): Workout | null {
+  okBasis: (w: Workout) => boolean, fitsSetting: (w: Workout, s: Slot) => boolean, already: PlannedSession[], held?: Family): Workout | null {
   const lastFamily = [...already].reverse().find((x) => x.kind === 'ride' && HARD_FAMILIES.includes(x.workout.family))?.workout.family;
-  const held = ctx.heldFamilies?.length ? ABILITY_FAMILY[target] : undefined;
   let best: Workout | null = null, bestScore = -Infinity;
   for (const w of rides) {
     if (!HARD_FAMILIES.includes(w.family) || isOpeners(w) || !okBasis(w) || !fitsSetting(w, s)) continue;

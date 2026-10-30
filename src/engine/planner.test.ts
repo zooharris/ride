@@ -331,12 +331,15 @@ describe('hand-added sessions in the re-check', () => {
   });
 });
 
+/** What the calendar holds of a placed plan before a date: a re-check is given these as they stand (30 Oct 2026). */
+const pastOf = (plan: ReturnType<typeof generatePlan>, before: string) => ({ planStart: plan.weeks[0].sessions[0]?.date ?? plan.weeks[0].start, pastSessions: plan.weeks.flatMap((w) => w.sessions).filter((x) => x.date < before) });
+
 describe('re-checking a plan keeps its layout', () => {
   it('keeps every remaining week\u2019s phase and does not rebuild past weeks', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
     const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
     const later = '2026-11-04';   // two weeks and two days into the plan
-    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout }));
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout, ...pastOf(original, later) }));
     expect(again.weeks[0].start <= later && later < addDays(again.weeks[0].start, 7)).toBe(true);   // the week under way, re-fitted
     for (const w of again.weeks) expect(w.phase).toBe(layout.find((x) => x.start === w.start)!.phase);
     expect(again.weeks.every((w) => w.sessions.every((s) => s.date >= later))).toBe(true);
@@ -357,21 +360,21 @@ describe('re-checking a plan keeps its layout', () => {
     const tue = addDays(wk, 1), wed = addDays(wk, 2);
     const before = original.weeks[1].sessions.filter((x) => x.kind === 'ride' && x.date >= wed);
     // a beautiful Tuesday: 5 hours, unplanned
-    const big = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, done: [{ date: tue, tss: 260, seconds: 5 * 3600, intensity: 0.7 }] }));
+    const big = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, ...pastOf(original, wed), done: [{ date: tue, tss: 260, seconds: 5 * 3600, intensity: 0.7 }] }));
     const after = big.weeks[0].sessions.filter((x) => x.kind === 'ride');
     const wedRide = after.find((x) => x.date === wed);
     if (wedRide) expect(wedRide.type).toBe('recovery');                       // the next day is easy
     const sum = (xs: typeof after) => xs.reduce((s, x) => s + x.tss, 0);
     expect(sum(after)).toBeLessThan(sum(before));                             // the rest of the week comes down
     // nothing done at all on the days gone: the days left stay as planned, nothing crammed in
-    const missed = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, done: [] }));
+    const missed = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, ...pastOf(original, wed), done: [] }));
     expect(sum(missed.weeks[0].sessions.filter((x) => x.kind === 'ride'))).toBeLessThanOrEqual(sum(before) * 1.12);
   });
   it('fitted again on the same data, two days on, offers next to nothing', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
     const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
     const later = addDays(today, 2);
-    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout }));
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout, ...pastOf(original, later) }));
     const from = later;
     const name = (p: typeof original) => new Map(p.weeks.flatMap((w) => w.sessions).filter((x) => x.date >= from).map((x) => [`${x.date}|${x.kind}`, x.workout.name]));
     const a = name(original), b = name(again);
@@ -387,7 +390,7 @@ describe('the week under way responds to what was done, judged against the plan'
   const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
   const wk = original.weeks[1];                          // a full week of the plan
   const refit = (notBefore: string, done: Array<{ date: string; tss: number; seconds: number; kind?: 'ride' }>) =>
-    generatePlan(req({ goal: weight, start: layout[0].start, notBefore, layout, done })).weeks[0];
+    generatePlan(req({ goal: weight, start: layout[0].start, notBefore, layout, done, ...pastOf(original, notBefore) })).weeks[0];
   const rides = (ss: typeof wk.sessions, from: string) => ss.filter((x) => x.kind === 'ride' && x.date >= from).map((x) => `${x.date} ${x.workout.name}`);
 
   it('a planned long ride done as planned does not ease the next day', () => {

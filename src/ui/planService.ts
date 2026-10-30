@@ -7,7 +7,8 @@ import { diffPlan, reviewLastWeek, splitByHorizon, summarize, type Change, type 
 import type { Goal } from '../engine/goals';
 import type { SessionType } from '../engine/generate';
 import { addDays, rideIntensity, today } from '../engine/load';
-import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase, type QualityScores } from '../engine/planner';
+import { generatePlan, type Availability, type AwayRange, type Plan, type Phase as PlanPhase, type PlannedSession, type QualityScores } from '../engine/planner';
+import { contribution } from '../engine/contribution';
 import { weeklyLoad } from '../engine/progress';
 import type { Basis, Equipment, Fitness, PlannedWorkout, Profile, StrengthDose, StrengthQuality, Workout } from '../engine/types';
 import { pickStrength, strengthReason } from '../engine/shop';
@@ -46,7 +47,8 @@ export interface ActivePlan {
 type PlanRequestKeep = { scores: QualityScores; byWeek: Record<string, SessionType[]> };
 const QUALITY_FAMILIES = new Set(['sweetspot', 'tempo', 'threshold', 'vo2max', 'anaerobic']);
 
-export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number; /** The week in one sentence, as the plan built it (30 Oct 2026). */ summary?: string }
+export interface PlanWeekSummary { start: string; phase: PlanPhase; label: string; tss: number; /** The week in one sentence, as the plan built it (30 Oct 2026). */ summary?: string;
+  /** The week's load budget as the plan set it; a re-check keeps it while fitness is on the plan's line (30 Oct 2026). */ budget?: number }
 
 /** Every plan on the calendar, oldest first. Plans never overlap in time. */
 export async function getPlans(): Promise<ActivePlan[]> {
@@ -176,7 +178,7 @@ export function overlapping(plans: ActivePlan[], start: string, end: string, exc
   return plans.find((p) => p.id !== exceptId && p.start <= end && p.goalDate >= start);
 }
 
-export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[], layout?: Array<{ start: string; phase: PlanPhase }>, keepQuality?: PlanRequestKeep): Promise<Plan> {
+export async function buildPlan(data: AppData, goal: Goal, availability: Availability, masters: boolean, startDate?: string, endDate?: string, away?: AwayRange[], layout?: Array<{ start: string; phase: PlanPhase; budget?: number }>, keepQuality?: PlanRequestKeep, keepBudgets = false): Promise<Plan> {
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
@@ -193,16 +195,36 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
     const t = today(), wk = weekStart(t);
     // A ride added by hand today (an extra workout on the trainer, say) is not in the plan, so it counts as extra load.
     const doneToday = new Set(data.planned.filter((p) => p.date === t && p.status === 'completed' && p.planId).map((p) => p.activityId));
-    const done = data.rides.filter((r) => r.date >= wk && (r.date < t || (r.date === t && !doneToday.has(r.id))))
+    // Riding before the plan's first day was not in the plan's week when it was placed, so it is not "extra" now.
+    const from = startDate && startDate > wk ? startDate : wk;
+    const done = data.rides.filter((r) => r.date >= from && (r.date < t || (r.date === t && !doneToday.has(r.id))))
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality, recentPicks: recentPicks(data, t) });
+    // The plan's sessions from its first day until today stand as they are (the steady re-check, 30 Oct 2026).
+    const planStart = startDate && startDate < t ? startDate : undefined;
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality, keepBudgets, recentPicks: recentPicks(data, t),
+      planStart: startDate, pastSessions: planStart ? pastPlanSessions(data, planStart, t) : [] });
   }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine), recentPicks: recentPicks(data, notBefore) });
 }
 
-/** What was on the calendar in the three weeks before a date, as Library ids, so the plan does not repeat it straight away. */
+/** The plan's sessions on the calendar from its first day until a date, as the planner's sessions (for the week under way). */
+function pastPlanSessions(data: AppData, from: string, before: string): PlannedSession[] {
+  const out: PlannedSession[] = [];
+  const HARD = ['tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic'];
+  for (const p of data.planned) {
+    if (!p.planId || p.date < from || p.date >= before) continue;
+    const w = findWorkout(data.mine, p.workoutId);
+    if (!w) continue;
+    const c = contribution(w);
+    const type = w.kind !== 'ride' ? w.kind : w.family === 'test' ? 'test' : /openers/i.test(`${w.name} ${w.subtitle ?? ''}`) ? 'openers' : HARD.includes(w.family) ? w.family : w.family === 'recovery' ? 'recovery' : 'endurance';   // the shopper tells the long ride by its reason and its day
+    out.push({ date: p.date, kind: w.kind, type: type as PlannedSession['type'], workout: w, seconds: Math.round(c.minutes * 60), tss: Math.round(c.tss), reason: p.reason ?? '' });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** What was on the calendar in the three weeks before this week, as Library ids, so the plan does not repeat it straight away. */
 function recentPicks(data: AppData, before: string): Array<{ date: string; id: string }> {
-  const from = addDays(before, -21);
+  const from = addDays(weekStart(before), -21);
   const out: Array<{ date: string; id: string }> = [];
   for (const p of data.planned) {
     if (p.date >= before || p.date < from) continue;
@@ -228,18 +250,23 @@ export function mergeProjection(previous: Fitness[] | undefined, next: Fitness[]
  * build keep them; for an older one they are worked out once from the plan's
  * own first week and saved, so every later re-check uses the same layout.
  */
-async function planLayout(data: AppData, active: ActivePlan): Promise<Array<{ start: string; phase: PlanPhase }>> {
-  if (active.weeks?.length) return active.weeks.map((w) => ({ start: w.start, phase: w.phase }));
+async function planLayout(data: AppData, active: ActivePlan): Promise<Array<{ start: string; phase: PlanPhase; budget?: number }>> {
+  if (active.weeks?.length && active.weeks.some((w) => w.budget != null)) return active.weeks.map((w) => ({ start: w.start, phase: w.phase, budget: w.budget }));
+  // A plan saved before its weeks (19 Oct) or its budgets (30 Oct) were kept: worked out once from the plan's own first
+  // day, as it was placed, and saved, so every later re-check uses the same layout and budgets.
   const first = weekStart(active.start);
   const weeksTo = Math.max(1, Math.round((Date.parse(active.goalDate) - Date.parse(first) + 864e5) / (7 * 864e5)));
   const g: Goal = active.goal.kind === 'event' ? active.goal : { ...active.goal, weeks: weeksTo };
   const profile = data.profile as Profile;
   const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
   const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
-  const original = generatePlan({ start: first, notBefore: first, goal: g, availability: active.availability, basis: profile.basis, masters: active.masters, profile, assessment, away: active.away });
-  const weeks: PlanWeekSummary[] = original.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss) }));
+  const original = generatePlan({ start: first, notBefore: active.start, goal: g, availability: active.availability, basis: profile.basis, masters: active.masters, profile, assessment, away: active.away });
+  const budgetOf = new Map(original.weeks.map((w) => [w.start, w.targetTss]));
+  const weeks: PlanWeekSummary[] = active.weeks?.length
+    ? active.weeks.map((w) => ({ ...w, budget: budgetOf.get(w.start) }))
+    : original.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss), budget: w.targetTss }));
   await putPlan({ ...active, weeks });
-  return weeks.map((w) => ({ start: w.start, phase: w.phase }));
+  return weeks.map((w) => ({ start: w.start, phase: w.phase, budget: w.budget }));
 }
 
 /**
@@ -300,7 +327,7 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await db.planned.bulkAdd(rows);
   added = toAdd.length;
   await pruneOrphanWorkouts();
-  const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss), ...(w.summary ? { summary: w.summary.replace(/^Week \d+: /, '') } : {}) }));
+  const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss), budget: w.targetTss, ...(w.summary ? { summary: w.summary.replace(/^Week \d+: /, '') } : {}) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
   const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks, qualityScores: existingPlan?.qualityScores ?? plan.qualityScores };
   await putPlan(active);
@@ -564,7 +591,12 @@ export async function replan(data: AppData): Promise<Replan | null> {
     scores = (await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, layout)).qualityScores;
     await putPlan({ ...active, qualityScores: scores });
   }
-  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, layout, { scores, byWeek });
+  // The steady re-check (30 Oct 2026): while fitness is on the plan's line (within 3 points), each week keeps the
+  // budget the plan set; off the line, the climb is worked out again from today's fitness, as before.
+  const fitNow = fitnessOn(fitnessFromRides(data.rides), today())?.ctl ?? 0;
+  const fitPlanned = plannedFitness(data, active, today());
+  const onLine = fitPlanned == null || Math.abs(fitNow - fitPlanned) <= 3;
+  const plan = await buildPlan(data, active.goal, active.availability, active.masters, active.start, active.goalDate, active.away, layout, { scores, byWeek }, onLine);
   const mine = data.planned.filter((p) => !p.planId || p.planId === active.id);   // this plan's sessions and hand-added ones; other plans are left alone
   const review = reviewLastWeek(mine, workouts, data.rides);
   const rejected = await rejectedSigs();
@@ -572,7 +604,7 @@ export async function replan(data: AppData): Promise<Replan | null> {
   const all = diffPlan(mine, workouts, plan, today()).filter((c) => c.date <= active.goalDate && !rejected.has(changeSig(c)));
   const series = fitnessFromRides(data.rides);
   const fitnessNow = fitnessOn(series, today())?.ctl ?? 0;
-  const fitnessPlanned = active.projection?.find((f) => f.date === today())?.ctl;
+  const fitnessPlanned = fitPlanned;
   // Batch 6, C2: the next two weeks' changes, and later ones only with a cause; the rest wait their turn.
   const { now: changes, later } = splitByHorizon(all, review, fitnessNow, fitnessPlanned, today());
   // The longest ride on the calendar from today, so "the longest planned is now …" is said only when it changes.
@@ -1041,4 +1073,19 @@ export async function fillPlanReasons(): Promise<number> {
   await setSetting('planReasonsFilled', true);
   if (n) notify();
   return n;
+}
+
+/**
+ * Where the plan's line puts fitness on a date, measured from where the rider actually was the day the plan was
+ * placed (30 Oct 2026). Plans placed mid-week before then drew their line from the Monday, a few points under the
+ * rider; measuring the climb rather than the level keeps that from reading as "off the line".
+ */
+function plannedFitness(data: AppData, active: ActivePlan, date: string): number | undefined {
+  const proj = active.projection ?? [];
+  const at = proj.find((f) => f.date === date)?.ctl;
+  if (at == null) return undefined;
+  const placed = active.appliedAt?.slice(0, 10);
+  const base = placed ? proj.find((f) => f.date === placed)?.ctl : undefined;
+  const actualThen = placed ? fitnessOn(fitnessFromRides(data.rides, placed), placed)?.ctl : undefined;
+  return base != null && actualThen != null ? at - base + actualThen : at;
 }

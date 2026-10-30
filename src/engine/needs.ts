@@ -137,6 +137,11 @@ export interface NeedsInput {
   /** Days with any time, for foot work and rest. */
   daysWithTime: number;
   footMinutes: number;
+  /**
+   * Re-checking on evidence that has not moved (fitness on the plan's line): each week's budget as the plan set it
+   * when it was placed, so the same evidence gives the same weeks (30 Oct 2026, the steady re-check).
+   */
+  budgets?: Array<number | undefined>;
 }
 
 export interface NeedsResult { weeks: WeekNeeds[]; decisions: string[]; ramp: number; maxRamp: number; needRamp: number }
@@ -193,7 +198,9 @@ export function planNeeds(inp: NeedsInput): NeedsResult {
     const mostlyAway = awayDays >= 5 || (awayDays > 0 && inp.daysWithTime - awayDays <= 2);
 
     let budgetTss: number;
-    if (mostlyAway && phase !== 'recovery' && phase !== 'taper') budgetTss = lastLoading * 0.6;
+    const kept = inp.budgets?.[i];
+    if (kept != null) { budgetTss = kept; if (isLoading(phase) && !mostlyAway) { ctl += ramp; lastLoading = kept; loadingSeen++; } }
+    else if (mostlyAway && phase !== 'recovery' && phase !== 'taper') budgetTss = lastLoading * 0.6;
     else if (phase === 'recovery') budgetTss = lastLoading * 0.6;
     else if (phase === 'taper') budgetTss = lastLoading * (phaseIdx === 0 && taperCount === 2 ? 0.55 : 0.45);
     else { ctl += ramp; budgetTss = Math.min(capTss, 7 * (ctl + 6 * ramp)) * loadScale; lastLoading = budgetTss; loadingSeen++; }

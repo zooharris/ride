@@ -75,7 +75,9 @@ export interface PlanRequest {
    * rider's latest data. Without it the plan is laid out afresh, which shifts
    * every phase as the weeks go by.
    */
-  layout?: Array<{ start: string; phase: Phase }>;
+  layout?: Array<{ start: string; phase: Phase; budget?: number }>;
+  /** Re-checking with fitness on the plan's line: keep each week's budget from the layout (the steady re-check). */
+  keepBudgets?: boolean;
   /** The rider's own saved workouts, offered to the planner alongside the Library (Batch 6, B1). The plan never adds to them. */
   ownWorkouts?: Workout[];
   /**
@@ -87,6 +89,14 @@ export interface PlanRequest {
   prefs?: Prefs;
   /** Library workouts on the calendar before the plan's first rebuilt day, for variety: the plan avoids repeating them for three weeks. */
   recentPicks?: Array<{ date: string; id: string }>;
+  /**
+   * Re-checking (30 Oct 2026, the steady re-check): the plan's first day as placed, and its sessions on the calendar from
+   * then until today. Days of the week under way before the plan's first day are gone, as they were when it was placed;
+   * days from then until today keep what the calendar has on them, which counts toward the week. A test among them (or
+   * anywhere since the plan's first day) means no further test is wanted.
+   */
+  planStart?: string;
+  pastSessions?: PlannedSession[];
   /** What the rider has actually done this week up to today, planned or not, so the days left can respond to it. */
   done?: Array<{ date: string; tss: number; seconds: number; intensity?: number; kind?: SessionKind }>;
 }
@@ -211,7 +221,8 @@ export function generatePlan(req: PlanRequest): Plan {
   const footMinutes = daysWithTime.filter((i) => av.noBike?.[i] || av.hours[i] * 60 < 45).reduce((s, i) => s + av.hours[i] * 60, 0);
   const awayDays = seq.map((_, i) => awayDaysInWeek(addDays(req.start, i * 7), req.away));
   const needs = planNeeds({ goal, demand: d, assessment: a, availability: av, seq, masters: req.masters, start: req.start, pastWeeks, awayDays, capMinutes,
-    rideDays: slotsAll.length, bigSlots, daysWithTime: daysWithTime.length, footMinutes });
+    rideDays: slotsAll.length, bigSlots, daysWithTime: daysWithTime.length, footMinutes,
+    budgets: req.keepBudgets && fixed ? fixed.map((w) => w.budget) : undefined });
   decisions.push(...needs.decisions);
 
   const qualityScores: QualityScores = {
@@ -248,7 +259,9 @@ export function generatePlan(req: PlanRequest): Plan {
   let longestPlanned = 0;
   let saidHardDropped = false;
   let saidTwoLongs = false;
-  let testPending = false;
+  // The test: wanted once, when the FTP in use looks unverified, in the first week that can hold it; a test already on
+  // the calendar since the plan's first day is the test.
+  let testPending = a.ftpStatus.value !== 'fresh' && goal.kind !== 'weight' && !(req.pastSessions ?? []).some((x) => x.workout.family === 'test');
   let saidTest = false;
   let firstShopped = true;
 
@@ -256,10 +269,12 @@ export function generatePlan(req: PlanRequest): Plan {
     const weekStart = addDays(req.start, i * 7);
     if (i < pastWeeks) return;
     // A test the first week could not hold (a plan starting late in the week) moves to the next.
-    const need = testPending && !needs.weeks[i].test ? { ...needs.weeks[i], test: true, hardSessions: Math.max(1, needs.weeks[i].hardSessions) } : needs.weeks[i];
+    const need = { ...needs.weeks[i], test: testPending, hardSessions: testPending ? Math.max(1, needs.weeks[i].hardSessions) : needs.weeks[i].hardSessions };
     const refit = i === currentIdx && addDays(weekStart, 7) > req.notBefore! && weekStart <= req.notBefore!;
     const isAway = (date: string) => (req.away ?? []).some((r) => date >= r.from && date <= r.to);
-    const gone = (date: string) => (!refit && req.notBefore ? date < req.notBefore : false) || isAway(date);
+    // Placing a plan, the days before today are gone. Re-checking the week under way, only the days before the plan's
+    // first day are gone (as they were when it was placed); from then until today the calendar's sessions stand (below).
+    const gone = (date: string) => (refit ? !!req.planStart && date < req.planStart : !!req.notBefore && date < req.notBefore) || isAway(date);
     if (need.mostlyAway) decisions.push(`Week of ${new Date(weekStart + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} is mostly away (${awayDays[i]} of 7 days): kept light, and the block picks up again after it.`);
 
     const slots: Slot[] = [];
@@ -270,9 +285,10 @@ export function generatePlan(req: PlanRequest): Plan {
       slots.push({ dow: dw, date, minutes: (av.hours[dw] ?? 0) * 60, outdoor: av.outdoor[dw] ?? false, noBike: !!av.noBike?.[dw], pin: pinOf(dw), never: (av.never ?? []).filter((x) => x.dow === dw).map((x) => x.kind) });
     }
     const held = req.keepQuality && !scoresMoved ? req.keepQuality.byWeek[weekStart]?.filter((q) => q !== 'test') as Family[] | undefined : undefined;
-    const shop = shopWeek(need, slots, { ...ctxBase, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined });
-    let sessions = shop.sessions;
-    testPending = need.test && !sessions.some((x) => x.type === 'test') && !testPending;
+    const fixedSessions = refit ? (req.pastSessions ?? []).filter((x) => x.date >= weekStart && x.date < req.notBefore! && !gone(x.date)) : [];
+    const shop = shopWeek(need, slots, { ...ctxBase, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined }, refit ? { before: req.notBefore!, sessions: fixedSessions } : undefined);
+    let sessions = refit ? [...fixedSessions, ...shop.sessions] : shop.sessions;
+    if (sessions.some((x) => x.type === 'test' || x.workout.family === 'test')) testPending = false;
     if (need.test && sessions.some((x) => x.type === 'test') && !saidTest) { saidTest = true; decisions.push(`A test ${i === 0 ? 'in week 1' : 'in the first full week'} because ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)} Later tests are added only when your rides suggest the number has moved.`); }
     const hardPlaced = sessions.filter((x) => x.kind === 'ride' && ['tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'].includes(x.type)).length;
     if (!saidHardDropped && hardPlaced < need.hardSessions && slotsAll.length >= 3) { saidHardDropped = true; decisions.push('Some weeks carry one hard session instead of two: the only free day for a second one sits right after a hard or long day, and zone 2 there does more good than a compromised interval session.'); }
@@ -302,7 +318,9 @@ export function generatePlan(req: PlanRequest): Plan {
   const loads = weeks.flatMap((w) => w.sessions.map((s) => ({ date: s.date, tss: s.tss })));
   // Today's fitness is where the line starts: from the first day for a new plan, from today for a
   // plan under way (its past weeks are history, already in today's fitness, not days of zero load).
-  const projFrom = req.layout?.length && req.notBefore && req.notBefore > req.start ? req.notBefore : req.start;
+  // A plan placed mid-week starts its line today too (30 Oct 2026): from the Monday, today's fitness would be decayed
+  // across days already gone, and the line would sit a few points under the rider from the first day.
+  const projFrom = req.notBefore && req.notBefore > req.start ? req.notBefore : req.start;
   const projection = fitnessSeries(loads, projFrom, goalDate, { ctl: a.fitness.ctl, atl: a.fitness.atl });
   const taperStart = weeks.find((w) => w.phase === 'taper')?.start;
   const peakPoint = taperStart ? projection.find((f) => f.date === taperStart) : projection[projection.length - 1];

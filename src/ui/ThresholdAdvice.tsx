@@ -16,8 +16,6 @@ import { db } from '../data/db';
 import { fmtDate } from './derived';
 import { toast } from './Toast';
 
-const CONF_WORDS = { settled: 'Settled', mixed: 'Mixed evidence', thin: 'Thin evidence' } as const;
-const confTag = (c: keyof typeof CONF_WORDS) => <span class="tag" style={`--c:${c === 'settled' ? 'var(--good)' : c === 'mixed' ? 'var(--warn)' : 'var(--ink-3)'}`}>{CONF_WORDS[c]}</span>;
 const choiceWords = (a: StoredAdvice) => (a.choice === 'updated' || a.choice === 'applied' ? 'taken' : a.choice === 'kept' ? 'kept' : 'not decided');
 
 /** Ask, keep the answer, and the stored answer on mount. */
@@ -75,7 +73,7 @@ export function CoachFtp({ profile, data, onChanged }: { profile: Profile; data?
       {err && <p class="small" style="color:var(--bad);margin:6px 0 0">{err}</p>}
       {a && (open || msg) && (
         <div class="panel coach-card">
-          <div class="row between wrap" style="gap:8px"><b>{a.ftp ? <>The coach puts your FTP at <span class="num">{a.ftp} W</span></> : 'Not enough to go on yet'}</b>{confTag(a.confidence)}</div>
+          <div class="row between wrap" style="gap:8px"><b>{a.ftp ? <>The coach puts your FTP at <span class="num">{a.ftp} W</span></> : 'Not enough to go on yet'}</b></div>
           <p class="small" style="margin:6px 0 0">{a.why}</p>
           <NeedsTest text={a.needsTest} />
           {open && a.ftp && a.ftp !== profile.ftp && (
@@ -113,7 +111,7 @@ export function CoachZones({ profile, data, label = 'Analyse my zones', onEditFi
       {err && <p class="small" style="color:var(--bad);margin:6px 0 0">{err}</p>}
       {a && (open || msg) && (
         <div class="panel coach-card">
-          <div class="row between wrap" style="gap:8px"><b>{changed ? 'The coach suggests these zones' : 'The coach would keep your zones'}</b>{confTag(a.confidence)}</div>
+          <div class="row between wrap" style="gap:8px"><b>{changed ? 'The coach suggests these zones' : 'The coach would keep your zones'}</b></div>
           {changed && (
             <div class="coach-tables">
               {a.powerTops && <ZoneCompare title="Power zones (top of each, watts)" now={nowP} next={a.powerTops} unit="W" />}

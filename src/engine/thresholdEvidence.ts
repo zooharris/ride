@@ -48,6 +48,8 @@ export interface ThresholdEvidence {
   confidence: 'settled' | 'mixed' | 'thin';
   /** The FTP the rider's efforts prove they can at least ride (the fit when it is good), for the upward check. */
   proven?: number;
+  /** What the riding shows for Today's FTP messages (Step 2b, Part C); absent until then. */
+  signs?: import('./ftpCheck').FtpSigns;
   /** Which sources the estimate came from, in words. */
   sources: string[];
   lines: string[];

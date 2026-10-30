@@ -20,6 +20,7 @@ import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
 import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
+import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { addDays, today } from '../../engine/load';
 
 
@@ -431,6 +432,9 @@ function HistoryLoader() {
     } finally { setProg(null); refresh(); }
   }
   const busy = prog != null;
+  // Step 2b (30 Oct 2026): the one-time re-read of rides that keeps heart rate alongside power.
+  const [reread, setReread] = useState<CurveProgress | null>(null);
+  useEffect(() => watchPowerCurves((p) => setReread(p.rebuilding && p.total > 0 && p.done < p.total && !p.error ? p : null)), []);
   return (
     <section class="section">
       <h2>History</h2>
@@ -445,6 +449,7 @@ function HistoryLoader() {
           <button class="btn sm" disabled={busy || !custom || !cov?.from} onClick={() => load(custom)}>Load</button>
         </div>
         {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}
+        {reread && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${(reread.done / reread.total) * 100}%`} /></div><p class="faint small">Updating your ride history: {reread.done} of {reread.total}</p></div>}
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. Its Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
       </div>

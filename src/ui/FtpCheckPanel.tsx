@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'preact/hooks';
 import { getSetting, setSetting, db } from '../data/db';
-import { ftpCheck, type FtpCheckState, type FtpSigns } from '../engine/ftpCheck';
+import { ftpCheck, type FtpCheckState } from '../engine/ftpCheck';
 import { today as todayIs } from '../engine/load';
 import { useEvidence } from './thresholdService';
 import { resendRides, sentRidesAhead, takeThreshold } from './testService';
@@ -16,7 +16,7 @@ import type { AppData } from './store';
 
 export const FTP_CHECK_KEY = 'ftpCheck';
 
-export function FtpCheckPanel({ data, signs }: { data: AppData; signs?: FtpSigns }) {
+export function FtpCheckPanel({ data }: { data: AppData }) {
   const ev = useEvidence(data);
   const [state, setState] = useState<FtpCheckState | undefined>(undefined);
   const [done, setDone] = useState<{ text: string; ahead: number } | null>(null);
@@ -29,8 +29,7 @@ export function FtpCheckPanel({ data, signs }: { data: AppData; signs?: FtpSigns
       {done.ahead > 0 && <button class="btn sm" style="margin-top:8px" onClick={async () => { const [pl, w] = await Promise.all([db.planned.toArray(), db.workouts.toArray()]); toast(await resendRides(sentRidesAhead(pl, w))); setDone({ ...done, ahead: 0 }); }}>Re-send {done.ahead} ride{done.ahead === 1 ? '' : 's'} to Garmin with the new FTP</button>}
     </section>
   );
-  const dated = ev.tests.filter((t) => t.date).map((t) => t.date).sort();
-  const check = ftpCheck({ ftp: p.ftp, ftpSetOn: p.ftpSetOn, estimate: ev.proven, lastTestDate: dated[dated.length - 1], everTested: dated.length > 0, signs: signs ?? ev.signs, state, today: todayIs() });
+  const check = ftpCheck({ ftp: p.ftp, ftpSetOn: p.ftpSetOn, estimate: ev.proven, lastTestDate: ev.lastTestDate, everTested: ev.everTested, signs: ev.signs, state, today: todayIs() });
   if (!check) return null;
   const save = async (s: FtpCheckState) => { setState(s); await setSetting(FTP_CHECK_KEY, s); };
 

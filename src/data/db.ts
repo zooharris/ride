@@ -38,6 +38,18 @@ export interface PowerCurve {
   id: string;               // activity id
   date: string;
   w: number[];
+  /** Step 2b (30 Oct 2026): 2 once heart rate is read alongside power; older records are rebuilt once. */
+  v?: number;
+  /** Seconds and mean heart rate in each band of FTP (as FTP was when read), after minute 10. */
+  hrAtPower?: Array<{ lo: number; hi: number; seconds: number; hr: number }>;
+  /** Mean power while heart rate sat in 0.70-0.80 of threshold heart rate (as it was when read), after minute 10. */
+  steadyAtHr?: { watts: number; seconds: number };
+  ftpAtBuild?: number;
+  lthrAtBuild?: number;
+  /** A planned hard session, judged against its steps (never shown). */
+  verdict?: import('../engine/sessionVerdict').SessionVerdict;
+  /** Read with the planned session it was matched to (judged, or not a hard session). */
+  judged?: boolean;
 }
 
 export interface SyncState {

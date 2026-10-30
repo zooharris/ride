@@ -686,9 +686,9 @@ export interface FetchedStreams {
 }
 
 /** Just time and power for one activity: what the power curve needs, a fraction of the full recording. */
-export async function fetchPowerStream(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[] }> {
-  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts`);
-  return { time: list.find((x) => x.type === 'time')?.data ?? [], watts: list.find((x) => x.type === 'watts')?.data };
+export async function fetchPowerStream(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[] }> {
+  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate`);
+  return { time: list.find((x) => x.type === 'time')?.data ?? [], watts: list.find((x) => x.type === 'watts')?.data, heartrate: list.find((x) => x.type === 'heartrate')?.data };
 }
 
 /** What an activity's small picture needs: the route and the power or heart rate, a fraction of the full recording. */

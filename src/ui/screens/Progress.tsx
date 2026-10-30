@@ -20,7 +20,7 @@ import { addDays, today } from '../../engine/load';
 import { fitnessFromRides, fmtDate, readinessSeries, weekStart } from '../derived';
 import { lastPlannedDate, projectFitness, weekSummary } from '../week';
 import { aerobicPoints, bestCurve, CURVE_LABELS, dailyLoad, ftpByDay, monthlyTotals, rollingDays, rollingMean, weekStreak, weeklyLoad, weeklyZones, wellnessDays } from '../../engine/progress';
-import { buildPowerCurves } from '../powerCurves';
+import { buildPowerCurves, curveContext } from '../powerCurves';
 import { getActivePlan, type ActivePlan } from '../planService';
 import type { Ride, SessionKind } from '../../engine/types';
 import { ZONE_VAR } from '../Profile';
@@ -112,7 +112,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
 
       <div class="pgrid">
         <ZonesCard rides={data.rides} from={from} to={t} />
-        <PowerCurveCard rides={data.rides} from={from} ftp={profile.ftp} weightKg={profile.weightKg} />
+        <PowerCurveCard data={data} rides={data.rides} from={from} ftp={profile.ftp} weightKg={profile.weightKg} />
       </div>
 
       <AerobicCard data={data} rides={inRange} />
@@ -186,14 +186,14 @@ function ZonesCard({ rides, from, to }: { rides: Ride[]; from: string; to: strin
 }
 
 /** Mean-maximal power from 1 s to 2 h: the best of the range against the best ever synced. */
-function PowerCurveCard({ rides, from, ftp, weightKg }: { rides: Ride[]; from: string; ftp: number; weightKg: number }) {
+function PowerCurveCard({ data, rides, from, ftp, weightKg }: { data: AppData; rides: Ride[]; from: string; ftp: number; weightKg: number }) {
   const [curves, setCurves] = useState<PowerCurve[]>([]);
   const [prog, setProg] = useState<{ done: number; total: number; error?: string } | null>(null);
   useEffect(() => {
     let alive = true;
     const load = () => db.powerCurves.toArray().then((c) => alive && setCurves(c));
     load();
-    const stop = buildPowerCurves(rides, (p) => { if (!alive) return; setProg(p); if (p.done % 5 === 0 || p.done === p.total) load(); });
+    const stop = buildPowerCurves(rides, (p) => { if (!alive) return; setProg(p); if (p.done % 5 === 0 || p.done === p.total) load(); }, curveContext(data.profile, data.planned, (id) => findWorkout(data.mine, id)));
     return () => { alive = false; stop(); };
   }, [rides.length]);
   const withPower = curves.filter((c) => c.w.some((x) => x > 0));

@@ -16,6 +16,7 @@ import { SessionBuilder } from './screens/SessionBuilder';
 import { BuildChooser } from './screens/BuildChooser';
 import { RunBuilder } from './screens/RunBuilder';
 import { findWorkout } from './store';
+import { buildPowerCurves, curveContext } from './powerCurves';
 import { Plan } from './screens/Plan';
 import { PlanPage } from './screens/PlanPage';
 import { Progress } from './screens/Progress';
@@ -81,6 +82,9 @@ export function App() {
       // Batch 6 B2.6: workouts Part B briefly let a plan add to the Library are retired.
       // Rides recorded by the player that have not reached Intervals.icu yet go up now (quietly; Today shows any still waiting).
       try { const r = await sendWaitingRides(); if (r.sent) { notify(); toast({ ok: true, text: `Saved ${r.sent} recorded ride${r.sent === 1 ? '' : 's'} to Intervals.icu.` }); } await tidyRecordings(); } catch { /* tried again next time */ }
+      // Step 2b (30 Oct 2026): the per-ride cache (curve, heart rate alongside power, hard sessions judged) fills in
+      // the background, so Today's FTP messages have their evidence without a visit to Progress.
+      try { const d = await loadAppData(); buildPowerCurves(d.rides, (p) => { if (p.total && p.done === p.total) notify(); }, curveContext(d.profile, d.planned, (id) => findWorkout(d.mine, id))); } catch { /* tried again next time */ }
       try { const n = await retireCreatedWorkouts(); if (n) { if (c) await syncDevices(c); toast({ ok: true, text: `${n} session${n === 1 ? '' : 's'} on your calendar now use${n === 1 ? 's' : ''} the nearest Library workout.` }); } } catch { /* runs again at the next start */ }
     };
     const off = onHistoryMatched((r) => {

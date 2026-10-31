@@ -52,10 +52,11 @@ describe('strength and mobility as Garmin steps', () => {
     const idx = lines.indexOf('3x');
     expect(lines[idx - 1] ?? '').toBe('');
   });
-  it('stretches are timed per side with no rests and no lap presses', () => {
+  it('stretches are timed per side with no rests; the only lap presses are the moves into position', () => {
     const w = all.find((x) => x.kind === 'mobility' && /after the long ride/.test(x.name))!;
     const lines = sessionSteps(w);
-    expect(lines.every((l) => !/Press lap|Rest/.test(l))).toBe(true);
+    expect(lines.every((l) => !/Rest/.test(l))).toBe(true);
+    expect(lines.filter((l) => /Press lap/.test(l)).every((l) => /^- Press lap when in position for /.test(l))).toBe(true);
     expect(lines.some((l) => / left side \d+s$| left side \dm$/.test(l))).toBe(true);
   });
 });

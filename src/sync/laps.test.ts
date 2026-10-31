@@ -35,3 +35,54 @@ describe('naming the laps of a strength or mobility recording', () => {
     expect(nameLaps(laps([60, 60]), undefined)).toEqual({ names: ['Lap 1', 'Lap 2'], matched: false });
   });
 });
+
+describe('mobility: press lap when in position (31 Oct)', () => {
+  const steps = (w: Workout) => import('./intervals').then((m) => m.sessionSteps(w));
+  it('a per-side stretch gets a position step between its sides and before the next stretch', async () => {
+    const lines = await steps(mobility);
+    expect(lines.slice(0, 4)).toEqual([
+      '- Couch stretch left side 1m',
+      '- Press lap when in position for Couch stretch right side 15s',
+      '- Couch stretch right side 1m',
+      '- Press lap when in position for Half kneeling hip flexor stretch left side 15s',
+    ]);
+    expect(lines[lines.length - 1]).toBe('- Hamstring stretch with strap right side 45s');
+    for (const l of lines.filter((x) => /when in position/.test(x))) expect(l).toMatch(/^- Press lap when in position for [A-Za-z0-9 ]+ 15s$/);
+  });
+  it('a single-side stretch is two steps with the move, and the first step of a session has none before it', async () => {
+    const w = { ...mobility, exercises: [{ name: 'Cat cow', holdSeconds: 30, cue: 'x', equipment: [] }, { name: 'Child pose', holdSeconds: 40, cue: 'x', equipment: [] }] } as unknown as Workout;
+    expect(await steps(w)).toEqual(['- Cat cow 30s', '- Press lap when in position for Child pose 15s', '- Child pose 40s']);
+  });
+  it('rounds are written out, each with its own position step, and the lap names follow step for step', async () => {
+    const w = { ...mobility, exercises: [{ ...side('Pigeon', 60), sets: 2 }, { name: 'Child pose', holdSeconds: 40, cue: 'x', equipment: [] }] } as unknown as Workout;
+    const lines = await steps(w);
+    expect(lines.filter((l) => /^- Pigeon/.test(l))).toHaveLength(4);
+    expect(lines.some((l) => /^\d+x$/.test(l))).toBe(false);
+    expect(lines.filter((l) => /when in position/.test(l))).toHaveLength(4);
+    const names = sessionLapNames(w);
+    expect(names).toHaveLength(lines.length);
+    expect(names.slice(0, 4)).toEqual(['Pigeon, left side, set 1 of 2', 'In position', 'Pigeon, right side, set 1 of 2', 'In position']);
+  });
+  it('a recording made before the position steps existed is still named', () => {
+    const r = nameLaps(laps([63, 64, 43, 43, 96, 65, 44, 45, 47, 44, 2]), sessionLapNames(mobility));
+    expect(r.matched).toBe(true);
+    expect(r.names[1]).toBe('Couch stretch, right side');
+  });
+  it('a recording with the position steps names them', () => {
+    const n = sessionLapNames(mobility);
+    expect(n).toHaveLength(19);
+    const r = nameLaps(laps(n.map(() => 30)), n);
+    expect(r.matched).toBe(true);
+    expect(r.names[1]).toBe('In position');
+  });
+  it('strength is unchanged', () => {
+    expect(sessionLapNames(strength).includes('In position')).toBe(false);
+  });
+});
+
+describe('a long stretch name keeps its side in the position step', () => {
+  it('Half kneeling hip flexor stretch right side', async () => {
+    const { sessionSteps } = await import('./intervals');
+    expect(sessionSteps(mobility)).toContain('- Press lap when in position for Half kneeling hip flexor stretch right side 15s');
+  });
+});

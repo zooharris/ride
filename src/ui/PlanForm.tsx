@@ -4,6 +4,7 @@ import { DEFAULT_PREFS } from '../engine/shop';
 import type { EventType, Goal } from '../engine/goals';
 import type { Equipment, Profile, SessionKind } from '../engine/types';
 import { toast } from './Toast';
+import { NumberBox } from './NumberBox';
 import { dayOrder, fmtDate } from './derived';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -66,7 +67,7 @@ export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate,
             <div class="field"><label>Target FTP (watts, now {profile.ftp})</label><input type="number" value={goal.targetWatts} onInput={(e) => setGoal({ ...goal, targetWatts: Number((e.target as HTMLInputElement).value) || profile.ftp })} /></div>
           )}
           {goal.kind === 'endurance' && (
-            <div class="field"><label>Ride this long comfortably (hours)</label><input type="number" step="0.5" value={goal.targetHours} onInput={(e) => setGoal({ ...goal, targetHours: Number((e.target as HTMLInputElement).value) || 3 })} /></div>
+            <div class="field"><label>Ride this long comfortably (hours)</label><NumberBox decimals value={goal.targetHours} onValue={(v) => setGoal({ ...goal, targetHours: v || 3 })} /></div>
           )}
     </>
   );

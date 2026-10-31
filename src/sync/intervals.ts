@@ -428,20 +428,69 @@ function rideEvent(workout: Workout, date: string, basis: Basis, profile?: HrPro
  * rest and each hold is a timed step the watch counts down. Garmin shows the
  * step's name, so the name carries the exercise, reps and load.
  */
+/**
+ * Mobility (Todd, 31 Oct): every stretch is timed, but getting into the next
+ * one takes a few seconds, so a countdown that starts the instant the last
+ * one ends cuts the second side short. Before every timed hold (the very first
+ * aside) the watch shows a step that ends on the lap press: "Press lap when in
+ * position for <next>". Rounds are written out one by one rather than as a
+ * repeat block, so each of these steps can name the stretch that really comes
+ * next. The plan's estimate of the move is 15 seconds.
+ */
+export const POSITION_SEC = 15;
+export const POSITION_LAP = 'In position';
+type MobilityStep = { hold?: number; text: string; lap: string; next: string };
+
+function mobilitySequence(workout: Workout): MobilityStep[] {
+  const out: MobilityStep[] = [];
+  for (const e of workout.exercises ?? []) {
+    const sets = Math.max(1, e.sets ?? 1);
+    const name = garminText(e.name.length > 40 ? e.name.slice(0, 39) : e.name);
+    const of = (k: number) => (sets > 1 ? `, set ${k} of ${sets}` : '');
+    for (let k = 1; k <= sets; k++) {
+      if (e.holdSeconds) {
+        const perSide = /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
+        const sides = perSide ? ['left side', 'right side'] : [''];
+        for (const sd of sides) out.push({ hold: e.holdSeconds, text: `${name}${sd ? ` ${sd}` : ''}`, lap: `${e.name}${sd ? `, ${sd}` : ''}${of(k)}`, next: `${name}${sd ? ` ${sd}` : ''}` });
+      } else {
+        const reps = e.reps ? ` ${garminText(e.reps)}${/rep/i.test(e.reps) ? '' : ' reps'}` : '';
+        out.push({ text: `Press lap ${name}${reps}`, lap: `${e.name}${of(k)}`, next: name });
+      }
+    }
+  }
+  // The position step goes before each timed hold, except at the very start.
+  const seq: MobilityStep[] = [];
+  out.forEach((s, i) => {
+    if (s.hold && i > 0) {
+      // The full name, side included: the side is the point of the step (the name itself is capped at 39).
+      seq.push({ text: `Press lap when in position for ${s.next}`, lap: POSITION_LAP, next: '' });
+    }
+    seq.push(s);
+  });
+  return seq;
+}
+
 export function sessionSteps(workout: Workout): string[] {
   const ex = workout.exercises ?? [];
   const effort = workout.effort ?? 6;
-  const restSec = workout.kind === 'mobility' ? 0 : effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
+  const restSec = effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
   const dur = (s: number) => (s >= 60 && s % 60 === 0 ? `${s / 60}m` : s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`);
+  if (workout.kind === 'mobility') {
+    return mobilitySequence(workout).map((s) => {
+      if (s.hold) return `- ${s.text} ${dur(s.hold)}`;
+      if (s.lap === POSITION_LAP) return `- ${s.text} ${dur(POSITION_SEC)}`;
+      const reps = parseInt(s.text.replace(/^\D+/, ''), 10) || 10;
+      return `- ${s.text} ${dur(Math.max(30, Math.round(reps * 4 / 5) * 5 + 10))}`;
+    });
+  }
   const blocks: Array<{ times: number; steps: string[] }> = [];
   for (const e of ex) {
     const sets = Math.max(1, e.sets ?? 1);
     const load = e.load && !/bodyweight|slow and controlled|keep moving|reps in reserve/i.test(e.load) ? ` ${garminText(e.load)}` : '';
     const name = garminText(e.name.length > 40 ? e.name.slice(0, 39) : e.name);
     if (e.holdSeconds) {
-      // Holds and stretches are timed and the watch counts them down; stretches get a step a side.
-      const perSide = workout.kind === 'mobility' && /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
-      const steps = perSide ? [`- ${name} left side ${dur(e.holdSeconds)}`, `- ${name} right side ${dur(e.holdSeconds)}`] : [`- ${name} ${dur(e.holdSeconds)}`];
+      // Holds (a plank) are timed and the watch counts them down.
+      const steps = [`- ${name} ${dur(e.holdSeconds)}`];
       if (restSec) steps.push(`- Rest ${dur(restSec / 2)}`);
       blocks.push({ times: sets, steps });
       continue;
@@ -473,16 +522,16 @@ export function sessionSteps(workout: Workout): string[] {
  * them, so the recording's laps can be named after them.
  */
 export function sessionLapNames(workout: Workout): string[] {
+  if (workout.kind === 'mobility') return mobilitySequence(workout).map((s) => s.lap);
   const ex = workout.exercises ?? [];
   const effort = workout.effort ?? 6;
-  const restSec = workout.kind === 'mobility' ? 0 : effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
+  const restSec = effort >= 8 ? 120 : effort <= 5 ? 60 : 90;
   const blocks: Array<{ times: number; steps: (k: number) => string[] }> = [];
   for (const e of ex) {
     const sets = Math.max(1, e.sets ?? 1);
     const of = (k: number) => (sets > 1 ? `, set ${k} of ${sets}` : '');
     if (e.holdSeconds) {
-      const perSide = workout.kind === 'mobility' && /side|left|right|per leg|each leg/i.test(`${e.reps ?? ''} ${e.cue}`);
-      blocks.push({ times: sets, steps: (k) => [...(perSide ? [`${e.name}, left side${of(k)}`, `${e.name}, right side${of(k)}`] : [`${e.name}${of(k)}`]), ...(restSec ? ['Rest'] : [])] });
+      blocks.push({ times: sets, steps: (k) => [`${e.name}${of(k)}`, ...(restSec ? ['Rest'] : [])] });
       continue;
     }
     blocks.push({ times: sets, steps: (k) => [`${e.name}${of(k)}`, ...(restSec ? ['Rest'] : [])] });
@@ -507,6 +556,9 @@ export function nameLaps(laps: Array<{ start: number; end: number }>, steps: str
   if (!steps?.length) return { names: numbered, matched: false };
   const stray = n === steps.length + 1 && laps[n - 1].end - laps[n - 1].start < STRAY_LAP_S;
   if (n === steps.length || stray) return { names: laps.map((_, i) => steps[i] ?? 'End'), matched: true };
+  // A mobility session recorded before the in-position steps existed (31 Oct): match it without them.
+  const without = steps.filter((s) => s !== POSITION_LAP);
+  if (without.length !== steps.length) return nameLaps(laps, without);
   return { names: numbered, matched: false };
 }
 
@@ -530,7 +582,7 @@ function sessionEvent(workout: Workout, date: string) {
   const steps = sessionSteps(workout);
   const intro = workout.kind === 'strength'
     ? 'Each set ends when you press lap; rests count down. '
-    : 'Each stretch is timed; the watch moves you on. ';
+    : 'Each stretch is timed. Between stretches, get into position and press lap to start the next. ';
   return {
     category: 'WORKOUT',
     start_date_local: `${date}T00:00:00`,

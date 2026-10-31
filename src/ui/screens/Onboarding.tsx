@@ -3,6 +3,7 @@ import { DEFAULT_PROFILE, saveProfile, setSetting } from '../../data/db';
 import type { Basis, Profile } from '../../engine/types';
 import { notify } from '../store';
 import { StackedLogo } from '../Brand';
+import { NumberBox } from '../NumberBox';
 import { TAGLINE } from '../../appName';
 import { applyAthleteNumbers, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
@@ -99,7 +100,7 @@ export function Onboarding() {
             <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
             <div class="field"><label>Weight ({p.units === 'imperial' ? 'lb' : 'kg'})</label>
               <input type="number" value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
-            <div class="field"><label>Hours per week you can train</label><input type="number" step="0.5" value={p.hoursPerWeek} onInput={num('hoursPerWeek')} /></div>
+            <div class="field"><label>Hours per week you can train</label><NumberBox decimals value={p.hoursPerWeek} onValue={(v) => upd('hoursPerWeek', v ?? 0)} /></div>
           </div>
           <div class="row wrap" style="margin-top:16px;gap:18px">
             <div class="field"><label>Targets sent to Garmin</label>

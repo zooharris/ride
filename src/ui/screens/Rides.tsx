@@ -18,7 +18,7 @@ import { go } from '../router';
 import { fetchActivityFile, fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
 import { fillBreathing, hasBreathing } from '../../player/breathRead';
 import { StatusPill } from '../StatusMark';
-import { analyseRide, type Analysis } from '../../engine/analysis';
+import { analyseRide, type Analysis, type RideLap } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
 import { RouteMap } from '../RouteMap';
 import { KIND_LABEL } from './Plan';
@@ -134,6 +134,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
   const [streams, setStreams] = useState<StreamSet | null | undefined>(undefined);
   const [streamErr, setStreamErr] = useState<string | null>(null);
+  // A player ride's own laps, which know their step, when its recording is on this device.
+  const [playerLaps, setPlayerLaps] = useState<RideLap[] | undefined>(undefined);
   const basis: 'power' | 'hr' = r.normalizedPower ? 'power' : 'hr';
   // Strength and mobility: each lap named after the session's step, when they line up one for one.
   const lapSteps = w && (w.kind === 'strength' || w.kind === 'mobility') ? sessionLapNames(w) : undefined;
@@ -144,6 +146,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     (async () => {
       // A player ride with a breathing strap (known on every device from its edit, or here from the recording) is read with its breathing.
       const local = (await db.recordings.toArray()).find((x) => x.activityId === r.id);
+      if (alive && local?.laps?.some((l) => l.step != null)) setPlayerLaps(local.laps);
       const breathing = !!data.edits.find((e) => e.id === r.id)?.breathSensor || !!local?.breathing;
       const cached = await db.streams.get(r.id);
       if (cached && (cached.v === STREAMS_VERSION || (cached.v === 2 && !breathing))) { if (alive) setStreams(cached); return; }
@@ -164,11 +167,13 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
 
   // A fitness test: matched to one on the calendar, or named like one in the Library.
   const testKind = w?.test ?? (r.sport === 'ride' ? LIBRARY.find((x) => x.test && x.name === r.name)?.test : undefined);
-  const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate) : undefined;
+  // The steps take their laps when the laps line up with them (31 Oct); otherwise the clock from the start.
+  const laps: RideLap[] | undefined = playerLaps ?? streams?.intervals;
+  const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate, laps) : undefined;
   // Planned targets for both charts: the ride's own basis as analysed, the other converted (watts to the matching heart rate, and back).
   const targets = streams && w && w.kind === 'ride' ? {
-    watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate)) : undefined,
-    hr: streams.heartrate?.length ? (basis === 'hr' ? analysis : analyseRide(w, profile, 'hr', streams.time, streams.watts, streams.heartrate)) : undefined,
+    watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
+    hr: streams.heartrate?.length ? (basis === 'hr' ? analysis : analyseRide(w, profile, 'hr', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
   } : undefined;
   const samples = useMemo(() => (streams ? resample(streams, 700) : []), [streams]);
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
@@ -280,7 +285,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         <>
           <section class="section">
             <h2>The recording</h2>
-            <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded bands are the planned targets for each step.' : r.sport === 'ride' ? 'Rides done from a plan also show the planned targets as shaded bands.' : ''}</p>
+            <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded steps are what was planned; the lines are what you rode.' : r.sport === 'ride' ? 'Rides done from a plan show the planned steps under the lines, in their zone colours.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
               <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} /></div>
@@ -303,7 +308,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
               </tr>
             ))}
           </table>
-          <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. Compared by laying the plan along elapsed time, so a long pause mid-ride shifts the windows; pressing lap on the computer keeps them aligned.</p>
+          <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. {analysis.aligned === 'laps' ? 'Lined up with the laps your computer recorded.' : 'Laid along the ride’s clock from the start, since the laps didn’t match the plan’s steps; a pause mid-ride shifts the windows.'}</p>
         </section>
       )}
       {((isRide && r.powerZoneSeconds?.length) || r.hrZoneSeconds?.length) && (
@@ -329,7 +334,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {streams?.intervals?.length ? (
         <section class="section">
           <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
-          <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold, in order, with heart rate.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
+          <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold, and each move into position, in order, with heart rate.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
           {lapNames && !lapNames.matched && w && <p class="faint small" style="margin:-4px 0 10px">The laps don't line up with the {lapSteps!.length} steps of {w.name} (a lap press missed or extra), so they're numbered rather than named.</p>}
           <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
         </section>

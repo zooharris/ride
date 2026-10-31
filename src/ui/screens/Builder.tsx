@@ -12,6 +12,7 @@ import { today } from '../../engine/load';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
+import { NumberBox } from '../NumberBox';
 
 /** A row in the editor: either a single step or a repeated set of steps. */
 type Row = { id: string; kind: 'step'; minutes: number; pct: number; pctHigh?: number; label: string; cadence?: number }
@@ -108,7 +109,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     <input type="number" min="0" max="250" value={value ?? ''} placeholder={placeholder} title="0 in the low box means no minimum" onInput={(e) => { const raw = (e.target as HTMLInputElement).value; on(raw === '' ? undefined : Math.max(0, Number(raw) || 0)); }} style="width:64px" />
   );
   const minField = (value: number, on: (v: number) => void) => (
-    <input type="number" min="0.25" step="0.25" value={value} onInput={(e) => on(Number((e.target as HTMLInputElement).value) || 0)} style="width:64px" />
+    <NumberBox decimals value={value} onValue={(v) => on(v ?? 0)} style="width:64px" />
   );
   const labelField = (value: string, on: (v: string) => void) => (
     <input value={value} placeholder="step name, e.g. Warm-up" onInput={(e) => on((e.target as HTMLInputElement).value)} style="flex:1;min-width:90px" />

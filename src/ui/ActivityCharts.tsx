@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useWidth } from './useWidth';
 import type { StreamSet } from '../data/db';
-import type { Analysis } from '../engine/analysis';
+import { stepAt, stepReadout, type Analysis } from '../engine/analysis';
 import type { Profile, SessionKind } from '../engine/types';
 import { ZONE_VAR } from './Profile';
 import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, type Zone } from '../engine/zones';
@@ -75,10 +75,18 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   const xMax = Math.max(1, ...samples.map(xOf));
   const fmtX = (v: number) => (axis === 'distance' && hasDist ? `${(imperial ? v / 1609.344 : v / 1000).toFixed(1)} ${imperial ? 'mi' : 'km'}` : clock(Math.round(v)));
   const h = hover != null ? samples[hover] : null;
+  // The planned step under the cursor, against what was ridden in it: power when the chart has it, else heart rate.
+  const planLine = (() => {
+    if (!h || !targets) return undefined;
+    const pw = samples.some((s) => s.watts != null) ? stepAt(targets.watts, h.t) : undefined;
+    if (pw) return stepReadout(pw, 'W');
+    const hs = stepAt(targets.hr, h.t);
+    return hs ? stepReadout(hs, 'bpm') : undefined;
+  })();
   const panels = useMemo(() => {
     const list: PanelDef[] = [];
-    if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP; shaded bands are planned targets when the ride was from a plan.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
-    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate; shaded bands are the heart-rate equivalents of the planned targets when the ride was from a plan.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
+    if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP. When the ride was from a plan, its steps are drawn underneath in their zone colours, up to each step’s target.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
+    if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate. When the ride was from a plan, its steps are drawn underneath, up to the heart rate that matches each step’s target.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
     if (ride && samples.some((s) => s.ve != null)) list.push({ key: 've', title: 'Breathing', unit: 'L/min', color: 'var(--z2)', get: (p) => p.ve, second: { get: (p) => p.br, color: 'var(--ink-3)', unit: 'breaths a minute' },
       explain: 'From your breathing strap. The line is ventilation, the litres of air you breathe a minute, as a 30-second average; the thinner line is breaths a minute, on its own scale at the right.',
       readout: (p) => [p.ve != null ? `ventilation ${Math.round(p.ve)} L/min` : '', p.br != null ? `${Math.round(p.br)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined });
@@ -106,6 +114,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
       <div class="rec-readout panel small" aria-live="off">
         {h ? <>
           <b class="num">{fmtX(xOf(h))}</b>
+          {planLine && <span><span class="faint">Plan</span> <b>{planLine}</b></span>}
           {panels.map((p) => { const v = p.get(h); if (p.readout) { const words = p.readout(h); return words ? <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{words}</b></span> : null; } return v == null ? null : <span key={p.key}><span class="faint">{p.title}</span> <b class="num">{p.key === 'speed' ? v.toFixed(1) : Math.round(v)}</b> <span class="faint">{p.unit}</span></span>; })}
         </> : <span class="faint">Move the mouse, or a finger, across any chart to read every value at that point; the map follows.</span>}
       </div>
@@ -159,6 +168,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR
     let best = 0; for (let i = 0; i < samples.length; i++) if (Math.abs(samples[i].t - sec) < Math.abs(samples[best].t - sec)) best = i; return x(xOf(samples[best]));
   } : null;
   const hv = hover != null ? vals[hover] : undefined;
+  const hoverStep = hover != null ? stepAt(analysis, samples[hover].t) : undefined;
   // Mouse or finger position → nearest sample along the x axis. Touch keeps the cursor where it was left.
   const pick = (svg: SVGSVGElement, clientX: number) => {
     const r = svg.getBoundingClientRect();
@@ -179,9 +189,17 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 4} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{Math.round(t)}</text></g>)}
         {showXAxis && xt.map((v, i) => <text key={i} x={x(v)} y={H - 4} fill="var(--ink-3)" font-size="10" text-anchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{fmtX(v)}</text>)}
         {analysis && byTime && analysis.steps.map((s) => {
+          // The plan as the floor of the chart (31 Oct): each step a block in its zone colour, up to its target, with the ride drawn over it.
+          if (s.endSec <= s.startSec) return null;
           const zone = basis === 'power' ? powerZone(((s.targetLow + s.targetHigh) / 2) / ftp, powerZones) : hrZone(((s.targetLow + s.targetHigh) / 2) / (lthr || 1), hrZones);
           const x1 = byTime(s.startSec), x2 = byTime(s.endSec);
-          return <rect key={s.index} x={x1} y={y(Math.min(hi, s.targetHigh))} width={Math.max(0.5, x2 - x1)} height={Math.max(2, y(s.targetLow) - y(Math.min(hi, s.targetHigh)))} fill={ZONE_VAR[zone - 1]} fill-opacity="0.28" />;
+          const top = y(Math.min(hi, s.targetHigh)), floor = H - padB;
+          const on = hoverStep?.index === s.index;
+          const colour = ZONE_VAR[zone - 1];
+          return <g key={s.index}>
+            <rect x={x1} y={top} width={Math.max(0.5, x2 - x1)} height={Math.max(2, floor - top)} fill={colour} fill-opacity={on ? 0.5 : basis === 'power' ? 0.32 : 0.22} />
+            {s.targetLow < s.targetHigh && s.targetLow > lo && <line x1={x1} x2={x2} y1={y(s.targetLow)} y2={y(s.targetLow)} stroke={colour} stroke-opacity="0.6" />}
+          </g>;
         })}
         {panel.refs?.map((r) => <g key={r.label}><line x1={padL} x2={W - padR} y1={y(r.v)} y2={y(r.v)} stroke="var(--line-2)" stroke-dasharray="3 4" /><text x={W - padR - 2} y={y(r.v) - 2} fill="var(--ink-3)" font-size="10" text-anchor="end">{r.label}</text></g>)}
         {area && <path d={area} fill={panel.color} fill-opacity="0.18" />}

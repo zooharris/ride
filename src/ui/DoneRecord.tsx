@@ -9,6 +9,7 @@ import { saveActivityEffort, saveActivityRecord, saveEffort, saveRecord } from '
 import { fmtDate } from './derived';
 import { toast } from './Toast';
 import { ExThumb } from './ExercisePictures';
+import { NumberBox } from './NumberBox';
 
 const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', 'single-leg': 'Lunge and single leg', hinge: 'Hinge', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };
 const LB_PER_KG = 2.2046;
@@ -119,7 +120,6 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
     const lib = first ? fromLibrary(first.id) : undefined;
     setDraft({ ...draft, exercises: [...(draft.exercises ?? []), { name: lib?.name ?? 'Exercise', ...lib, sets: kind === 'mobility' ? 1 : 3, reps: kind === 'mobility' ? undefined : '10' }] });
   };
-  const num = (v: string): number | undefined => { const n = parseFloat(v); return isFinite(n) && n >= 0 ? n : undefined; };
   const save = async () => {
     setBusy(true);
     const clean: DoneRecord = {
@@ -134,8 +134,8 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
     <div class="panel done-editor">
       {draft.walk && (
         <div class="done-edit-fields">
-          <div class="field"><label>Minutes walked</label><input type="number" min="1" value={draft.walk.minutes} onInput={(e) => setDraft({ ...draft, walk: { ...draft.walk!, minutes: num((e.target as HTMLInputElement).value) ?? draft.walk!.minutes } })} /></div>
-          <div class="field"><label>Pack weight ({unit}, 0 for none)</label><input type="number" min="0" step="0.5" value={draft.walk.packKg ? Math.round(draft.walk.packKg * (unit === 'kg' ? 1 : LB_PER_KG)) : 0} onInput={(e) => { const v = num((e.target as HTMLInputElement).value) ?? 0; setDraft({ ...draft, walk: { ...draft.walk!, packKg: v ? (unit === 'kg' ? v : v / LB_PER_KG) : undefined } }); }} /></div>
+          <div class="field"><label>Minutes walked</label><NumberBox value={draft.walk.minutes} onValue={(v) => setDraft({ ...draft, walk: { ...draft.walk!, minutes: v && v > 0 ? v : draft.walk!.minutes } })} /></div>
+          <div class="field"><label>Pack weight ({unit}, 0 for none)</label><NumberBox decimals value={draft.walk.packKg ? Math.round(draft.walk.packKg * (unit === 'kg' ? 1 : LB_PER_KG) * 10) / 10 : 0} onValue={(v) => setDraft({ ...draft, walk: { ...draft.walk!, packKg: v ? (unit === 'kg' ? v : v / LB_PER_KG) : undefined } })} /></div>
         </div>
       )}
       {(draft.exercises ?? []).map((e, i) => {
@@ -157,12 +157,12 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
               <button class="icon-btn" title="Remove this exercise from the record" aria-label={`Remove ${e.name}`} onClick={() => remove(i)}>×</button>
             </div>
             <div class="done-edit-fields">
-              <div class="field"><label>Sets</label><input type="number" min="1" value={e.sets ?? ''} onInput={(ev) => set(i, { sets: num((ev.target as HTMLInputElement).value) })} /></div>
+              <div class="field"><label>Sets</label><NumberBox value={e.sets} onValue={(v) => set(i, { sets: v || undefined })} /></div>
               {hold
-                ? <div class="field"><label>Hold (seconds)</label><input type="number" min="1" value={e.holdSeconds ?? ''} onInput={(ev) => set(i, { holdSeconds: num((ev.target as HTMLInputElement).value) })} /></div>
+                ? <div class="field"><label>Hold (seconds)</label><NumberBox value={e.holdSeconds} onValue={(v) => set(i, { holdSeconds: v || undefined })} /></div>
                 : <div class="field"><label>Reps</label><input value={e.reps ?? ''} placeholder="10" onInput={(ev) => set(i, { reps: (ev.target as HTMLInputElement).value || undefined })} /></div>}
               {kind === 'strength' && (!hold || e.weight != null) && (
-                <div class="field"><label>Weight ({unit})</label><input type="number" min="0" step="0.5" value={e.weight ?? ''} placeholder={last ? `last ${last.weight}` : 'none'} onInput={(ev) => set(i, { weight: num((ev.target as HTMLInputElement).value), unit })} /></div>
+                <div class="field"><label>Weight ({unit})</label><NumberBox decimals value={e.weight} placeholder={last ? `last ${last.weight}` : 'none'} onValue={(v) => set(i, { weight: v, unit })} /></div>
               )}
               <label class="done-skip"><input type="checkbox" checked={!!e.skipped} onChange={(ev) => set(i, { skipped: (ev.target as HTMLInputElement).checked || undefined })} /> Skipped</label>
             </div>

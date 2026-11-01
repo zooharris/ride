@@ -147,3 +147,21 @@ describe('B4 and C: the evidence sets the signs, and the messages follow them', 
     expect(e.lastTestDate).toBe('2026-03-01');
   });
 });
+
+describe('sessions judged by the laps (31 Oct)', () => {
+  // The same 3 x 10, held at 195 W, with a 90-second stop in the warm-up: every step after it runs 90 s late.
+  const stopped = rec([600, 110, 110], [90, 0, 100], [600, 195, 150], [300, 100, 120], [600, 194, 155], [300, 100, 120], [600, 192, 160], [300, 100, 120], [600, 100, 110]);
+  const secs = [690, 600, 300, 600, 300, 600, 300, 600];
+  const laps = (() => { let t = 0; return secs.map((s) => ({ start: t, end: (t += s) })); })();
+  it('along the clock the stop makes the first effort look short', () => {
+    expect(judgeSession(thr3x10, profile, 'power', stopped.time, stopped.watts, stopped.hr)!.kind).toBe('short');
+  });
+  it('by the laps it is held', () => {
+    expect(judgeSession(thr3x10, profile, 'power', stopped.time, stopped.watts, stopped.hr, laps)).toEqual({ kind: 'held', hr: 'settled', work: 30, intervals: 3 });
+  });
+  it('a record carries the judging it was made with', () => {
+    const c = curveRecord({ id: 'a', date: TODAY }, { time: stopped.time, watts: stopped.watts, heartrate: stopped.hr }, { profile, sessionOf: () => ({ workout: thr3x10, basis: 'power' }) }, laps);
+    expect(c).toMatchObject({ judged: true, jv: 2 });
+    expect(c.verdict!.kind).toBe('held');
+  });
+});

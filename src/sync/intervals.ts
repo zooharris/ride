@@ -754,6 +754,22 @@ export async function fetchThumbStreams(c: IntervalsCredentials, activityId: str
   return { time: find('time')?.data ?? [], watts: find('watts')?.data, heartrate: find('heartrate')?.data, lat: ll?.data, lng: ll?.data2 };
 }
 
+/** An activity's interval markers: the laps the device recorded, or the efforts Intervals.icu found. Empty when there are none. */
+export async function fetchIntervals(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams['intervals']> {
+  try {
+    const iv = await call<{ icu_intervals?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(c, `/activity/${activityId}/intervals`);
+    const arr = Array.isArray(iv) ? iv : (iv.icu_intervals ?? []);
+    return arr.map((x) => ({
+      label: typeof x.label === 'string' ? x.label : undefined,
+      type: typeof x.type === 'string' ? x.type : undefined,
+      start: Number(x.start_time ?? x.start_index ?? 0),
+      end: Number(x.end_time ?? x.end_index ?? 0),
+      avgWatts: num(x.average_watts),
+      avgHr: num(x.average_heartrate),
+    }));
+  } catch { return []; }   // intervals are optional
+}
+
 /** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
 /** The custom streams Intervals.icu makes of a breathing strap's FIT developer fields, by their field names. */
 export const BREATH_STREAMS = { ve: 'tyme_minute_volume', br: 'tyme_breath_rate', tv: 'tyme_tidal_volume' } as const;
@@ -765,19 +781,7 @@ export async function fetchStreams(c: IntervalsCredentials, activityId: string, 
   const by = (t: string) => find(t)?.data;
   const time = by('time') ?? [];
   const ll = find('latlng');
-  let intervals: FetchedStreams['intervals'] = [];
-  try {
-    const iv = await call<{ icu_intervals?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(c, `/activity/${activityId}/intervals`);
-    const arr = Array.isArray(iv) ? iv : (iv.icu_intervals ?? []);
-    intervals = arr.map((x) => ({
-      label: typeof x.label === 'string' ? x.label : undefined,
-      type: typeof x.type === 'string' ? x.type : undefined,
-      start: Number(x.start_time ?? x.start_index ?? 0),
-      end: Number(x.end_time ?? x.end_index ?? 0),
-      avgWatts: num(x.average_watts),
-      avgHr: num(x.average_heartrate),
-    }));
-  } catch { /* intervals are optional */ }
+  const intervals = await fetchIntervals(c, activityId);
   return {
     time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), distance: by('distance'), altitude: by('altitude'),
     velocity: by('velocity_smooth'), temp: by('temp'), lat: ll?.data, lng: ll?.data2, intervals,

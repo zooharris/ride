@@ -1,5 +1,5 @@
 import type { Basis, Profile, Workout } from './types';
-import { analyseRide } from './analysis';
+import { analyseRide, type RideLap } from './analysis';
 import { flattenSteps } from './workout';
 
 /**
@@ -30,13 +30,14 @@ export const HARD_SHARE = 0.88;
 export const HARD_MINUTES = 8;
 const SLACK = 0.03, SHORT = 0.05, FADE = 0.92;
 
-export function judgeSession(workout: Workout, profile: Profile, basis: Basis, time: number[], watts?: number[], hr?: number[]): SessionVerdict | undefined {
+export function judgeSession(workout: Workout, profile: Profile, basis: Basis, time: number[], watts?: number[], hr?: number[], laps?: RideLap[]): SessionVerdict | undefined {
   if (workout.kind !== 'ride' || !time.length) return undefined;
   const steps = flattenSteps(workout.blocks);
   const hard = steps.map((s, i) => ({ s, i })).filter(({ s }) => s.intensity >= HARD_SHARE);
   const plannedWork = hard.reduce((t, x) => t + x.s.seconds, 0);
   if (plannedWork < HARD_MINUTES * 60) return undefined;
-  const a = analyseRide(workout, profile, basis, time, watts, hr);
+  // The steps are found by the recording's laps when they line up (31 Oct), so a stop mid-ride doesn't make an effort look short.
+  const a = analyseRide(workout, profile, basis, time, watts, hr, laps);
   const end = time[time.length - 1];
   // A work interval counts when the recording covers it and has data for it.
   const done = hard.map(({ s, i }) => ({ s, r: a.steps[i] })).filter(({ r }) => r && r.actual != null && r.endSec <= end + 5);

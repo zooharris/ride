@@ -55,6 +55,8 @@ export interface PowerCurve {
   verdict?: import('../engine/sessionVerdict').SessionVerdict;
   /** Read with the planned session it was matched to (judged, or not a hard session). */
   judged?: boolean;
+  /** The judging it was read with (powerCurves JUDGE_VERSION); older records are judged again once. */
+  jv?: number;
 }
 
 export interface SyncState {

@@ -4,7 +4,8 @@ import { hrAtPower, steadyAtHr } from '../engine/hrPower';
 import { judgeSession } from '../engine/sessionVerdict';
 import { addDays, today } from '../engine/load';
 import type { Basis, Profile, Ride, Workout } from '../engine/types';
-import { fetchPowerStream } from '../sync/intervals';
+import { fetchIntervals, fetchPowerStream } from '../sync/intervals';
+import type { RideLap } from '../engine/analysis';
 import { credentials } from '../sync/syncService';
 
 /**
@@ -16,6 +17,8 @@ import { credentials } from '../sync/syncService';
  * `onProgress` reports done/total; a second call while one runs joins it.
  */
 export const CURVE_VERSION = 2;
+/** How planned sessions were judged: 2 finds each step by the recording's laps (31 Oct); records judged before that are judged again once. */
+export const JUDGE_VERSION = 2;
 
 export interface CurveContext {
   profile: Profile;
@@ -48,8 +51,9 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
   const recent = addDays(today(), -16 * 7);
   const withPower = rides.filter((r) => r.sport === 'ride' && (r.normalizedPower || r.averagePower));
   const missing = withPower.filter((r) => !have.has(r.id)).sort((a, b) => b.date.localeCompare(a.date));
-  // Re-read once: records from before heart rate was kept, and records whose ride has since been matched to a planned session.
-  const stale = ctx ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx.sessionOf(r.id))); })
+  // Re-read once: records from before heart rate was kept, records whose ride has since been matched to a planned session,
+  // and sessions judged before the steps were found by laps.
+  const stale = ctx ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx.sessionOf(r.id)) || (!!c.judged && c.jv !== JUDGE_VERSION)); })
     .sort((a, b) => Number(b.date >= recent) - Number(a.date >= recent) || b.date.localeCompare(a.date)) : [];
   const todo = [...missing, ...stale];
   const rebuilding = stale.length > 0;
@@ -62,7 +66,9 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
       const full = await db.streams.get(r.id);
       const s = full?.watts ? { time: full.time, watts: full.watts, heartrate: full.heartrate } : c ? await fetchPowerStream(c, r.id) : null;
       if (!s) { emit({ done, total: todo.length, rebuilding, error: 'Connect Intervals.icu to read your rides.' }); return; }
-      await db.powerCurves.put(curveRecord(r, s, ctx));
+      // A planned session is judged by its laps: from the full recording when this device has it, else one small read.
+      const laps: RideLap[] | undefined = ctx?.sessionOf(r.id) ? (full?.intervals ?? (c ? await fetchIntervals(c, r.id) : undefined)) : undefined;
+      await db.powerCurves.put(curveRecord(r, s, ctx, laps));
     } catch (e) {
       emit({ done, total: todo.length, rebuilding, error: (e as Error).message });
       return;
@@ -73,18 +79,18 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
 }
 
 /** One ride's record. Pure apart from the context's lookups. */
-export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: { time: number[]; watts?: number[]; heartrate?: number[] }, ctx?: CurveContext): PowerCurve {
+export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: { time: number[]; watts?: number[]; heartrate?: number[] }, ctx?: CurveContext, laps?: RideLap[]): PowerCurve {
   const w = s.watts?.length ? meanMaxPower(s.time, s.watts, CURVE_SECONDS) : CURVE_SECONDS.map(() => 0);
   if (!ctx) return { id: r.id, date: r.date, w };
   const p = ctx.profile;
   const bands = hrAtPower(s.time, s.watts, s.heartrate, p.ftp);
   const steady = steadyAtHr(s.time, s.watts, s.heartrate, p.lthr);
   const session = ctx.sessionOf(r.id);
-  const verdict = session ? judgeSession(session.workout, p, session.basis, s.time, s.watts, s.heartrate) : undefined;
+  const verdict = session ? judgeSession(session.workout, p, session.basis, s.time, s.watts, s.heartrate, laps) : undefined;
   return {
     id: r.id, date: r.date, w, v: CURVE_VERSION, ftpAtBuild: p.ftp, lthrAtBuild: p.lthr,
     ...(bands.length ? { hrAtPower: bands } : {}), ...(steady ? { steadyAtHr: steady } : {}),
-    ...(verdict ? { verdict } : {}), ...(session ? { judged: true } : {}),
+    ...(verdict ? { verdict } : {}), ...(session ? { judged: true, jv: JUDGE_VERSION } : {}),
   };
 }
 

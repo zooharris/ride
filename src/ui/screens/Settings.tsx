@@ -70,7 +70,7 @@ export function Settings({ data }: { data: AppData }) {
     let alive = true;
     setModels(null); setTested(null);
     const k = claudeKey.trim();
-    if (!k) return;
+    if (k.length < 20) return;   // not while the key is still being typed or pasted in parts
     const t = setTimeout(() => { void modelsFor({ provider, key: k }).then((m) => { if (alive) { setModels(m); if (model && model !== 'faster' && !m.all.includes(model)) setOtherModel(true); } }); }, 400);
     return () => { alive = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps

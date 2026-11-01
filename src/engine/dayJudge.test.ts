@@ -71,4 +71,20 @@ describe('E: the app\'s own day judge, every signal against the rider\'s own nor
     const heavy = Array.from({ length: 60 }, (_, i) => ({ date: addDays(T, -1 - i), tss: 220 + (i % 5) * 10 }));
     expect(loadSignal(heavy, T)!.z).toBeGreaterThan(-1);
   });
+  it('a rider\'s routine long Saturday is their normal Saturday, not a big day (Fable\'s review, 1 Nov)', () => {
+    const sun = '2026-11-01';
+    const rhythm = Array.from({ length: 70 }, (_, i) => { const d = addDays(sun, -1 - i); const dow = new Date(d + 'T00:00:00').getDay(); return { date: d, tss: dow === 6 ? 140 : dow === 5 ? 0 : 60 }; });
+    const s = loadSignal(rhythm, sun)!;
+    expect(s.z).toBeGreaterThan(-0.6);
+    expect(s.words).toMatch(/about your usual for a Saturday/);
+    // A morning the readiness score calls Ready stays as planned after it.
+    const b = Array.from({ length: 28 }, (_, i) => ({ date: addDays(sun, -1 - i), hrv: 40 + (i % 3), restingHr: 52 + (i % 2), sleepSeconds: 7 * 3600 }));
+    const okMorning = readiness({ date: sun, hrv: 39, restingHr: 52, sleepSeconds: 7 * 3600 }, b, -8);
+    expect(okMorning.band).toBe('go');
+    expect(judgeTheDay({ date: sun, readiness: okMorning, setAside: false, loads: rhythm, week: [], rides: [] }).stance).toBe('as planned');
+    // The same 140 on a Tuesday, for a rider who never rides big on Tuesdays, is a big day.
+    const tue = '2026-11-03';
+    const odd = [...rhythm, { date: '2026-11-01', tss: 60 }, { date: addDays(tue, -1), tss: 140 }];   // Monday 2 Nov: 140 for a rider whose Mondays are 60
+    expect(loadSignal(odd, tue)!.words).toMatch(/above your usual for a Monday/);
+  });
 });

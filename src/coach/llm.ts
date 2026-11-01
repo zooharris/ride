@@ -174,7 +174,8 @@ export function chooseModels(provider: Provider, ids: string[]): ModelChoice {
   const k = KNOWN[provider];
   const pickNewest = (xs: string[]) => [...xs].sort((a, b) => newer(b, a))[0];
   if (provider === 'anthropic') {
-    const all = ids.filter((m) => /^claude-/.test(m) && !/-\d{8}$/.test(m));
+    // Anthropic lists dated ids (claude-sonnet-4-5-20250929); the alias without the date is what the app asks for.
+    const all = [...new Set(ids.filter((m) => /^claude-/.test(m)).map((m) => m.replace(/-\d{8}$/, '')))];
     const tier = (m: string) => (/fable|mythos/.test(m) ? 4 : /opus/.test(m) ? 3 : /sonnet/.test(m) ? 2 : /haiku/.test(m) ? 1 : 0);
     const top = Math.max(0, ...all.map(tier));
     const best = pickNewest(all.filter((m) => tier(m) === top)) ?? k.best;

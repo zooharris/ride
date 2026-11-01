@@ -395,12 +395,6 @@ export function weekSummary(index: number, sessions: PlannedSession[], restDays:
 }
 
 /**
- * The week under way, re-checked: start from the week exactly as intended, then respond to what was
- * actually done. Load beyond what the days gone asked for comes off the days left (at most half of
- * them), and the day after a big or hard day is an easy spin. Load not done is not added: a missed
- * session is not crammed into the rest of the week. With everything done as planned, nothing changes.
- */
-/**
  * The week under way, on a re-check: only the days from today on are planned again; what was on the days gone is
  * history. Since 1 Nov 2026 there is no load reaction here (the fixed big-day and excess rules are gone): how the
  * rider is responding to what was done is judged by the coach (with a key) or the app's day judge (without).

@@ -90,8 +90,10 @@ function rank(x: number, xs: number[]): number {
 }
 
 /**
- * Yesterday's load, and the last three days', placed among the rider's own days over the last 8 weeks (where in that
- * distribution they fall), as spreads from the middle; positive = lighter than the rider's usual. The two are averaged.
+ * Yesterday's load, and the last three days', placed among the rider's own days over the last 8 weeks: positive =
+ * lighter than the rider's usual. Yesterday is placed among the rider's days of the same weekday when there are enough
+ * (a rider's routine long Saturday is their normal Saturday, not a big day), else among all their days; the last three
+ * days are placed among all their three-day spells. The two are averaged.
  */
 export function loadSignal(loads: Array<{ date: string; tss: number }>, date: string): { z: number; words: string } | undefined {
   const by = new Map<string, number>();
@@ -99,16 +101,19 @@ export function loadSignal(loads: Array<{ date: string; tss: number }>, date: st
   const day = (d: string) => by.get(d) ?? 0;
   const three = (d: string) => day(d) + day(addDays(d, -1)) + day(addDays(d, -2));
   const y = addDays(date, -1);
-  const days: number[] = [], threes: number[] = [];
-  for (let i = 2; i <= HISTORY_DAYS + 1; i++) { const d = addDays(date, -i); days.push(day(d)); threes.push(three(d)); }
+  const days: number[] = [], threes: number[] = [], sameDow: number[] = [];
+  for (let i = 2; i <= HISTORY_DAYS + 1; i++) { const d = addDays(date, -i); days.push(day(d)); threes.push(three(d)); if (dowOf(d) === dowOf(y)) sameDow.push(day(d)); }
   if (days.filter((x) => x > 0).length < 5) return undefined;
-  const r1 = rank(day(y), days), r3 = rank(three(y), threes);
+  const byWeekday = sameDow.filter((x) => x > 0).length >= 4;
+  const r1 = rank(day(y), byWeekday ? sameDow : days), r3 = rank(three(y), threes);
   const z = -(quantile(r1) + quantile(r3)) / 2;
   const pct = (r: number) => Math.round(r * 100);
-  const words = day(y) > 0
-    ? `yesterday's training load (${Math.round(day(y))} TSS) was more than ${pct(r1)}% of your days in the last 8 weeks, and the last three days together more than ${pct(r3)}% of your three-day spells`
-    : `yesterday was a rest day; the last three days together were more than ${pct(r3)}% of your three-day spells`;
-  return { z, words };
+  const weekday = new Date(y + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+  const dayWords = day(y) === 0 ? 'yesterday was a rest day'
+    : byWeekday ? (r1 >= 0.8 ? `yesterday's training load (${Math.round(day(y))} TSS) was above your usual for a ${weekday}` : r1 <= 0.2 ? `yesterday's training load (${Math.round(day(y))} TSS) was below your usual for a ${weekday}` : `yesterday's training load (${Math.round(day(y))} TSS) was about your usual for a ${weekday}`)
+    : `yesterday's training load (${Math.round(day(y))} TSS) was more than ${pct(r1)}% of your days in the last 8 weeks`;
+  const threeWords = r3 >= 0.8 ? 'the last three days together were among your heavier spells' : r3 <= 0.2 ? 'the last three days together were light for you' : 'the last three days together were about your usual';
+  return { z, words: `${dayWords}, and ${threeWords}` };
 }
 
 export function judgeTheDay(input: DayJudgeInput): DayJudgment {
@@ -121,11 +126,16 @@ export function judgeTheDay(input: DayJudgeInput): DayJudgment {
     const off = input.readiness.drivers.filter((d) => d.effect === 'down' && d.normal != null).map((d) => d.name.toLowerCase());
     reasons.push(off.length ? `this morning's ${off.join(' and ')} ${off.length === 1 ? 'is' : 'are'} worse than your normal${input.readiness.drivers.some((d) => d.note?.includes('running')) ? ', two mornings running' : ''}` : 'this morning\'s numbers are within your normal');
   } else if (input.yesterdayKind && input.morningAfterCost != null && input.morningAfterCost > 0) {
-    parts.push({ score: 70 * (1 - input.morningAfterCost), weight: 1 });
+    // The assessment's cost is the rider's measured HRV dip after such a day (0.3 = a 7.5% dip): about what the
+    // readiness score would have shown, 70 less 40 times the cost.
+    parts.push({ score: 70 - 40 * input.morningAfterCost, weight: 1 });
     reasons.push(`no overnight numbers to go on; your mornings after a ${input.yesterdayKind === 'long' ? 'long ride' : input.yesterdayKind === 'hard' ? 'hard ride' : 'strength day'} usually dip`);
   }
+  // Load is the rider's own prior: it carries full weight only when the morning's numbers are missing, since the
+  // morning already shows how the rider responded to yesterday. It is spoken of only when it is unusual.
+  const morningIn = parts.length > 0 && !(input.readiness.formOnly || input.setAside);
   const load = loadSignal(input.loads, input.date);
-  if (load) { parts.push({ score: scoreOfZ(load.z), weight: 1 }); reasons.push(load.words); }
+  if (load) { parts.push({ score: scoreOfZ(load.z), weight: morningIn ? 0.5 : 1 }); if (Math.abs(load.z) >= 0.75) reasons.push(load.words); }
   const p = input.performance;
   if (p?.hrVsNormal) {
     const z = -p.hrVsNormal.beats / Math.max(p.hrVsNormal.spread, 1);

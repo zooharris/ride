@@ -30,11 +30,14 @@ describe('F: one interface, three providers', () => {
 });
 
 describe('F: the model, chosen from the provider\'s own list', () => {
-  it('Anthropic: the highest tier and newest version is most capable; the newest Sonnet is faster; dated snapshots are left out', () => {
-    const c = chooseModels('anthropic', ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5-1', 'claude-fable-5-1', 'claude-sonnet-4-5-20250929']);
+  it('Anthropic: the highest tier and newest version is most capable; the newest Sonnet is faster; dated ids read as their alias', () => {
+    const c = chooseModels('anthropic', ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5-1', 'claude-fable-5-1', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-5']);
     expect(c.best).toBe('claude-fable-5-1');
     expect(c.faster).toBe('claude-sonnet-5-5');
-    expect(c.all).not.toContain('claude-sonnet-4-5-20250929');
+    expect(c.all).toContain('claude-sonnet-4-5');
+    expect(c.all.filter((m) => m === 'claude-sonnet-4-5')).toHaveLength(1);
+    // A list of dated ids only still gives aliases.
+    expect(chooseModels('anthropic', ['claude-opus-4-1-20250805', 'claude-sonnet-4-5-20250929']).best).toBe('claude-opus-4-1');
   });
   it('OpenAI: the newest plain gpt is most capable, its mini is faster; audio, images, dated and pro models are left out', () => {
     const c = chooseModels('openai', ['gpt-4.1', 'gpt-5', 'gpt-5-mini', 'gpt-5.5', 'gpt-5.5-mini', 'gpt-5.5-pro', 'gpt-4o-audio-preview', 'gpt-5-2025-08-07', 'gpt-image-1', 'text-embedding-3-large', 'gpt-5.5-nano']);

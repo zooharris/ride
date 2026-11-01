@@ -1,3 +1,5 @@
+import { coachConfig, noteModelResult } from './coachConfig';
+import type { CoachConfig } from '../coach/llm';
 import { db, getSetting, setSetting } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
 import { addDays, today } from '../engine/load';
@@ -252,9 +254,9 @@ export async function getJudgment(): Promise<Judgment | null> {
 }
 
 /** Whether the coach judges the plan: the switch on and a key on this device, or (without a key) a judgment of today another device made. */
-export async function coachJudges(): Promise<{ on: boolean; key: string }> {
+export async function coachJudges(): Promise<{ on: boolean; key: CoachConfig | null }> {
   const auto = await getSetting<boolean>('coachAuto', false);
-  const key = (await getSetting<string>('claudeKey', '')).trim();
+  const key = await coachConfig();
   return { on: auto, key };
 }
 
@@ -284,7 +286,7 @@ export async function ensureJudgment(data: AppData, opts: { force?: boolean; che
   return p;
 }
 
-async function ask(data: AppData, key: string, sig: string, check?: Replan | null): Promise<Judgment | null> {
+async function ask(data: AppData, key: CoachConfig, sig: string, check?: Replan | null): Promise<Judgment | null> {
   try {
     // Today asks before its own re-check has finished (check null); the plan's week, needs and line must still be in the packet.
     const c = check ?? await replan(data).catch(() => null);
@@ -293,7 +295,8 @@ async function ask(data: AppData, key: string, sig: string, check?: Replan | nul
     let reply = await judgeDay(key, data.profile as Profile, inputs.packet.date, text);
     // A reply that does not keep to the form is asked for once more.
     if ('failed' in reply) reply = await judgeDay(key, data.profile as Profile, inputs.packet.date, `${text}\n\nAnswer only in the JSON form given: note, assessment, stance, changes.`);
-    if ('failed' in reply) { failedThisSession.add(sig); return getJudgment(); }
+    if ('failed' in reply) { failedThisSession.add(sig); await noteModelResult(false); return getJudgment(); }
+    await noteModelResult(true);
     const { ok, dropped } = checkChanges(reply.changes, inputs.check);
     if (dropped.length) console.info('[coach] changes set aside by the app\'s checks:', dropped);
     const j: Judgment = { date: inputs.packet.date, sig, at: new Date().toISOString(), note: reply.note, assessment: reply.assessment, stance: reply.stance, changes: ok };

@@ -21,6 +21,8 @@ import { PageHead } from '../PageHead';
 import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
 import { watchPowerCurves, type CurveProgress } from '../powerCurves';
+import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
+import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
 import { addDays, today } from '../../engine/load';
 
 
@@ -36,6 +38,16 @@ export function Settings({ data }: { data: AppData }) {
   };
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
   const [claudeKey, setClaudeKey] = useState('');
+  // Part F (1 Nov 2026): the coach on any of three providers, with a choice of model.
+  const [provider, setProvider] = useState<Provider>('anthropic');
+  const [savedProvider, setSavedProvider] = useState<Provider>('anthropic');
+  const [model, setModel] = useState('');
+  const [savedModel, setSavedModel] = useState('');
+  const [models, setModels] = useState<ModelChoice | null>(null);
+  const [otherModel, setOtherModel] = useState(false);
+  const [coachTesting, setCoachTesting] = useState(false);
+  const [tested, setTested] = useState<{ ok: boolean; text: string } | null>(null);
+  const [modelFailures, setModelFailures] = useState(0);
   const [coachAuto, setCoachAuto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceSyncState | null>(null);
@@ -44,19 +56,37 @@ export function Settings({ data }: { data: AppData }) {
 
   useEffect(() => {
     getSetting<IntervalsCredentials | null>('intervals', null).then((c) => c && setCreds(c));
-    getSetting<string>('claudeKey', '').then((k) => { setClaudeKey(k); setSavedKey(k); });
+    void coachKey().then((k) => { setClaudeKey(k); setSavedKey(k); });
+    getSetting<Provider>(PROVIDER_SETTING, 'anthropic').then((v) => { setProvider(v); setSavedProvider(v); });
+    getSetting<string>(MODEL_SETTING, '').then((v) => { setModel(v); setSavedModel(v); });
+    getSetting<number>(FAILURES_SETTING, 0).then(setModelFailures);
     getSetting<boolean>('coachAuto', false).then((v) => { setCoachAuto(v); setSavedAuto(v); });
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
     getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices);
   }, []);
 
+  // The provider's own list of models, read when there is a key (the known names otherwise).
+  useEffect(() => {
+    let alive = true;
+    setModels(null); setTested(null);
+    const k = claudeKey.trim();
+    if (!k) return;
+    const t = setTimeout(() => { void modelsFor({ provider, key: k }).then((m) => { if (alive) { setModels(m); if (model && model !== 'faster' && !m.all.includes(model)) setOtherModel(true); } }); }, 400);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, claudeKey]);
+  async function test() {
+    setCoachTesting(true); setTested(null);
+    setTested(await testCoach({ provider, key: claudeKey.trim(), model: model.trim() }));
+    setCoachTesting(false);
+  }
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
   const [savedKey, setSavedKey] = useState('');
   const [savedAuto, setSavedAuto] = useState(false);
-  const dirty = JSON.stringify(p) !== JSON.stringify(data.profile) || claudeKey !== savedKey || coachAuto !== savedAuto;
+  const dirty = JSON.stringify(p) !== JSON.stringify(data.profile) || claudeKey !== savedKey || coachAuto !== savedAuto || provider !== savedProvider || model !== savedModel;
   function discard() {
     if (!confirm('Discard the changes on this page?')) return;
-    setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setMsg(null);
+    setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setProvider(savedProvider); setModel(savedModel); setMsg(null);
   }
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
 
@@ -66,11 +96,14 @@ export function Settings({ data }: { data: AppData }) {
     // The database stamps the profile on every write; take the stored copy so the page reads as saved.
     const stored = await db.profile.get('me');
     if (stored) setP(stored);
-    await setSetting('claudeKey', claudeKey.trim());
+    await setSetting(KEY_SETTING, claudeKey.trim());
+    await setSetting(PROVIDER_SETTING, provider);
+    await setSetting(MODEL_SETTING, model.trim());
     await setSetting('coachAuto', coachAuto && !!claudeKey.trim());
+    if (provider !== savedProvider || model.trim() !== savedModel) await setSetting(FAILURES_SETTING, 0);
     // The day's note is rewritten only when something the coach reads changed.
     if (coachFieldsChanged(data.profile!, p) || claudeKey.trim() !== savedKey) await setSetting('coachNote', null);
-    setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim());
+    setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim()); setSavedProvider(provider); setSavedModel(model.trim());
     notify();
     const before = data.profile!;
     const numbers = (x: Profile) => JSON.stringify(numbersToPush(x));
@@ -256,11 +289,34 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Coach (optional)</h2>
-        <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a coach who has read your numbers: its view of the day and answers to your questions. The key is stored only on this device and calls go straight to Anthropic; every device shows the coach's latest view, and a device needs its own key only to ask. Leave blank to skip.</p>
-        <div class="field"><label>Claude API key</label><input type="password" autocomplete="off" value={claudeKey} onInput={(e) => setClaudeKey((e.target as HTMLInputElement).value)} placeholder="sk-ant-…" /></div>
+        <p class="muted small" style="margin-bottom:12px">With an API key from Anthropic (Claude), OpenAI (ChatGPT) or Google (Gemini), Today gets a coach who has read your numbers: its view of the day and answers to your questions. The key is stored only on this device and calls go straight from the app to the provider; every device shows the coach's latest view, and a device needs its own key only to ask. Leave blank to skip.</p>
+        <div class="field"><label>Provider</label>
+          <select value={provider} onChange={(e) => { setProvider((e.target as HTMLSelectElement).value as Provider); setModel(''); setOtherModel(false); }}>
+            {PROVIDERS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <span class="faint small">Get a key at {PROVIDERS.find((x) => x.id === provider)!.where}.</span>
+        </div>
+        <div class="field" style="margin-top:12px"><label>API key</label><input type="password" autocomplete="off" value={claudeKey} onInput={(e) => setClaudeKey((e.target as HTMLInputElement).value)} placeholder={PROVIDERS.find((x) => x.id === provider)!.keyHint} /></div>
+        <div class="field" style="margin-top:12px"><label>Model</label>
+          <select value={otherModel ? '__other' : model} disabled={!claudeKey.trim()} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v === '__other') { setOtherModel(true); setModel(''); } else { setOtherModel(false); setModel(v); } }}>
+            <option value="">Most capable (recommended){models ? `: ${models.best}` : ''}</option>
+            <option value="faster">Faster{models ? `: ${models.faster}` : ''}</option>
+            {models && models.all.filter((m) => m !== models.best && m !== models.faster).length > 0 && (
+              <optgroup label="More">{models.all.filter((m) => m !== models.best && m !== models.faster).map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
+            )}
+            <option value="__other">Other model…</option>
+          </select>
+          {otherModel && <input style="margin-top:6px" value={model} placeholder="The model's name, as the provider writes it" onInput={(e) => setModel((e.target as HTMLInputElement).value)} />}
+          <span class="faint small">One model serves everything the coach does. The most capable model judges best and costs a few cents a day; it follows the provider's newest as they release them. Faster is cheaper and quicker, and may keep less well to the form the app needs.</span>
+          {modelFailures >= 2 && model !== '' && <span class="small" style="color:var(--warn)">This model has twice not answered in the form the app needs. Most capable (recommended) is the safer choice.</span>}
+        </div>
+        <div class="row wrap" style="gap:8px;margin-top:12px;align-items:center">
+          <button class="btn sm" disabled={!claudeKey.trim() || coachTesting} onClick={() => void test()}>{coachTesting ? 'Testing…' : 'Test'}</button>
+          {tested && <span class="small" style={`color:${tested.ok ? 'var(--good)' : 'var(--bad)'}`}>{tested.text}</span>}
+        </div>
         <div class="field" style="margin-top:12px"><label>The coach judges your plan</label>
           <div class="seg"><button class={coachAuto ? 'on' : ''} onClick={() => setCoachAuto(true)} disabled={!claudeKey.trim()}>On</button><button class={!coachAuto ? 'on' : ''} onClick={() => setCoachAuto(false)}>Off</button></div>
-          <p class="faint small" style="margin-top:6px">On: each morning, and whenever a new activity arrives or the calendar or your notes change, the coach looks at how you have been riding, your overnight numbers, your notes and your plan, and recommends changes only when the evidence calls for them, saying why beside each. Off: the app's own list of changes is shown, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
+          <p class="faint small" style="margin-top:6px">On: each morning, and whenever a new activity arrives or the calendar or your notes change, the coach looks at how you have been riding, your overnight numbers, your notes and your plan, and recommends changes only when the evidence calls for them, saying why beside each. Off: the app's own check of the day recommends changes instead, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
       </section>
 
       <PlayerSettings />

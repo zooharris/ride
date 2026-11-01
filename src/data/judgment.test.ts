@@ -183,3 +183,32 @@ describe('E: without a coach, the app\'s own day judge', () => {
     expect((await db.planned.get('p1'))?.workoutId).toBe(spin.id);
   });
 });
+
+describe('F: the key moves, and a reply that keeps failing the form is tried once more, then counted', () => {
+  it('the old Claude key becomes the coach key with Anthropic as the provider, once; it never enters the sync note', async () => {
+    const cfg = await import('../ui/coachConfig');
+    await setSetting('claudeKey', 'sk-ant-old');
+    expect(await cfg.coachConfig()).toEqual({ provider: 'anthropic', key: 'sk-ant-old', model: '' });
+    expect(await db.settings.get('claudeKey')).toBeUndefined();
+    const { localDoc } = await import('./devicesync');
+    expect((await localDoc()).settings.some((x) => x.key === 'coachKey')).toBe(false);
+    await setSetting('coachProvider', 'openai');
+    expect((await localDoc()).settings.some((x) => x.key === 'coachProvider')).toBe(true);
+  });
+  it('a reply that does not keep to the form is asked for once more; two failures in a row are counted for Settings', async () => {
+    const svc = await import('../ui/judgeService');
+    const coach = await import('../coach/claude');
+    const { getSetting } = await import('./db');
+    await setSetting('coachAuto', true);
+    await setSetting('coachKey', 'k');
+    const spy = vi.spyOn(coach, 'judgeDay').mockResolvedValue({ failed: 'no judgment in the reply' });
+    await svc.ensureJudgment(data(), { check: null });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1][3]).toMatch(/Answer only in the JSON form given/);
+    await svc.ensureJudgment(data(), { check: null, force: true });
+    expect(await getSetting('coachModelFailures', 0)).toBe(2);
+    spy.mockResolvedValue({ note: 'ok', assessment: '', stance: 'as planned', changes: [] });
+    await svc.ensureJudgment(data(), { check: null, force: true });
+    expect(await getSetting('coachModelFailures', 0)).toBe(0);
+  });
+});

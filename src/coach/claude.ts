@@ -11,8 +11,8 @@ import type { Readiness, ReadinessDriver } from '../engine/readiness';
 import { workoutStats } from '../engine/workout';
 import { runStepsLine } from '../engine/run';
 import { JUDGE_SCHEMA, judgeSystem, readJudge } from './judge';
+import { complete, type CoachConfig, type CompleteRequest } from './llm';
 
-const MODEL = 'claude-sonnet-5-5';
 
 /** One session on today's calendar, whoever put it there. */
 export interface TodaySession {
@@ -189,25 +189,15 @@ export function questionSystem(ctx: CoachContext, earlier: string[] = [], packet
   return `${coachIntro(ctx.profile, ctx.date)} You are answering their questions about their training. ${ANSWER_RULES} ${SHARED_RULES}\n\n${facts}${earlier.length ? `\n\nWhat you have already told the rider today:\n${earlier.map((e) => '- ' + e).join('\n')}` : ''}`;
 }
 
-/**
- * Claude Sonnet 5.5 thinks before it answers unless told not to, and that thinking counts against
- * `max_tokens`: with the old 300-token limit the thinking used most of it and the note stopped
- * mid-sentence (20 Oct 2026). The coach's notes are short and need no thinking, so it is turned off
- * (`between_tools`, the model's lowest setting; there are no tools here), with room to spare.
- * Checked against the API docs on 21 Oct 2026: `between_tools` is Sonnet 5.5's lowest setting and
- * is accepted without tools at effort high or below (the default); `disabled` is a 400 on Sonnet 5.5.
- */
-const NO_THINKING = { thinking: { type: 'between_tools' } };
+/* Thinking for short notes is turned off in the Anthropic adapter (llm.ts): Sonnet 5.5 counts thinking against the limit and cut notes off mid-sentence (20 Oct 2026). */
 
-async function callClaude(apiKey: string, body: Record<string, unknown>): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model: MODEL, ...NO_THINKING, ...body }),
-  });
-  if (!res.ok) throw new Error(await apiError(res));
-  const data = (await res.json()) as { content: Array<{ type: string; text?: string }>; stop_reason?: string };
-  return readText(data);
+/** The coach's key: a configuration (provider, key, model), or a bare Claude key as before. */
+export type CoachKey = CoachConfig | string;
+const cfgOf = (k: CoachKey): CoachConfig => (typeof k === 'string' ? { provider: 'anthropic', key: k } : k);
+
+/** A plain text request (note, question, chart), through whichever provider the rider uses. */
+async function callCoach(key: CoachKey, req: CompleteRequest): Promise<string> {
+  return readText(await complete(cfgOf(key), req));
 }
 
 /** The reply's text, or an error, never half a sentence: a reply cut off at the limit is not shown. */
@@ -218,16 +208,9 @@ export function readText(data: { content?: Array<{ type: string; text?: string }
   return text;
 }
 
-/** What went wrong, in words: a bad key is a 401, anything else says what the API said. */
-async function apiError(res: Response): Promise<string> {
-  if (res.status === 401 || res.status === 403) return `Claude answered ${res.status}. Check the API key in Settings.`;
-  let detail = '';
-  try { detail = ((await res.json()) as { error?: { message?: string } }).error?.message ?? ''; } catch { /* no body */ }
-  return `Claude answered ${res.status}${detail ? `: ${detail}` : ''}.`;
-}
 
-export async function dailyNote(apiKey: string, ctx: CoachContext): Promise<string> {
-  return callClaude(apiKey, { max_tokens: 1500, messages: [{ role: 'user', content: notePrompt(ctx) }] });
+export async function dailyNote(apiKey: CoachKey, ctx: CoachContext): Promise<string> {
+  return callCoach(apiKey, { maxTokens: 1500, messages: [{ role: 'user', content: notePrompt(ctx) }] });
 }
 
 /** `error`: a question that got no answer; shown as an error, never saved, never sent back as history. */
@@ -238,8 +221,8 @@ export interface ChatTurn { role: 'rider' | 'coach'; text: string; at?: string; 
  * daily note uses, plus what the coach already said today. Answers only: the
  * plan changes through the suggested-changes review, never from here.
  */
-export async function askCoach(apiKey: string, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = [], packet?: string): Promise<string> {
-  return callClaude(apiKey, { max_tokens: 2000, system: questionSystem(ctx, earlier, packet), messages: [...chatHistory(turns), { role: 'user', content: question }] });
+export async function askCoach(apiKey: CoachKey, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = [], packet?: string): Promise<string> {
+  return callCoach(apiKey, { maxTokens: 2000, system: questionSystem(ctx, earlier, packet), messages: [...chatHistory(turns), { role: 'user', content: question }] });
 }
 
 /** Earlier turns sent back as history: a question that got no answer goes with its error, so the two roles alternate. */
@@ -273,8 +256,8 @@ Sessions in that range, newest first (date · kind · minutes · training load):
 ${ctx.sessions.length ? ctx.sessions.map((l) => '- ' + l).join('\n') : '- none'}`;
 }
 
-export async function askAboutChart(apiKey: string, ctx: ChartContext, question: string): Promise<string> {
-  return callClaude(apiKey, { max_tokens: 1500, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
+export async function askAboutChart(apiKey: CoachKey, ctx: ChartContext, question: string): Promise<string> {
+  return callCoach(apiKey, { maxTokens: 1500, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
 }
 
 /**
@@ -282,20 +265,9 @@ export async function askAboutChart(apiKey: string, ctx: ChartContext, question:
  * packet and returns the note, an assessment, today's stance and any changes,
  * in a fixed JSON form. It thinks first, at high effort.
  */
-export async function judgeDay(apiKey: string, profile: Profile, date: string, packet: string): Promise<ReturnType<typeof readJudge>> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({
-      model: MODEL, max_tokens: 16000,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'high', format: { type: 'json_schema', schema: JUDGE_SCHEMA } },
-      system: judgeSystem(coachIntro(profile, date), MEDICAL_RULE),
-      messages: [{ role: 'user', content: packet }],
-    }),
-  });
-  if (!res.ok) throw new Error(await apiError(res));
-  return readJudge(await res.json());
+export async function judgeDay(apiKey: CoachKey, profile: Profile, date: string, packet: string): Promise<ReturnType<typeof readJudge>> {
+  const r = await complete(cfgOf(apiKey), { system: judgeSystem(coachIntro(profile, date), MEDICAL_RULE), messages: [{ role: 'user', content: packet }], schema: JUDGE_SCHEMA as unknown as Record<string, unknown>, maxTokens: 16000, think: 'high' });
+  return readJudge(r);
 }
 
 
@@ -395,17 +367,7 @@ export function readThreshold(mode: ThresholdMode, data: { content?: Array<{ typ
 }
 
 /** Ask the coach for an FTP estimate or a zone analysis, from the evidence lines. */
-export async function askThreshold(apiKey: string, profile: Profile, date: string, evidence: string[], mode: ThresholdMode, limits: { best20?: number; best60?: number; maxHr?: number } = {}): Promise<ThresholdAdvice> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({
-      model: MODEL, max_tokens: 8000,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: mode === 'ftp' ? FTP_SCHEMA : ZONE_SCHEMA } },
-      messages: [{ role: 'user', content: thresholdPrompt(profile, date, evidence, mode) }],
-    }),
-  });
-  if (!res.ok) throw new Error(await apiError(res));
-  return readThreshold(mode, await res.json(), limits);
+export async function askThreshold(apiKey: CoachKey, profile: Profile, date: string, evidence: string[], mode: ThresholdMode, limits: { best20?: number; best60?: number; maxHr?: number } = {}): Promise<ThresholdAdvice> {
+  const r = await complete(cfgOf(apiKey), { messages: [{ role: 'user', content: thresholdPrompt(profile, date, evidence, mode) }], schema: (mode === 'ftp' ? FTP_SCHEMA : ZONE_SCHEMA) as unknown as Record<string, unknown>, maxTokens: 8000, think: 'medium' });
+  return readThreshold(mode, r, limits);
 }

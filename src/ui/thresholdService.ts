@@ -3,6 +3,7 @@
  * test results, notes, readiness) and builds the evidence. The AI call and the
  * periodic check live here too (Parts B and C).
  */
+import { coachConfig, coachKey } from './coachConfig';
 import { useEffect, useState } from 'preact/hooks';
 import { db, getSetting, setSetting } from '../data/db';
 import { askThreshold, type ThresholdAdvice, type ThresholdMode } from '../coach/claude';
@@ -70,8 +71,8 @@ export async function setAdviceChoice(mode: ThresholdMode, choice: StoredAdvice[
 
 /** Ask the coach (needs the API key), keep the answer, and return it. */
 export async function askCoachThreshold(data: AppData, mode: ThresholdMode): Promise<StoredAdvice> {
-  const key = (await getSetting<string>('claudeKey', '')).trim();
-  if (!key) throw new Error('Add a Claude API key in Settings first.');
+  const key = await coachConfig();
+  if (!key) throw new Error('Add an API key for the coach in Settings first.');
   const ev = await loadEvidence(data);
   if (!ev || !data.profile) throw new Error('No profile on this device yet.');
   const best = (s: number) => ev.bests.find((b) => b.seconds === s)?.watts;
@@ -84,6 +85,6 @@ export async function askCoachThreshold(data: AppData, mode: ThresholdMode): Pro
 /** Whether the coach can be asked on this device. */
 export function useHasKey(): boolean {
   const [has, setHas] = useState(false);
-  useEffect(() => { void getSetting<string>('claudeKey', '').then((k) => setHas(!!k.trim())); }, []);
+  useEffect(() => { void coachKey().then((k) => setHas(!!k)); }, []);
   return has;
 }

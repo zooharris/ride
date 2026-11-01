@@ -1,3 +1,5 @@
+import { coachConfig } from '../coachConfig';
+import type { CoachConfig } from '../../coach/llm';
 import { useWidth } from '../useWidth';
 import { footLthr, rideLadders } from '../../engine/zones';
 import type { HrNumbers } from '../../engine/mornings';
@@ -466,13 +468,13 @@ interface ChartAnswer { q: string; a: string; at: string }
  * question and answer for each set of lines and range are kept on this device.
  */
 function ChartCoach({ on, range, from, to, series, data }: { on: OverlayKey[]; range: RangeKey; from: string; to: string; series: Fitness[]; data: AppData }) {
-  const [key, setKey] = useState('');
+  const [key, setKey] = useState<CoachConfig | null>(null);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<ChartAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const id = `${on.join(',')}|${range}`;
-  useEffect(() => { getSetting<string>('claudeKey', '').then(setKey); }, []);
+  useEffect(() => { void coachConfig().then(setKey); }, []);
   useEffect(() => { setError(null); getSetting<Record<string, ChartAnswer>>('chartChat', {}).then((m) => setAnswer(m[id] ?? null)); }, [id]);
   if (!key) return null;
   async function ask() {
@@ -480,7 +482,7 @@ function ChartCoach({ on, range, from, to, series, data }: { on: OverlayKey[]; r
     if (!q) return;
     setBusy(true); setError(null);
     try {
-      const a = await askAboutChart(key, chartFacts(on, from, to, series, data), q);
+      const a = await askAboutChart(key!, chartFacts(on, from, to, series, data), q);
       const saved: ChartAnswer = { q, a, at: new Date().toISOString() };
       const all = await getSetting<Record<string, ChartAnswer>>('chartChat', {});
       await setSetting('chartChat', { ...all, [id]: saved });

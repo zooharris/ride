@@ -36,13 +36,13 @@ export interface SyncDoc {
 }
 
 /** Settings that belong to one device, or come from Intervals.icu anyway. */
-const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId', 'noteKey', 'noteLock', 'coachChat', 'historyLoadedFrom', 'scoringRules', 'progressOverlays', 'chartChat', 'retargetLog', 'coachRecheck', 'playerDevices', 'playerSim', 'playerSound', 'playerAutoPause', 'playerGuard', 'playerSmoothing', 'playerSlots', 'wellnessFieldsV2', 'rampStep']);
+const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup', 'deviceSync', 'deviceId', 'noteKey', 'noteLock', 'coachChat', 'historyLoadedFrom', 'scoringRules', 'progressOverlays', 'chartChat', 'retargetLog', 'coachRecheck', 'playerDevices', 'playerSim', 'playerSound', 'playerAutoPause', 'playerGuard', 'playerSmoothing', 'playerSlots', 'wellnessFieldsV2', 'rampStep', 'coachModelFailures']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at
  * the rider's choice, so a restore from file is one step.
  */
-export const SECRET_SETTINGS = new Set(['intervals', 'claudeKey']);
+export const SECRET_SETTINGS = new Set(['intervals', 'claudeKey', 'coachKey']);
 const inNote = (s: Settings) => !LOCAL_ONLY.has(s.key) && !SECRET_SETTINGS.has(s.key);
 const TOMBSTONE_DAYS = 120;
 

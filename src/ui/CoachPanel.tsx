@@ -1,3 +1,5 @@
+import { coachConfig } from './coachConfig';
+import type { CoachConfig } from '../coach/llm';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { askCoach, dailyNote, type ChatTurn, type CoachContext } from '../coach/claude';
 import { buildPacket } from '../coach/packet';
@@ -24,7 +26,7 @@ const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined
  * the same evidence.
  */
 export function CoachPanel({ ctx, date, daySig, data, check }: { ctx: CoachContext; date: string; daySig: string; data: AppData; check: Replan | null }) {
-  const [key, setKey] = useState<string | null>(null);
+  const [key, setKey] = useState<CoachConfig | '' | null>(null);
   const [judging, setJudging] = useState<boolean | null>(null);
   const [judgment, setJudgment] = useState<Judgment | null>(null);
   const [asking, setAsking] = useState(false);
@@ -49,7 +51,7 @@ export function CoachPanel({ ctx, date, daySig, data, check }: { ctx: CoachConte
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void getJudgment().then(setJudgment); }, [data]);
 
-  async function refresh(apiKey: string) {
+  async function refresh(apiKey: CoachConfig) {
     setUpdating(true);
     try {
       const text = await dailyNote(apiKey, ctxRef.current);
@@ -73,7 +75,7 @@ export function CoachPanel({ ctx, date, daySig, data, check }: { ctx: CoachConte
   useEffect(() => {
     let alive = true;
     (async () => {
-      const k = (await getSetting<string>('claudeKey', '')).trim();
+      const k = (await coachConfig()) ?? '';
       const auto = await getSetting<boolean>('coachAuto', false);
       if (!alive) return;
       setKey(k);
@@ -135,9 +137,9 @@ export function CoachPanel({ ctx, date, daySig, data, check }: { ctx: CoachConte
         {body ? (
           <div class="panel" style="margin-top:8px;padding:14px 16px">
             {body}
-            <p class="faint small" style="margin:12px 0 0">To ask the coach a question or have it look again from this device, add a Claude API key in <a href="#/settings">Settings</a>.</p>
+            <p class="faint small" style="margin:12px 0 0">To ask the coach a question or have it look again from this device, add an API key in <a href="#/settings">Settings</a>.</p>
           </div>
-        ) : <p class="muted small" style="margin-top:6px">Add a Claude API key in <a href="#/settings">Settings</a> for the coach's daily view of your training and answers to your questions. A view made on another of your devices shows here too.</p>}
+        ) : <p class="muted small" style="margin-top:6px">Add an API key (Claude, ChatGPT or Gemini) in <a href="#/settings">Settings</a> for the coach's daily view of your training and answers to your questions. A view made on another of your devices shows here too.</p>}
       </section>
     );
   }

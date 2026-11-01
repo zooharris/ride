@@ -257,6 +257,13 @@ export interface ActivityEdit {
   keepVeloiq?: boolean;
   /** Ridden with a breathing strap (its name): every device reads the breathing back for the activity's page. */
   breathSensor?: string;
+  /** A Garmin ride's breathing against the rider's normal (2A): the strap's offset that day; never shown. */
+  breathOffset?: number;
+  /**
+   * On Antogo's recording (Step 3 Part 2, 2B): the Garmin recorded the same ride without breathing, so the
+   * rider chooses which to keep. Until then the Garmin's is left out of training load so the ride counts once.
+   */
+  choice?: { garminId: string; since: string };
   /** On the Garmin's recording: Antogo's copy of the same ride was removed in its favour. */
   replaced?: { name: string; at: string; playerActivityId?: string; recordingId?: string };
 }

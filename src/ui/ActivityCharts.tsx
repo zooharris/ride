@@ -36,6 +36,11 @@ export function resample(s: StreamSet, points = 600): Sample[] {
   return out;
 }
 
+/** The breathing chart's note when the strap froze (2E): "Breathing stopped at 0:24 · the strap's link to the Garmin dropped". */
+export function breathStopNote(at: number, garmin: boolean): string {
+  return `Breathing stopped at ${clock(Math.round(at))} · the strap's link${garmin ? ' to the Garmin' : ''} dropped`;
+}
+
 /** A trailing mean over `seconds`, skipping gaps (NaN or absent); NaN where the window has nothing. */
 export function trailingMean(time: number[], v: number[], seconds: number): number[] {
   const out: number[] = new Array(v.length);
@@ -54,7 +59,9 @@ type PanelDef = { key: string; title: string; unit: string; color: string; get: 
   /** A second line on its own axis (breathing rate on the breathing chart). */
   second?: { get: (p: Sample) => number | undefined; color: string; unit: string };
   /** The readout's words for this chart, when not just its value. */
-  readout?: (p: Sample) => string | undefined };
+  readout?: (p: Sample) => string | undefined;
+  /** A short line beside the title (where a breathing strap's link dropped). */
+  note?: string };
 
 /**
  * The recording as stacked charts that share one cursor: power, heart rate,
@@ -62,7 +69,9 @@ type PanelDef = { key: string; title: string; unit: string; color: string; get: 
  * and a readout of every value under the cursor. The same cursor index drives
  * the route map, so the parent owns it.
  */
-export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean }) {
+export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false, breathStop }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean;
+  /** Where the breathing strap froze (2E): the second, and whether the link was to a Garmin. */
+  breathStop?: { at: number; garmin: boolean } }) {
   const ride = kind === 'ride';
   const onFoot = kind === 'walk' || kind === 'run' || kind === 'other';
   const run = kind === 'run';
@@ -89,7 +98,8 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
     if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate. When the ride was from a plan, its steps are drawn underneath, up to the heart rate that matches each step’s target.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
     if (ride && samples.some((s) => s.ve != null)) list.push({ key: 've', title: 'Breathing', unit: 'L/min', color: 'var(--z2)', get: (p) => p.ve, second: { get: (p) => p.br, color: 'var(--ink-3)', unit: 'breaths a minute' },
       explain: 'From your breathing strap. The line is ventilation, the litres of air you breathe a minute, as a 30-second average; the thinner line is breaths a minute, on its own scale at the right.',
-      readout: (p) => [p.ve != null ? `ventilation ${Math.round(p.ve)} L/min` : '', p.br != null ? `${Math.round(p.br)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined });
+      readout: (p) => [p.ve != null ? `ventilation ${Math.round(p.ve)} L/min` : '', p.br != null ? `${Math.round(p.br)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined,
+      note: breathStop ? breathStopNote(breathStop.at, breathStop.garmin) : undefined });
     if (ride && samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     // A run reads as pace, minutes per mile or km (standing still has no pace, so it is a gap).
     if (run && samples.some((s) => s.speed != null)) list.push({ key: 'pace', title: 'Pace', unit: imperial ? 'min/mi' : 'min/km', color: 'var(--run)', get: (p) => (p.speed == null || p.speed < 1 ? undefined : (imperial ? 1609.344 : 1000) / p.speed / 60), explain: 'Minutes per ' + (imperial ? 'mile' : 'kilometre') + '; lower is faster. Pace drifts on hills and in heat at the same heart rate, which is why runs are set by heart rate.' });
@@ -97,7 +107,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
     if ((ride || onFoot) && samples.some((s) => s.alt != null)) list.push({ key: 'alt', title: 'Elevation', unit: imperial ? 'ft' : 'm', color: 'var(--ink-3)', get: (p) => (p.alt == null ? undefined : imperial ? p.alt * 3.28084 : p.alt), area: true, explain: 'Height above sea level along the route.' });
     if (samples.some((s) => s.temp != null)) list.push({ key: 'temp', title: 'Temperature', unit: imperial ? '°F' : '°C', color: 'var(--z1)', get: (p) => (p.temp == null ? undefined : imperial ? p.temp * 1.8 + 32 : p.temp), explain: 'As measured by the head unit; it lags the air by a few minutes.' });
     return list;
-  }, [samples, profile.ftp, profile.lthr, profile.footLthr, imperial, kind]);
+  }, [samples, profile.ftp, profile.lthr, profile.footLthr, imperial, kind, breathStop?.at]);
 
   if (samples.length < 2) return <div class="empty small">No recording to draw.</div>;
   // Every chart keeps the same width of plot, so the cursor lines up down the stack; room at the right for a second scale when one has it.
@@ -180,7 +190,7 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR
   };
   return (
     <div style="position:relative" ref={box}>
-      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit}{panel.second ? `; thin line, ${panel.second.unit}` : ''})</span></span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
+      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit}{panel.second ? `; thin line, ${panel.second.unit}` : ''})</span>{panel.note && <span class="faint"> · {panel.note}</span>}</span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
         onMouseMove={(e) => pick(e.currentTarget as SVGSVGElement, e.clientX)}
         onMouseLeave={() => onHover(null)}

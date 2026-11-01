@@ -2,7 +2,7 @@ import { useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
-import { autoSync, credentials, matchHistory, onHistoryMatched } from '../sync/syncService';
+import { autoSync, credentials, matchHistory, onHistoryMatched, onSyncRunning, syncRunning } from '../sync/syncService';
 import { coachReviewAfterSync, fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
@@ -99,9 +99,14 @@ export function App() {
     run();
     pull();
     watchGarminRule();
+    // After every pull the per-ride cache reads any new ride, so a Garmin ride with breathing is learned from (2A, 31 Oct).
+    const offPulled = onSyncRunning(() => {
+      if (syncRunning()) return;
+      void loadAppData().then((d) => buildPowerCurves(d.rides, () => {}, curveContext(d.profile, d.planned, (id) => findWorkout(d.mine, id)))()).catch(() => {});   // no progress wanted: unsubscribe at once, the build runs on
+    });
     const onVis = () => { if (document.visibilityState === 'visible') { run(); pull(); } };
     document.addEventListener('visibilitychange', onVis);
-    return () => { document.removeEventListener('visibilitychange', onVis); off(); };
+    return () => { document.removeEventListener('visibilitychange', onVis); off(); offPulled(); };
   }, []);
   // Every new screen starts at its top. Keyed on the path only, so a change of query inside a
   // screen (the Calendar's ?d=) does not jump; a screen that wants a place scrolls there itself.

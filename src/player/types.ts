@@ -69,6 +69,8 @@ export interface Recording {
   /** Any second has breathing (a breathing strap was connected), and the strap's name. */
   breathing?: boolean;
   breathSensor?: string;
+  /** The strap's reading against the rider's normal on this ride (2A); kept here, never in the file. */
+  breathOffset?: number;
   /** A fitness test's results, and what the rider did with each suggestion. */
   test?: import('./tests').TestResult;
 }

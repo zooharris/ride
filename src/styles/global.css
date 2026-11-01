@@ -1440,3 +1440,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .cal-item .cal-why { flex: 0 0 100%; margin: 0 0 0 98px; max-width: calc(100% - 98px); line-height: 1.35; white-space: normal; }
 .cal-item > a.row:has(> .cal-why) { flex-wrap: wrap; row-gap: 4px; }
 @media (max-width: 560px) { .cal-item .cal-why, .ex-strip.under { margin-left: 0; max-width: 100%; } }
+
+/* Two recordings of one ride (Step 3 Part 2, 2B) */
+.two-recs-rows { display: grid; gap: 6px; margin-top: 8px; }
+.two-recs-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 8px 10px; border-radius: var(--radius-s); background: var(--bg-3); }

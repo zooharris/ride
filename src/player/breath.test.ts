@@ -165,19 +165,23 @@ describe('1D: breathing in the ride file, and read back', () => {
 
 describe('1D: read-back from Intervals.icu', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('fetchStreams asks for the custom streams by name and picks them up', async () => {
+  it('fetchStreams asks for the custom streams by name on every activity and picks them up when present (2D)', async () => {
     const urls: string[] = [];
+    let withBreathing = true;
     vi.stubGlobal('fetch', async (url: string) => {
       urls.push(url);
-      const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, { type: 'tyme_minute_volume', data: [30, 31, 32] }, { type: 'tyme_breath_rate', data: [20, 20, 21] }, { type: 'tyme_tidal_volume', data: [1.5, 1.55, 1.52] }] : [];
+      const breath = [{ type: 'tyme_minute_volume', data: [30, 31, 32] }, { type: 'tyme_breath_rate', data: [20, 20, 21] }, { type: 'tyme_tidal_volume', data: [1.5, 1.55, 1.52] }];
+      const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, ...(withBreathing ? breath : [])] : [];
       return new Response(JSON.stringify(body), { status: 200 });
     });
-    const st = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1', { breathing: true });
+    // A Garmin ride: no breathing flag anywhere, yet its breathing comes back.
+    const st = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
     expect(urls[0]).toContain('tyme_minute_volume');
     expect(st.ve).toEqual([30, 31, 32]);
     expect(st.br).toEqual([20, 20, 21]);
+    withBreathing = false;
     const plain = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
-    expect(urls[2]).not.toContain('tyme');
+    expect(urls[2]).toContain('tyme_minute_volume');
     expect(plain.ve).toBeUndefined();
   });
   it('without the streams: the original file is read; a recording on this computer goes first', async () => {

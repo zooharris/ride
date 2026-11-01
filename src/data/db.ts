@@ -35,8 +35,12 @@ export interface StreamSet {
   tv?: number[];
   intervals?: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
 }
-/** 3 (30 Oct 2026): breathing read for player rides with a strap; a 2 is still good for any other activity. */
-export const STREAMS_VERSION = 3;
+/**
+ * 3 (30 Oct 2026): breathing read for player rides with a strap. 4 (31 Oct): breathing asked for on every
+ * ride, so a Garmin ride with Tymewear's data field has it. An older set is still good unless
+ * cachedStreamsUsable (player/breathRead) says it may be missing breathing.
+ */
+export const STREAMS_VERSION = 4;
 
 /** A ride's mean-maximal power at CURVE_SECONDS, computed once from its power stream (a cache; rebuilt if lost). */
 export interface PowerCurve {
@@ -57,6 +61,12 @@ export interface PowerCurve {
   judged?: boolean;
   /** The judging it was read with (powerCurves JUDGE_VERSION); older records are judged again once. */
   jv?: number;
+  /** Read with breathing alongside power (powerCurves BREATH_VERSION). */
+  bv?: number;
+  /** Median ventilation (L/min) in each band of FTP, after minute 10, frozen stretches left out (2A). */
+  veAtPower?: import('../engine/breathOffset').VeAtPower[];
+  /** The strap's reading against the rider's normal on this ride (2A); never shown. */
+  breathOffset?: number;
 }
 
 export interface SyncState {

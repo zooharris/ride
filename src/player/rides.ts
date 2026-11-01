@@ -17,6 +17,7 @@ import type { PlannedWorkout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
 import { garminFirst, markPlayerMade } from './garmin';
+import { noteBreathingDate } from './breathRead';
 
 export async function putRecording(r: Recording): Promise<void> { await db.recordings.put({ ...r, savedMs: Date.now() }); }
 export async function getRecording(id: string): Promise<Recording | undefined> { return db.recordings.get(id); }
@@ -112,6 +113,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   await patchRecording(id, { status: 'uploaded', activityId, uploadedAt: new Date().toISOString(), error: undefined });
   if (r.test) await setSetting(testResultKey(activityId), r.test);
   await markPlayerMade(activityId, r.date, r.keepVeloiq, r.breathing ? (r.breathSensor ?? 'Breathing strap') : undefined);
+  if (r.breathing) await noteBreathingDate(r.date);
 
   // The ride goes on the calendar of the day it was ridden, as a done workout, before the pull, so the
   // automatic pairing cannot hand it to another session planned that day. Nothing on other days is touched.

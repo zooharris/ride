@@ -16,7 +16,8 @@ import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go } from '../router';
 import { fetchActivityFile, fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
-import { fillBreathing, hasBreathing } from '../../player/breathRead';
+import { breathingOf } from '../../engine/breathFreeze';
+import { cachedStreamsUsable, fillBreathing, FIRST_BREATHING_KEY, hasBreathing, noteBreathingDate } from '../../player/breathRead';
 import { StatusPill } from '../StatusMark';
 import { analyseRide, type Analysis, type RideLap } from '../../engine/analysis';
 import { ActivityCharts, resample } from '../ActivityCharts';
@@ -37,6 +38,7 @@ import { patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
 import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
+import { TwoRecordings } from '../TwoRecordings';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -149,13 +151,16 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       if (alive && local?.laps?.some((l) => l.step != null)) setPlayerLaps(local.laps);
       const breathing = !!data.edits.find((e) => e.id === r.id)?.breathSensor || !!local?.breathing;
       const cached = await db.streams.get(r.id);
-      if (cached && (cached.v === STREAMS_VERSION || (cached.v === 2 && !breathing))) { if (alive) setStreams(cached); return; }
+      const firstBreathingDate = await getSetting<string | undefined>(FIRST_BREATHING_KEY, undefined);
+      if (cached && cachedStreamsUsable(cached, { playerBreathing: breathing, date: r.date, firstBreathingDate })) { if (alive) setStreams(cached); return; }
       const cred = await credentials();
       if (!cred) { if (alive) setStreams(cached ?? null); return; }
       try {
-        const st = await fetchStreams(cred, r.id, { breathing });
+        const st = await fetchStreams(cred, r.id);
         let set: StreamSet = { id: r.id, v: STREAMS_VERSION, ...st };
+        // The original file is read only for a player ride; a Garmin ride without the streams simply has no breathing.
         if (breathing) set = await fillBreathing(set, local, () => fetchActivityFile(cred, r.id));
+        if (hasBreathing(set)) await noteBreathingDate(r.date);
         await db.streams.put(set);
         if (alive) setStreams(set);
       } catch (e) {
@@ -175,7 +180,10 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
     hr: streams.heartrate?.length ? (basis === 'hr' ? analysis : analyseRide(w, profile, 'hr', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
   } : undefined;
-  const samples = useMemo(() => (streams ? resample(streams, 700) : []), [streams]);
+  // Breathing is cut where a strap froze (2E), so nothing frozen is drawn or read.
+  const shown = useMemo(() => (streams ? breathingOf(streams) : streams), [streams]);
+  const samples = useMemo(() => (shown ? resample(shown, 700) : []), [shown]);
+  const breathStop = shown?.frozenAt != null ? { at: shown.frozenAt, garmin: !data.edits.find((e) => e.id === r.id)?.breathSensor } : undefined;
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
@@ -235,6 +243,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     <div>
       <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
       <SummaryStrip items={items} />
+      <TwoRecordings edits={data.edits} rides={data.ridesAll} only={r.id} top />
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
@@ -288,7 +297,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded steps are what was planned; the lines are what you rode.' : r.sport === 'ride' ? 'Rides done from a plan show the planned steps under the lines, in their zone colours.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
-              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} /></div>
+              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} breathStop={breathStop} /></div>
             </div>
           </section>
         </>
@@ -350,7 +359,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
-      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'Breathing strap' : undefined)} />
+      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'VitalPro, through your Garmin' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>

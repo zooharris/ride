@@ -6,6 +6,12 @@ import { addDays, today } from '../engine/load';
 import type { Basis, Profile, Ride, Workout } from '../engine/types';
 import { fetchIntervals, fetchPowerStream } from '../sync/intervals';
 import type { RideLap } from '../engine/analysis';
+import { breathingOf } from '../engine/breathFreeze';
+import { learnNormal, todayOffset, veAtPower, type BreathNormal } from '../engine/breathOffset';
+import { breathFromRecording, hasBreathing, noteBreathingDate } from '../player/breathRead';
+import { patchRecording } from '../player/rides';
+import { upsertEdit } from '../sync/records';
+import { getSetting, setSetting, STREAMS_VERSION } from '../data/db';
 import { credentials } from '../sync/syncService';
 
 /**
@@ -19,11 +25,17 @@ import { credentials } from '../sync/syncService';
 export const CURVE_VERSION = 2;
 /** How planned sessions were judged: 2 finds each step by the recording's laps (31 Oct); records judged before that are judged again once. */
 export const JUDGE_VERSION = 2;
+/** 1 (31 Oct): breathing read alongside power, for the strap's normal (2A). Records of the last 12 weeks without it are read again once. */
+export const BREATH_VERSION = 1;
+/** The rider's normal breathing at each effort, learned from their rides (2A). */
+export const BREATH_NORMAL_KEY = 'breathNormal';
 
 export interface CurveContext {
   profile: Profile;
   /** The planned session a recording was matched to, if any. */
   sessionOf: (rideId: string) => { workout: Workout; basis: Basis } | undefined;
+  /** The rider's normal breathing as learned so far, for each ride's offset (2A). */
+  breathNormal?: BreathNormal;
 }
 
 export interface CurveProgress { done: number; total: number; error?: string; rebuilding?: boolean }
@@ -45,7 +57,8 @@ export function watchPowerCurves(onProgress: (p: CurveProgress) => void): () => 
   return () => listeners.delete(onProgress);
 }
 
-async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
+async function run(rides: Ride[], ctx0?: CurveContext): Promise<void> {
+  let ctx = ctx0;
   const emit = (p: CurveProgress) => { last = p; listeners.forEach((l) => l(p)); };
   const have = new Map((await db.powerCurves.toArray()).map((c) => [c.id, c]));
   const recent = addDays(today(), -16 * 7);
@@ -53,7 +66,9 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
   const missing = withPower.filter((r) => !have.has(r.id)).sort((a, b) => b.date.localeCompare(a.date));
   // Re-read once: records from before heart rate was kept, records whose ride has since been matched to a planned session,
   // and sessions judged before the steps were found by laps.
-  const stale = ctx ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx.sessionOf(r.id)) || (!!c.judged && c.jv !== JUDGE_VERSION)); })
+  // And (2A) rides of the last 12 weeks read before breathing was kept.
+  const breathFrom = addDays(today(), -84);
+  const stale = ctx0 ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx0.sessionOf(r.id)) || (!!c.judged && c.jv !== JUDGE_VERSION) || (r.date >= breathFrom && c.bv !== BREATH_VERSION)); })
     .sort((a, b) => Number(b.date >= recent) - Number(a.date >= recent) || b.date.localeCompare(a.date)) : [];
   const todo = [...missing, ...stale];
   const rebuilding = stale.length > 0;
@@ -61,14 +76,36 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
   const c = await credentials();
   let done = 0;
   emit({ done, total: todo.length, rebuilding });
+  if (ctx) ctx = { ...ctx, breathNormal: await getSetting<BreathNormal | undefined>(BREATH_NORMAL_KEY, undefined) };
+  const recordings = await db.recordings.toArray();
+  let breathSeen = false;
   for (const r of todo) {
     try {
       const full = await db.streams.get(r.id);
-      const s = full?.watts ? { time: full.time, watts: full.watts, heartrate: full.heartrate } : c ? await fetchPowerStream(c, r.id) : null;
+      // The cached recording is used when it is current or already has breathing; otherwise power, heart rate and breathing are read.
+      const fresh = !!full?.watts && (full.v === STREAMS_VERSION || hasBreathing(full));
+      let s: StreamsIn | null = fresh ? { time: full!.time, watts: full!.watts, heartrate: full!.heartrate, ve: full!.ve, br: full!.br, tv: full!.tv }
+        : c ? await fetchPowerStream(c, r.id) : full?.watts ? { time: full.time, watts: full.watts, heartrate: full.heartrate } : null;
       if (!s) { emit({ done, total: todo.length, rebuilding, error: 'Connect Intervals.icu to read your rides.' }); return; }
+      // A player ride's breathing comes from its recording on this computer when Intervals.icu has none of it.
+      const local = recordings.find((x) => x.activityId === r.id);
+      if (local?.breathing && !hasBreathing(s)) { const b = breathFromRecording(local, s.time); if (b) s = { ...s, ...b }; }
       // A planned session is judged by its laps: from the full recording when this device has it, else one small read.
       const laps: RideLap[] | undefined = ctx?.sessionOf(r.id) ? (full?.intervals ?? (c ? await fetchIntervals(c, r.id) : undefined)) : undefined;
-      await db.powerCurves.put(curveRecord(r, s, ctx, laps));
+      const rec = curveRecord(r, s, ctx, laps);
+      await db.powerCurves.put(rec);
+      if (rec.veAtPower) {
+        breathSeen = true;
+        await noteBreathingDate(r.date);
+        // Today's offset is kept with the ride: on the player's recording here, or on a Garmin ride's edit (synced).
+        if (rec.breathOffset != null) {
+          if (local) { if (local.breathOffset !== rec.breathOffset) await patchRecording(local.id, { breathOffset: rec.breathOffset }); }
+          else {
+            const e = await db.activityEdits.get(r.id);
+            if (e?.source !== 'veloiq' && e?.breathOffset !== rec.breathOffset) await upsertEdit(r.id, r.date, { breathOffset: rec.breathOffset });
+          }
+        }
+      }
     } catch (e) {
       emit({ done, total: todo.length, rebuilding, error: (e as Error).message });
       return;
@@ -76,10 +113,20 @@ async function run(rides: Ride[], ctx?: CurveContext): Promise<void> {
     done++;
     emit({ done, total: todo.length, rebuilding });
   }
+  if (breathSeen && ctx) await relearnBreathNormal(ctx.profile.ftp);
 }
 
+/** The rider's normal breathing, learned again from every ride's record (2A). */
+export async function relearnBreathNormal(ftp: number): Promise<BreathNormal | undefined> {
+  const normal = learnNormal(await db.powerCurves.toArray(), ftp, today());
+  if (normal) await setSetting(BREATH_NORMAL_KEY, normal);
+  return normal;
+}
+
+type StreamsIn = { time: number[]; watts?: number[]; heartrate?: number[]; ve?: number[]; br?: number[]; tv?: number[] };
+
 /** One ride's record. Pure apart from the context's lookups. */
-export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: { time: number[]; watts?: number[]; heartrate?: number[] }, ctx?: CurveContext, laps?: RideLap[]): PowerCurve {
+export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: CurveContext, laps?: RideLap[]): PowerCurve {
   const w = s.watts?.length ? meanMaxPower(s.time, s.watts, CURVE_SECONDS) : CURVE_SECONDS.map(() => 0);
   if (!ctx) return { id: r.id, date: r.date, w };
   const p = ctx.profile;
@@ -87,10 +134,15 @@ export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: { time: number[]; w
   const steady = steadyAtHr(s.time, s.watts, s.heartrate, p.lthr);
   const session = ctx.sessionOf(r.id);
   const verdict = session ? judgeSession(session.workout, p, session.basis, s.time, s.watts, s.heartrate, laps) : undefined;
+  // Breathing alongside power (2A), with any frozen stretch cut off first.
+  const b = s.ve ? breathingOf(s) : undefined;
+  const ve = b ? veAtPower(s.time, s.watts, b.ve, p.ftp) : [];
+  const offset = ve.length ? todayOffset(s.time, s.watts, b!.ve, ctx.breathNormal, p.ftp) : undefined;
   return {
     id: r.id, date: r.date, w, v: CURVE_VERSION, ftpAtBuild: p.ftp, lthrAtBuild: p.lthr,
     ...(bands.length ? { hrAtPower: bands } : {}), ...(steady ? { steadyAtHr: steady } : {}),
     ...(verdict ? { verdict } : {}), ...(session ? { judged: true, jv: JUDGE_VERSION } : {}),
+    bv: BREATH_VERSION, ...(ve.length ? { veAtPower: ve } : {}), ...(offset != null ? { breathOffset: offset } : {}),
   };
 }
 

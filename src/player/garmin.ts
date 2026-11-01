@@ -11,6 +11,13 @@
  *   ride's file is on this computer) brings Antogo's back.
  *
  * Only activities the player made (marked `source: 'veloiq'`) are ever deleted.
+ *
+ * Breathing (Step 3 Part 2, 2B, 31 Oct): when Antogo's recording has the rider's
+ * breathing and the Garmin's doesn't, keeping the Garmin's would lose it, so
+ * nothing is swapped: the rider chooses (Keep Antogo's / Keep Garmin's), and
+ * meanwhile the Garmin's is left out of training load. A choice not made in 30
+ * days falls back to the Garmin's, with the usual Undo. When both have
+ * breathing, the silent rule stands.
  */
 import { db } from '../data/db';
 import { addDays, today } from '../engine/load';
@@ -19,6 +26,8 @@ import { credentials, plannedSeconds, syncAll, TRIVIAL_SECONDS } from '../sync/s
 import { deleteRecording as deleteActivityHere, matchByHand, saveActivityEffort, setExcluded, upsertEdit } from '../sync/records';
 import { findWorkout } from '../ui/store';
 import { calendarEntryFor, getRecording, patchRecording, rideSeconds, uploadRide, type UploadResult } from './rides';
+import { fetchHasBreathing } from '../sync/intervals';
+import { hasBreathing } from './breathRead';
 import { garminTwin, playerMade, spanOf } from './twin';
 import type { Recording } from './types';
 
@@ -49,6 +58,8 @@ export async function garminFirst(r: Recording): Promise<UploadResult | undefine
   const want = r.workoutId ? plannedSeconds(findWorkout(workouts, r.workoutId)) : 0;
   const enough = g.seconds >= TRIVIAL_SECONDS && (!want || g.seconds >= want * 0.2);
   if (r.workoutId && !enough) return undefined;
+  // Antogo's has the breathing and the Garmin's doesn't: upload Antogo's as usual, and the rider chooses at the next sync (2B).
+  if (r.breathing && !(await garminBreathing(g.id))) return undefined;
   await patchRecording(r.id, { status: 'superseded', supersededBy: g.id, error: undefined });
   // The Garmin's ride completes the session. The pairing may already have given it the session.
   const already = (await db.planned.toArray()).find((p) => p.activityId === g.id);
@@ -86,6 +97,84 @@ export async function keepVeloiqInstead(recordingId: string, garminId?: string):
 
 export interface Swap { name: string; garminId: string; recordingId?: string; noPower: boolean; undo: boolean }
 
+/** How long a two-recordings choice waits before the Garmin's is kept, as the silent rule would. */
+export const CHOICE_DAYS = 30;
+
+/** Whether the Garmin's recording has breathing: from this device's cache, else one small read. Unknown counts as none. */
+async function garminBreathing(id: string): Promise<boolean> {
+  if (hasBreathing(await db.streams.get(id))) return true;
+  const c = await credentials();
+  if (!c) return false;
+  try { return await fetchHasBreathing(c, id); } catch { return false; }
+}
+
+/** Which recording to recommend keeping (2B): Antogo's, unless it stopped short of 95% of the Garmin's. */
+export function recommendKeep(antogoSeconds: number, garminSeconds: number): { keep: 'antogo' | 'garmin'; stoppedEarly: boolean } {
+  const stoppedEarly = antogoSeconds < garminSeconds * 0.95;
+  return { keep: stoppedEarly ? 'garmin' : 'antogo', stoppedEarly };
+}
+
+/** A two-recordings choice waiting on the rider, for the panel. */
+export interface PendingChoice { playerId: string; garminId: string; name: string; since: string; antogo: Ride; garmin: Ride; recommend: ReturnType<typeof recommendKeep> }
+
+export function pendingChoices(edits: ActivityEdit[], rides: Ride[]): PendingChoice[] {
+  const out: PendingChoice[] = [];
+  for (const e of edits) {
+    if (!e.choice || e.keepVeloiq) continue;
+    const antogo = rides.find((r) => r.id === e.id), garmin = rides.find((r) => r.id === e.choice!.garminId);
+    if (!antogo || !garmin) continue;
+    out.push({ playerId: e.id, garminId: garmin.id, name: antogo.name, since: e.choice.since, antogo, garmin, recommend: recommendKeep(antogo.elapsedSeconds ?? antogo.seconds, garmin.elapsedSeconds ?? garmin.seconds) });
+  }
+  return out;
+}
+
+/**
+ * The swap itself: the session, record and effort move to the Garmin's ride,
+ * then Antogo's is deleted from Intervals.icu and here. Throws when Intervals.icu
+ * can't be reached (nothing has changed then).
+ */
+async function swapPair(e: ActivityEdit, p: Ride, g: Ride, rec: Recording | undefined): Promise<Swap> {
+  const workouts = await db.workouts.toArray();
+  for (const pl of (await db.planned.toArray()).filter((x) => x.activityId === p.id)) {
+    const w = findWorkout(workouts, pl.workoutId);
+    if (w) await matchByHand(pl, w, (await db.rides.get(g.id)) ?? g);
+  }
+  if (e.rpe != null && !(await db.planned.toArray()).some((x) => x.activityId === g.id)) await saveActivityEffort(g, e.rpe);
+  await deletePlayerRide(p.id);
+  const undo = !!rec && rec.samples.length > 0;
+  if (rec) await patchRecording(rec.id, { status: 'superseded', supersededBy: g.id, activityId: undefined });
+  await upsertEdit(g.id, g.date, { replaced: { name: p.name, at: today(), playerActivityId: p.id, recordingId: undo ? rec!.id : undefined } });
+  return { name: p.name, garminId: g.id, recordingId: undo ? rec!.id : undefined, noPower: g.averagePower == null && p.averagePower != null, undo };
+}
+
+/** Keep Garmin's (2B): the Garmin's counts again and the swap is made, with the usual Undo. */
+export async function keepGarminChoice(playerId: string): Promise<Swap> {
+  const e = await db.activityEdits.get(playerId);
+  const p = await db.rides.get(playerId);
+  const g = e?.choice ? await db.rides.get(e.choice.garminId) : undefined;
+  if (!e || !p || !g) throw new Error('That ride has already been sorted out on another device.');
+  const rec = (await db.recordings.toArray()).find((r) => r.activityId === p.id);
+  const s = await swapPair(e, p, g, rec);
+  await setExcluded(g, false);
+  return s;
+}
+
+/**
+ * Keep Antogo's (2B): Antogo's stays and completes the session; the Garmin's
+ * stays in Garmin Connect and Intervals.icu, left out of training load so the
+ * ride counts once. The rule never asks about this pair again.
+ */
+export async function keepAntogoChoice(playerId: string): Promise<void> {
+  const e = await db.activityEdits.get(playerId);
+  if (!e?.choice) return;
+  const g = await db.rides.get(e.choice.garminId);
+  if (g) for (const pl of (await db.planned.toArray()).filter((x) => x.activityId === g.id)) await release(pl, g.id);
+  await upsertEdit(e.id, e.date, { keepVeloiq: true, choice: undefined });
+  const rec = (await db.recordings.toArray()).find((r) => r.activityId === e.id);
+  if (rec) await patchRecording(rec.id, { keepVeloiq: true });
+  if (g) await setExcluded(g, true);
+}
+
 /** The one way the rule deletes anything: an activity the player made, and nothing else. */
 export async function deletePlayerRide(id: string): Promise<void> {
   const e = await db.activityEdits.get(id);
@@ -102,7 +191,7 @@ export async function deletePlayerRide(id: string): Promise<void> {
 export async function applyGarminRule(): Promise<Swap[]> {
   const c = await credentials();
   if (!c) return [];
-  const [edits, recs, rides, workouts] = await Promise.all([db.activityEdits.toArray(), db.recordings.toArray(), db.rides.toArray(), db.workouts.toArray()]);
+  const [edits, recs, rides] = await Promise.all([db.activityEdits.toArray(), db.recordings.toArray(), db.rides.toArray()]);
   const mine = playerMade(edits, recs.map((r) => r.activityId).filter((x): x is string => !!x));
   const swaps: Swap[] = [];
   for (const e of edits) {
@@ -113,19 +202,23 @@ export async function applyGarminRule(): Promise<Swap[]> {
     if (rec?.keepVeloiq) continue;
     const g = garminTwin(spanOf(p), rides, mine);
     if (!g) continue;
-    try {
-      // The session, its record and effort move to the Garmin's ride; then Antogo's goes.
-      for (const pl of (await db.planned.toArray()).filter((x) => x.activityId === p.id)) {
-        const w = findWorkout(workouts, pl.workoutId);
-        if (w) await matchByHand(pl, w, (await db.rides.get(g.id)) ?? g);
+    // Antogo's has the breathing (2B): the rider chooses, unless the Garmin's has breathing too.
+    const antogoBreathing = !!e.breathSensor || !!rec?.breathing;
+    if (antogoBreathing) {
+      if (e.choice?.garminId === g.id) {
+        // Waiting on the rider; after 30 days the Garmin's is kept, as the silent rule would have.
+        if (Date.parse(today()) - Date.parse(e.choice.since) < CHOICE_DAYS * 86_400_000) continue;
+      } else if (!(await garminBreathing(g.id))) {
+        await upsertEdit(e.id, e.date, { choice: { garminId: g.id, since: today() } });
+        await setExcluded(g, true);   // the ride counts once while the rider decides
+        continue;
       }
-      if (e.rpe != null && !(await db.planned.toArray()).some((x) => x.activityId === g.id)) await saveActivityEffort(g, e.rpe);
-      await deletePlayerRide(p.id);
-    } catch { continue; /* Intervals.icu unreachable: the next sync tries again */ }
-    const undo = !!rec && rec.samples.length > 0;
-    if (rec) await patchRecording(rec.id, { status: 'superseded', supersededBy: g.id, activityId: undefined });
-    await upsertEdit(g.id, g.date, { replaced: { name: p.name, at: today(), playerActivityId: p.id, recordingId: undo ? rec!.id : undefined } });
-    swaps.push({ name: p.name, garminId: g.id, recordingId: undo ? rec!.id : undefined, noPower: g.averagePower == null && p.averagePower != null, undo });
+    }
+    let s: Swap;
+    try { s = await swapPair(e, p, g, rec); } catch { continue; /* Intervals.icu unreachable: the next sync tries again */ }
+    // A choice that ran out: the Garmin's counts again. (Antogo's edit went with its ride.)
+    if (e.choice) await setExcluded(g, false);
+    swaps.push(s);
   }
   return swaps;
 }

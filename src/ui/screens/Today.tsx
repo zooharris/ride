@@ -38,6 +38,7 @@ import type { Profile, Ride } from '../../engine/types';
 import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
 import { playerOffered, TRAINER_ONLY_ELSEWHERE } from '../../player/platform';
+import { TwoRecordings } from '../TwoRecordings';
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -233,6 +234,8 @@ export function Today({ data }: { data: AppData }) {
           <a class="btn sm" href="#/settings" style="margin-top:10px">Unlock in Settings</a>
         </div>
       )}
+
+      <TwoRecordings edits={data.edits} rides={data.ridesAll} />
 
       {active && (
         <section class="panel" style="margin-bottom:14px;padding:12px 16px">

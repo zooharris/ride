@@ -167,3 +167,19 @@ describe('C: review fixes (1 Nov)', () => {
   });
 
 });
+
+describe('E: without a coach, the app\'s own day judge', () => {
+  it('with the coach off: the day judge\'s changes with their reasons, applied like the coach\'s', async () => {
+    const svc = await import('../ui/judgeService');
+    const engine = await import('../engine/dayJudge');
+    await setSetting('coachAuto', false);
+    vi.spyOn(engine, 'judgeTheDay').mockReturnValue({ stance: 'easy', score: 40, reasons: ['r'], changes: [{ date: T, kind: 'ride', action: 'replace', plannedId: 'p1', workoutId: spin.id, before: tempo.name, after: spin.name, why: 'Yesterday was more than 98% of your days. Keep today easy.' }] });
+    await db.planned.put(planned());
+    const r = await svc.recommendFor(data(), null);
+    expect(r).toMatchObject({ byCoach: false, reason: "The app's view of today: keep today easy." });
+    expect([...r.reasons.values()]).toEqual(['Yesterday was more than 98% of your days. Keep today easy.']);
+    const out = await svc.acceptRecommended(data(), null, r, r.changes, null);
+    expect(out.made).toBe(1);
+    expect((await db.planned.get('p1'))?.workoutId).toBe(spin.id);
+  });
+});

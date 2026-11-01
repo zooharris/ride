@@ -359,7 +359,8 @@ export function ReplanView({ check, rec, onAccept, onReject, busy }: { check: Re
   const shown = all ? changes : changes.slice(0, 6);
   const sub = (t?: string) => (t ? <span class="faint small"> · {t}</span> : null);
   const line = (c: Change) => c.note === 'moved' ? <span>{c.after}{sub(c.afterSub)} <span class="faint">· moves here from {fmtDate(c.movedFrom!, { weekday: 'long' })}</span>{c.before !== c.after && <span class="faint"> (was {c.before})</span>}</span> : c.note === 'added' ? <span><span style="color:var(--good)">+</span> {c.after}{sub(c.afterSub)}</span> : c.note === 'removed' ? <span><span style="color:var(--bad)">−</span> {c.before}{sub(c.beforeSub)}</span> : <span>{c.before}{sub(c.beforeSub)} <span class="faint">→</span> {c.after}{sub(c.afterSub)}</span>;
-  const why = rec.byCoach ? (rec.reason ? [rec.reason] : []) : check.summary;
+  // The coach's own sentence; without a coach, the app's view of today (Part E, when it has one) above the plan's own reasons.
+  const why = rec.byCoach ? (rec.reason ? [rec.reason] : []) : [...(rec.reason ? [rec.reason] : []), ...check.summary];
   const later = check.later?.length ?? 0;
   return (
     <div style="margin-top:12px">

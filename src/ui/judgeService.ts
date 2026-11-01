@@ -6,7 +6,7 @@ import { changeKeys, type Change, type Replan } from '../engine/adapt';
 import type { PlanWeek } from '../engine/planner';
 import type { PlannedWorkout, Profile, SessionKind, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
-import { minutesWords, readWords } from '../engine/reads';
+import { hrVsNormal, minutesWords, readWords, type ActivityRead } from '../engine/reads';
 import { activityLine, driverWords, judgeDay, riderLine } from '../coach/claude';
 import { buildPacket, type PacketDay, type PacketGroup, type PacketInput, type PacketOption, type PacketSession } from '../coach/packet';
 import { ceilingsFrom, checkChanges, judgeSig, kindAllowed, toChange, type CheckContext, type CheckSession, type CheckWorkout, type Judgment, type ResolvedChange } from '../coach/judge';
@@ -15,7 +15,9 @@ import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, loadRatio, readinessToday, weekStart } from './derived';
 import { readsContext } from './reads';
 import { allWorkouts, findWorkout, notify, type AppData } from './store';
-import { applyPlan, changeSig, changeWords, getActivePlan, goalWords, movePlanned, ownRecommendation, pruneOrphanWorkouts, recentNoteLines, rejectedSigs, replan, replacePlanned, storeSessionWorkout, withTimeout, type ActivePlan, type Recommended } from './planService';
+import { judgeTheDay, type DayJudgeInput, type DayJudgment, type DayOption, type DaySession } from '../engine/dayJudge';
+import { ownRecommendation } from './planService';
+import { applyPlan, changeSig, changeWords, getActivePlan, goalWords, movePlanned, pruneOrphanWorkouts, recentNoteLines, rejectedSigs, replan, replacePlanned, storeSessionWorkout, withTimeout, type ActivePlan, type Recommended } from './planService';
 
 /**
  * The re-check thinks (1 Nov 2026), Part C: the coach's judgment of the day.
@@ -385,26 +387,116 @@ export async function recommendFor(data: AppData, check: Replan | null, onWaitin
   const { on, key } = await coachJudges();
   let j = await getJudgment();
   const t = today();
-  if (!on || (!key && j?.date !== t)) return ownRecommendation(check);
+  if (!on || (!key && j?.date !== t)) return fallbackRecommendation(data, check);
   const rejected = await rejectedSigs();
   const fromJudgment = (x: Judgment): Recommended => ({ ...judgedRows(x, data.planned, rejected), status: 'ready', byCoach: true });
   const sig = signatureOf(data);
   if (j && !j.failed && (j.sig === sig || !key)) return fromJudgment(j);
   if (key && waitForMorning(data) && j && !j.failed) return fromJudgment(j);
-  if (noWait) return j && !j.failed && j.date === t ? fromJudgment(j) : { ...ownRecommendation(check), fellBack: true };
+  if (noWait) return j && !j.failed && j.date === t ? fromJudgment(j) : { ...(await fallbackRecommendation(data, check)), fellBack: true };
   onWaiting?.();
   j = await withTimeout(ensureJudgment(data, { check }), waitMs);
-  return j && !j.failed && j.date === t ? fromJudgment(j) : { ...ownRecommendation(check), fellBack: true };
+  return j && !j.failed && j.date === t ? fromJudgment(j) : { ...(await fallbackRecommendation(data, check)), fellBack: true };
 }
 
 /** Accept recommended rows: the coach's through applyJudged, the app's own through the plan. */
 export async function acceptRecommended(data: AppData, check: Replan | null, rec: Recommended, changes: Change[], active: ActivePlan | null): Promise<{ made: number; wereSent: number }> {
-  if (rec.judged) {
-    const list = changes.map((c) => rec.judged!.get(changeSig(c))).filter((x): x is ResolvedChange => !!x);
-    return applyJudged(data, list, active);
+  // The coach's changes and the day judge's are made one by one; the plan's own (structural) changes through the plan.
+  const judged = changes.map((c) => rec.judged?.get(changeSig(c))).filter((x): x is ResolvedChange => !!x);
+  const own = changes.filter((c) => !rec.judged?.has(changeSig(c)));
+  let made = 0, wereSent = 0;
+  if (judged.length) { const r = await applyJudged(data, judged, active); made += r.made; wereSent += r.wereSent; }
+  if (own.length && check && active) {
+    const sent = new Set(data.planned.filter((p) => p.status === 'sent').map((p) => `${p.date}`));
+    await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(own.flatMap(changeKeys)), { planId: active.id });
+    made += own.length; wereSent += own.filter((c) => sent.has(c.date)).length;
   }
-  if (!check || !active) return { made: 0, wereSent: 0 };
-  const sent = new Set(data.planned.filter((p) => p.status === 'sent').map((p) => `${p.date}`));
-  await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.flatMap(changeKeys)), { planId: active.id });
-  return { made: changes.length, wereSent: changes.filter((c) => sent.has(c.date)).length };
+  return { made, wereSent };
+}
+
+// ---- without a coach: the app's own day judge (Part E) ----------------------
+
+/**
+ * The day judged by the app itself, from the same data the coach's packet is
+ * made from: this morning against the rider's normal, recent load among the
+ * rider's own days, the latest ride against the rider's own history, the rider's
+ * own morning-after evidence when the morning is missing.
+ */
+export async function dayJudgment(data: AppData, date = today()): Promise<DayJudgment | null> {
+  if (!data.profile) return null;
+  const profile = data.profile;
+  const active = await getActivePlan();
+  const av = active?.availability;
+  const away = active?.away ?? [];
+  const fit = fitnessOn(fitnessFromRides(data.rides), date);
+  const ready = readinessToday(data.wellness, fit, date, data.rides);
+  const setAside = data.dayNotes.some((n) => n.date === date && n.badWellness);
+  // Yesterday's kind, for the rider's own morning-after evidence.
+  const y = addDays(date, -1);
+  const yRides = data.rides.filter((r) => r.date === y);
+  const yesterdayKind = yRides.some((r) => r.sport === 'ride' && r.seconds >= 2.5 * 3600) ? 'long' as const
+    : yRides.some((r) => r.sport === 'ride' && (r.intensityFactor ?? 0) >= 0.85) ? 'hard' as const
+    : yRides.some((r) => r.sport === 'strength') ? 'strength' as const : undefined;
+  let morningAfterCost: number | undefined;
+  if (yesterdayKind) {
+    const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
+    const a = assess({ today: date, profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
+    const ev = yesterdayKind === 'long' ? a.afterLongRide : yesterdayKind === 'hard' ? a.afterHardRide : a.afterStrength;
+    if (ev.confidence !== 'none') morningAfterCost = ev.value;
+  }
+  // The latest ride in the last week, against the rider's own history.
+  const { reads } = await readsContext();
+  const from = addDays(date, -7);
+  const recent = reads.filter((r) => r.kind === 'ride' && r.date >= from && r.date < date).sort((a, b) => b.date.localeCompare(a.date));
+  const latest = recent[0];
+  let performance: DayJudgeInput['performance'];
+  if (latest) {
+    const prior = reads.filter((r) => r.kind === 'ride' && r.date < latest.date && r.date >= addDays(latest.date, -56));
+    const spreadOf = (xs: number[]) => { if (xs.length < 3) return undefined; const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)); };
+    const vs = hrVsNormal(latest, reads);
+    const pastVs = prior.map((r) => hrVsNormal(r, reads)?.beats).filter((x): x is number => x != null);
+    const spread = spreadOf(pastVs);
+    const steady = (r: ActivityRead) => r.drift != null && !r.planned?.steps.length;
+    const drifts = prior.filter(steady).map((r) => r.drift!);
+    const driftSpread = spreadOf(drifts);
+    performance = {
+      ...(vs && spread != null ? { hrVsNormal: { beats: vs.beats, spread } } : {}),
+      ...(steady(latest) && driftSpread != null ? { drift: { value: latest.drift!, usual: drifts.reduce((a, b) => a + b, 0) / drifts.length, spread: driftSpread } } : {}),
+      ...(latest.planned?.verdict ? { verdict: latest.planned.verdict } : {}),
+    };
+  }
+  // The calendar to the end of the week.
+  const end = addDays(date, 6 - ((dowOf(date) + 6) % 7));
+  const week: DaySession[] = data.planned.filter((p) => p.date >= date && p.date <= end).map((p): DaySession | undefined => {
+    const w = findWorkout(data.mine, p.workoutId);
+    return w ? { id: p.id, date: p.date, kind: w.kind, name: w.name, ...(w.kind === 'ride' ? { family: w.family as string } : {}), minutes: minutesOf(w), done: p.status === 'completed', handPlaced: !p.planId || !!p.userEdited } : undefined;
+  }).filter((x): x is DaySession => !!x);
+  const outdoor = av?.outdoor[dowOf(date)];
+  const rides: DayOption[] = allWorkouts(data.mine).filter((w) => w.kind === 'ride' && w.source !== 'generated' && w.bases.includes(profile.basis) && w.family !== 'test' && (!av || w.setting === 'any' || w.setting === (outdoor ? 'outdoor' : 'indoor')))
+    .map((w) => ({ id: w.id, name: w.name, family: w.family, minutes: minutesOf(w), setting: w.setting }));
+  return judgeTheDay({
+    date, readiness: ready, setAside, loads: data.rides.map((r) => ({ date: r.date, tss: r.tss ?? 0 })),
+    yesterdayKind, morningAfterCost, performance, week,
+    hours: av?.hours, rideAllowed: (d) => !kindAllowed('ride', d, { availability: av, away }), rides,
+  });
+}
+
+/** The list without a coach: the day judge's changes for today, with its reasons, and the plan's own structural changes. */
+export async function fallbackRecommendation(data: AppData, check: Replan | null): Promise<Recommended> {
+  const base = ownRecommendation(check);
+  let day: DayJudgment | null = null;
+  try { day = await dayJudgment(data); } catch { day = null; }
+  if (!day || !day.changes.length) return base;
+  const rejected = await rejectedSigs();
+  const reasons = new Map<string, string>(), judged = new Map<string, ResolvedChange>();
+  const rows: Change[] = [];
+  for (const r of day.changes) {
+    const c = toChange(r);
+    const sig = changeSig(c);
+    if (rejected.has(sig)) continue;
+    rows.push(c); reasons.set(sig, r.why); judged.set(sig, r);
+  }
+  const taken = new Set(day.changes.flatMap((r) => [`${r.date}|${r.kind}`, ...(r.toDate ? [`${r.toDate}|${r.kind}`] : [])]));
+  const rest = base.changes.filter((c) => !taken.has(`${c.date}|${c.kind}`));
+  return { changes: [...rows, ...rest], reasons, judged, status: 'ready', byCoach: false, reason: `The app's view of today: ${day.stance === 'lighter' ? 'a lighter day than planned' : day.stance === 'easy' ? 'keep today easy' : 'rest'}.` };
 }

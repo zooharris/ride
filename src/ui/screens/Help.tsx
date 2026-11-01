@@ -206,6 +206,20 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
     ),
   },
   {
+    id: 'outdoors', title: 'Riding a workout outdoors', body: (
+      <>
+        <P>Outdoors, hills, wind and traffic make power go up and down, so your bike computer shows two different numbers for a lap. <b>Average power</b> is the plain average. <b>Normalized power</b> is closer to what the lap actually cost your body, because surges cost more than steady riding. On rolling ground normalized power is often well above the average. Which one to steer by depends on the kind of ride.</P>
+        <ul>
+          <Li><b>Easy and endurance rides (zone 2)</b>: treat the target as a ceiling on effort, not an average to hit. Keep normalized power, and the short pushes up each climb, inside the band. On hilly roads your average will come out below the band; that is correct. If you ride the average to the middle of the band on rolling roads, the climbs were well above zone 2 and the ride was harder than planned.</Li>
+          <Li><b>Tempo, sweet spot and threshold intervals</b>: pick roads where you can hold steady power: a flat stretch or one long, steady climb, not rollers. Steer by 3-second or 10-second power inside the band. Afterwards, look at lap average and lap normalized power together: if normalized power is more than about 5% above the average, the interval was harder than its average says, so ease off on the climbs next time.</Li>
+          <Li><b>Short, hard intervals (VO2max and above)</b>: lap average power is fine. They are too short for the two numbers to differ much.</Li>
+          <Li><b>On your Garmin Edge</b>: a workout data screen with <b>3-second power</b> (to steer by), <b>lap average power</b>, <b>lap normalized power</b> and <b>lap time</b> gives you everything above at a glance.</Li>
+          <Li><b>Riding by heart rate</b> outdoors: heart rate lags a minute or two behind effort, so on a climb ease off as it rises toward the top of the band rather than waiting for it to cross it.</Li>
+        </ul>
+      </>
+    ),
+  },
+  {
     id: 'player', title: 'Riding with a trainer', body: (
       <>
         <P>Antogo can talk to a smart trainer and your sensors over Bluetooth, to ride a workout indoors. <b>Ride indoors on the trainer</b> is on Today's ride and on every ride's page (on a computer, Library ride cards also have <b>Ride now</b>). The ride player opens across the whole window: get your trainer and sensors ready, press <b>Start ride</b>, and the ride is recorded while the trainer holds each step's power for you, or while you ride to each step's heart-rate zone. The Library's Rides tab also has <b>Free ride on the trainer</b>, for a ride with no workout at all.</P>

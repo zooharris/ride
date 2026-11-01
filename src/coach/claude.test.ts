@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartSystem, chatHistory, dayFacts, driverWords, noteSignature, notePrompt, questionSystem, readReview, riderLine, type CoachContext } from './claude';
+import { chartSystem, chatHistory, dayFacts, driverWords, noteSignature, notePrompt, questionSystem, riderLine, type CoachContext } from './claude';
 import { judgeSystem } from './judge';
 import { readiness } from '../engine/readiness';
 import { changeWords } from '../ui/planService';
@@ -93,20 +93,7 @@ describe('the day in words that cannot be misread', () => {
   });
 });
 
-describe('the review answers per change', () => {
-  it('reads all, some with dates to skip, and none', () => {
-    const r = readReview('2026-10-21', { content: [{ type: 'text', text: '{"text":"Good week.","applyChanges":"some","skip":["2026-10-23","not a date"],"reason":"Keep Thursday."}' }], stop_reason: 'end_turn' });
-    expect(r).toMatchObject({ applyChanges: 'some', skip: ['2026-10-23'], reason: 'Keep Thursday.' });
-    const none = readReview('2026-10-21', { content: [{ type: 'text', text: '{"text":"Hold.","applyChanges":"none","skip":["2026-10-23"],"reason":"r"}' }] });
-    expect(none).toMatchObject({ applyChanges: 'none', skip: [] });
-    // enum capitalisation is not promised; "some" naming no date is all of them
-    expect(readReview('d', { content: [{ type: 'text', text: '{"text":"t","applyChanges":"All","skip":[],"reason":"r"}' }] }).applyChanges).toBe('all');
-    expect(readReview('d', { content: [{ type: 'text', text: '{"text":"t","applyChanges":"some","skip":[],"reason":"r"}' }] }).applyChanges).toBe('all');
-  });
-  it('reads past a thinking block to the answer', () => {
-    const r = readReview('2026-10-21', { content: [{ type: 'thinking', text: '{"text":"not this"}' }, { type: 'text', text: '{"text":"This one.","applyChanges":"all","skip":[],"reason":"r"}' }], stop_reason: 'end_turn' });
-    expect(r).toMatchObject({ text: 'This one.', applyChanges: 'all' });
-  });
+describe('the coach\'s words', () => {
   it('proposed changes are written in words', () => {
     expect(changeWords({ date: '2026-10-23', kind: 'ride', after: 'Oatlands', note: 'added' })).toBe('2026-10-23 ride: add Oatlands');
     expect(changeWords({ date: '2026-10-24', kind: 'ride', before: 'Reston', note: 'removed' })).toBe('2026-10-24 ride: remove Reston');

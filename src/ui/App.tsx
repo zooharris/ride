@@ -1,3 +1,4 @@
+import { db } from '../data/db';
 import { useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
@@ -87,6 +88,8 @@ export function App() {
       // Step 2b (30 Oct 2026): the per-ride cache (curve, heart rate alongside power, hard sessions judged) fills in
       // the background, so Today's FTP messages have their evidence without a visit to Progress.
       try { const d = await loadAppData(); buildPowerCurves(d.rides, (p) => { if (p.total && p.done === p.total) notify(); }, curveContext(d.profile, d.planned, (id) => findWorkout(d.mine, id))); } catch { /* tried again next time */ }
+      // 1 Nov 2026: the coach's old review after a sync is replaced by its judgment of the day; the old setting goes (on every device).
+      try { if (await db.settings.get('coachReview')) await db.settings.delete('coachReview'); } catch { /* next start */ }
       // The re-check thinks (1 Nov 2026): every activity of the last 12 weeks is read once, planned or not.
       try { const d = await loadAppData(); void buildReads(readsInput(d)).then((n) => { if (n) notify(); }); } catch { /* tried again next time */ }
       try { const n = await retireCreatedWorkouts(); if (n) { if (c) await syncDevices(c); toast({ ok: true, text: `${n} session${n === 1 ? '' : 's'} on your calendar now use${n === 1 ? 's' : ''} the nearest Library workout.` }); } } catch { /* runs again at the next start */ }

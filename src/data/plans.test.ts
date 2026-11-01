@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, setSetting } from './db';
 import { localDoc, mergeRemote, type SyncDoc } from './devicesync';
-import { changeSig, deletePlan, dismissCoachReview, getActivePlan, getCoachReview, getPlans, putPlan, rejectChanges, renamePlan, type ActivePlan } from '../ui/planService';
+import { changeSig, deletePlan, getActivePlan, getPlans, putPlan, rejectChanges, renamePlan, type ActivePlan } from '../ui/planService';
 import { getSetting } from './db';
 import { addDays, today } from '../engine/load';
 
@@ -116,20 +116,6 @@ describe('suggestions and reviews', () => {
     expect(kept).toContain(changeSig(tomorrow));
     expect(kept).not.toContain(changeSig(past));
     expect(changeSig({ ...tomorrow, after: 'Endurance 120' })).not.toBe(changeSig(tomorrow));
-  });
-  it("today's coach review is kept until dismissed", async () => {
-    await setSetting('coachReview', { date: today(), text: 'Good walk.', applyChanges: false, reason: '', at: new Date().toISOString() });
-    expect((await getCoachReview())?.text).toBe('Good walk.');
-    await dismissCoachReview();
-    expect(await getCoachReview()).toBeNull();
-    await setSetting('coachReview', { date: addDays(today(), -1), text: 'Old.', applyChanges: false, reason: '' });
-    expect(await getCoachReview()).toBeNull();
-  });
-  it('a raw reply kept by an older build shows as a failed review', async () => {
-    await setSetting('coachReview', { date: today(), text: '{"text": "The one new activity is a 1:18 ride, with 0', applyChanges: false, reason: '' });
-    const r = await getCoachReview();
-    expect(r?.text).toBe('');
-    expect(r?.failed).toBeTruthy();
   });
 });
 

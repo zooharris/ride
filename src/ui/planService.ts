@@ -1,7 +1,7 @@
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
-import { describeSession, readVerdict, type CoachPlan, type CoachReview } from '../coach/claude';
+import { describeSession, type CoachPlan } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, splitByHorizon, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
@@ -655,9 +655,6 @@ export async function markChecked(): Promise<void> {
 }
 
 
-/** The proposals a review judged, as one string. */
-export const changesSigOf = (changes: Change[]) => changes.map(changeSig).sort().join(';');
-
 /**
  * Before 1 Nov 2026 the coach's verdicts on the plan's changes were kept here (local to one device).
  * The coach's judgment (`coachJudgment`, judgeService) replaces them; the key stays only so the old
@@ -734,25 +731,6 @@ export function changeWords(c: Change): string {
   const b = `${c.before}${c.beforeSub ? ` (${c.beforeSub})` : ''}`, a = `${c.after}${c.afterSub ? ` (${c.afterSub})` : ''}`;
   const what = c.note === 'moved' ? `move ${a} here from ${c.movedFrom}${c.before !== c.after ? ` (it was ${b} there)` : ''}` : c.note === 'added' ? `add ${a}` : c.note === 'removed' ? `remove ${b}` : `replace ${b} with ${a}${c.note && c.note !== 'changed' ? ` (${c.note})` : ''}`;
   return `${c.date} ${c.kind}: ${what}${c.userEdited || c.userAdded ? ' [the rider changed this day by hand; offered, not pre-selected]' : ''}`;
-}
-
-/** The coach's review after a sync, kept until the rider dismisses it or a newer one replaces it. */
-export type SavedReview = CoachReview & { at?: string; dismissed?: boolean; ids?: string[] };
-
-/** Today's review, unless dismissed. */
-export async function getCoachReview(): Promise<SavedReview | null> {
-  const r = await getSetting<SavedReview | null>('coachReview', null);
-  // Batch 7, A4: the card shows only the review of synced activities; the coach's view of plan changes lives with the list.
-  if (!r || r.date !== today() || r.dismissed || r.mode === 'recheck') return null;
-  // Older builds kept an unreadable reply as raw text; show it as a failed review instead.
-  if (!r.failed && r.text.trim().startsWith('{')) return { ...r, text: '', failed: 'the reply could not be read', ...readVerdict(r) };
-  // A review saved before 21 Oct 2026 said yes or no for all the changes; read it as all or none.
-  return { ...r, ...readVerdict(r) };
-}
-
-export async function dismissCoachReview(): Promise<void> {
-  const r = await getSetting<SavedReview | null>('coachReview', null);
-  if (r) await setSetting('coachReview', { ...r, dismissed: true });
 }
 
 /** One suggested change, exactly: the same swap on the same day is the same suggestion. */

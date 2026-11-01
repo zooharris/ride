@@ -353,22 +353,17 @@ describe('re-checking a plan keeps its layout', () => {
     expect(Math.abs(again.projection[0].ctl - req().assessment.fitness.ctl)).toBeLessThan(1.5);   // today's fitness, give or take one day's load
     expect(again.projectedCtl).toBeGreaterThanOrEqual(Math.round(req().assessment.fitness.ctl) - 1);
   });
-  it('responds the next day to a big unplanned ride, and does not cram in a missed session', () => {
+  it('1 Nov 2026: the planner no longer reacts to load by fixed rules; a missed session is not crammed in', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
     const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
-    const wk = layout[1].start;                 // a full week in the plan
+    const wk = layout[1].start;
     const tue = addDays(wk, 1), wed = addDays(wk, 2);
-    const before = original.weeks[1].sessions.filter((x) => x.kind === 'ride' && x.date >= wed);
-    // a beautiful Tuesday: 5 hours, unplanned
+    const names = (p: typeof original) => p.weeks[0].sessions.filter((x) => x.date >= wed).map((x) => `${x.date} ${x.kind} ${x.workout.name}`);
+    const quiet = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, ...pastOf(original, wed), done: [] }));
     const big = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, ...pastOf(original, wed), done: [{ date: tue, tss: 260, seconds: 5 * 3600, intensity: 0.7 }] }));
-    const after = big.weeks[0].sessions.filter((x) => x.kind === 'ride');
-    const wedRide = after.find((x) => x.date === wed);
-    if (wedRide) expect(wedRide.type).toBe('recovery');                       // the next day is easy
-    const sum = (xs: typeof after) => xs.reduce((s, x) => s + x.tss, 0);
-    expect(sum(after)).toBeLessThan(sum(before));                             // the rest of the week comes down
-    // nothing done at all on the days gone: the days left stay as planned, nothing crammed in
-    const missed = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: wed, layout, ...pastOf(original, wed), done: [] }));
-    expect(sum(missed.weeks[0].sessions.filter((x) => x.kind === 'ride'))).toBeLessThanOrEqual(sum(before) * 1.12);
+    expect(names(big)).toEqual(names(quiet));   // how the rider responds is judged by the coach or the day judge, not here
+    const before = original.weeks[1].sessions.filter((x) => x.kind === 'ride' && x.date >= wed).reduce((t, x) => t + x.tss, 0);
+    expect(quiet.weeks[0].sessions.filter((x) => x.kind === 'ride').reduce((t, x) => t + x.tss, 0)).toBeLessThanOrEqual(before * 1.12);
   });
   it('fitted again on the same data, two days on, offers next to nothing', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
@@ -381,42 +376,6 @@ describe('re-checking a plan keeps its layout', () => {
     const differ = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).length;
     if (differ) console.log([...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).map((k) => `${k}: ${a.get(k)} -> ${b.get(k)}`).join("\n"));
     expect(differ).toBe(0);   // same evidence: the same sessions
-  });
-});
-
-describe('the week under way responds to what was done, judged against the plan', () => {
-  const weight = { kind: 'weight' as const, weeks: 12 };
-  const original = generatePlan(req({ goal: weight }));
-  const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
-  const wk = original.weeks[1];                          // a full week of the plan
-  const refit = (notBefore: string, done: Array<{ date: string; tss: number; seconds: number; kind?: 'ride' }>) =>
-    generatePlan(req({ goal: weight, start: layout[0].start, notBefore, layout, done, ...pastOf(original, notBefore) })).weeks[0];
-  const rides = (ss: typeof wk.sessions, from: string) => ss.filter((x) => x.kind === 'ride' && x.date >= from).map((x) => `${x.date} ${x.workout.name}`);
-
-  it('a planned long ride done as planned does not ease the next day', () => {
-    const long = wk.sessions.find((x) => x.type === 'long')!;
-    const next = addDays(long.date, 1);
-    if (next >= addDays(wk.start, 7)) return;            // long ride on the last day: nothing after it this week
-    const done = wk.sessions.filter((x) => x.date <= long.date).map((x) => ({ date: x.date, tss: x.tss, seconds: x.seconds, kind: x.kind as 'ride' }));
-    const doneLight = done.map((x) => (x.date === long.date ? { ...x, tss: Math.min(x.tss, 60), seconds: Math.min(x.seconds, 3600) } : x));
-    // the next day is the same as if the long ride had been short: the planned long ride did not trigger "big day"
-    expect(rides(refit(next, done).sessions, next).filter((r) => r.startsWith(next))).toEqual(rides(refit(next, doneLight).sessions, next).filter((r) => r.startsWith(next)));
-    expect(refit(next, done).sessions.filter((x) => x.date === next && x.kind === 'ride').every((x) => x.type !== 'recovery' || wk.sessions.some((y) => y.date === next && y.type === 'recovery'))).toBe(true);
-  });
-  it('everything done a little over the estimates changes nothing', () => {
-    const wed = addDays(wk.start, 2);
-    const asPlanned = wk.sessions.filter((x) => x.date < wed).map((x) => ({ date: x.date, tss: x.tss, seconds: x.seconds, kind: x.kind as 'ride' }));
-    const over = asPlanned.map((x) => ({ ...x, tss: Math.round(x.tss * 1.2) }));
-    // compared with the same week re-fitted with everything done exactly as planned (same fitness either way)
-    expect(rides(refit(wed, over).sessions, wed)).toEqual(rides(refit(wed, asPlanned).sessions, wed));
-  });
-  it('a big unplanned Monday ride eases Tuesday the same day', () => {
-    const mon = wk.start, tue = addDays(mon, 1);
-    const after = refit(mon, [{ date: mon, tss: 260, seconds: 5 * 3600, kind: 'ride' }]).sessions;
-    const tueRide = after.find((x) => x.kind === 'ride' && x.date === tue);
-    if (tueRide) expect(tueRide.type).toBe('recovery');
-    const sum = (xs: typeof after) => xs.filter((x) => x.kind === 'ride' && x.date > mon).reduce((s, x) => s + x.tss, 0);
-    expect(sum(after)).toBeLessThan(sum(wk.sessions));
   });
 });
 

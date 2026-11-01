@@ -5,7 +5,6 @@ import { LIBRARY } from '../library/workouts';
 import { generateMobility } from './sessions';
 import { assess } from './assessment';
 import { addDays } from './load';
-import { readReview, readVerdict } from '../coach/claude';
 
 import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from './types';
 
@@ -101,15 +100,4 @@ describe('Batch 6 C3: the quality type holds unless the evidence moves', () => {
     const moved = generatePlan({ ...req, keepQuality: { scores: { ...base.qualityScores, threshold: base.qualityScores.threshold + 0.5 }, byWeek: { [wk.start]: [other as never] } } });
     expect(moved.weeks.find((w) => w.start === wk.start)!.sessions.filter((x) => x.kind === 'ride').map((x) => x.workout.family)).toContain(was[0]);
   });
-});
-
-describe('Batch 6 C5 and Batch 7 A1: one verdict per change, one voice on screen', () => {
-  it('reads the new form, the old form, and a malformed reply', () => {
-    const r = readReview('d', { content: [{ type: 'text', text: JSON.stringify({ text: 't', verdicts: [{ date: '2026-10-22', kind: 'Mobility', apply: true, why: 'w' }, { date: '2026-10-24', kind: 'ride', apply: false, why: 'keep the long ride' }, { date: 'x', kind: 'ride', apply: true }], reason: 'r' }) }] });
-    expect(r.verdicts).toEqual([{ date: '2026-10-22', kind: 'mobility', apply: true, why: 'w' }, { date: '2026-10-24', kind: 'ride', apply: false, why: 'keep the long ride' }]);
-    expect(r).toMatchObject({ applyChanges: 'some', skip: ['2026-10-24'] });
-    expect(readVerdict({ applyChanges: 'all', skip: [] })).toEqual({ applyChanges: 'all', skip: [], verdicts: undefined });
-    expect(readReview('d', { content: [{ type: 'text', text: 'not json' }] }).failed).toBeTruthy();
-  });
-
 });

@@ -133,6 +133,25 @@ export interface CheckContext {
   away?: AwayRange[];
   sessions: CheckSession[];
   workouts: CheckWorkout[];
+  /** Without a plan: the longest session of each kind the coach may put in, from the rider's own history (D2). */
+  ceilingMinutes?: Partial<Record<SessionKind, number>>;
+}
+
+const KINDS: SessionKind[] = ['ride', 'strength', 'mobility', 'walk', 'run', 'other'];
+/**
+ * D2 (1 Nov 2026): the rider's own ceiling for each kind, without a plan: a quarter more than the longest activity of
+ * that kind in the last 8 weeks; a kind with none takes a quarter more than the longest of any kind; no activities at
+ * all, no ceiling. Nothing fixed.
+ */
+export function ceilingsFrom(activities: Array<{ date: string; sport: SessionKind; seconds: number }>, today: string): Partial<Record<SessionKind, number>> | undefined {
+  const from = addDays(today, -56);
+  const recent = activities.filter((a) => a.date >= from && a.date <= today && a.seconds > 0);
+  if (!recent.length) return undefined;
+  const longest = (xs: typeof recent) => Math.max(...xs.map((a) => a.seconds)) / 60;
+  const any = longest(recent);
+  const out: Partial<Record<SessionKind, number>> = {};
+  for (const k of KINDS) { const mine = recent.filter((a) => a.sport === k); out[k] = Math.round((mine.length ? longest(mine) : any) * 1.25); }
+  return out;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -159,11 +178,14 @@ function minutesOn(date: string, ctx: CheckContext, except: Set<string>): number
 }
 
 /** Whether the day's hours hold this much more, with a little give. */
-/** Without a plan there are no hours set: a session the coach adds or puts in is kept under two hours, as the packet says. */
-export const NO_PLAN_MINUTES = 120;
-function fits(date: string, minutes: number, ctx: CheckContext, except: Set<string>): boolean {
+/**
+ * Without a plan there are no hours set: a session the coach adds or puts in is kept within the rider's own
+ * ceiling for that kind (D2: a quarter more than their longest of that kind in the last 8 weeks), and with no
+ * history at all there is no ceiling, the coach's change being only a recommendation.
+ */
+function fits(date: string, minutes: number, ctx: CheckContext, except: Set<string>, kind?: SessionKind): boolean {
   const av = ctx.availability;
-  if (!av) return minutes <= NO_PLAN_MINUTES;
+  if (!av) { const cap = kind ? ctx.ceilingMinutes?.[kind] : undefined; return cap == null || minutes <= cap; }
   const cap = av.hours[dowOf(date)] * 60;
   return minutesOn(date, ctx, except) + minutes <= cap * 1.1 + 5;
 }
@@ -198,7 +220,7 @@ export function checkChanges(changes: JudgedChange[], ctx: CheckContext): { ok: 
       const no = kindAllowed(w.kind, c.date, ctx);
       if (no) { fail(no); continue; }
       const except = new Set(s ? [s.id] : []);
-      if (!fits(c.date, w.minutes, ctx, except)) { fail('does not fit the hours that day'); continue; }
+      if (!fits(c.date, w.minutes, ctx, except, w.kind)) { fail('does not fit the hours that day'); continue; }
       if (ctx.sessions.some((x) => x.date === c.date && !except.has(x.id) && x.workoutKey === w.key)) { fail('already on that day'); continue; }
     }
     switch (c.action) {
@@ -219,7 +241,7 @@ export function checkChanges(changes: JudgedChange[], ctx: CheckContext): { ok: 
         if (!inRange(to) || to === c.date) { fail('move to a date outside today to two weeks ahead'); continue; }
         const no = kindAllowed(s!.kind, to!, ctx);
         if (no) { fail(no); continue; }
-        if (!fits(to!, s!.minutes, ctx, new Set([s!.id]))) { fail('does not fit the hours on the new day'); continue; }
+        if (!fits(to!, s!.minutes, ctx, new Set([s!.id]), s!.kind)) { fail('does not fit the hours on the new day'); continue; }
         if (ctx.sessions.some((x) => x.date === to && x.id !== s!.id && x.workoutKey === s!.workoutKey)) { fail('already on the new day'); continue; }
         ok.push({ date: c.date, kind: s!.kind, action: 'move', plannedId: s!.id, toDate: to, before: s!.name, after: s!.name, why: c.why, ...(s!.handPlaced ? { handPlaced: true } : {}) });
         used.add(s!.id);

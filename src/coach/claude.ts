@@ -277,26 +277,6 @@ export async function askAboutChart(apiKey: string, ctx: ChartContext, question:
   return callClaude(apiKey, { max_tokens: 1500, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
 }
 
-/** The coach's view of one proposed change, keyed by its date and kind (Batch 6, C5). */
-export interface CoachVerdict { date: string; kind: string; apply: boolean; why: string }
-
-export interface CoachReview {
-  date: string;
-  text: string;
-  /** Claude's view of each proposed change. Reviews saved before 23 Oct 2026 have none; their view is in applyChanges and skip. */
-  verdicts?: CoachVerdict[];
-  /** Derived from the verdicts for older readers: all of it, none of it, or all but the dates in `skip`. */
-  applyChanges: 'all' | 'some' | 'none';
-  skip: string[];
-  reason: string;
-  /** Which proposals the review judged: the app's signature of the change list it was shown. */
-  changesSig?: string;
-  /** 'sync' after new activities; 'recheck' for the plan's own daily re-check (C6). */
-  mode?: 'sync' | 'recheck';
-  /** Set when the coach's reply could not be read: why, for troubleshooting. The text is then empty and never shown. */
-  failed?: string;
-}
-
 /**
  * The re-check thinks (1 Nov 2026): one call judges the day from the evidence
  * packet and returns the note, an assessment, today's stance and any changes,
@@ -318,45 +298,6 @@ export async function judgeDay(apiKey: string, profile: Profile, date: string, p
   return readJudge(await res.json());
 }
 
-/** The review out of Claude's reply, or a failed review that says why, never raw text. */
-export function readReview(date: string, data: { content?: Array<{ type: string; input?: unknown; text?: string }>; stop_reason?: string }): CoachReview {
-  type Answer = { text?: unknown; applyChanges?: unknown; skip?: unknown; verdicts?: unknown; reason?: unknown };
-  // The JSON form arrives as text; an older tool-call reply is read the same way.
-  let use = data.content?.find((c) => c.type === 'tool_use')?.input as Answer | undefined;
-  if (!use && data.stop_reason !== 'max_tokens') {
-    const raw = (data.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
-    try { const v = JSON.parse(raw); if (v && typeof v === 'object') use = v as Answer; } catch { /* not JSON: a failed review below */ }
-  }
-  if (use && typeof use.text === 'string' && use.text.trim()) {
-    return { date, text: use.text.trim(), ...readVerdict(use), reason: typeof use.reason === 'string' ? use.reason : '' };
-  }
-  return { date, text: '', verdicts: undefined, applyChanges: 'none', skip: [], reason: '', failed: data.stop_reason === 'max_tokens' ? 'the reply was cut off before it finished' : use ? 'the reply was missing its text' : `no review in the reply (${data.stop_reason ?? 'unknown reason'})` };
-}
-
-/**
- * The coach's verdict on the proposed changes. The form since 23 Oct 2026 is
- * one verdict per change (date, kind, apply, why); the older fields are derived
- * from it, so readers that only know "all / some / none" still work. A review
- * saved in the older form (all / some with dates to skip, or before 21 Oct a
- * plain yes/no) still reads, with no per-change verdicts.
- */
-export function readVerdict(v: { applyChanges?: unknown; skip?: unknown; verdicts?: unknown }): Pick<CoachReview, 'applyChanges' | 'skip' | 'verdicts'> {
-  if (Array.isArray(v.verdicts)) {
-    const verdicts: CoachVerdict[] = v.verdicts
-      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-      .filter((x) => typeof x.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && typeof x.kind === 'string' && typeof x.apply === 'boolean')
-      .map((x) => ({ date: x.date as string, kind: (x.kind as string).toLowerCase(), apply: x.apply as boolean, why: typeof x.why === 'string' ? x.why : '' }));
-    const skip = [...new Set(verdicts.filter((x) => !x.apply).map((x) => x.date))];
-    const applyChanges = !verdicts.length || verdicts.every((x) => !x.apply) ? 'none' : verdicts.every((x) => x.apply) ? 'all' : 'some';
-    return { applyChanges, skip, verdicts };
-  }
-  // Structured outputs do not promise the capitalisation of enum values, so compare lower-case.
-  const a = typeof v.applyChanges === 'string' ? v.applyChanges.toLowerCase() : v.applyChanges;
-  const skip = a === 'some' && Array.isArray(v.skip) ? v.skip.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
-  // "Some" with no date named is all of them: the coach made no exception.
-  const applyChanges = a === true || a === 'all' || (a === 'some' && !skip.length) ? 'all' : a === 'some' ? 'some' : 'none';
-  return { applyChanges, skip, verdicts: undefined };
-}
 
 /**
  * What the day's note was written from: the sessions (with their status and recording), the

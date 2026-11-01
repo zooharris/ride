@@ -6,10 +6,10 @@ import { changeKeys, type Change, type Replan } from '../engine/adapt';
 import type { PlanWeek } from '../engine/planner';
 import type { PlannedWorkout, Profile, SessionKind, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
-import { readWords } from '../engine/reads';
+import { minutesWords, readWords } from '../engine/reads';
 import { activityLine, driverWords, judgeDay, riderLine } from '../coach/claude';
 import { buildPacket, type PacketDay, type PacketGroup, type PacketInput, type PacketOption, type PacketSession } from '../coach/packet';
-import { checkChanges, judgeSig, kindAllowed, toChange, type CheckContext, type CheckSession, type CheckWorkout, type Judgment, type ResolvedChange } from '../coach/judge';
+import { ceilingsFrom, checkChanges, judgeSig, kindAllowed, toChange, type CheckContext, type CheckSession, type CheckWorkout, type Judgment, type ResolvedChange } from '../coach/judge';
 import { deleteEvent } from '../sync/intervals';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, loadRatio, readinessToday, weekStart } from './derived';
@@ -180,6 +180,8 @@ export async function judgeInputs(data: AppData, check?: Replan | null, date = t
   // 8. The rider's parameters.
   const params: string[] = [];
   const av = active?.availability;
+  // Without a plan, the rider's own ceilings (D2).
+  const ceilings = av ? undefined : ceilingsFrom(data.rides, date);
   if (av) {
     const order = [1, 2, 3, 4, 5, 6, 0];
     for (const d of order) {
@@ -191,7 +193,11 @@ export async function judgeInputs(data: AppData, check?: Replan | null, date = t
     const off = Object.entries(may).filter(([, v]) => !v).map(([k]) => k);
     if (off.length) params.push(`The app may never schedule: ${off.join(', ')}.`);
     params.push(`Equipment: ${av.equipment.join(', ') || 'none listed'}.`);
-  } else params.push('No plan in force, so no hours are set: keep any session to the lengths already on the calendar or under two hours.');
+  } else {
+    const longestRide = data.rides.filter((r) => r.sport === 'ride' && r.date >= addDays(date, -56)).reduce((m, r) => Math.max(m, r.seconds), 0);
+    const ride = ceilings?.ride;
+    params.push(ceilings ? `No plan in force, so no hours are set.${longestRide ? ` The rider's longest ride in the last 8 weeks was ${minutesWords(longestRide)}; keep any ride you add or put in under about ${minutesWords((ride ?? 0) * 60)},` : ` Keep any session you add or put in under about ${minutesWords((ride ?? 0) * 60)},`} and other kinds likewise under a quarter more than the rider's longest of that kind.` : 'No plan in force and no activities yet, so no hours are set: keep what you add modest; the rider decides.');
+  }
   const away = (active?.away ?? []).filter((r) => r.to >= date && r.from <= to);
   for (const r of away) params.push(`Away ${r.from} to ${r.to}${r.note ? ` (${r.note})` : ''}: nothing may go on these days.`);
 
@@ -231,7 +237,7 @@ export async function judgeInputs(data: AppData, check?: Replan | null, date = t
   const appView = check ? check.changes.map(changeWords) : [];
 
   const packet: PacketInput = { date, rider, morning, notes, activities, week, calendar: sessions, plan, params, days, catalogue, appView };
-  return { packet, check: { today: date, horizon: HORIZON, availability: av, away, sessions: checkSessions, workouts: checkWorkouts }, sig: signatureOf(data, date), active };
+  return { packet, check: { today: date, horizon: HORIZON, availability: av, away, sessions: checkSessions, workouts: checkWorkouts, ...(ceilings ? { ceilingMinutes: ceilings } : {}) }, sig: signatureOf(data, date), active };
 }
 
 // ---- asking ------------------------------------------------------------------

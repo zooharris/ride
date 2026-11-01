@@ -265,14 +265,11 @@ describe('Batch 7 A2/A4: waiting for the coach, and keeping its two reviews apar
     expect(again.fellBack).toBe(true);
   });
 
-  it('the coach card shows only the review of synced activities; the coach’s plan verdicts stay on this device', async () => {
-    const { getCoachReview, RECHECK_KEY } = await import('../ui/planService');
+  it('the old coach verdicts setting never travels between devices', async () => {
+    const { RECHECK_KEY } = await import('../ui/planService');
     const { localDoc } = await import('./devicesync');
-    await setSetting('coachReview', { date: today(), text: 'On the plan', reason: '', applyChanges: 'all', skip: [], mode: 'recheck' });
-    expect(await getCoachReview()).toBeNull();
-    await setSetting('coachReview', { date: today(), text: 'Your ride today', reason: '', applyChanges: 'all', skip: [], mode: 'sync' });
-    expect((await getCoachReview())?.text).toBe('Your ride today');
-    await setSetting(RECHECK_KEY, { date: today(), text: 't', reason: '', applyChanges: 'all', skip: [] });
+    await setSetting(RECHECK_KEY, { date: today(), text: 't' });
     expect((await localDoc()).settings.some((x) => x.key === RECHECK_KEY)).toBe(false);
   });
+
 });

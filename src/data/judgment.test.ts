@@ -145,11 +145,25 @@ describe('C: review fixes (1 Nov)', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect((await svc.getJudgment())!.changes).toEqual([]);
   });
-  it('without a plan, a workout the coach puts in is kept under two hours', async () => {
-    const { checkChanges } = await import('../coach/judge');
-    const ctx = { today: T, horizon: 14, sessions: [], workouts: [{ ref: 'W1', id: 'long', kind: 'ride' as const, name: 'Long 3 h', minutes: 180, key: 'long' }, { ref: 'W2', id: 'spin', kind: 'ride' as const, name: 'Spin', minutes: 45, key: 'spin' }] };
-    const { ok, dropped } = checkChanges([{ date: T, action: 'add', workout: 'W1', why: 'w' }, { date: T, action: 'add', workout: 'W2', why: 'w' }], ctx);
-    expect(dropped.map((x) => x.why)).toEqual(['does not fit the hours that day']);
-    expect(ok).toHaveLength(1);
+  it('D2: without a plan, the ceiling is the rider\'s own: a quarter more than their longest of that kind in 8 weeks', async () => {
+    const { checkChanges, ceilingsFrom } = await import('../coach/judge');
+    const w = (ref: string, kind: 'ride' | 'walk', minutes: number) => ({ ref, id: ref, kind, name: ref, minutes, key: ref });
+    const workouts = [w('R140', 'ride', 140), w('R180', 'ride', 180), w('K70', 'walk', 70), w('K90', 'walk', 90)];
+    const add = (ref: string) => ({ date: T, action: 'add' as const, workout: ref, why: 'w' });
+    // Longest ride in 8 weeks 2 h: a 2 h 20 ride may be offered, a 3 h one not.
+    const two = ceilingsFrom([{ date: addDays(T, -3), sport: 'ride', seconds: 7200 }, { date: addDays(T, -90), sport: 'ride', seconds: 5 * 3600 }], T);
+    expect(two!.ride).toBe(150);
+    const r1 = checkChanges([add('R140'), add('R180')], { today: T, horizon: 14, sessions: [], workouts, ceilingMinutes: two });
+    expect(r1.ok.map((x) => x.workoutId)).toEqual(['R140']);
+    // No rides, a 1 h walk: that is the ceiling for everything.
+    const walk = ceilingsFrom([{ date: addDays(T, -2), sport: 'walk', seconds: 3600 }], T);
+    expect(walk).toMatchObject({ ride: 75, walk: 75 });
+    const r2 = checkChanges([add('K70'), add('K90'), add('R140')], { today: T, horizon: 14, sessions: [], workouts, ceilingMinutes: walk });
+    expect(r2.ok.map((x) => x.workoutId)).toEqual(['K70']);
+    // No activities: no ceiling.
+    expect(ceilingsFrom([], T)).toBeUndefined();
+    const r3 = checkChanges([add('R180')], { today: T, horizon: 14, sessions: [], workouts });
+    expect(r3.ok).toHaveLength(1);
   });
+
 });

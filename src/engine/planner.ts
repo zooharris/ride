@@ -179,7 +179,7 @@ export function phaseSequence(n: number, d: Demand, a: Assessment, goal: Goal, m
   }
   const count = (ph: Phase) => seq.filter((x) => x === ph).length;
   decisions.push(`${count('base')} base week${count('base') === 1 ? '' : 's'}, ${count('build')} build, ${count('peak')} peak, ${count('recovery')} recovery${taper ? `, ${taper} taper` : ''}: the split follows what the goal rewards (${topEmphasis(d)}) and what your data flag as the limiter (${a.limiters[0]}).`);
-  decisions.push(`A recovery week every ${cycle} weeks is the starting rhythm${masters ? ' for a masters rider' : ''}; as rides and wellness come in, the plan brings one forward when fatigue says so.`);
+  decisions.push(`A recovery week every ${cycle} weeks${masters ? ' for a masters rider' : ''}. Day to day, the coach (or, without one, the app) looks at how you are responding and recommends lighter days when your riding and your mornings call for them.`);
   if (!taper && n >= 4) decisions.push('No event to taper for, so the last week is a recovery week: you finish the block with form back near zero and rising, and the fitness in the bank for the next one.');
   return { seq, decisions };
 }
@@ -300,7 +300,7 @@ export function generatePlan(req: PlanRequest): Plan {
       decisions.push(`Two long rides a week: you have ${hoursText(h1)} and ${hoursText(h2)} on the two biggest days, the goal rewards durability, and ${a.afterLongRide.confidence === 'none' ? 'nothing in the data yet says long days cost you much, so the second is kept a little shorter until there is evidence' : costs.afterLong < 0.15 ? 'your mornings after long rides look like any other, so both can be full length' : 'your mornings after long rides are a little flatter, so the second is shorter'}.`);
     }
 
-    if (refit) sessions = refitWeek(sessions, weekStart, req, library, slots);
+    if (refit) sessions = refitWeek(sessions, req);
     for (const x of sessions) picks.push({ date: x.date, id: x.workout.libraryId ?? x.workout.id });
     if (sessions.length === 0 && awayDays[i] === 0) return;   // a first week already over; a week away stays, empty, so the timeline keeps its shape
     for (const s of sessions) if (s.type === 'long' && s.seconds > longestPlanned) longestPlanned = s.seconds;
@@ -400,67 +400,13 @@ export function weekSummary(index: number, sessions: PlannedSession[], restDays:
  * them), and the day after a big or hard day is an easy spin. Load not done is not added: a missed
  * session is not crammed into the rest of the week. With everything done as planned, nothing changes.
  */
-function refitWeek(sessions: PlannedSession[], weekStart: string, req: PlanRequest, library: ShopLibrary, slots: Slot[]): PlannedSession[] {
-  const notBefore = req.notBefore!;
-  const doneSoFar = (req.done ?? []).filter((x) => x.date >= weekStart && x.date < addDays(weekStart, 7));
-  const doneTss = doneSoFar.reduce((s, x) => s + x.tss, 0);
-  const targetTss = sessions.reduce((s, x) => s + x.tss, 0);
-  const plannedGone = sessions.filter((x) => x.date < notBefore).reduce((s, x) => s + x.tss, 0);
-  // A little over the estimates (an effort-rated lift, a ride run long) is normal and changes nothing.
-  const excess = Math.max(0, doneTss - plannedGone - Math.max(25, 0.15 * targetTss));
-  // A big day is judged against what that day planned, never by a fixed size: well over the day's plan
-  // (60 TSS or half as much again, and 120 in all), or a long ride (2.5 hours) on a day that had no ride planned.
-  const plannedOn = (date: string) => sessions.filter((x) => x.date === date).reduce((s, x) => s + x.tss, 0);
-  const rideOnDay = (date: string) => sessions.some((x) => x.date === date && x.kind === 'ride');
-  const days = [...new Set(doneSoFar.map((x) => x.date))];
-  const big = days.filter((date) => {
-    const items = doneSoFar.filter((x) => x.date === date);
-    const done = items.reduce((s, x) => s + x.tss, 0), planned = plannedOn(date);
-    const over = done >= 120 && (done - planned >= 60 || (planned > 0 && done >= 1.5 * planned));
-    const unplannedLong = !rideOnDay(date) && items.some((x) => (x.kind ?? 'ride') === 'ride' && x.seconds >= 2.5 * 3600);
-    return over || unplannedLong;
-  }).sort().pop();
-  const out = [...sessions];
-  const slotOf = (date: string) => slots.find((s) => s.date === date);
-  const fits = (w: Workout, date: string) => { const s = slotOf(date); return !!s && contribution(w).minutes <= s.minutes + 2 && (!s.outdoor || (w.setting !== 'indoor' && !w.trainerOnly)); };
-  if (big) {
-    const easyDay = addDays(big, 1);
-    for (let k = 0; k < out.length; k++) {
-      const x = out[k];
-      if (x.date !== easyDay || x.kind !== 'ride' || x.type === 'recovery') continue;
-      const spin = library.rides.filter((w) => w.family === 'recovery' && !/openers/i.test(w.subtitle ?? w.name) && contribution(w).minutes <= 45 && fits(w, x.date))
-        .sort((p, q) => contribution(q).minutes - contribution(p).minutes)[0];
-      if (!spin) continue;
-      const c = contribution(spin);
-      out[k] = { ...x, type: 'recovery', workout: spin, seconds: Math.round(c.minutes * 60), tss: Math.round(c.tss), reason: `Easy: the day after a big day (${new Date(big + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long' })}). Spin the legs, nothing more.` };
-    }
-  }
-  if (excess > 0) {
-    const leftTss = () => out.filter((x) => x.date >= notBefore).reduce((s, x) => s + x.tss, 0);
-    const intendedLeft = sessions.filter((x) => x.date >= notBefore).reduce((s, x) => s + x.tss, 0);
-    const want = Math.max(intendedLeft * 0.5, intendedLeft - excess);
-    // Shorter easy rides in place of the days left (no ride is cut below half its planned length), the biggest cut first.
-    for (let pass = 0; pass < 8 && leftTss() > want; pass++) {
-      let bestK = -1, best: Workout | null = null, bestCut = 0;
-      out.forEach((x, k) => {
-        if (x.date < notBefore || x.kind !== 'ride' || !(x.type === 'endurance' || x.type === 'long')) return;
-        const planned = sessions[k].seconds / 60;
-        const floor = Math.max(x.type === 'long' ? 60 : 30, planned * 0.5);
-        for (const w of library.rides) {
-          if (w.family !== 'endurance' || !fits(w, x.date)) continue;
-          const c = contribution(w);
-          if (c.minutes < floor - 1 || c.tss >= x.tss) continue;
-          const cut = Math.min(x.tss - c.tss, leftTss() - want);
-          if (cut > bestCut) { bestCut = cut; bestK = k; best = w; }
-        }
-      });
-      if (bestK < 0 || !best) break;
-      const c = contribution(best);
-      out[bestK] = { ...out[bestK], workout: best, seconds: Math.round(c.minutes * 60), tss: Math.round(c.tss) };
-    }
-  }
-  // Only the days left are planned; what was on the days gone is history.
-  return out.filter((x) => x.date >= notBefore);
+/**
+ * The week under way, on a re-check: only the days from today on are planned again; what was on the days gone is
+ * history. Since 1 Nov 2026 there is no load reaction here (the fixed big-day and excess rules are gone): how the
+ * rider is responding to what was done is judged by the coach (with a key) or the app's day judge (without).
+ */
+function refitWeek(sessions: PlannedSession[], req: PlanRequest): PlannedSession[] {
+  return sessions.filter((x) => x.date >= req.notBefore!);
 }
 
 function weekLabel(phase: Phase, seq: Phase[], i: number): string {

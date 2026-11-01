@@ -102,6 +102,8 @@ class RideDb extends Dexie {
   recordings!: Table<Recording, string>;
   /** The small pictures of done activities (route shape, effort profile) for the calendar and lists: this device only, rebuilt on demand. */
   thumbs!: Table<Thumb, string>;
+  /** What each activity of the last 12 weeks shows (the re-check thinks, 1 Nov 2026): this device only, rebuilt on demand. */
+  reads!: Table<import('../engine/reads').ActivityRead, string>;
 
   constructor() {
     super('ride');
@@ -136,6 +138,7 @@ class RideDb extends Dexie {
     }));
     this.version(10).stores({ recordings: 'id, status, startMs' });
     this.version(11).stores({ thumbs: 'id' });
+    this.version(12).stores({ reads: 'id, date' });
   }
 }
 

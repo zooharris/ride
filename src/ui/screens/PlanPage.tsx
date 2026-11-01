@@ -17,6 +17,7 @@ import { go } from '../router';
 import { toast } from '../Toast';
 import { KIND_LABEL, KindDot, ReplanView } from './Plan';
 import { useRecommended } from '../useRecommended';
+import { acceptRecommended } from '../judgeService';
 import { AwayFields, GOAL_KIND_LABEL, GoalFields, WeekFields } from '../PlanForm';
 import { NameSheet } from '../NameSheet';
 
@@ -72,7 +73,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
     if (!check) return;
     setBusy(true);
     try {
-      await applyPlan(data, check.plan, plan!.goal, plan!.availability, plan!.masters, new Set(changes.flatMap(changeKeys)), { planId: plan!.id });
+      if (rec) await acceptRecommended(data, check, rec, changes, plan!);
       setCheck(await replan(await freshData(data)));
       toast({ ok: true, text: changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.` });
     } finally { setBusy(false); }

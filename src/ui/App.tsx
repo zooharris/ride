@@ -3,7 +3,7 @@ import { loadAppData, notify, useAppData } from './store';
 import { useEffect } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { autoSync, credentials, matchHistory, onHistoryMatched, onSyncRunning, syncRunning } from '../sync/syncService';
-import { coachReviewAfterSync, fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
+import { fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { Library } from './screens/Library';
@@ -17,6 +17,8 @@ import { BuildChooser } from './screens/BuildChooser';
 import { RunBuilder } from './screens/RunBuilder';
 import { findWorkout } from './store';
 import { buildPowerCurves, curveContext } from './powerCurves';
+import { buildReads, readsInput } from './reads';
+import { ensureJudgment } from './judgeService';
 import { Plan } from './screens/Plan';
 import { PlanPage } from './screens/PlanPage';
 import { Progress } from './screens/Progress';
@@ -85,6 +87,8 @@ export function App() {
       // Step 2b (30 Oct 2026): the per-ride cache (curve, heart rate alongside power, hard sessions judged) fills in
       // the background, so Today's FTP messages have their evidence without a visit to Progress.
       try { const d = await loadAppData(); buildPowerCurves(d.rides, (p) => { if (p.total && p.done === p.total) notify(); }, curveContext(d.profile, d.planned, (id) => findWorkout(d.mine, id))); } catch { /* tried again next time */ }
+      // The re-check thinks (1 Nov 2026): every activity of the last 12 weeks is read once, planned or not.
+      try { const d = await loadAppData(); void buildReads(readsInput(d)).then((n) => { if (n) notify(); }); } catch { /* tried again next time */ }
       try { const n = await retireCreatedWorkouts(); if (n) { if (c) await syncDevices(c); toast({ ok: true, text: `${n} session${n === 1 ? '' : 's'} on your calendar now use${n === 1 ? 's' : ''} the nearest Library workout.` }); } } catch { /* runs again at the next start */ }
     };
     const off = onHistoryMatched((r) => {
@@ -92,9 +96,9 @@ export function App() {
       if (r.activities || r.wellness) toast({ ok: true, text: `Loaded ${r.activities} older activities and ${r.wellness} days of wellness, so this device has the same history as your others.` });
     });
     // Pull from Intervals.icu when the app opens and whenever it comes back to the front, if the last
-    // pull is ten minutes old or more (Batch 9 A1). The coach reviews new activities only when its
-    // setting is on; coachReviewAfterSync checks that itself, as it does after the Sync button.
-    const pull = () => autoSync(async (ids) => { notify(); await coachReviewAfterSync(await loadAppData(), ids); })
+    // pull is ten minutes old or more (Batch 9 A1). The coach's judgment (1 Nov 2026) is asked for after
+    // every pull below, and only when what it is made from has changed; ensureJudgment checks that itself.
+    const pull = () => autoSync(async () => { notify(); })
       .then((ran) => { if (ran) notify(); });
     run();
     pull();
@@ -103,6 +107,8 @@ export function App() {
     const offPulled = onSyncRunning(() => {
       if (syncRunning()) return;
       void loadAppData().then((d) => buildPowerCurves(d.rides, () => {}, curveContext(d.profile, d.planned, (id) => findWorkout(d.mine, id)))()).catch(() => {});   // no progress wanted: unsubscribe at once, the build runs on
+      // Reads first, so the coach sees what the new activities show; then the judgment, if anything it is made from changed.
+      void loadAppData().then((d) => buildReads(readsInput(d))).then(async (n) => { if (n) notify(); await ensureJudgment(await loadAppData()); }).catch(() => {});
     });
     const onVis = () => { if (document.visibilityState === 'visible') { run(); pull(); } };
     document.addEventListener('visibilitychange', onVis);

@@ -244,23 +244,24 @@ describe('Batch 7 A2/A4: waiting for the coach, and keeping its two reviews apar
     vi.useRealTimers();
   });
 
-  it('coach on but not answering: after the wait, the app’s own list, and it says it fell back', async () => {
+  it('coach on but not answering: after the wait, the app’s own list, and it says it fell back (1 Nov 2026: the judgment)', async () => {
     const svc = await import('../ui/planService');
+    const judge = await import('../ui/judgeService');
     await setSetting('coachAuto', true);
     await setSetting('claudeKey', 'k');
     const coach = await import('../coach/claude');
-    vi.spyOn(coach, 'reviewAfterSync').mockImplementation(() => new Promise(() => {}));   // never answers
+    vi.spyOn(coach, 'judgeDay').mockImplementation(() => new Promise(() => {}));   // never answers
     const change = { date: today(), kind: 'ride', before: 'A', after: 'B', note: 'changed' };
-    const check = { review: { from: '', to: '', planned: 0, completed: 0, missed: 0, lines: [] }, plan: { verdict: 'no-target', advice: '' } as never, changes: [change], summary: ['own'], fitnessNow: 0 };
+    const check = { review: { from: '', to: '', planned: 0, completed: 0, missed: 0, lines: [] }, plan: { verdict: 'no-target', advice: '', weeks: [] } as never, changes: [change], summary: ['own'], fitnessNow: 0 };
     let waited = false;
-    const data = { profile: { ...todd }, rides: [], wellness: [], planned: [], dayNotes: [], mine: [] } as never;
+    const data = { profile: { ...todd }, rides: [], wellness: [], wellnessAll: [], planned: [], dayNotes: [], mine: [], edits: [] } as never;
     expect(svc.COACH_WAIT_MS).toBe(10_000);
-    const r = await svc.recommendFor(data, check, () => { waited = true; }, false, 30);   // the same path, with a 30 ms wait
+    const r = await judge.recommendFor(data, check, () => { waited = true; }, false, 30);   // the same path, with a 30 ms wait
     expect(waited).toBe(true);
     expect(r).toMatchObject({ byCoach: false, fellBack: true });
     expect(r.changes).toEqual([change]);
     // and when told not to wait again (the view already gave up), straight to the app's list
-    const again = await svc.recommendFor(data, check, () => { throw new Error('must not wait'); }, true);
+    const again = await judge.recommendFor(data, check, () => { throw new Error('must not wait'); }, true);
     expect(again.fellBack).toBe(true);
   });
 

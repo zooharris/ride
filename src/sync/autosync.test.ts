@@ -97,15 +97,16 @@ describe('the automatic pull', () => {
     expect((await db.sync.get('intervals'))?.lastErrorAt).toBeUndefined();
   });
 
-  it('the coach step reviews only when the coach setting is on', async () => {
-    const { coachReviewAfterSync } = await import('../ui/planService');
+  it('the coach judges automatically only when the coach setting is on (1 Nov 2026)', async () => {
+    const { ensureJudgment } = await import('../ui/judgeService');
     const coach = await import('../coach/claude');
-    const spy = vi.spyOn(coach, 'reviewAfterSync').mockResolvedValue({ text: 'ok', reason: '', applyChanges: 'all', skip: [] } as never);
-    const data = { profile: { id: 'me', name: 'T', ftp: 200, lthr: 160 }, rides: [], wellness: [], planned: [], dayNotes: [], mine: [], edits: [] } as never;
+    const spy = vi.spyOn(coach, 'judgeDay').mockResolvedValue({ note: 'ok', assessment: '', stance: 'as planned', changes: [] });
+    const data = { profile: { id: 'me', name: 'T', ftp: 200, lthr: 160 }, rides: [], wellness: [], wellnessAll: [], planned: [], dayNotes: [], mine: [], edits: [] } as never;
     await setSetting('claudeKey', 'k');
     await setSetting('coachAuto', false);
-    expect(await coachReviewAfterSync(data, ['r9'])).toBeNull();
+    expect(await ensureJudgment(data)).toBeNull();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
 });

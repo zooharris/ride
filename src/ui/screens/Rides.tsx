@@ -39,6 +39,7 @@ import type { Recording } from '../../player/types';
 import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
+import { activityWords, onReadsBuilt } from '../reads';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -585,6 +586,9 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced, breat
     toast({ ok: res.ok, text: res.ok ? `Kept Antogo's recording of ${replaced!.name}.` : res.text });
   };
   useEffect(() => setName(r.name), [r.name]);
+  // What the recording shows (the re-check thinks, 1 Nov): the same sentences the coach reads.
+  const [shows, setShows] = useState<string[]>([]);
+  useEffect(() => { let alive = true; void activityWords(r.id).then((w) => alive && setShows(w)); const off = onReadsBuilt(() => void activityWords(r.id).then((w) => alive && setShows(w))); return () => { alive = false; off(); }; }, [r.id]);
   // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
   const run = async (what: () => Promise<void>, ok: string, undo?: () => Promise<void>) => {
     setBusy(true);
@@ -600,6 +604,7 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced, breat
     <section class="section">
       <h2>About this activity</h2>
       <div class="panel stack" style="gap:16px;margin-top:8px">
+        {shows.length > 0 && <div class="small stack" style="gap:6px"><span class="faint">What the recording shows</span>{shows.map((t) => <span key={t}>{t}</span>)}</div>}
         {breathSensor && <div class="small"><span class="faint">Breathing strap:</span> {breathSensor}</div>}
         {replaced && (
           <div class="row wrap" style="gap:8px 12px;align-items:center">

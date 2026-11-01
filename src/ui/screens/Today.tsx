@@ -7,9 +7,9 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
 import { distance, fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
-import { db, getSetting, setSetting } from '../../data/db';
+import { getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
-import { notify, saveDayNote, sessionHref, trustedWellness, useSyncState } from '../store';
+import { notify, saveDayNote, sessionHref, useSyncState } from '../store';
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { runBandText } from '../../engine/run';
 import { CoachPanel } from '../CoachPanel';
@@ -22,8 +22,10 @@ import { addDays } from '../../engine/load';
 import { KIND_LABEL, ReplanView } from './Plan';
 import { useRecommended } from '../useRecommended';
 import { StatusPill, statusOf } from '../StatusMark';
-import { applyPlan, changeSig, coachPlan, coachReviewAfterSync, recentWeeks, tomorrowLines, dismissCoachReview, freshData, getActivePlan, getCoachReview, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan, type SavedReview } from '../planService';
-import { changeKeys, type Change, type Replan } from '../../engine/adapt';
+import { changeSig, coachPlan, recentWeeks, tomorrowLines, freshData, getActivePlan, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, type ActivePlan } from '../planService';
+import { acceptRecommended, getJudgment, onJudgment } from '../judgeService';
+import { STANCE_TEXT, type Judgment } from '../../coach/judge';
+import type { Change, Replan } from '../../engine/adapt';
 import type { DayNote } from '../../engine/types';
 import type { ReadinessDriver } from '../../engine/readiness';
 import { toast } from '../Toast';
@@ -39,6 +41,9 @@ import { GLOSSARY, READINESS_HELP } from '../glossary';
 import type { PlannedWorkout } from '../../engine/types';
 import { playerOffered, TRAINER_ONLY_ELSEWHERE } from '../../player/platform';
 import { TwoRecordings } from '../TwoRecordings';
+
+/** Change rows outside a plan (the coach's, for sessions placed by hand) have no week review of their own. */
+const NO_CHECK = { review: { from: '', to: '', planned: 0, completed: 0, missed: 0, lines: [] }, changes: [], summary: [], fitnessNow: 0 } as unknown as Replan;
 
 export function Today({ data }: { data: AppData }) {
   const profile = data.profile!;
@@ -75,11 +80,12 @@ export function Today({ data }: { data: AppData }) {
   // Batch 7, A2: one voice. With the coach on, the list waits for it ("Checking your plan…"), then shows only what it recommends.
   const { rec, checking: coachChecking } = useRecommended(data, check);
   const [checking, setChecking] = useState(false);
-  const [review, setReview] = useState<SavedReview | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  // Re-read on every data change: an automatic pull may have saved a review of new activities.
+  // The coach's judgment of today (1 Nov 2026): its stance goes under the readiness score.
+  const [judgment, setJudgment] = useState<Judgment | null>(null);
+  useEffect(() => { let alive = true; const load = () => void getJudgment().then((j) => alive && setJudgment(j)); load(); const off = onJudgment(load); return () => { alive = false; off(); }; }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { getCoachReview().then(setReview); }, [data]);
+  useEffect(() => { void getJudgment().then(setJudgment); }, [data]);
   const syncState = useSyncState();
   const [tourDone, setTourDone] = useState<boolean | null>(null);
   const [showSteps, setShowSteps] = useState(false);
@@ -112,40 +118,22 @@ export function Today({ data }: { data: AppData }) {
   }, [data]);
 
   async function acceptChanges(changes: Change[]) {
-    if (!check || !active) return;
+    if (!rec) return;
     setChecking(true);
     try {
-      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.flatMap(changeKeys)), { planId: active.id });
-      setCheck(await replan(await freshData(data)));
-      setMsg({ ok: true, text: changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.` });
-    } finally { setChecking(false); }
-  }
-
-  /** Everything as it is in storage now, for a coach request right after a sync. */
-  async function storedData(): Promise<AppData> {
-    const notes = await db.dayNotes.toArray();
-    const ridesAll = await db.rides.orderBy('date').reverse().toArray();
-    return { ...data, rides: ridesAll.filter((r) => !r.notTraining), ridesAll, planned: await db.planned.toArray(), wellness: trustedWellness(await db.wellness.orderBy('date').toArray(), notes), dayNotes: notes };
-  }
-
-  const [retrying, setRetrying] = useState(false);
-  async function retryReview() {
-    setRetrying(true);
-    try {
-      const fresh = await storedData();
-      // Reviews saved by older builds do not list their activities; the last two days' stand in.
-      const ids = review?.ids?.length ? review.ids : fresh.rides.filter((r) => r.date >= addDays(date, -1)).map((r) => r.id);
-      const out = await coachReviewAfterSync(fresh, ids, true);
-      if (out) { setReview(await getCoachReview()); if (out.check) setCheck(out.check); }
-    } catch (e) { setMsg({ ok: false, text: `The coach review failed again: ${(e as Error).message}` }); }
-    finally { setRetrying(false); }
+      const r = await acceptRecommended(data, check, rec, changes, active);
+      if (active) setCheck(await replan(await freshData(data)));
+      const sent = r.wereSent ? ` ${r.wereSent === 1 ? 'A session that was on your Garmin came off it' : `${r.wereSent} sessions that were on your Garmin came off it`}: send the week again from the Calendar.` : '';
+      setMsg({ ok: true, text: `${changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.`}${sent}` });
+    } catch (e) { setMsg({ ok: false, text: `Not changed: ${(e as Error).message}` }); }
+    finally { setChecking(false); }
   }
 
   async function rejectSuggested(changes: Change[]) {
-    if (!check) return;
     await rejectChanges(changes);
     const gone = new Set(changes.map(changeSig));
-    setCheck({ ...check, changes: check.changes.filter((c) => !gone.has(changeSig(c))) });
+    if (check) setCheck({ ...check, changes: check.changes.filter((c) => !gone.has(changeSig(c))) });
+    else notify();
   }
 
   const coachCtx: CoachContext = {
@@ -178,13 +166,6 @@ export function Today({ data }: { data: AppData }) {
       const r = await syncAll();
       notify();
       setMsg({ ok: true, text: `Synced ${r.rides} activities and ${r.wellness} days of wellness.${r.newIds.length ? ` ${r.newIds.length} new.` : ''}` });
-      if (r.newIds.length) {
-        setBusy('review');
-        try {
-          const out = await coachReviewAfterSync(await storedData(), r.newIds);
-          if (out) { setReview(await getCoachReview()); if (out.check) setCheck(out.check); }
-        } catch (e) { setMsg({ ok: false, text: `Synced, but the coach review failed: ${(e as Error).message}` }); }
-      }
     } catch (e) {
       setMsg({ ok: false, text: `Sync failed: ${(e as Error).message} Your calendar and activities here are unchanged; try again, or run the connection checks in Settings.` });
     } finally { setBusy(null); }
@@ -199,13 +180,15 @@ export function Today({ data }: { data: AppData }) {
   // Batch 9 B: say plainly when the score does not rest on every input.
   const gap = missingText(ready, wellnessSetAside);
   const waiting = wellnessSetAside || ready.formOnly;
-  const bandText = readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
+  // With the coach's judgment of today, its stance; otherwise the score's own advice.
+  const judgedToday = judgment && !judgment.failed && judgment.date === date ? judgment : null;
+  const bandText = judgedToday ? STANCE_TEXT[judgedToday.stance] : readinessAdvice(ready.band, withW.filter((x) => x.p.status !== 'completed').map((x) => x.w!.kind));
 
   return (
     <div>
       <PageHead help="today" eyebrow={fmtDate(date)} title={profile.name ? `Hello, ${profile.name.split(' ')[0]}` : 'Today'}>
         <div class="sync-stack">
-          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || busy === 'review' || syncState.running || connected === false}><Icon.sync size={15} />{busy === 'sync' || syncState.running ? 'Syncing…' : busy === 'review' ? 'Asking the coach…' : 'Sync'}</button>
+          <button class="btn sm" onClick={sync} disabled={busy === 'sync' || syncState.running || connected === false}><Icon.sync size={15} />{busy === 'sync' || syncState.running ? 'Syncing…' : 'Sync'}</button>
           {connected && <span class={`sync-when${line.failed ? ' failed' : ''}`}>{line.text}</span>}
         </div>
       </PageHead>
@@ -250,6 +233,16 @@ export function Today({ data }: { data: AppData }) {
             </div>
           )}
           {!coachChecking && check && rec && rec.changes.length > 0 && showSuggestions && <ReplanView check={check} rec={rec} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} />}
+        </section>
+      )}
+
+      {!active && rec?.byCoach && rec.changes.length > 0 && (
+        <section class="panel" style="margin-bottom:14px;padding:12px 16px">
+          <div class="row between wrap" style="gap:8px">
+            <span class="small"><b>{rec.changes.length === 1 ? '1 recommended change' : `${rec.changes.length} recommended changes`}</b> <span class="muted">to your calendar.</span></span>
+            <button class="btn sm" aria-expanded={showSuggestions} onClick={() => setShowSuggestions(!showSuggestions)}>{showSuggestions ? 'Hide' : 'Review'}</button>
+          </div>
+          {showSuggestions && <ReplanView check={NO_CHECK} rec={rec} onAccept={acceptChanges} onReject={rejectSuggested} busy={checking} />}
         </section>
       )}
 
@@ -305,7 +298,7 @@ export function Today({ data }: { data: AppData }) {
       <NextUp data={data} date={date} />
       {changing && <ChangeSheet data={data} planned={changing} onClose={() => setChanging(null)} />}
 
-      {planRead && <CoachPanel ctx={coachCtx} date={date} daySig={daySig} review={review} onDismissReview={async () => { await dismissCoachReview(); setReview(null); }} onRetryReview={retryReview} retrying={retrying} />}
+      {planRead && <CoachPanel ctx={coachCtx} date={date} daySig={daySig} data={data} check={check} />}
       {date === today() && <FtpCheckPanel data={data} />}
       </div>
       <div class="today-side">

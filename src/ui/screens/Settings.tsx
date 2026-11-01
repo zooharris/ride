@@ -256,11 +256,11 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Coach (optional)</h2>
-        <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a coach who has read your numbers: a short daily note, a review after each sync, and answers to your questions. The daily note reads your notes from the last three months; the review after a sync reads the last two weeks. The key is stored only on this device and calls go straight to Anthropic. Leave blank to skip.</p>
+        <p class="muted small" style="margin-bottom:12px">With a Claude API key, Today gets a coach who has read your numbers: its view of the day and answers to your questions. The key is stored only on this device and calls go straight to Anthropic; every device shows the coach's latest view, and a device needs its own key only to ask. Leave blank to skip.</p>
         <div class="field"><label>Claude API key</label><input type="password" autocomplete="off" value={claudeKey} onInput={(e) => setClaudeKey((e.target as HTMLInputElement).value)} placeholder="sk-ant-…" /></div>
-        <div class="field" style="margin-top:12px"><label>The coach reviews your new activities and decides which plan changes to recommend</label>
+        <div class="field" style="margin-top:12px"><label>The coach judges your plan</label>
           <div class="seg"><button class={coachAuto ? 'on' : ''} onClick={() => setCoachAuto(true)} disabled={!claudeKey.trim()}>On</button><button class={!coachAuto ? 'on' : ''} onClick={() => setCoachAuto(false)}>Off</button></div>
-          <p class="faint small" style="margin-top:6px">On: each time a sync brings in new rides or sessions, the coach reviews them on Today; and whenever the plan finds something to change, the coach decides which changes to recommend and says why beside each. Off: the app's own list of changes is shown, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
+          <p class="faint small" style="margin-top:6px">On: each morning, and whenever a new activity arrives or the calendar or your notes change, the coach looks at how you have been riding, your overnight numbers, your notes and your plan, and recommends changes only when the evidence calls for them, saying why beside each. Off: the app's own list of changes is shown, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
       </section>
 
       <PlayerSettings />

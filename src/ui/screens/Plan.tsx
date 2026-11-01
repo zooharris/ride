@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRecommended } from '../useRecommended';
+import { acceptRecommended } from '../judgeService';
 import type { AppData } from '../store';
 import { setCurrentEquipment } from '../store';
 
 import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
 import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, type Recommended, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
-import { changeKey, changeKeys, type Change, type Replan } from '../../engine/adapt';
+import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal } from '../../engine/goals';
 import { hoursText } from '../../engine/goals';
@@ -106,7 +107,7 @@ export function Plan({ data }: { data: AppData }) {
     if (!check || !active) return;
     setBusy(true);
     try {
-      await applyPlan(data, check.plan, active.goal, active.availability, active.masters, new Set(changes.flatMap(changeKeys)), { planId: active.id });
+      if (rec) await acceptRecommended(data, check, rec, changes, active);
       setCheck(await replan(await freshData(data)));
     } finally { setBusy(false); }
   }

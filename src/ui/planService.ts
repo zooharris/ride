@@ -1,7 +1,7 @@
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
-import { activityLine, describeSession, durationWords, readVerdict, reviewAfterSync, type CoachPlan, type CoachReview } from '../coach/claude';
+import { describeSession, readVerdict, type CoachPlan, type CoachReview } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, splitByHorizon, summarize, type Change, type Replan } from '../engine/adapt';
 import type { Goal } from '../engine/goals';
@@ -655,160 +655,32 @@ export async function markChecked(): Promise<void> {
 }
 
 
-/**
- * With the setting on and a key present, Claude reviews each batch of new
- * activities against the plan's own re-check. Nothing is applied here.
- */
-export async function coachReviewAfterSync(data: AppData, newIds: string[], asked = false): Promise<{ review: CoachReview; check: Replan | null } | null> {
-  const on = asked || (await getSetting<boolean>('coachAuto', false));
-  const key = await getSetting<string>('claudeKey', '');
-  if (!on || !key || newIds.length === 0) return null;
-  const profile = data.profile as Profile;
-  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
-  const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
-  const active = await getActivePlan();
-  const check = active ? await replan(data) : null;
-  const series = fitnessFromRides(data.rides);
-  const fresh = data.rides.filter((r) => newIds.includes(r.id)).map((r) => `${activityLine(r)}${r.decoupling != null && r.sport === 'ride' ? `, heart-rate drift ${r.decoupling.toFixed(1)}%` : ''}${plannedFor(r)}`);
-  // What each new activity was meant to be, when it completed a session on the calendar.
-  function plannedFor(r: { id: string }): string {
-    const p = data.planned.find((x) => x.activityId === r.id);
-    const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
-    if (!w) return '';
-    const secs = w.kind === 'ride' ? workoutStats(w.blocks).seconds : (w.minutes ?? 0) * 60;
-    return `; completed the planned session "${w.name}"${secs ? ` (planned duration ${durationWords(secs)})` : ''}`;
-  }
-  const goal = active ? goalWords(active.goal) : 'no active plan';
-  const review = await reviewAfterSync(key, {
-    profile, date: today(), fitness: fitnessOn(series, today()),
-    assessmentNotes: assessment.summary, goal,
-    verdict: check?.plan.verdict ?? 'n/a', advice: check?.plan.advice ?? '',
-    lastWeek: check?.review.lines ?? [],
-    why: check?.summary ?? [],
-    proposedChanges: check ? check.changes.map(changeWords) : [],
-    newActivities: fresh,
-    riderNotes: recentNoteLines(data.dayNotes, today(), 14),
-    plan: coachPlan(active, today()),
-    tomorrow: tomorrowLines(data, today()),
-  });
-  const saved = { ...review, at: new Date().toISOString(), ids: newIds, changesSig: check ? changesSigOf(check.changes) : '' } as SavedReview;
-  await setSetting('coachReview', saved);
-  // Batch 7, A4: its verdicts on the plan's changes decide the recommended list too, with no second call.
-  if (check?.changes.length && !review.failed && review.verdicts?.length) await setSetting(RECHECK_KEY, saved);
-  return { review, check };
-}
-
-/** The proposals a review judged, as one string: a review whose signature differs from the rows on screen judged other rows. */
+/** The proposals a review judged, as one string. */
 export const changesSigOf = (changes: Change[]) => changes.map(changeSig).sort().join(';');
 
 /**
- * Batch 6, C6: the plan re-checked itself and proposes changes the coach has
- * not seen. With the coach on (Settings) and a key present, Claude gives its
- * view of each, once per set of changes (a failure is not retried for the same
- * set until the app starts again). Nothing is applied here.
- */
-export function coachReviewRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
-  // One request per set of changes: a screen that asks again while the first is in flight waits for the same answer.
-  const sig = changesSigOf(check.changes);
-  const inFlight = recheckInFlight.get(sig);
-  if (inFlight) return inFlight;
-  const p = askRecheck(data, check).finally(() => recheckInFlight.delete(sig));
-  recheckInFlight.set(sig, p);
-  return p;
-}
-const recheckInFlight = new Map<string, Promise<CoachReview | null>>();
-
-async function askRecheck(data: AppData, check: Replan): Promise<CoachReview | null> {
-  if (!check.changes.length) return null;
-  const on = await getSetting<boolean>('coachAuto', false);
-  const key = await getSetting<string>('claudeKey', '');
-  if (!on || !key) return null;
-  const sig = changesSigOf(check.changes);
-  const saved = await getSetting<SavedReview | null>(RECHECK_KEY, null);
-  if (saved && !saved.failed && judgedAll(check.changes, saved)) return null;
-  if (recheckAsked.has(sig)) return null;
-  recheckAsked.add(sig);
-  const profile = data.profile as Profile;
-  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
-  const assessment = assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve });
-  const active = await getActivePlan();
-  const series = fitnessFromRides(data.rides);
-  const review = await reviewAfterSync(key, {
-    profile, date: today(), fitness: fitnessOn(series, today()),
-    assessmentNotes: assessment.summary, goal: active ? goalWords(active.goal) : 'no active plan',
-    verdict: check.plan.verdict, advice: check.plan.advice,
-    lastWeek: check.review.lines, why: check.summary,
-    proposedChanges: check.changes.map(changeWords),
-    newActivities: [],
-    riderNotes: recentNoteLines(data.dayNotes, today(), 14),
-    plan: coachPlan(active, today()),
-    tomorrow: tomorrowLines(data, today()),
-  }, 'recheck');
-  // A failed re-check review is not kept: the rows simply show no coach view, and the next start asks again.
-  if (review.failed) return null;
-  await setSetting(RECHECK_KEY, { ...review, at: new Date().toISOString(), ids: [], changesSig: sig } as SavedReview);
-  return review;
-}
-const recheckAsked = new Set<string>();
-
-/**
- * Batch 7, A4: the coach's verdicts on the plan's changes are kept apart from
- * its review of synced activities (`coachReview`, shown on the coach card), so
- * one never hides the other. Local to this device.
+ * Before 1 Nov 2026 the coach's verdicts on the plan's changes were kept here (local to one device).
+ * The coach's judgment (`coachJudgment`, judgeService) replaces them; the key stays only so the old
+ * setting is never sent between devices.
  */
 export const RECHECK_KEY = 'coachRecheck';
 
-/** Whether the coach is reviewing plan changes on this device: the switch on and a key present. */
-export async function coachIsOn(): Promise<boolean> {
-  return !!(await getSetting<boolean>('coachAuto', false)) && !!(await getSetting<string>('claudeKey', '')).trim();
-}
-
-/** The coach's saved verdicts on the plan's changes, if any. */
-export async function getRecheckReview(): Promise<SavedReview | null> {
-  const r = await getSetting<SavedReview | null>(RECHECK_KEY, null);
-  return r ? { ...r, ...readVerdict(r) } : null;
-}
-
-/** Whether a review judged every one of these changes (each is in the set it was shown, and has a verdict). */
-function judgedAll(changes: Change[], review: SavedReview): boolean {
-  const judged = new Set((review.changesSig ?? '').split(';').filter(Boolean));
-  return changes.every((c) => judged.has(changeSig(c)) && !!review.verdicts?.some((v) => v.date === c.date && v.kind === c.kind));
-}
-
 export interface Recommended {
   changes: Change[];
-  /** The coach's few words on each recommended change, by its signature. Empty when the list is the app's own. */
+  /** The coach's sentence on each recommended change, by its signature. Empty when the list is the app's own. */
   reasons: Map<string, string>;
   status: 'ready' | 'waiting';
-  /** True when the coach chose the list; then `reason` is its one sentence on the changes. */
+  /** True when the coach chose the list. */
   byCoach: boolean;
   reason?: string;
+  /** The coach's changes behind the rows, by signature: accepting one makes it on the calendar (judgeService.applyJudged). */
+  judged?: Map<string, import('../coach/judge').ResolvedChange>;
 }
 
-/**
- * Batch 7, A1: what the rider is shown, in one voice. With the coach off, the
- * plan's own changes. With the coach on and its verdicts covering every change
- * on screen, only the ones it would apply, each with its reason; the ones it set
- * aside are not returned anywhere. With the coach on and no such verdicts yet,
- * "waiting": the caller holds the list behind "Checking your plan…".
- */
-export function recommendedChanges(check: Replan, review: SavedReview | null, coachOn: boolean): Recommended {
-  if (!coachOn) return { changes: check.changes, reasons: new Map(), status: 'ready', byCoach: false };
-  if (!check.changes.length) return { changes: [], reasons: new Map(), status: 'ready', byCoach: true };
-  if (!review || review.failed || !review.verdicts?.length || !judgedAll(check.changes, review)) return { changes: [], reasons: new Map(), status: 'waiting', byCoach: true };
-  const reasons = new Map<string, string>();
-  const changes = check.changes.filter((c) => {
-    const v = review.verdicts!.find((x) => x.date === c.date && x.kind === c.kind);
-    if (v?.apply) reasons.set(changeSig(c), v.why);
-    return !!v?.apply;
-  });
-  return { changes, reasons, status: 'ready', byCoach: true, reason: review.reason || undefined };
-}
+/** The app's own list, when the coach is off or did not answer in time: same heading, no coach in it. */
+export const ownRecommendation = (check: Replan | null): Recommended => ({ changes: check?.changes ?? [], reasons: new Map(), status: 'ready', byCoach: false });
 
-/** The app's own list, when the coach did not answer in time: same heading, no coach in it. */
-export const ownRecommendation = (check: Replan): Recommended => ({ changes: check.changes, reasons: new Map(), status: 'ready', byCoach: false });
-
-/** How long the list waits for the coach before showing the app's own (Batch 7, A2). */
+/** How long a list waits for the coach before showing the app's own. */
 export const COACH_WAIT_MS = 10_000;
 
 /** A promise, or null after `ms`: the coach's answer, or nothing if it takes too long. */
@@ -817,24 +689,6 @@ export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
     const t = setTimeout(() => resolve(null), ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
   });
-}
-
-/**
- * Batch 7, A2: the recommended list for a re-check, waiting for the coach when
- * it is on and has not judged these changes, up to COACH_WAIT_MS; then the
- * app's own list, with no error. `onWaiting` is called when the wait starts, so
- * the screen can show "Checking your plan…". An answer that comes after the
- * wait is saved and used next time.
- */
-export async function recommendFor(data: AppData, check: Replan, onWaiting?: () => void, noWait = false, waitMs = COACH_WAIT_MS): Promise<Recommended & { fellBack?: boolean }> {
-  const on = await coachIsOn();
-  const first = recommendedChanges(check, await getRecheckReview(), on);
-  if (first.status === 'ready') return first;
-  if (noWait) return { ...ownRecommendation(check), fellBack: true };
-  onWaiting?.();
-  await withTimeout(coachReviewRecheck(data, check), waitMs);
-  const after = recommendedChanges(check, await getRecheckReview(), on);
-  return after.status === 'ready' ? after : { ...ownRecommendation(check), fellBack: true };
 }
 
 const EVENT_WORDS: Record<string, string> = { century: 'a century', 'gran-fondo': 'a gran fondo', climbing: 'a climbing event', 'time-trial': 'a time trial', 'group-ride': 'a group ride', 'multi-day': 'a multi-day event', other: 'an event' };
@@ -905,7 +759,7 @@ export async function dismissCoachReview(): Promise<void> {
 export const changeSig = (c: Change) => `${c.date}|${c.kind}|${c.before ?? ''}>${c.after ?? ''}`;
 
 /** Suggestions the rider turned down; each is forgotten once its day has passed. */
-async function rejectedSigs(): Promise<Set<string>> {
+export async function rejectedSigs(): Promise<Set<string>> {
   const t = today();
   return new Set((await getSetting<string[]>('replanRejected', [])).filter((s) => s.slice(0, 10) >= t));
 }

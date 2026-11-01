@@ -10,6 +10,7 @@ import { exerciseLine } from '../engine/record';
 import type { Readiness, ReadinessDriver } from '../engine/readiness';
 import { workoutStats } from '../engine/workout';
 import { runStepsLine } from '../engine/run';
+import { JUDGE_SCHEMA, judgeSystem, readJudge } from './judge';
 
 const MODEL = 'claude-sonnet-5-5';
 
@@ -166,7 +167,7 @@ Last activities:\n${rides || 'none synced yet'}`;
 export const MEDICAL_RULE = "You are not a doctor. If the rider's notes or question mention illness, fever, chest pain or pressure, dizziness, fainting, an irregular heartbeat or an injury, recommend rest and seeing a doctor, and give no training advice for that day beyond that.";
 
 /** What the numbers mean, so "form −12" is read on a scale. */
-export const SCALE = 'Fitness and fatigue are 42-day and 7-day weighted averages of daily training load (TSS); form is fitness minus fatigue. Form between −30 and −10 is a normal training build; below −30 is overreaching; between −10 and +5 is fresh enough for quality work; above +5 is fresh (tapered or rested). Readiness 0–100 is the app\'s morning score from HRV, sleep (length and score), resting and sleeping heart rate, breathing rate and form, each against the rider\'s own normal range over the last four weeks; a morning at the rider\'s normal scores about 70. Bands: go (Ready) 65 and up, ease (ease off a little) 50–64, easy (keep it easy) 35–49, rest below 35.';
+export const SCALE = 'Fitness and fatigue are 42-day and 7-day weighted averages of daily training load (TSS); form is fitness minus fatigue. Read form against this rider\'s own history rather than a fixed scale: the same number means different things for different riders. Readiness 0–100 is the app\'s morning score from HRV, sleep (length and score), resting and sleeping heart rate, breathing rate and form, each against the rider\'s own normal range over the last four weeks; a morning at the rider\'s normal scores about 70. Bands: go (Ready) 65 and up, ease (ease off a little) 50–64, easy (keep it easy) 35–49, rest below 35.';
 
 /** Rules for everything the coach writes: the note, answers, chart answers and the review. */
 export const SHARED_RULES = `Use the rider's name only exactly as given above, never shortened or guessed. Never change the plan yourself; you may suggest easing or swapping and say why. Anything the rider wrote in their own notes is the first thing to take into account: it explains the numbers, and it outranks them. If today's note names a cause that earlier notes also name, you may point out the pattern in one sentence. The calendar is the rider's plan, whether the app's plan or the rider placed each session there; durations are in minutes and training load is in TSS, two different numbers never to be compared with each other; for a session already done, speak to its recorded duration, not the planned one. Never describe who placed a session on the calendar or how it was recorded or synced; notes in brackets are background for you, not things to say. Do not invent numbers. ${MEDICAL_RULE} ${SCALE}`;
@@ -181,9 +182,11 @@ export function notePrompt(ctx: CoachContext): string {
 
 const ANSWER_RULES = "Answer plainly and specifically from the facts below, in a few sentences unless the question needs more; no headings, no exclamation marks; speak to the rider in the second person. If the facts do not answer the question, say what you would need. You cannot change the plan; if a change would help, say what and why, and that the rider can make it on the calendar or accept it among the plan's recommended changes.";
 
-export function questionSystem(ctx: CoachContext, earlier: string[] = []): string {
+export function questionSystem(ctx: CoachContext, earlier: string[] = [], packet?: string): string {
   const weeks = ctx.recentWeeks?.length ? `\nWeekly training load, last ${ctx.recentWeeks.length} weeks, oldest first: ${ctx.recentWeeks.map((w) => Math.round(w)).join(' / ')} TSS` : '';
-  return `${coachIntro(ctx.profile, ctx.date)} You are answering their questions about their training. ${ANSWER_RULES} ${SHARED_RULES}\n\n${dayFacts(ctx, 14)}${weeks}${earlier.length ? `\n\nWhat you have already told the rider today:\n${earlier.map((e) => '- ' + e).join('\n')}` : ''}`;
+  // The re-check thinks (1 Nov 2026): questions are answered from the same evidence the morning judgment uses.
+  const facts = packet ? `${packet}\n\nToday's readiness: ${ctx.readiness.score}/100 (${ctx.readiness.band}).` : `${dayFacts(ctx, 14)}${weeks}`;
+  return `${coachIntro(ctx.profile, ctx.date)} You are answering their questions about their training. ${ANSWER_RULES} ${SHARED_RULES}\n\n${facts}${earlier.length ? `\n\nWhat you have already told the rider today:\n${earlier.map((e) => '- ' + e).join('\n')}` : ''}`;
 }
 
 /**
@@ -235,8 +238,8 @@ export interface ChatTurn { role: 'rider' | 'coach'; text: string; at?: string; 
  * daily note uses, plus what the coach already said today. Answers only: the
  * plan changes through the suggested-changes review, never from here.
  */
-export async function askCoach(apiKey: string, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = []): Promise<string> {
-  return callClaude(apiKey, { max_tokens: 2000, system: questionSystem(ctx, earlier), messages: [...chatHistory(turns), { role: 'user', content: question }] });
+export async function askCoach(apiKey: string, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = [], packet?: string): Promise<string> {
+  return callClaude(apiKey, { max_tokens: 2000, system: questionSystem(ctx, earlier, packet), messages: [...chatHistory(turns), { role: 'user', content: question }] });
 }
 
 /** Earlier turns sent back as history: a question that got no answer goes with its error, so the two roles alternate. */
@@ -274,25 +277,6 @@ export async function askAboutChart(apiKey: string, ctx: ChartContext, question:
   return callClaude(apiKey, { max_tokens: 1500, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
 }
 
-export interface ReviewContext {
-  profile: Profile;
-  date: string;
-  fitness?: Fitness;
-  assessmentNotes: string[];
-  goal: string;
-  verdict: string;
-  advice: string;
-  lastWeek: string[];
-  proposedChanges: string[];
-  newActivities: string[];
-  /** The rider's own notes from the last week, newest first, as "date: text"; days whose wellness was set aside say so. */
-  riderNotes: string[];
-  plan?: CoachPlan;
-  tomorrow?: string[];
-  /** The plan's own sentences on why it proposes changes (the re-check's summary). */
-  why?: string[];
-}
-
 /** The coach's view of one proposed change, keyed by its date and kind (Batch 6, C5). */
 export interface CoachVerdict { date: string; kind: string; apply: boolean; why: string }
 
@@ -314,98 +298,25 @@ export interface CoachReview {
 }
 
 /**
- * After new activities arrive: Claude reads the same evidence the planner used,
- * plus the planner's proposed changes, and gives a view. It never changes the
- * plan; the rider does, with one tap.
+ * The re-check thinks (1 Nov 2026): one call judges the day from the evidence
+ * packet and returns the note, an assessment, today's stance and any changes,
+ * in a fixed JSON form. It thinks first, at high effort.
  */
-export function reviewPrompt(ctx: ReviewContext): string {
-  const tomorrow = ctx.tomorrow?.length ? ctx.tomorrow.join('; ') : 'nothing planned';
-  return `${coachIntro(ctx.profile, ctx.date)} You are reviewing their new training data. Answer in the JSON form given. "text" is 4 to 7 plain sentences to the rider, in the second person: what the new activities show, what matters this week, and what you recommend; no headings, bullets or exclamation marks. ${VERDICT_RULES} When a new activity completed a planned session, judge it on its recorded duration against the planned duration. The verdict on-track / close / short is whether the plan reaches the fitness the goal needs by its date. The rider's own notes below explain the numbers and outrank them: a poor night the rider has explained is not training fatigue, and wellness the rider set aside as wrong has already been left out of every average. ${SHARED_RULES}
-
-Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
-${planLine(ctx.plan)}
-Tomorrow: ${tomorrow}.
-Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}
-What the data say about the rider:\n${ctx.assessmentNotes.map((n) => '- ' + n).join('\n')}
-New activities just arrived:\n${ctx.newActivities.map((n) => '- ' + n).join('\n') || '- none'}
-Last week:\n${ctx.lastWeek.map((n) => '- ' + n).join('\n') || '- nothing to report'}
-The app's proposed plan changes:\n${ctx.proposedChanges.map((n) => '- ' + n).join('\n') || '- no changes proposed'}
-The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') || '- none'}`;
-}
-
-/** How the coach judges the proposed changes, shared by both review prompts (Batch 6, C5). */
-const VERDICT_RULES = `"verdicts" has one entry for every proposed change listed below, no more and no fewer: its "date" (YYYY-MM-DD) and "kind" exactly as the change's line gives them, "apply" true when the rider should accept it as it stands and false when not, and "why" in twelve words or fewer. Every proposed change is a named workout from the rider's library; judge it as that workout. "reason" is one sentence on the changes as a whole, and must agree with the verdicts. Changes more than two weeks out are provisional: the plan re-checks itself every day and will review them again as they come near, so skipping one costs nothing.`;
-
-/**
- * The plan re-checked itself this morning (Batch 6, C6): Claude reads the same
- * evidence and the proposed changes and gives a view of each. No new activity
- * is needed for this, and none is pretended.
- */
-export function recheckPrompt(ctx: ReviewContext): string {
-  const tomorrow = ctx.tomorrow?.length ? ctx.tomorrow.join('; ') : 'nothing planned';
-  return `${coachIntro(ctx.profile, ctx.date)} The plan re-checked itself this morning against the rider's data and proposes the changes below. Answer in the JSON form given. "text" is 3 to 5 plain sentences to the rider, in the second person: whether the changes are worth making and why; "nothing to decide today" is a good answer when none of them matters yet. No headings, bullets or exclamation marks. ${VERDICT_RULES} A session the rider placed, moved or changed by hand is theirs and is never among these changes. The rider's own notes below explain the numbers and outrank them. ${SHARED_RULES}
-
-Today ${ctx.date}. Fitness ${ctx.fitness?.ctl ?? '?'}, fatigue ${ctx.fitness?.atl ?? '?'}, form ${ctx.fitness?.tsb ?? '?'}.
-${planLine(ctx.plan)}
-Tomorrow: ${tomorrow}.
-Goal: ${ctx.goal}. Current verdict: ${ctx.verdict}. ${ctx.advice}
-What the data say about the rider:\n${ctx.assessmentNotes.map((n) => '- ' + n).join('\n')}
-${ctx.newActivities.length ? `New activities:\n${ctx.newActivities.map((n) => '- ' + n).join('\n')}\n` : ''}Last week:\n${ctx.lastWeek.map((n) => '- ' + n).join('\n') || '- nothing to report'}
-Why the plan proposes changes:\n${ctx.why?.map((n) => '- ' + n).join('\n') || '- no reason given'}
-The proposed changes (date, kind, what):\n${ctx.proposedChanges.map((n) => '- ' + n).join('\n') || '- no changes proposed'}
-The rider's notes this week:\n${ctx.riderNotes.map((n) => '- ' + n).join('\n') || '- none'}`;
-}
-
-/**
- * After new activities arrive: Claude reads the same evidence the planner used,
- * plus the planner's proposed changes, and gives a view per change. It never
- * changes the plan; the rider does, with one tap.
- *
- * The one call that thinks first. Sonnet 5.5 refuses a thinking budget
- * (`type: 'enabled'` is a 400 on the Claude 5 models), so it thinks adaptively
- * at medium effort, with room for the thinking and the answer together.
- */
-export async function reviewAfterSync(apiKey: string, ctx: ReviewContext, mode: 'sync' | 'recheck' = 'sync'): Promise<CoachReview> {
-  // The answer comes back in a fixed JSON form (structured outputs). Sonnet 5.5 refuses a forced tool
-  // call, which is how this was asked for before 20 Oct 2026.
+export async function judgeDay(apiKey: string, profile: Profile, date: string, packet: string): Promise<ReturnType<typeof readJudge>> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify({
-      model: MODEL, max_tokens: 8000,
+      model: MODEL, max_tokens: 16000,
       thinking: { type: 'adaptive' },
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
-      messages: [{ role: 'user', content: mode === 'recheck' ? recheckPrompt(ctx) : reviewPrompt(ctx) }],
+      output_config: { effort: 'high', format: { type: 'json_schema', schema: JUDGE_SCHEMA } },
+      system: judgeSystem(coachIntro(profile, date), MEDICAL_RULE),
+      messages: [{ role: 'user', content: packet }],
     }),
   });
   if (!res.ok) throw new Error(await apiError(res));
-  return { ...readReview(ctx.date, await res.json()), mode };
+  return readJudge(await res.json());
 }
-
-const REVIEW_SCHEMA = {
-  type: 'object',
-  properties: {
-    text: { type: 'string', description: '4 to 7 plain sentences to the rider.' },
-    verdicts: {
-      type: 'array',
-      description: 'One entry per proposed change: its date and kind as given, whether to apply it, and why in twelve words or fewer.',
-      items: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: 'YYYY-MM-DD, as the change gives it.' },
-          kind: { type: 'string', enum: ['ride', 'strength', 'walk', 'run', 'mobility', 'other'] },
-          apply: { type: 'boolean' },
-          why: { type: 'string' },
-        },
-        required: ['date', 'kind', 'apply', 'why'],
-        additionalProperties: false,
-      },
-    },
-    reason: { type: 'string', description: 'One sentence on the changes as a whole; it agrees with the verdicts.' },
-  },
-  required: ['text', 'verdicts', 'reason'],
-  additionalProperties: false,
-};
 
 /** The review out of Claude's reply, or a failed review that says why, never raw text. */
 export function readReview(date: string, data: { content?: Array<{ type: string; input?: unknown; text?: string }>; stop_reason?: string }): CoachReview {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chartSystem, chatHistory, dayFacts, driverWords, noteSignature, notePrompt, questionSystem, readReview, reviewPrompt, riderLine, type CoachContext, type ReviewContext } from './claude';
+import { chartSystem, chatHistory, dayFacts, driverWords, noteSignature, notePrompt, questionSystem, readReview, riderLine, type CoachContext } from './claude';
+import { judgeSystem } from './judge';
 import { readiness } from '../engine/readiness';
 import { changeWords } from '../ui/planService';
 import { coachFieldsChanged } from '../ui/screens/Settings';
@@ -16,7 +17,6 @@ const ctx = (over: Partial<CoachContext> = {}): CoachContext => ({
   tomorrow: ['Reston (ride); planned duration 1 h 00 min'],
   ...over,
 });
-const review: ReviewContext = { profile: angie, date: '2026-10-21', assessmentNotes: [], goal: 'general fitness over 12 weeks', verdict: 'on-track', advice: '', lastWeek: [], proposedChanges: [], newActivities: [], riderNotes: [] };
 const chart = { profile: todd, date: '2026-10-21', from: '2026-09-10', to: '2026-10-21', lines: ['HRV (ms): first 26'], sessions: [] };
 
 describe('one rider, one voice', () => {
@@ -28,19 +28,23 @@ describe('one rider, one voice', () => {
     expect(a).toMatch(/workouts sent by heart rate/);
     expect(riderLine({ ...todd, name: '  ' }, '2026-10-21')).toMatch(/^The rider is a/);
   });
-  it('never assumes "over 50", in any of the four prompts', () => {
-    const all = [notePrompt(ctx()), questionSystem(ctx()), chartSystem(chart), reviewPrompt(review)];
+  it('never assumes "over 50", in any prompt, and reads form against the rider\'s own history, not a fixed scale (1 Nov 2026)', () => {
+    const all = [notePrompt(ctx()), questionSystem(ctx()), chartSystem(chart), questionSystem(ctx({ profile: angie } as never))];
     for (const p of all) {
       expect(p).not.toMatch(/over 50|masters road cyclist/);
       expect(p).toMatch(/not a doctor/);
-      expect(p).toMatch(/Form between −30 and −10 is a normal training build/);
+      expect(p).not.toMatch(/normal training build/);
+      expect(p).toMatch(/Read form against this rider's own history/);
     }
     expect(notePrompt(ctx())).toMatch(/^You are the rider's cycling coach\. The rider \("Todd Harris"\) is a 60-year-old/);
-    expect(reviewPrompt(review)).toMatch(/^You are the rider's cycling coach\. The rider \("Angie"\) is a road cyclist/);
+    expect(questionSystem(ctx({ profile: angie } as never))).toMatch(/^You are the rider's cycling coach\. The rider \("Angie"\) is a road cyclist/);
+    const j = judgeSystem('You are the rider\'s cycling coach.', 'You are not a doctor.');
+    expect(j).toMatch(/never evidence of fitness or fatigue/);
+    expect(j).toMatch(/not against a fixed scale/);
   });
   it('uses the rider’s name exactly as set, in every prompt, and never asks for a first name (Batch 7, C4)', () => {
     const zoo = { ...todd, name: 'zooharris' };
-    const prompts = [notePrompt(ctx({ profile: zoo } as never)), questionSystem(ctx({ profile: zoo } as never)), chartSystem({ ...chart, profile: zoo }), reviewPrompt({ ...review, profile: zoo })];
+    const prompts = [notePrompt(ctx({ profile: zoo } as never)), questionSystem(ctx({ profile: zoo } as never)), chartSystem({ ...chart, profile: zoo })];
     for (const p of prompts) {
       expect(p).toContain(`The rider's name is exactly "zooharris"; use it exactly as written`);
       expect(p).toMatch(/never a guessed first name/);
@@ -54,7 +58,7 @@ describe('one rider, one voice', () => {
   it('gives the note-only rules to the note alone', () => {
     expect(notePrompt(ctx())).toMatch(/Speak to every session listed/);
     expect(notePrompt(ctx())).toMatch(/addressed to the rider/);
-    for (const p of [questionSystem(ctx()), chartSystem(chart), reviewPrompt(review)]) expect(p).not.toMatch(/Speak to every session/);
+    for (const p of [questionSystem(ctx()), chartSystem(chart)]) expect(p).not.toMatch(/Speak to every session/);
   });
 });
 

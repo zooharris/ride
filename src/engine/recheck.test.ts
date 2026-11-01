@@ -6,7 +6,7 @@ import { generateMobility } from './sessions';
 import { assess } from './assessment';
 import { addDays } from './load';
 import { readReview, readVerdict } from '../coach/claude';
-import { changeSig, changesSigOf, recommendedChanges, type SavedReview } from '../ui/planService';
+
 import type { PlannedWorkout, Profile, Ride, Wellness, Workout } from './types';
 
 const T = '2026-10-19';   // a Monday
@@ -112,45 +112,4 @@ describe('Batch 6 C5 and Batch 7 A1: one verdict per change, one voice on screen
     expect(readReview('d', { content: [{ type: 'text', text: 'not json' }] }).failed).toBeTruthy();
   });
 
-  const thu: Change = { date: '2026-10-22', kind: 'mobility', after: 'Mobility: after strength (10 min)', note: 'added' };
-  const sat: Change = { date: '2026-10-24', kind: 'ride', before: 'Purcellville', after: 'Lake Fairfax', note: 'changed' };
-  const nov: Change = { date: '2026-11-22', kind: 'ride', before: 'Hunter Mill', after: 'Great Falls', note: 'changed' };
-  const review = (changes: Change[], verdicts: Array<[string, string, boolean]>): SavedReview => ({ date: 'd', text: 't', reason: 'Only the mobility is worth it.', applyChanges: 'some', skip: [], verdicts: verdicts.map(([date, kind, apply]) => ({ date, kind, apply, why: `why ${date}` })), changesSig: changesSigOf(changes) });
-  const check = (changes: Change[]) => ({ review: { from: '', to: '', planned: 0, completed: 0, missed: 0, lines: [] }, plan: {} as never, changes, summary: ['The app’s own reason.'], fitnessNow: 0 });
-
-  it('Batch 7 A1: coach off: the plan’s own list, with its own reasons', () => {
-    const r = recommendedChanges(check([thu, sat]), null, false);
-    expect(r).toMatchObject({ status: 'ready', byCoach: false });
-    expect(r.changes).toEqual([thu, sat]);
-    expect(r.reasons.size).toBe(0);
-  });
-
-  it('Batch 7 A1: coach on and it judged these changes: only what it would apply, each with its reason; the rest are gone', () => {
-    const all = [thu, sat, nov];
-    const r = recommendedChanges(check(all), review(all, [['2026-10-22', 'mobility', true], ['2026-10-24', 'ride', false], ['2026-11-22', 'ride', false]]), true);
-    expect(r).toMatchObject({ status: 'ready', byCoach: true, reason: 'Only the mobility is worth it.' });
-    expect(r.changes).toEqual([thu]);
-    expect(r.reasons.get(changeSig(thu))).toBe('why 2026-10-22');
-    expect(r.reasons.has(changeSig(sat))).toBe(false);
-  });
-
-  it('Batch 7 A1: coach on, and it judged other changes, nothing yet, or failed: waiting', () => {
-    expect(recommendedChanges(check([thu, sat, nov]), review([thu, sat], [['2026-10-22', 'mobility', true], ['2026-10-24', 'ride', true]]), true).status).toBe('waiting');
-    expect(recommendedChanges(check([thu]), null, true).status).toBe('waiting');
-    expect(recommendedChanges(check([thu]), { ...review([thu], [['2026-10-22', 'mobility', true]]), failed: 'x' }, true).status).toBe('waiting');
-    expect(recommendedChanges(check([thu]), { date: 'd', text: 't', reason: 'r', applyChanges: 'all', skip: [] }, true).status).toBe('waiting');   // an older review without verdicts
-  });
-
-  it('Batch 7 A1: after one is rejected the rest are still judged: no second wait', () => {
-    const all = [thu, sat];
-    const r = recommendedChanges(check([sat]), review(all, [['2026-10-22', 'mobility', true], ['2026-10-24', 'ride', true]]), true);
-    expect(r.status).toBe('ready');
-    expect(r.changes).toEqual([sat]);
-  });
-
-  it('Batch 7 A1: the coach set every change aside: an empty list, ready (nothing is shown)', () => {
-    const r = recommendedChanges(check([thu, sat]), review([thu, sat], [['2026-10-22', 'mobility', false], ['2026-10-24', 'ride', false]]), true);
-    expect(r).toMatchObject({ status: 'ready', byCoach: true });
-    expect(r.changes).toEqual([]);
-  });
 });

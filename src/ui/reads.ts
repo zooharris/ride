@@ -52,49 +52,65 @@ export function readsToDo(rides: Ride[], have: Map<string, ActivityRead>, sessio
     const h = have.get(r.id);
     if (!h) return true;
     if (h.v !== READ_VERSION) return true;
+    if (h.retry) return true;
     if ((h.planned?.workoutId ?? undefined) !== sessionOf(r.id)) return true;
     if (h.kind !== r.sport) return true;
     return h.ftpAtRead !== profile.ftp || h.lthrAtRead !== profile.lthr;
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
 
-async function run(input: ReadsInput): Promise<number> {
+async function run(input: ReadsInput, only?: string): Promise<number> {
   const profile = input.profile;
   if (!profile) return 0;
   const have = new Map((await db.reads.toArray()).map((r) => [r.id, r]));
   const sessions = sessionMap(input);
   const from = addDays(today(), -READ_DAYS);
-  const todo = readsToDo(input.rides, have, (id) => sessions.get(id)?.workoutId, profile, from);
+  const todo = readsToDo(input.rides.filter((r) => !only || r.id === only), have, (id) => sessions.get(id)?.workoutId, profile, from);
   if (!todo.length) return 0;
   const c = await credentials();
   const recordings = await db.recordings.toArray();
   const edits = new Map(input.edits.map((e) => [e.id, e]));
   let done = 0;
   for (const r of todo) {
+    // One activity whose recording can't be downloaded (none in Intervals.icu, say) must not stop the rest:
+    // it is read from its own numbers and tried again on a later pass. Only being offline stops the pass.
+    let s: Streams | undefined;
+    let retry = false;
+    const full = await db.streams.get(r.id);
     try {
-      const full = await db.streams.get(r.id);
-      let s: Streams | undefined = full?.time?.length ? { time: full.time, watts: full.watts, heartrate: full.heartrate, ve: full.ve, br: full.br, tv: full.tv }
+      s = full?.time?.length ? { time: full.time, watts: full.watts, heartrate: full.heartrate, ve: full.ve, br: full.br, tv: full.tv }
         : c ? await fetchPowerStream(c, r.id) : undefined;
+    } catch {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
+      retry = true;
+    }
+    if (!s && !c) retry = true;
+    try {
       if (s && !s.time.length) s = undefined;
       const local = recordings.find((x) => x.activityId === r.id);
       if (s && local?.breathing && !hasBreathing(s)) { const b = breathFromRecording(local, s.time); if (b) s = { ...s, ...b }; }
       const p = sessions.get(r.id);
       const w = p ? input.find(p.workoutId) : undefined;
       const session = p && w ? { workout: w, basis: p.basis } : undefined;
-      const laps: RideLap[] | undefined = session && w?.kind === 'ride' && s ? (full?.intervals ?? (c ? await fetchIntervals(c, r.id) : undefined)) : undefined;
+      let laps: RideLap[] | undefined;
+      if (session && w?.kind === 'ride' && s) { try { laps = full?.intervals ?? (c ? await fetchIntervals(c, r.id) : undefined); } catch { laps = undefined; } }
       const effort = p?.rpe ?? edits.get(r.id)?.rpe;
       const read = readActivity(r, s, { profile, session, laps, effort });
       // A matched session that is not a ride still carries its name.
       if (p && w && !read.planned) read.planned = { workoutId: w.id, name: w.name, steps: [] };
+      if (retry) read.retry = true;
       await db.reads.put(read);
       done++;
-    } catch {
-      // Offline or refused: the rest wait for the next pass.
-      break;
-    }
+    } catch { /* this one is tried again next pass */ }
   }
   if (done) listeners.forEach((l) => l());
   return done;
+}
+
+/** Read one activity now, if it has not been (its page opened before the background pass reached it). */
+export async function readOne(id: string, input: ReadsInput): Promise<boolean> {
+  if (running) await running.catch(() => 0);
+  return (await run(input, id)) > 0;
 }
 
 /** Everything the words need, from this device's store. */

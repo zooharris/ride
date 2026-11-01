@@ -108,3 +108,19 @@ describe('C: the coach judges, and every device sees it', () => {
     expect(waitForMorning(data({ wellness: usual, dayNotes: [{ date: T, badWellness: true }] }), T, 7)).toBe(false);
   });
 });
+
+describe('A: one activity that cannot be downloaded does not stop the rest', () => {
+  it('reads every activity, the failed one from its own numbers, and tries it again later', async () => {
+    const intervals = await import('../sync/intervals');
+    const sync = await import('../sync/syncService');
+    const { buildReads } = await import('../ui/reads');
+    vi.spyOn(sync, 'credentials').mockResolvedValue({ athleteId: 'a', apiKey: 'k' } as never);
+    const rec = { time: Array.from({ length: 3600 }, (_, i) => i), watts: Array(3600).fill(150), heartrate: Array(3600).fill(125) };
+    vi.spyOn(intervals, 'fetchPowerStream').mockImplementation(async (_c, id) => { if (id === 'new') throw new Error('Intervals.icu answered 404'); return rec; });
+    const rides = [ride({ id: 'new', date: T, name: 'Strength', sport: 'strength', seconds: 1800, tss: 20 }), ride({ id: 'r1' })];
+    const n = await buildReads({ profile: rider, rides, planned: [], edits: [], find: () => undefined });
+    expect(n).toBe(2);
+    expect((await db.reads.get('r1'))?.hrAtPower?.length).toBeGreaterThan(0);
+    expect((await db.reads.get('new'))?.retry).toBe(true);
+  });
+});

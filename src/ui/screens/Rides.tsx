@@ -39,7 +39,7 @@ import type { Recording } from '../../player/types';
 import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
-import { activityWords, onReadsBuilt } from '../reads';
+import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -360,7 +360,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
-      <AboutActivity ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'VitalPro, through your Garmin' : undefined)} />
+      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'VitalPro, through your Garmin' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
@@ -571,7 +571,7 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
 }
 
 /** The activity's name, what it was (when the device got it wrong), and whether it counts toward training load. */
-function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced, breathSensor }: { ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced']; breathSensor?: string }) {
+function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdited, replaced, breathSensor }: { data: AppData; streamsReady: boolean; ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced']; breathSensor?: string }) {
   const [name, setName] = useState(r.name);
   const [busy, setBusy] = useState(false);
   // The Garmin rule removed Antogo's copy of this ride: within 30 days, on the computer that has its file, it can come back.
@@ -588,7 +588,15 @@ function AboutActivity({ ride: r, matched, excluded, kindEdited, replaced, breat
   useEffect(() => setName(r.name), [r.name]);
   // What the recording shows (the re-check thinks, 1 Nov): the same sentences the coach reads.
   const [shows, setShows] = useState<string[]>([]);
-  useEffect(() => { let alive = true; void activityWords(r.id).then((w) => alive && setShows(w)); const off = onReadsBuilt(() => void activityWords(r.id).then((w) => alive && setShows(w))); return () => { alive = false; off(); }; }, [r.id]);
+  useEffect(() => {
+    let alive = true;
+    const load = () => activityWords(r.id).then((w) => { if (alive) setShows(w); return w; });
+    // Not read yet (the background pass hasn't reached it), or read before this page downloaded the recording: read it now.
+    void load().then(async (w) => { if (alive && (!w.length || streamsReady) && await readOne(r.id, readsInput(data))) void load(); });
+    const off = onReadsBuilt(() => void load());
+    return () => { alive = false; off(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.id, streamsReady]);
   // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
   const run = async (what: () => Promise<void>, ok: string, undo?: () => Promise<void>) => {
     setBusy(true);

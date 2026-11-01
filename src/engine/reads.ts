@@ -69,6 +69,8 @@ export interface ActivityRead {
   planned?: PlannedRead;
   /** The rider's effort rating, 1 to 10, when given. */
   effort?: number;
+  /** The recording could not be downloaded this time: read from the activity's own numbers, and tried again on a later pass. */
+  retry?: boolean;
 }
 
 export interface PlannedRead {

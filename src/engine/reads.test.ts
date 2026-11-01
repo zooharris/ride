@@ -108,3 +108,17 @@ describe('A: Layer 2, against the plan, never about duration', () => {
     expect(read.planned!.verdict).toBeUndefined();
   });
 });
+
+describe('A: review fixes (1 Nov)', () => {
+  it('fade is read on pedalling seconds: a ride that ends coasting is not a fade', () => {
+    const r = rec([600, 150, 130], [2400, 150, 130], [1200, 0, 110]);   // the last 20 minutes freewheeling
+    expect(powerFade(r.time, r.watts)).toBe(1);
+  });
+  it('a session of hard steps is read by its steps, not by drift', () => {
+    const r = rec([600, 110, 110], [600, 195, 150], [300, 100, 120], [600, 194, 160], [300, 100, 120], [600, 192, 168], [300, 100, 120], [600, 100, 110]);
+    const read = readActivity(ride(), r, { profile, session: { workout: thr3x10, basis: 'power' } });
+    const words = readWords(read, { reads: [] }).join(' ');
+    expect(words).not.toContain('drifted');
+    expect(words).toContain('steps ridden');
+  });
+});

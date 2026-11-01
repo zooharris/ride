@@ -118,13 +118,17 @@ export function zoneTime(time: number[], values: number[] | undefined, threshold
   return any ? out.map(Math.round) : undefined;
 }
 
-/** Power in the last quarter of the steady part over the first quarter. Coasting (zero) counts, as it does in the average. */
+/**
+ * Power in the last quarter of the steady part over the first quarter, on
+ * pedalling seconds only (power above zero): a ride that ends downhill is not
+ * a rider fading.
+ */
 export function powerFade(time: number[], watts: number[] | undefined): number | undefined {
   if (!watts?.length) return undefined;
   const n = Math.min(time.length, watts.length);
   const d = dts(time, n);
   const idx: number[] = [];
-  for (let i = 0; i < n; i++) if (time[i] >= SKIP && d[i] > 0 && watts[i] != null && watts[i] >= 0) idx.push(i);
+  for (let i = 0; i < n; i++) if (time[i] >= SKIP && d[i] > 0 && watts[i] > 0) idx.push(i);
   const total = idx.reduce((t, i) => t + d[i], 0);
   if (total < STEADY_MIN) return undefined;
   const avg = (from: number, to: number) => {
@@ -372,8 +376,10 @@ export function readWords(read: ActivityRead, ctx: WordsContext): string[] {
   const vs = hrVsNormal(read, ctx.reads);
   if (vs && Math.abs(vs.beats) >= 1) bits.push(`heart rate at ${vs.from} to ${vs.to} W averaged ${Math.abs(Math.round(vs.beats))} bpm ${vs.beats > 0 ? 'above' : 'below'} the rider's usual for that power over the previous 8 weeks`);
   else if (vs) bits.push(`heart rate at ${vs.from} to ${vs.to} W was the rider's usual for that power`);
-  if (read.drift != null) bits.push(`heart rate drifted ${read.drift >= 0 ? 'up' : 'down'} ${Math.abs(read.drift)}% against power from the first half to the second`);
-  if (read.fade != null && !read.planned?.steps.length) bits.push(read.fade >= 0.97 ? 'power held from the first quarter to the last' : `power in the last quarter ${Math.round((1 - read.fade) * 100)}% below the first`);
+  // Drift and fade mean something on steady riding; a session of hard steps is read by its steps instead.
+  const steady = !read.planned?.steps.length;
+  if (read.drift != null && steady) bits.push(`heart rate drifted ${read.drift >= 0 ? 'up' : 'down'} ${Math.abs(read.drift)}% against power from the first half to the second`);
+  if (read.fade != null && steady) bits.push(read.fade >= 0.97 ? 'power held from the first quarter to the last' : `power in the last quarter ${Math.round((1 - read.fade) * 100)}% below the first`);
   if (read.has.breathing) {
     const bv = breathVsNormal(read, ctx.breathNormal);
     const frozen = read.breathFrozenAt != null ? `breathing strap stopped reading at ${clock(read.breathFrozenAt)}, so only the breathing before that is used` : '';

@@ -278,7 +278,8 @@ export async function ensureJudgment(data: AppData, opts: { force?: boolean; che
 
 async function ask(data: AppData, key: string, sig: string, check?: Replan | null): Promise<Judgment | null> {
   try {
-    const c = check === undefined ? await replan(data).catch(() => null) : check;
+    // Today asks before its own re-check has finished (check null); the plan's week, needs and line must still be in the packet.
+    const c = check ?? await replan(data).catch(() => null);
     const inputs = await judgeInputs(data, c);
     const text = buildPacket(inputs.packet);
     let reply = await judgeDay(key, data.profile as Profile, inputs.packet.date, text);
@@ -354,6 +355,14 @@ export async function applyJudged(data: AppData, changes: ResolvedChange[], acti
     made++;
   }
   await pruneOrphanWorkouts();
+  // The coach's own changes are not new evidence: the saved judgment keeps the applied changes off its list and takes the
+  // calendar's new signature, so nothing is asked again until something else changes (the morning, an activity, a note).
+  const j = await getJudgment();
+  if (j && made) {
+    const applied = new Set(changes.map((x) => `${x.action}|${x.plannedId ?? ''}|${x.workoutId ?? ''}|${x.date}`));
+    const left = j.changes.filter((x) => !applied.has(`${x.action}|${x.plannedId ?? ''}|${x.workoutId ?? ''}|${x.date}`));
+    await setSetting(JUDGMENT_KEY, { ...j, changes: left, sig: signatureOf({ ...data, planned: await db.planned.toArray() }) });
+  }
   notify();
   return { made, wereSent };
 }

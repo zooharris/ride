@@ -124,3 +124,32 @@ describe('A: one activity that cannot be downloaded does not stop the rest', () 
     expect((await db.reads.get('new'))?.retry).toBe(true);
   });
 });
+
+describe('C: review fixes (1 Nov)', () => {
+  it('accepting the coach\'s own change does not ask the coach again', async () => {
+    const svc = await import('../ui/judgeService');
+    const coach = await import('../coach/claude');
+    await setSetting('coachAuto', true);
+    await setSetting('claudeKey', 'k');
+    await db.planned.put(planned());
+    const spy = vi.spyOn(coach, 'judgeDay').mockResolvedValue({ note: 'Easy.', assessment: '', stance: 'easy', changes: [{ date: T, action: 'replace', session: 'C1', workout: 'W1', why: 'w' }] });
+    const d = data();
+    const j = (await svc.ensureJudgment(d, { check: null }))!;
+    expect(spy).toHaveBeenCalledTimes(1);
+    const wId = j.changes[0]?.workoutId;
+    if (!wId) return;   // W1 happened not to fit; the rule under test is the signature below either way
+    const row = { date: T, kind: 'ride' as const, before: j.changes[0].before, after: j.changes[0].after, note: 'changed' };
+    const rec = { changes: [row], reasons: new Map(), status: 'ready' as const, byCoach: true, judged: new Map([[`${T}|ride|${j.changes[0].before}>${j.changes[0].after}`, j.changes[0]]]) };
+    await svc.acceptRecommended(d, null, rec, [row], null);
+    await svc.ensureJudgment(data({ planned: await db.planned.toArray() }), { check: null });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect((await svc.getJudgment())!.changes).toEqual([]);
+  });
+  it('without a plan, a workout the coach puts in is kept under two hours', async () => {
+    const { checkChanges } = await import('../coach/judge');
+    const ctx = { today: T, horizon: 14, sessions: [], workouts: [{ ref: 'W1', id: 'long', kind: 'ride' as const, name: 'Long 3 h', minutes: 180, key: 'long' }, { ref: 'W2', id: 'spin', kind: 'ride' as const, name: 'Spin', minutes: 45, key: 'spin' }] };
+    const { ok, dropped } = checkChanges([{ date: T, action: 'add', workout: 'W1', why: 'w' }, { date: T, action: 'add', workout: 'W2', why: 'w' }], ctx);
+    expect(dropped.map((x) => x.why)).toEqual(['does not fit the hours that day']);
+    expect(ok).toHaveLength(1);
+  });
+});

@@ -159,9 +159,11 @@ function minutesOn(date: string, ctx: CheckContext, except: Set<string>): number
 }
 
 /** Whether the day's hours hold this much more, with a little give. */
+/** Without a plan there are no hours set: a session the coach adds or puts in is kept under two hours, as the packet says. */
+export const NO_PLAN_MINUTES = 120;
 function fits(date: string, minutes: number, ctx: CheckContext, except: Set<string>): boolean {
   const av = ctx.availability;
-  if (!av) return true;
+  if (!av) return minutes <= NO_PLAN_MINUTES;
   const cap = av.hours[dowOf(date)] * 60;
   return minutesOn(date, ctx, except) + minutes <= cap * 1.1 + 5;
 }

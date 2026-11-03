@@ -31,14 +31,34 @@ export async function takeThreshold(change: { ftp?: number; lthr?: number }): Pr
   return applyNumbers(change, what);
 }
 
-/** The coach's zone tables (tops of zones 1-6), applied as watts and bpm: saved and sent to Intervals.icu. */
-export async function applyZones(powerTops?: number[], hrTops?: number[]): Promise<{ ok: boolean; text: string }> {
+/** Breathing to apply: the two thresholds (L/min) and the zone tops, as shares of VT2 or in L/min. */
+export interface BreathPatch { vt1Ve?: number; vt2Ve?: number; pcts?: number[]; tops?: number[] }
+
+/**
+ * Zone tables (tops of zones 1-6) applied as watts and bpm, and the breathing
+ * thresholds and table: saved, and the power and heart-rate tables sent to
+ * Intervals.icu (breathing stays in Antogo; Intervals.icu has no breathing zones).
+ */
+export async function applyZones(powerTops?: number[], hrTops?: number[], breath?: BreathPatch): Promise<{ ok: boolean; text: string }> {
   const patch: Partial<Profile> = {
     ...(powerTops ? { powerZoneMode: 'abs' as const, powerZoneWatts: powerTops } : {}),
     ...(hrTops ? { hrZoneMode: 'abs' as const, hrZoneTops: hrTops } : {}),
+    ...breathProfile(breath),
   };
-  const what = [powerTops ? 'the power zones' : '', hrTops ? 'the heart-rate zones' : ''].filter(Boolean).join(' and ');
+  const words = [powerTops ? 'the power zones' : '', hrTops ? 'the heart-rate zones' : '', breath && (breath.pcts || breath.tops || breath.vt2Ve) ? 'the breathing zones' : ''].filter(Boolean);
+  const what = words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}` : words[0] ?? 'nothing';
   return applyNumbers(patch, what);
+}
+
+/** A breathing patch as profile fields: thresholds stamped with today's date, the table as shares of VT2 or in L/min. */
+export function breathProfile(b?: BreathPatch): Partial<Profile> {
+  if (!b) return {};
+  return {
+    ...(b.vt1Ve ? { vt1Ve: b.vt1Ve } : {}),
+    ...(b.vt2Ve ? { vt2Ve: b.vt2Ve, breathSetOn: today() } : {}),
+    ...(b.pcts ? { breathZoneMode: 'pct' as const, breathZonePcts: b.pcts } : {}),
+    ...(b.tops ? { breathZoneMode: 'abs' as const, breathZoneTops: b.tops } : {}),
+  };
 }
 
 /** Save numbers on the profile, freshen the coach's note, and send them to Intervals.icu, saying what happened as Settings does. */

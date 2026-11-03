@@ -597,7 +597,7 @@ function TestsCard({ data, from, to }: { data: AppData; from: string; to: string
   const onDay = new Map(tests.filter((x) => x.date >= from && x.date <= to && x.result?.ftpEstimate != null).map((x) => [x.date, x]));
   const tick = (d: string, i: number) => (i === 0 || i === dates.length - 1 || i % Math.ceil(dates.length / 5) === 0) ? short(d) : null;
   return (
-    <Card title="Tests" explain="Your FTP on record over this range, with each test's FTP estimate as a dot, and every test you've ridden. Open one to update your FTP from it.">
+    <Card title="Tests" explain="Your FTP on record over this range, with each test's FTP estimate as a dot, and every test you've ridden (with its breathing thresholds when you wore a breathing strap). Open one to update your FTP or zones from it.">
       {onDay.size > 0 && (
         <LineChart series={[
           { name: 'FTP on record', color: 'var(--accent)', values: ftp.map((d) => d.ftp), width: 2, unit: 'W' },
@@ -616,7 +616,7 @@ function TestsCard({ data, from, to }: { data: AppData; from: string; to: string
             <tr key={x.key}>
               <td>{x.rideId ? <a href={`#/rides/${x.rideId}`}>{when}</a> : when}</td>
               <td>{label(x.kind)}</td>
-              <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '\u2014' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}</td>
+              <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '\u2014' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}{x.result?.breath?.vt1 || x.result?.breath?.vt2 ? <div class="faint small">breathing thresholds {[x.result.breath.vt1, x.result.breath.vt2].filter(Boolean).map((v) => `${v!.watts} W`).join(' and ')}</div> : null}</td>
               <td class="num">{x.kind === 'ramp' ? <>{vo2(x.result)}{x.result?.vo2maxMlKgMin != null ? <span class="faint small"> ml/kg/min</span> : null}</> : '\u2014'}</td>
             </tr>
           );

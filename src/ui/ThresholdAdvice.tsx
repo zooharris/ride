@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile } from '../engine/types';
 import type { FtpAdvice, ThresholdMode, ZoneAdvice } from '../coach/claude';
-import { ladderTops, rideHrZones, ridePowerZones } from '../engine/zones';
+import { BREATH_ZONE_NAMES, breathZones, ladderTops, rideHrZones, ridePowerZones } from '../engine/zones';
 import { askCoachThreshold, getAdvice, setAdviceChoice, type StoredAdvice } from './thresholdService';
 import { applyZones, resendRides, sentRidesAhead, takeThreshold, zonesFollowFtp } from './testService';
 import { loadAppData, type AppData } from './store';
@@ -99,8 +99,9 @@ export function CoachZones({ profile, data, label = 'Analyse my zones', onEditFi
   const open = !!a && !stored?.choice;
   const nowP = ladderTops(ridePowerZones(profile), profile.ftp);
   const nowH = ladderTops(rideHrZones(profile), profile.lthr);
-  const changed = (a?.powerTops && a.powerTops.some((t, i) => t !== nowP[i])) || (a?.hrTops && a.hrTops.some((t, i) => t !== nowH[i]));
-  const apply = async () => { setMsg(await applyZones(a?.powerTops, a?.hrTops)); await choose('applied'); onChanged?.(); };
+  const nowB = breathTopsOf(profile);
+  const changed = (a?.powerTops && a.powerTops.some((t, i) => t !== nowP[i])) || (a?.hrTops && a.hrTops.some((t, i) => t !== nowH[i])) || (a?.breathTops && (!nowB || a.breathTops.some((t, i) => t !== nowB[i])));
+  const apply = async () => { setMsg(await applyZones(a?.powerTops, a?.hrTops, a?.breathTops ? { tops: a.breathTops, ...(profile.vt2Ve ? {} : { vt1Ve: a.breathTops[1], vt2Ve: a.breathTops[2] }) } : undefined)); await choose('applied'); onChanged?.(); };
   return (
     <div class="coach-adv">
       {busy ? <p class="muted small" style="margin:6px 0 0">Reading your rides…</p>
@@ -116,6 +117,7 @@ export function CoachZones({ profile, data, label = 'Analyse my zones', onEditFi
             <div class="coach-tables">
               {a.powerTops && <ZoneCompare title="Power zones (top of each, watts)" now={nowP} next={a.powerTops} unit="W" />}
               {a.hrTops && <ZoneCompare title="Heart-rate zones (top of each, bpm)" now={nowH} next={a.hrTops} unit="bpm" />}
+              {a.breathTops && <ZoneCompare title="Breathing zones (top of each, litres a minute)" now={nowB} next={a.breathTops} unit="L/min" names={BREATH_ZONE_NAMES} />}
             </div>
           )}
           {a.why.length > 0 && <ul class="small coach-why">{a.why.map((w, i) => <li key={i}>{w}</li>)}</ul>}
@@ -136,14 +138,25 @@ export function CoachZones({ profile, data, label = 'Analyse my zones', onEditFi
   );
 }
 
-function ZoneCompare({ title, now, next, unit }: { title: string; now: number[]; next: number[]; unit: string }) {
+/** Now against suggested, zone by zone; a table with nothing set yet shows a dash under Now. */
+export function ZoneCompare({ title, now, next, unit, names }: { title: string; now?: number[]; next: number[]; unit: string; names?: readonly string[] }) {
   return (
     <table class="coach-zt">
       <caption>{title}</caption>
       <thead><tr><th>Zone</th><th>Now</th><th>Suggested</th></tr></thead>
-      <tbody>{next.map((t, i) => (
-        <tr key={i} class={t !== now[i] ? 'moved' : ''}><td>{i + 1}</td><td class="num">{now[i]} {unit}</td><td class="num">{t} {unit}{t !== now[i] ? <span class="faint"> ({t > now[i] ? '+' : ''}{t - now[i]})</span> : null}</td></tr>
-      ))}</tbody>
+      <tbody>{next.map((t, i) => {
+        const was = now?.[i];
+        const moved = was == null || t !== was;
+        return (
+          <tr key={i} class={moved ? 'moved' : ''}><td>{i + 1}{names ? ` ${names[i]}` : ''}</td><td class="num">{was != null ? `${was} ${unit}` : '\u2014'}</td><td class="num">{t} {unit}{was != null && t !== was ? <span class="faint"> ({t > was ? '+' : ''}{Math.round((t - was) * 10) / 10})</span> : null}</td></tr>
+        );
+      })}</tbody>
     </table>
   );
+}
+
+/** The rider's breathing zone tops (zones 1-4) in L/min, rounded to one place; undefined with no breathing table. */
+export function breathTopsOf(profile: Profile): number[] | undefined {
+  const z = breathZones(profile);
+  return z ? z.slice(0, 4).map((x) => Math.round(x.high * 10) / 10) : undefined;
 }

@@ -4,6 +4,7 @@
  */
 import type { Recording, Sample } from './types';
 import type { TimelineStep } from './timeline';
+import { breathThresholds, type BreathTest } from '../engine/breathThresholds';
 
 /** Below this share of the step's target, held for ten seconds, the ramp has given out. */
 export const RAMP_GIVE_OUT = 0.85;
@@ -61,6 +62,15 @@ export interface TestResult {
   endedAt?: number;
   /** Worked out from Intervals.icu's copy of a ride recorded elsewhere (no step-by-step targets to read). */
   fromStreams?: boolean;
+  /**
+   * Step 4 (3 Nov 2026): the Ramp Test's breathing thresholds, when a strap was
+   * worn (absent: no breathing to read, or read before Step 4, in which case
+   * the activity's page reads it once from the recording). On a ramp with a
+   * second threshold, lthrEstimate is the heart rate there.
+   */
+  breath?: BreathTest;
+  /** What the rider did with the zones the test suggests. */
+  zonesAction?: 'applied' | 'kept';
 }
 
 /** The highest average of `secs` consecutive one-second readings (gaps count as zero). Undefined when the ride is shorter. */
@@ -111,12 +121,59 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
     if (hrs.length >= 30) hrAtFtp = Math.round(avg(hrs)!);
   }
   const ev = rec.events.find((e) => e.type === 'test');
+  const breath = rampBreathing(rec, timeline);
   return {
-    kind: 'ramp', stepWatts: rec.rampStep,
+    kind: 'ramp', stepWatts: rec.rampStep, ...breathFields(breath),
     bestMinuteWatts: best != null ? Math.round(best) : undefined, ftpEstimate: ftp,
     peakWatts: peak != null ? Math.round(peak * 10) / 10 : undefined, vo2maxLmin: vo2?.lmin, vo2maxMlKgMin: vo2?.mlKgMin, hrAtFtp,
     endedBy: ev?.value === 'auto' ? 'auto' : ev ? 'rider' : undefined, endedAt: ev?.t,
   };
+}
+
+/** The breathing fields of a ramp's result: the thresholds, and threshold heart rate from the second one. */
+export function breathFields(breath: BreathTest | undefined): Pick<TestResult, 'breath' | 'lthrEstimate'> {
+  if (!breath) return {};
+  return { breath, ...(breath.vt2?.hr ? { lthrEstimate: breath.vt2.hr } : {}) };
+}
+
+/** The ramp's breathing thresholds from the player's recording: the ramp steps only, up to where it ended. */
+export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, timeline: TimelineStep[]): BreathTest | undefined {
+  if (!rec.samples.some((x) => x.ve != null && x.ve > 0)) return undefined;
+  const rampSteps = new Set(timeline.filter((s) => s.ramp).map((s) => s.index));
+  const endP = rec.rampEndAt ?? Infinity;
+  const on = rec.samples.filter((x) => x.s != null && rampSteps.has(x.s) && (x.p ?? 0) < endP);
+  if (!on.length) return undefined;
+  const ss = rec.samples;
+  return breathThresholds({
+    time: ss.map((x) => x.t), watts: ss.map((x) => x.w ?? NaN), hr: ss.map((x) => x.hr ?? NaN),
+    ve: ss.map((x) => x.ve ?? NaN), br: ss.map((x) => x.br ?? NaN),
+    from: on[0].t, to: on[on.length - 1].t + 1,
+  });
+}
+
+/** The warm-up before the first ramp step, seconds: what a ramp ridden in the player starts with. */
+export const RAMP_WARMUP_SECONDS = 300;
+
+/**
+ * A Ramp Test's breathing thresholds from one-second streams (a test ridden
+ * before Step 4, or seen on a device without its recording): the ramp taken as
+ * from the end of the five-minute warm-up to where it ended (the result's own
+ * record of it, or the end of the best minute).
+ */
+export function rampBreathingFromStreams(s: { time: number[]; watts?: number[]; heartrate?: number[]; ve?: number[]; br?: number[] }, endedAt?: number): BreathTest | undefined {
+  if (!s.ve?.some((v) => v != null && isFinite(v) && v > 0) || !s.watts?.length) return undefined;
+  let to = endedAt;
+  if (to == null) {
+    // The end of the best minute: where the legs gave out.
+    let sum = 0, best = -1;
+    for (let i = 0; i < s.watts.length; i++) {
+      sum += s.watts[i] ?? 0;
+      if (i >= 60) sum -= s.watts[i - 60] ?? 0;
+      if (i >= 59 && sum > best) { best = sum; to = s.time[i]; }
+    }
+  }
+  if (to == null) return undefined;
+  return breathThresholds({ time: s.time, watts: s.watts, hr: s.heartrate, ve: s.ve, br: s.br, from: RAMP_WARMUP_SECONDS, to });
 }
 
 /** The 20-minute test's twenty minutes, at least nineteen of them ridden: the step named "Test". */
@@ -203,6 +260,12 @@ export function testLines(r: TestResult): string[] {
     if (r.ftpEstimate != null) out.push(`FTP estimate: ${r.ftpEstimate} W (75% of the best minute)`);
     if (r.vo2maxMlKgMin != null) out.push(`VO2max estimate: ${r.vo2maxMlKgMin} ml/kg/min`); else if (r.vo2maxLmin != null) out.push(`VO2max estimate: ${r.vo2maxLmin} litres a minute`);
     if (r.hrAtFtp != null) out.push(`Heart rate when passing the new FTP: ${r.hrAtFtp} bpm`);
+    const b = r.breath;
+    const vt = (name: string, v?: import('../engine/breathThresholds').VtPoint) => v ? out.push(`${name}: ${v.watts} W${v.hr ? `, ${v.hr} bpm` : ''}, breathing ${Math.round(v.ve)} L/min${v.certainty === 'unsure' ? ' (less certain)' : ''}`) : undefined;
+    vt('First breathing threshold (VT1, close to LT1)', b?.vt1);
+    vt('Second breathing threshold (VT2, close to LT2)', b?.vt2);
+    if (b?.peakVe != null) out.push(`Peak breathing: ${b.peakVe} L/min`);
+    if (r.lthrEstimate != null) out.push(`Threshold heart rate estimate: ${r.lthrEstimate} bpm (heart rate at the second breathing threshold)`);
     if (r.stepWatts) out.push(`Step size: ${r.stepWatts} W a minute${r.endedBy ? `, ended ${r.endedBy === 'auto' ? 'by itself when the power fell away' : 'by the rider'}` : ''}`);
   } else {
     if (r.testWatts != null) out.push(`Average power over the 20 minutes: ${r.testWatts} W`);

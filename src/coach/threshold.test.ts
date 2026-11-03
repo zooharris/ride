@@ -19,12 +19,21 @@ describe('what the coach is asked (B2)', () => {
     expect(t).toContain('best 20-minute power × 0.97');
     expect(t).toContain('needsTest');
   });
-  it('the zones question asks for both tables, a reason per moved boundary, and which to trust', () => {
+  it('the zones question asks for all three tables, a reason per moved boundary, and which to trust', () => {
     const t = thresholdPrompt(profile, '2026-10-29', ev, 'zones');
-    expect(t).toContain('power zone table');
-    expect(t).toContain('heart-rate zone table');
+    expect(t).toContain('three zone tables');
+    expect(t).toMatch(/power \(the tops of zones 1 to 6/);
+    expect(t).toMatch(/heart rate \(the tops of zones 1 to 6/);
+    expect(t).toMatch(/breathing \(the tops of zones 1 to 4/);
     expect(t).toContain('"trust"');
-    expect(t).toContain('what would be enough evidence');
+    expect(t).toContain('what would be enough');
+  });
+  it('the zones question anchors on a recent test, checks it against riding, and treats current tables as comparison only (Step 4)', () => {
+    const t = thresholdPrompt(profile, '2026-10-29', ev, 'zones');
+    expect(t).toContain('is the anchor');
+    expect(t).toContain('The riding history checks the test');
+    expect(t).toContain('only for comparison');
+    expect(t).toContain('not enough breathing data yet');
   });
 });
 
@@ -58,6 +67,12 @@ describe('reading the coach’s answer (B2)', () => {
     expect(bad.hrTops).toBeUndefined();
     expect(bad.failed).toBeUndefined(); // the reasons still show
   });
+  it('breathing tops: four rising values in litres a minute, one decimal; an empty or bad list is left out', () => {
+    const base = { powerTops: [124, 169, 203, 236, 270, 338], hrTops: [130, 142, 152, 160, 167, 172], why: ['x'], trust: '', confidence: 'settled', needsTest: '' };
+    expect((readThreshold('zones', reply({ ...base, breathTops: [40.04, 55.2, 95, 110] })) as ZoneAdvice).breathTops).toEqual([40, 55.2, 95, 110]);
+    expect((readThreshold('zones', reply({ ...base, breathTops: [] })) as ZoneAdvice).breathTops).toBeUndefined();
+    expect((readThreshold('zones', reply({ ...base, breathTops: [40, 30, 95, 110] })) as ZoneAdvice).breathTops).toBeUndefined();
+  });
 });
 
 describe('Apply these zones (B3)', () => {
@@ -77,5 +92,15 @@ describe('Apply these zones (B3)', () => {
     const p = (await db.profile.get('me'))!;
     expect(p.powerZoneMode).toBeUndefined();
     expect(p.hrZoneMode).toBe('abs');
+  });
+  it('breathing (Step 4): thresholds stamped today, the table as shares of VT2; Intervals.icu is sent the same numbers as before', async () => {
+    await saveProfile(profile);
+    const before = numbersToPush((await db.profile.get('me'))!);
+    const r = await applyZones(undefined, undefined, { vt1Ve: 55, vt2Ve: 95, pcts: [46, 58, 100, 115] });
+    expect(r.text).toContain('the breathing zones');
+    const p = (await db.profile.get('me'))!;
+    expect(p).toMatchObject({ vt1Ve: 55, vt2Ve: 95, breathZoneMode: 'pct', breathZonePcts: [46, 58, 100, 115] });
+    expect(p.breathSetOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(numbersToPush(p)).toEqual(before);
   });
 });

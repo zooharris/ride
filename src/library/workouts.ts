@@ -144,8 +144,8 @@ const CORE: Workout[] = [
   // 29 Oct 2026 (Step 1): a real test. The player builds its own open-ended ramp from the step size the rider picks;
   // these blocks only draw the familiar shape in the Library and on the calendar.
   lib({ id: 'lib-ramp', name: 'Ramp Test', family: 'test', phases: ['any'], bases: ['power'], trainerOnly: true, test: 'ramp',
-    purpose: 'Start easy and add a step every minute until you can’t hold it. Antogo works out your FTP from your best minute and offers to update it. About twenty minutes; ride it on the trainer at the start of each block.',
-    physiology: 'FTP and VO2max estimates.',
+    purpose: 'Start easy and add a step every minute until you can’t hold it. Antogo works out your FTP from your best minute and offers to update it. Wear a breathing strap and it also finds your two breathing thresholds and suggests power, heart-rate and breathing zones from them. About twenty minutes; ride it on the trainer at the start of each block.',
+    physiology: 'FTP and VO2max estimates; with a breathing strap, breathing thresholds (VT1 and VT2).',
     blocks: [step(5, 0.46, { label: 'Warm up' }),step(1, 0.52), step(1, 0.58), step(1, 0.64), step(1, 0.7), step(1, 0.76), step(1, 0.82), step(1, 0.88), step(1, 0.94), step(1, 1.0), step(1, 1.06), step(1, 1.12), step(1, 1.18), step(1, 1.24), step(1, 1.3), step(1, 1.36), cool(10)] }),
   lib({ id: 'lib-20min', name: '20-Minute FTP Test', family: 'test', phases: ['any'], bases: ['power', 'hr'], test: '20min',
     purpose: 'A thorough warm-up, then twenty minutes as hard as you can hold evenly. FTP is ninety-five percent of the result; on heart rate, your average over the last fifteen minutes is a good LTHR. Harder than the ramp test, closer to the truth for steady-state riders.',

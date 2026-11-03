@@ -102,6 +102,11 @@ export const GLOSSARY = {
     short: 'The most oxygen your body can use, estimated from a Ramp Test',
     long: 'The most oxygen your body can use at full effort, in millilitres per kilogram of body weight per minute. A lab measures it from your breath; Antogo estimates it from the peak power of a Ramp Test and your weight (Hawley and Noakes), so it tracks your trend from test to test rather than matching a lab number.',
   },
+  vt: {
+    term: 'Breathing thresholds (VT1, VT2)',
+    short: 'Where your breathing turns more steeply upward on a ramp: VT1 the top of endurance, VT2 the most you can sustain',
+    long: 'On a Ramp Test ridden with a breathing strap, the litres of air you breathe a minute climb steadily, then bend upward twice. The first bend (VT1) is the top of all-day endurance riding; the second (VT2) is the most you can sustain for long. They stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures, and they set the breathing zones: zone 2 ends at VT1 and zone 3 at VT2.',
+  },
   readiness: {
     term: 'Readiness',
     short: 'HRV, sleep, heart rate overnight, breathing rate and form against your own four-week normal, as a score out of 100',
@@ -115,7 +120,7 @@ export const GLOSSARY = {
 } satisfies Record<string, Term>;
 
 /** The order of Help's "The numbers, explained". */
-export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'vo2max', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort', 'runLoad'];
+export const NUMBERS_ORDER: Array<keyof typeof GLOSSARY> = ['tss', 'ftp', 'lthr', 'vo2max', 'vt', 'zones', 'np', 'intensity', 'fitness', 'fatigue', 'form', 'ramp', 'powerCurve', 'ef', 'drift', 'hrv', 'readiness', 'effort', 'runLoad'];
 
 /** The hover text on each readiness row on Today. */
 export const READINESS_HELP: Record<string, string> = {

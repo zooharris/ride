@@ -36,7 +36,7 @@ import { MonthDone } from './Calendar';
 import { LIBRARY } from '../../library/workouts';
 import { patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
-import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
+import { breathFields, rampBreathingFromStreams, resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
@@ -673,12 +673,16 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
   }, [r.id]);
   const [own, setOwn] = useState<TestResult | undefined>(undefined);
   if (rec === undefined || kept === undefined) return null;
-  const result: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
-  if (!result) return null;
+  const found: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
+  if (!found) return null;
+  // Step 4 (3 Nov 2026): a ramp ridden with a breathing strap but read before breathing thresholds existed is read for them now, once.
+  const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt) : undefined;
+  const result: TestResult = late ? { ...found, ...breathFields(late), lthrEstimate: found.lthrEstimate ?? late.vt2?.hr, lthrBefore: found.lthrBefore ?? (late.vt2?.hr ? profile.lthr : undefined) } : found;
   const change = (x: TestResult) => {
     setOwn(x);
     void setSetting(testResultKey(r.id), x);
     if (rec) void patchRecording(rec.id, { test: x });
   };
+  if (late && !own) queueMicrotask(() => change(result));
   return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact /></div>;
 }

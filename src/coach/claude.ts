@@ -287,14 +287,22 @@ export type ThresholdMode = 'ftp' | 'zones';
 export type Confidence = 'settled' | 'mixed' | 'thin';
 
 export interface FtpAdvice { mode: 'ftp'; ftp?: number; why: string; confidence: Confidence; needsTest?: string; failed?: string }
-export interface ZoneAdvice { mode: 'zones'; powerTops?: number[]; hrTops?: number[]; why: string[]; trust: string; confidence: Confidence; needsTest?: string; failed?: string }
+export interface ZoneAdvice { mode: 'zones'; powerTops?: number[]; hrTops?: number[]; /** Step 4: breathing zone 1-4 tops, L/min (zone 2 top = VT1, zone 3 top = VT2). */ breathTops?: number[]; why: string[]; trust: string; confidence: Confidence; needsTest?: string; failed?: string }
 export type ThresholdAdvice = FtpAdvice | ZoneAdvice;
 
 /** The question for each mode, after the coach's introduction and the evidence (the lines from `gatherEvidence`). */
 export function thresholdPrompt(profile: Profile, date: string, evidence: string[], mode: ThresholdMode): string {
   const ask = mode === 'ftp'
     ? `Give your best estimate of the rider's FTP today, in whole watts, and say in two or three plain sentences which evidence you leaned on and why. If the sources disagree by more than 5%, say so in "needsTest" and say which a fresh ramp test would settle; otherwise leave "needsTest" empty. Never suggest a number above the best 20-minute power × 0.97 or below the best 60-minute power. Treat the critical power fit as the ceiling of what the rider has shown. Use the judged planned hard sessions to say whether the current FTP is working in training: held with heart rate low means it is set low; fell short, or held with heart rate high, means it is set high. Use the power at a steady heart rate only to say which way fitness is moving, never as a number for FTP. If there is too little evidence, say so plainly in "why", set "confidence" to "thin", and give your best number anyway only if one source is solid; otherwise give 0.`
-    : `Propose a power zone table (the tops of zones 1 to 6 in whole watts, each higher than the last) and a heart-rate zone table (the tops of zones 1 to 6 in whole bpm, each higher than the last, all below max heart rate; zone 7 runs to max) for this rider. Keep a boundary where it is unless the rider's own data say otherwise (the heart rate on rides in each power zone, drift on steady rides, where their time falls, any recent test); when you move one, give one plain sentence for it in "why", naming the zone and the number, from and to. Use the heart rate measured in each power band to check that the two tables describe the same efforts. Where the power table and the heart-rate table disagree about the same effort, say in "trust" which to trust and why, in one or two sentences; otherwise say they agree. If the evidence is too thin to move a boundary, leave it as it is, set "confidence" to "thin" and say in "why" what would be enough evidence (how many more rides of what kind, or a ramp test). Say in "needsTest" if a ramp test would settle something; otherwise leave it empty.`;
+    : `Propose three zone tables for this rider: power (the tops of zones 1 to 6 in whole watts, each higher than the last), heart rate (the tops of zones 1 to 6 in whole bpm, each higher than the last, all below max heart rate; zone 7 runs to max) and breathing (the tops of zones 1 to 4 in litres of air a minute, to one decimal place, each higher than the last; zone 5 is open; zone 2's top is the first breathing threshold, VT1, and zone 3's top the second, VT2).
+
+How to weigh the evidence:
+- A test in the last eight weeks is the anchor. Where it has breathing thresholds, VT1 marks the top of endurance (power zone 2 and heart-rate zone 2) and VT2 the top of threshold (power zone 4 and heart-rate zone 4); place zone 3's top between them. Breathing thresholds stand in for the lactate thresholds (VT1 for LT1, VT2 for LT2).
+- The riding history checks the test. One test can be off: a tired day, a strap sitting differently, a ramp that suits the rider better or worse than steady riding. Use the heart rate and the breathing measured in each power band over the window, drift on steady rides and the judged hard sessions to confirm each anchored boundary; where weeks of riding clearly disagree with the test, follow the riding and say why in "why".
+- The current tables are only for comparison. Do not keep a boundary because it is the current one; keep it when the evidence supports it. With no recent test, the history decides; where it is too thin to move a boundary, leave that boundary as it is and say so.
+- Zones the evidence cannot see (power zones 5 and 6, heart-rate zones 5 and 6) keep the rider's own shares of the threshold.
+
+When you move a boundary, give one plain sentence for it in "why", naming the table, the zone and the number, from and to. Where the tables disagree about the same effort, say in "trust" which to trust and why, in one or two sentences; otherwise say they agree. Give breathing zones only when there is a test with breathing thresholds or at least four rides with breathing in the window; otherwise give an empty list for "breathTops" and say in "why" that there is not enough breathing data yet (and that a ramp test with the strap, or more rides with it, would settle them). If the evidence is too thin overall, set "confidence" to "thin" and say in "why" what would be enough. Say in "needsTest" if a ramp test would settle something; otherwise leave it empty.`;
   return `${coachIntro(profile, date)} You are reviewing the rider's training thresholds. Write to the rider in the second person, in plain English: every number with its unit, no abbreviations a non-specialist would not know (say "training load", not "CTL"). Answer in the JSON form given.
 
 ${ask}
@@ -320,12 +328,13 @@ const ZONE_SCHEMA = {
   properties: {
     powerTops: { type: 'array', items: { type: 'integer' }, description: 'Tops of power zones 1-6 in watts.' },
     hrTops: { type: 'array', items: { type: 'integer' }, description: 'Tops of heart-rate zones 1-6 in bpm.' },
+    breathTops: { type: 'array', items: { type: 'number' }, description: 'Tops of breathing zones 1-4 in litres a minute; empty when there is not enough breathing data.' },
     why: { type: 'array', items: { type: 'string' }, description: 'One sentence per boundary moved; or what evidence would be enough.' },
     trust: { type: 'string', description: 'Where the two tables disagree, which to trust and why; or that they agree.' },
     confidence: CONFIDENCE,
     needsTest: { type: 'string', description: 'What a ramp test would settle; empty when nothing.' },
   },
-  required: ['powerTops', 'hrTops', 'why', 'trust', 'confidence', 'needsTest'],
+  required: ['powerTops', 'hrTops', 'breathTops', 'why', 'trust', 'confidence', 'needsTest'],
   additionalProperties: false,
 };
 
@@ -333,6 +342,13 @@ const ascending = (xs: unknown): number[] | undefined => {
   if (!Array.isArray(xs) || xs.length !== 6) return undefined;
   const n = xs.map((x) => Math.round(Number(x)));
   for (let i = 0; i < 6; i++) if (!(n[i] > 0) || (i > 0 && n[i] <= n[i - 1])) return undefined;
+  return n;
+};
+/** Four rising breathing tops in L/min (one decimal place), or undefined. */
+const breathAscending = (xs: unknown): number[] | undefined => {
+  if (!Array.isArray(xs) || xs.length !== 4) return undefined;
+  const n = xs.map((x) => Math.round(Number(x) * 10) / 10);
+  for (let i = 0; i < 4; i++) if (!(n[i] > 0) || (i > 0 && n[i] <= n[i - 1])) return undefined;
   return n;
 };
 const conf = (x: unknown): Confidence => (x === 'settled' || x === 'mixed' || x === 'thin' ? x : 'mixed');
@@ -362,8 +378,9 @@ export function readThreshold(mode: ThresholdMode, data: { content?: Array<{ typ
   const powerTops = ascending(v.powerTops);
   let hrTops = ascending(v.hrTops);
   if (hrTops && limits.maxHr && hrTops[5] >= limits.maxHr) hrTops = undefined;
+  const breathTops = breathAscending(v.breathTops);
   const why = Array.isArray(v.why) ? v.why.map(str).filter((x): x is string => !!x) : [];
-  return { mode, powerTops, hrTops, why, trust: str(v.trust) ?? '', confidence: conf(v.confidence), needsTest: str(v.needsTest), failed: !powerTops && !hrTops && !why.length ? 'the reply had no zones and no reasons' : undefined };
+  return { mode, powerTops, hrTops, breathTops, why, trust: str(v.trust) ?? '', confidence: conf(v.confidence), needsTest: str(v.needsTest), failed: !powerTops && !hrTops && !breathTops && !why.length ? 'the reply had no zones and no reasons' : undefined };
 }
 
 /** Ask the coach for an FTP estimate or a zone analysis, from the evidence lines. */

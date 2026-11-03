@@ -259,3 +259,50 @@ function round3(n: number): number {
 function round5(n: number): number {
   return Math.round(n * 100000) / 100000;
 }
+
+// ---- breathing (Step 4, 3 Nov 2026) ------------------------------------------
+
+/** The breathing zones' names: below and up to the first threshold, between the two, just above the second, and the top. */
+export const BREATH_ZONE_NAMES = ['Easy', 'Endurance', 'Tempo', 'Threshold', 'Max'] as const;
+
+/** One breathing zone in litres a minute: low inclusive, high exclusive (Infinity for zone 5). */
+export interface BreathZone { n: number; name: string; low: number; high: number }
+
+/** Four tops that go up, every one positive. */
+export function validBreathTops(tops?: number[]): tops is number[] {
+  return !!tops && tops.length === 4 && tops.every((t, i) => t > 0 && (i === 0 || t > tops[i - 1]));
+}
+
+/** The standard breathing shares from the two thresholds (zone 2 top at VT1, zone 3 top at VT2), as whole percent of VT2. */
+export function standardBreathPcts(vt1Ve: number, vt2Ve: number): number[] | undefined {
+  if (!(vt1Ve > 0) || !(vt2Ve > vt1Ve)) return undefined;
+  const r = vt1Ve / vt2Ve;
+  const pcts = [Math.round(80 * r), Math.round(100 * r), 100, 115];
+  return validBreathTops(pcts) ? pcts : undefined;
+}
+
+/**
+ * The rider's breathing zones in L/min, or undefined when the second threshold
+ * is not set. Percent mode multiplies the shares by VT2; absolute mode uses
+ * the tops as they are; anything missing or out of order falls back to the
+ * standard shares from the thresholds.
+ */
+export function breathZones(p: Pick<Profile, 'vt1Ve' | 'vt2Ve' | 'breathZoneMode' | 'breathZonePcts' | 'breathZoneTops'>): BreathZone[] | undefined {
+  const vt2 = p.vt2Ve;
+  if (!vt2 || vt2 <= 0) return undefined;
+  let tops: number[] | undefined;
+  if (p.breathZoneMode === 'abs' && validBreathTops(p.breathZoneTops)) tops = p.breathZoneTops;
+  else if (validBreathTops(p.breathZonePcts)) tops = p.breathZonePcts.map((x) => (x / 100) * vt2);
+  else if (validBreathTops(p.breathZoneTops)) tops = p.breathZoneTops;
+  else {
+    const std = standardBreathPcts(p.vt1Ve ?? 0, vt2) ?? [60, 75, 100, 115];
+    tops = std.map((x) => (x / 100) * vt2);
+  }
+  return BREATH_ZONE_NAMES.map((name, i) => ({ n: i + 1, name, low: i === 0 ? 0 : Math.round(tops![i - 1] * 10) / 10, high: i < 4 ? Math.round(tops![i] * 10) / 10 : Infinity }));
+}
+
+/** The zone a ventilation falls in (1-5), or undefined with no table. */
+export function breathZoneOf(ve: number, zones: BreathZone[] | undefined): number | undefined {
+  if (!zones) return undefined;
+  return zones.find((z) => ve >= z.low && ve < z.high)?.n ?? 5;
+}

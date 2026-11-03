@@ -14,6 +14,15 @@ import { LIBRARY } from '../library/workouts';
 import { fitnessFromRides, fitnessOn, readinessToday } from './derived';
 import { findWorkout, type AppData } from './store';
 
+/** Why a test's breathing threshold is missing, for the coach's evidence. */
+const BREATH_MISSING_FOR_COACH: Record<string, string | undefined> = {
+  patchy: 'the strap\'s readings had gaps, no thresholds read',
+  'too-short': 'the ramp was too short to read thresholds',
+  none: 'no clear bend in breathing',
+  'no-vt1': 'the first threshold did not show',
+  'no-vt2': 'the second threshold did not show (the test may have stopped before it)',
+};
+
 const BAND_WORDS: Record<string, string> = { go: 'Ready', ease: 'Ease off a little', easy: 'Keep it easy', rest: 'Rest' };
 
 /** Every test the rider has a result for, with its date: kept results (synced) first, then recordings on this computer. */
@@ -23,7 +32,10 @@ export async function loadTests(data: AppData): Promise<TestInput[]> {
   const recs = await db.recordings.filter((r) => !!r.test && r.status !== 'discarded').toArray();
   const out: TestInput[] = [];
   const seen = new Set<string>();
-  const take = (date: string, r: TestResult) => out.push({ date, kind: r.kind, ftpEstimate: r.ftpEstimate, lthrEstimate: r.lthrEstimate, vo2maxMlKgMin: r.vo2maxMlKgMin, ftpAction: r.ftpAction });
+  const take = (date: string, r: TestResult) => out.push({
+    date, kind: r.kind, ftpEstimate: r.ftpEstimate, lthrEstimate: r.lthrEstimate, vo2maxMlKgMin: r.vo2maxMlKgMin, ftpAction: r.ftpAction,
+    ...(r.breath ? { vt1: r.breath.vt1, vt2: r.breath.vt2, peakVe: r.breath.peakVe, breathMissing: BREATH_MISSING_FOR_COACH[r.breath.missing ?? ''] } : {}),
+  });
   for (const s of kept) {
     const id = s.key.slice(prefix.length);
     const ride = data.rides.find((x) => x.id === id);

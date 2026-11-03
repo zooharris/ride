@@ -10,7 +10,7 @@ import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { autoBackup, downloadBackup, restoreBackup } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
-import { footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, tableOf, validTops, type Zone, type ZoneMode } from '../../engine/zones';
+import { breathZones, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, standardBreathPcts, tableOf, validBreathTops, validTops, type Zone, type ZoneMode } from '../../engine/zones';
 import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME } from '../../appName';
@@ -30,7 +30,7 @@ export function Settings({ data }: { data: AppData }) {
   const [p, setP] = useState<Profile>(data.profile!);
   const hasKey = useHasKey();
   // A card that saved numbers itself (Update, Apply, Use): bring those into this page's copy, so Save never puts the old ones back.
-  const SAVED_BY_CARDS = ['ftp', 'ftpSetOn', 'lthr', 'lthrSetOn', 'powerZoneMode', 'powerZonePcts', 'powerZoneWatts', 'hrZoneMode', 'hrZonePcts', 'hrZoneTops', 'updatedAt'] as const;
+  const SAVED_BY_CARDS = ['ftp', 'ftpSetOn', 'lthr', 'lthrSetOn', 'powerZoneMode', 'powerZonePcts', 'powerZoneWatts', 'hrZoneMode', 'hrZonePcts', 'hrZoneTops', 'vt1Ve', 'vt2Ve', 'breathSetOn', 'breathZoneMode', 'breathZonePcts', 'breathZoneTops', 'updatedAt'] as const;
   const takeSaved = async () => {
     const stored = await db.profile.get('me');
     if (!stored) return;
@@ -267,6 +267,17 @@ export function Settings({ data }: { data: AppData }) {
           setP({ ...p, ...(pt ? { powerZoneMode: 'abs' as const, powerZoneWatts: pt } : {}), ...(ht ? { hrZoneMode: 'abs' as const, hrZoneTops: ht } : {}) });
           toast({ ok: true, text: 'The suggested zones are in the tables above. Change any number, then press Save.' });
         }} />}
+
+        <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+          <b class="small">Breathing (with a breathing strap)</b>
+          <p class="muted small" style="margin:4px 0 10px">Your two breathing thresholds, in litres of air a minute. A Ramp Test ridden with the strap sets them; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
+          <div class="form">
+            <div class="field"><label>First threshold, VT1 (L/min)</label><input type="number" step="0.1" value={p.vt1Ve ?? ''} onInput={(e) => setP({ ...p, vt1Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} /></div>
+            <div class="field"><label>Second threshold, VT2 (L/min)</label><input type="number" step="0.1" value={p.vt2Ve ?? ''} onInput={(e) => setP({ ...p, vt2Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} />
+              {p.breathSetOn && <span class="faint small">Set {fmtDate(p.breathSetOn, { month: 'long', day: 'numeric' })}.</span>}</div>
+          </div>
+          {p.vt2Ve ? <BreathEditor p={p} setP={setP} /> : <p class="faint small" style="margin:8px 0 0">The breathing zone table appears once the second threshold is set.</p>}
+        </div>
 
         </div>
 
@@ -601,3 +612,51 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
   );
 }
 
+
+/**
+ * The breathing zone table (Step 4, 3 Nov 2026): the tops of zones 1 to 4,
+ * zone 5 open, entered as shares of the second threshold or in litres a
+ * minute; the table always shows both. "Standard" puts back the shares the
+ * two thresholds give (zone 2 ends at VT1, zone 3 at VT2).
+ */
+function BreathEditor({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
+  const zones = breathZones(p)!;
+  const vt2 = p.vt2Ve!;
+  const mode: ZoneMode = p.breathZoneMode ?? 'pct';
+  const tops = zones.slice(0, 4).map((z) => z.high);
+  const pcts = tops.map((t) => Math.round((t / vt2) * 100));
+  const entered = mode === 'pct' ? (p.breathZonePcts ?? pcts) : (p.breathZoneTops ?? tops);
+  const ok = validBreathTops(entered);
+  const set = (i: number, v: number) => { const next = [...entered]; next[i] = v; setP(mode === 'pct' ? { ...p, breathZoneMode: 'pct', breathZonePcts: next } : { ...p, breathZoneMode: 'abs', breathZoneTops: next }); };
+  const custom = !!(p.breathZonePcts || p.breathZoneTops);
+  const std = standardBreathPcts(p.vt1Ve ?? 0, vt2);
+  const one = (x: number) => Math.round(x * 10) / 10;
+  return (
+    <div style="margin-top:14px">
+      <div class="row between wrap" style="align-items:center;gap:10px;margin-bottom:6px">
+        <b class="small">Breathing zones</b>
+        <div class="seg">
+          <button class={mode === 'pct' ? 'on' : ''} onClick={() => setP({ ...p, breathZoneMode: 'pct', breathZonePcts: pcts })}>% of VT2</button>
+          <button class={mode === 'abs' ? 'on' : ''} onClick={() => setP({ ...p, breathZoneMode: 'abs', breathZoneTops: tops.map(one) })}>Litres a minute</button>
+        </div>
+      </div>
+      <table class={`steps zone-ed mode-${mode}`}>
+        <tr><td /><td class="faint small">Zone</td><td class="r faint small zone-pct">% of VT2</td><td class="r faint small zone-abs">Breathing</td><td class="r faint small">Top ({mode === 'pct' ? '%' : 'L/min'})</td></tr>
+        {zones.map((z, i) => (
+          <tr key={i}>
+            <td><span class="z" style={`background:${ZONE_VAR[Math.min(6, [0, 1, 3, 4, 6][i])]}`} /></td>
+            <td>Z{i + 1} {z.name}</td>
+            <td class="r num muted zone-pct">{i < 4 ? `${i === 0 ? 'up to ' : `${pcts[i - 1]}–`}${pcts[i]}%` : `${pcts[3]}%+`}</td>
+            <td class="r num zone-abs">{i < 4 ? `${i === 0 ? 'up to ' : `${one(z.low)}–`}${one(z.high)}` : `${one(z.low)}+`}</td>
+            <td class="r">{i < 4 ? <input type="number" step={mode === 'pct' ? '1' : '0.1'} class="num zone-top" style="text-align:right" value={entered[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">open</span>}</td>
+          </tr>
+        ))}
+      </table>
+      <div class="row wrap" style="margin-top:8px;gap:12px;align-items:center">
+        {!ok && <span class="small" style="color:var(--bad)">Each top must be higher than the one before; until it is, the standard shares are used.</span>}
+        <span class="faint small">{mode === 'pct' ? 'Shares of VT2: change VT2 and these move with it.' : 'Litres a minute: these stay where you put them when VT2 changes.'}</span>
+        {custom && std && <button class="btn sm quiet" style="margin-left:auto" onClick={() => setP({ ...p, breathZoneMode: undefined, breathZonePcts: undefined, breathZoneTops: undefined })}>Back to standard shares</button>}
+      </div>
+    </div>
+  );
+}

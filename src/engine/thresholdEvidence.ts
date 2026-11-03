@@ -8,7 +8,8 @@
 import type { Profile, Ride } from './types';
 import { addDays } from './load';
 import { CURVE_SECONDS, aerobicPoints } from './progress';
-import { ladderTops, powerZone, rideHrZones, ridePowerZones } from './zones';
+import { breathZones, ladderTops, powerZone, rideHrZones, ridePowerZones } from './zones';
+import type { VeAtPower } from './breathOffset';
 import { fitCp, FIT_SECONDS, FTP_OF_CP, type CpFit } from './cpFit';
 import { offVerdict, type SessionVerdict } from './sessionVerdict';
 import { aerobicTrend } from './aerobicTrend';
@@ -33,8 +34,20 @@ export interface CurveInput {
   ftpAtBuild?: number;
   lthrAtBuild?: number;
   verdict?: SessionVerdict;
+  /** Step 4: median ventilation (L/min) in each band of FTP on this ride, when a breathing strap was worn. */
+  veAtPower?: VeAtPower[];
+  /** The strap's reading against the rider's normal on this ride. */
+  breathOffset?: number;
 }
-export interface TestInput { date: string; kind: 'ramp' | '20min'; ftpEstimate?: number; lthrEstimate?: number; vo2maxMlKgMin?: number; ftpAction?: 'updated' | 'kept' }
+export interface TestInput {
+  date: string; kind: 'ramp' | '20min'; ftpEstimate?: number; lthrEstimate?: number; vo2maxMlKgMin?: number; ftpAction?: 'updated' | 'kept';
+  /** Step 4: the breathing thresholds the test found (power, heart rate, ventilation), and its peak ventilation. */
+  vt1?: { watts: number; hr?: number; ve: number; certainty: 'clear' | 'unsure' };
+  vt2?: { watts: number; hr?: number; ve: number; certainty: 'clear' | 'unsure' };
+  peakVe?: number;
+  /** Why a threshold is missing, when one is. */
+  breathMissing?: string;
+}
 
 export interface ThresholdEvidence {
   today: string;
@@ -69,6 +82,8 @@ export interface ThresholdEvidence {
   sessions: Array<{ date: string; name?: string; verdict: SessionVerdict }>;
   /** Which sources the estimate came from, in words. */
   sources: string[];
+  /** Step 4: rides in the window with breathing. */
+  breathRides: number;
   lines: string[];
 }
 
@@ -173,6 +188,20 @@ export function gatherEvidence(o: {
     bandSec[k] += b.seconds; bandBeats[k] += b.hr * b.seconds;
   }
   const hrBands = BANDS.map(([lo, hi], k) => ({ lo, hi, minutes: Math.round(bandSec[k] / 60), hr: bandSec[k] ? Math.round(bandBeats[k] / bandSec[k]) : 0 })).filter((b) => b.minutes >= 3);
+  // Step 4: breathing in each power band over the window, from the rides that carried a strap (each ride's
+  // bands re-scaled from the FTP it was read with, its reading corrected by the strap's offset that day).
+  const breathCurves = curves.filter((c) => c.veAtPower?.length);
+  const veSec = BANDS.map(() => 0), veSum = BANDS.map(() => 0);
+  for (const c of breathCurves) for (const b of c.veAtPower!) {
+    const f = ((b.lo + b.hi) / 2) * ((c.ftpAtBuild ?? p.ftp) / Math.max(1, p.ftp));
+    const k = BANDS.findIndex(([lo, hi]) => f >= lo && f < hi);
+    if (k < 0) continue;
+    const ve = b.ve / (c.breathOffset && c.breathOffset > 0 ? c.breathOffset : 1);
+    veSec[k] += b.seconds; veSum[k] += ve * b.seconds;
+  }
+  const veBands = BANDS.map(([lo, hi], k) => ({ lo, hi, minutes: Math.round(veSec[k] / 60), ve: veSec[k] ? Math.round((veSum[k] / veSec[k]) * 10) / 10 : 0 })).filter((b) => b.minutes >= 3);
+  const bz = breathZones(p);
+  const vtWords = (name: string, v?: TestInput['vt1']) => (v ? `${name} at ${v.watts} W${v.hr ? `, ${v.hr} bpm` : ''}, ${v.ve} L/min${v.certainty === 'unsure' ? ' (less certain)' : ''}` : '');
   const judgedDates = new Set(sessions.map((x) => x.date));
   const verdictWords = (v: SessionVerdict) => `${v.kind === 'held' ? 'held' : v.kind === 'short' ? 'fell short' : 'a little under'}${v.hr ? `, heart rate ${v.hr} on the last interval` : ''} (${v.intervals} interval${v.intervals === 1 ? '' : 's'}, ${v.work} min of hard work planned)`;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -181,14 +210,16 @@ export function gatherEvidence(o: {
     `FTP setting now: ${p.ftp} W${p.ftpSetOn ? `, set ${p.ftpSetOn}` : ''}. Threshold heart rate: ${p.lthr} bpm${p.lthrSetOn ? `, set ${p.lthrSetOn}` : ''}. Max heart rate ${p.maxHr} bpm. Weight ${Math.round(p.weightKg)} kg.`,
     `Power zone tops now (zones 1-6, watts): ${ladderTops(ladder, p.ftp).join(', ')} (${p.powerZoneMode === 'abs' ? 'set in watts' : 'set as shares of FTP'}).`,
     `Heart-rate zone tops now (zones 1-6, bpm; zone 7 to max): ${ladderTops(rideHrZones(p), p.lthr).join(', ')} (${p.hrZoneMode === 'abs' ? 'set in bpm' : 'set as shares of threshold heart rate'}).`,
+    bz ? `Breathing thresholds now: first (VT1) ${p.vt1Ve ?? '?'} L/min, second (VT2) ${p.vt2Ve} L/min${p.breathSetOn ? `, set ${p.breathSetOn}` : ''}. Breathing zone tops now (zones 1-4, L/min; zone 5 open): ${bz.slice(0, 4).map((z) => z.high).join(', ')}.` : 'Breathing zones now: none set yet.',
     bests.length ? `Best power in the window: ${bests.map((b) => `${b.label} ${b.watts} W (${b.date}${b.rideName ? `, ${b.rideName}` : ''}${judgedDates.has(b.date) ? ', on the day of a planned hard session' : ''})`).join('; ')}.` : 'Best power in the window: none recorded.',
     fit ? `The app's critical power fit through the best ${fit.points.map((x) => `${x.seconds / 60} min ${x.watts} W`).join(', ')}: sustainable level (critical power) ${fit.cp} W, reserve ${Math.round(fit.wPrime / 1000)} kJ, largest miss ${Math.round(fit.worstMiss * 100)}%; ${fit.ok ? `a good fit, FTP about ${fit.ftp} W (${Math.round(FTP_OF_CP * 100)}% of critical power)` : `not trustworthy: ${fit.problem}`}.` : 'Critical power fit: not enough hard efforts between 2 and 30 minutes to fit.',
-    tests.length ? `Tests in the last 12 weeks: ${tests.map((t) => `${t.kind === 'ramp' ? 'ramp test' : '20-minute test'} ${t.date}: FTP estimate ${t.ftpEstimate ?? '?'} W${t.lthrEstimate ? `, threshold heart rate ${t.lthrEstimate} bpm` : ''}${t.vo2maxMlKgMin ? `, VO2max ${t.vo2maxMlKgMin} ml/kg/min` : ''}${t.ftpAction ? ` (rider ${t.ftpAction} their FTP)` : ''}`).join('; ')}.` : 'Tests in the last 12 weeks: none.',
+    tests.length ? `Tests in the last 12 weeks: ${tests.map((t) => `${t.kind === 'ramp' ? 'ramp test' : '20-minute test'} ${t.date}: FTP estimate ${t.ftpEstimate ?? '?'} W${t.lthrEstimate ? `, threshold heart rate ${t.lthrEstimate} bpm` : ''}${t.vo2maxMlKgMin ? `, VO2max ${t.vo2maxMlKgMin} ml/kg/min` : ''}${t.vt1 || t.vt2 ? `; breathing thresholds: ${[vtWords('first (VT1)', t.vt1), vtWords('second (VT2)', t.vt2)].filter(Boolean).join('; ')}` : ''}${t.peakVe ? `; peak breathing ${t.peakVe} L/min` : ''}${t.breathMissing ? `; breathing: ${t.breathMissing}` : ''}${t.ftpAction ? ` (rider ${t.ftpAction} their FTP)` : ''}`).join(' | ')}.` : 'Tests in the last 12 weeks: none.',
     (() => { const s = share('powerZoneSeconds'); return s ? `Riding time by power zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
     (() => { const s = share('hrZoneSeconds'); return s ? `Riding time by heart-rate zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
     sessions.length ? `Planned hard sessions, judged against their own steps (held: every interval in its band, the last of a set within 8% of the first; fell short: an interval more than 5% under its band, or the last of a set more than 8% below the first; heart rate high means 105% of threshold heart rate or more on the last interval, low 95% or less): ${sessions.map((x) => `${x.date}${x.name ? ` ${x.name}` : ''}: ${verdictWords(x.verdict)}`).join('; ')}.` : 'Planned hard sessions judged in the window: none.',
     trend.weeks.length ? `Power at a steady heart rate (70-80% of threshold heart rate, after the first 10 minutes), weekly median of rides with 15+ steady minutes, weeks with two such rides or more: ${trend.weeks.map((w) => `week of ${w.start} ${w.watts} W (${w.rides} rides)`).join('; ')}.${trend.recent != null ? ` Last three weeks ${trend.recent} W against ${trend.earlier} W six weeks before${trend.dropped ? ': down 5% or more' : ''}.` : ''}` : '',
     hrBands.length ? `Heart rate measured in each power band over the window (after the first 10 minutes of each ride): ${hrBands.map((b) => `${Math.round(b.lo * 100)}-${Math.round(b.hi * 100)}% of FTP (${Math.round(b.lo * p.ftp)}-${Math.round(b.hi * p.ftp)} W): ${b.hr} bpm over ${b.minutes} min`).join('; ')}.` : '',
+    breathCurves.length ? `Rides with breathing in the window: ${breathCurves.length}.${veBands.length ? ` Breathing measured in each power band (after the first 10 minutes of each ride, corrected for how the strap sat that day): ${veBands.map((b) => `${Math.round(b.lo * 100)}-${Math.round(b.hi * 100)}% of FTP (${Math.round(b.lo * p.ftp)}-${Math.round(b.hi * p.ftp)} W): ${b.ve} L/min over ${b.minutes} min`).join('; ')}.` : ''}` : 'Rides with breathing in the window: none.',
     !hrBands.length && hrByPowerZone.length ? `Typical average heart rate on rides of 20 minutes or more whose average power fell in each power zone: ${hrByPowerZone.map((x) => `zone ${x.zone} ${x.hr} bpm (${x.rides} ride${x.rides === 1 ? '' : 's'})`).join('; ')}.` : '',
     steady.length ? `Steady rides of an hour or more (efficiency factor, heart-rate drift): ${steady.map((x) => `${x.date} ${x.name}: EF ${x.ef?.toFixed(2) ?? '?'}, drift ${x.drift != null ? `${x.drift.toFixed(1)}%` : '?'}`).join('; ')}.` : '',
     notes.length ? `The rider's notes mentioning illness or tiredness: ${notes.join(' | ')}.` : '',
@@ -199,7 +230,7 @@ export function gatherEvidence(o: {
   return {
     today, from, ridesWithPower: withPower.length, thin, bests, fit, basis, tests,
     powerZoneShare: share('powerZoneSeconds'), hrZoneShare: share('hrZoneSeconds'), hrByPowerZone, steady, notes,
-    estimate, confidence, proven, sources, lines, signs, sessions,
+    estimate, confidence, proven, sources, lines, signs, sessions, breathRides: breathCurves.length,
     everTested: o.tests.some((t) => t.date <= today), lastTestDate: o.tests.map((t) => t.date).filter((d) => d <= today).sort().pop(),
   };
 }

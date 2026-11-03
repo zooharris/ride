@@ -557,7 +557,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     if (!testKind) return undefined;
     const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg) : twentyMinResult(rec, timeline);
     const was = rec.test;
-    return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction };
+    return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction, zonesAction: was?.zonesAction };
   });
   useEffect(() => { if (test) void patchRecording(rec.id, { test }); }, []);
   const changeTest = async (r: TestResult) => {

@@ -1409,6 +1409,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .test-res .test-row { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 10px; }
 .test-res.compact .test-lead { font-size: 15px; }
 .test-res.compact .test-lead b { font-size: 17px; }
+.test-res .btn { white-space: normal; max-width: 100%; }
 .test-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line-2); color: var(--ink-3); font-size: 11px; font-weight: 700; font-style: normal; cursor: help; vertical-align: 1px; }
 .tests-table { width: 100%; }
 .tests-table th, .tests-table td { white-space: normal; }
@@ -1423,6 +1424,12 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .coach-zt caption { text-align: left; font-weight: 600; font-size: 13px; color: var(--ink-2); padding-bottom: 4px; }
 .coach-zt th, .coach-zt td { padding: 3px 8px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
 .coach-zt tr.moved td { font-weight: 700; }
+/* Step 4 (3 Nov 2026): the breathing thresholds on a test's results, one row each: name, then power, heart rate and breathing. */
+.vt-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.vt-row:last-of-type { border-bottom: none; }
+.vt-nums { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 3px; font-size: 15px; }
+.vt-nums b { font-size: 18px; }
+.vt-nums .pill { padding: 1px 8px; }
 
 /* Library, Strength tab (30 Oct 2026): two switches, then sessions grouped by what they train. */
 .str-switches { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 0 0 10px; }

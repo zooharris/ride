@@ -14,12 +14,14 @@ const ramp = LIBRARY.find((w) => w.id === 'lib-ramp')!;
 const t20 = LIBRARY.find((w) => w.id === 'lib-20min')!;
 
 /** Ride the ramp in the engine with a rider who holds every target, then press Stop at `stopAt` seconds into the workout. */
-function rideRamp(stopAt: number, hr?: (target: number) => number) {
+function rideRamp(stopAt: number, hr?: (target: number) => number, ve?: (target: number) => number) {
   const tl = buildTimeline(ramp, profile, { rampStep: 20 });
   const e = new RideEngine({ timeline: tl, ftp: profile.ftp, basis: 'power', mode: 'erg', autoPause: false, guard: false }, 0);
   for (let t = 1; t <= 3; t++) e.tick(t * 1000, { watts: 0, cadence: 90 });
   let t = 4;
-  while (e.position < stopAt) { const w = e.ergTarget()!; e.tick(t++ * 1000, { watts: w, cadence: 90, bpm: hr?.(w) }); }
+  // Breathing follows the target with a 20-second lag, as lungs do.
+  let veNow = ve ? ve(0) : 0;
+  while (e.position < stopAt) { const w = e.ergTarget()!; if (ve) veNow += (ve(w) - veNow) / 20; e.tick(t++ * 1000, { watts: w, cadence: 90, bpm: hr?.(w), ...(ve ? { ve: veNow, br: 20 + veNow / 6 } : {}) }); }
   e.endTest(t * 1000, 'rider');
   for (let i = 0; i < 5; i++) { const w = e.ergTarget()!; e.tick(t++ * 1000, { watts: w, cadence: 90, bpm: hr?.(w) }); }
   const rec = { samples: e.samples, rampStep: 20, rampEndAt: e.rampEndAt, events: e.events } as Pick<Recording, 'samples' | 'rampStep' | 'rampEndAt' | 'events'>;
@@ -68,6 +70,17 @@ describe('the Ramp Test’s results (C1)', () => {
   it('no heart-rate strap, no heart rate at FTP', () => {
     const plain = rideRamp(stopAt);
     expect(rampResult(plain.rec, plain.tl).hrAtFtp).toBeUndefined();
+  });
+  it('with a breathing strap: both breathing thresholds, and threshold heart rate from the second (Step 4)', () => {
+    // Bends at 200 W and 270 W; the ramp is stopped 20 s into the 324 W step.
+    const b = rideRamp(stopAt, (w) => Math.round(100 + w / 4), (w) => 15 + 0.15 * w + 0.25 * Math.max(0, w - 200) + 0.7 * Math.max(0, w - 270));
+    const res = rampResult(b.rec, b.tl, profile.weightKg);
+    expect(Math.abs(res.breath!.vt1!.watts - 200)).toBeLessThanOrEqual(20);
+    expect(Math.abs(res.breath!.vt2!.watts - 270)).toBeLessThanOrEqual(20);
+    expect(res.lthrEstimate).toBe(res.breath!.vt2!.hr);
+    expect(res.ftpEstimate).toBe(r.ftpEstimate);
+    expect(testLines(res).some((l) => l.startsWith('Second breathing threshold'))).toBe(true);
+    expect(r.breath).toBeUndefined();
   });
   it('a stop exactly on a step boundary: peak is that last full step', () => {
     const b = rideRamp(300 + 10 * 60);

@@ -35,6 +35,20 @@ export interface Profile {
   footHrZonePcts?: number[];
   /** Top of heart-rate zones 1..6 in bpm on foot. */
   footHrZoneTops?: number[];
+  /**
+   * Breathing (Step 4, 3 Nov 2026): the two breathing thresholds in litres of
+   * air a minute, set by a Ramp Test ridden with a breathing strap or by hand,
+   * and the breathing zone table: the tops of zones 1 to 4 (zone 5 open), as
+   * whole percent of the second threshold ('pct', moving with it) or in L/min
+   * ('abs'). Absent: no breathing zones yet. Not sent to Intervals.icu, which
+   * has no breathing zones; carried between the rider's devices with the rest.
+   */
+  vt1Ve?: number;
+  vt2Ve?: number;
+  breathSetOn?: string;
+  breathZoneMode?: 'pct' | 'abs';
+  breathZonePcts?: number[];
+  breathZoneTops?: number[];
   weightKg: number;
   birthYear?: number;
   /** Threshold run pace, seconds per kilometre (shown per mile or km by units). Optional: runs are by heart rate; pace is a hint. */

@@ -90,3 +90,27 @@ describe('the evidence', () => {
     expect(weightedMedian([{ value: 200, weight: 1 }, { value: 240, weight: 2 }])).toBe(240);
   });
 });
+
+describe('breathing in the evidence (Step 4)', () => {
+  it('a test’s breathing thresholds, the breathing zones now, and breathing in each power band from rides with a strap', () => {
+    const withStrap = (id: string, date: string): CurveInput => ({ ...curveFor(id, date, 240, 18000), ftpAtBuild: 225, veAtPower: [{ lo: 0.6, hi: 0.7, seconds: 1200, ve: 48 }, { lo: 0.9, hi: 1.0, seconds: 600, ve: 80 }] });
+    const e = gatherEvidence({
+      ...base, profile: { ...profile, vt1Ve: 55, vt2Ve: 95 },
+      curves: [withStrap('a', '2026-10-20'), withStrap('b', '2026-10-24')],
+      tests: [{ date: '2026-10-27', kind: 'ramp', ftpEstimate: 230, vt1: { watts: 180, hr: 140, ve: 55, certainty: 'clear' }, vt2: { watts: 250, hr: 158, ve: 95, certainty: 'unsure' }, peakVe: 150 }],
+    });
+    const text = e.lines.join('\n');
+    expect(e.breathRides).toBe(2);
+    expect(text).toContain('first (VT1) at 180 W, 140 bpm, 55 L/min');
+    expect(text).toContain('second (VT2) at 250 W, 158 bpm, 95 L/min (less certain)');
+    expect(text).toContain('peak breathing 150 L/min');
+    expect(text).toContain('Breathing thresholds now: first (VT1) 55 L/min, second (VT2) 95 L/min');
+    expect(text).toContain('Rides with breathing in the window: 2.');
+    expect(text).toMatch(/60-70% of FTP \(135-158 W\): 48 L\/min over 40 min/);
+  });
+  it('no strap: says so plainly', () => {
+    const text = gatherEvidence(base).lines.join('\n');
+    expect(text).toContain('Breathing zones now: none set yet.');
+    expect(text).toContain('Rides with breathing in the window: none.');
+  });
+});

@@ -180,7 +180,7 @@ function TestZones({ r, profile, onChange, hasKey }: { r: TestResult; profile: P
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:2px">Zones from this test</p>
-      <p class="muted small" style="margin:0">Zone 2 ends at your first threshold and zone 4 at your second. The zones above those keep the shares of threshold you have now.{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
+      <p class="muted small" style="margin:0">In the power and heart-rate tables, zone 2 ends at your first threshold and zone 4 at your second; the zones above keep the shares of threshold you have now. In the breathing table, zones 2 and 3 end at your two thresholds.{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
       <div class="coach-tables">
         {z.powerTops && <ZoneCompare title="Power zones (top of each, watts)" now={nowP} next={z.powerTops} unit="W" />}
         {z.hrTops && <ZoneCompare title="Heart-rate zones (top of each, bpm)" now={nowH} next={z.hrTops} unit="bpm" />}

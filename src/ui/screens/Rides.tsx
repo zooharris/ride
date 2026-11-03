@@ -673,9 +673,10 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
   }, [r.id]);
   const [own, setOwn] = useState<TestResult | undefined>(undefined);
   if (rec === undefined || kept === undefined) return null;
-  const found: TestResult | undefined = own ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
+  const found: TestResult | undefined = own ?? (rec?.test?.breath && !kept?.breath ? rec.test : undefined) ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
   if (!found) return null;
-  // Step 4 (3 Nov 2026): a ramp ridden with a breathing strap but read before breathing thresholds existed is read for them now, once.
+  // Step 4 (3 Nov 2026): a ramp ridden with a breathing strap but read before breathing thresholds existed is read for them here,
+  // for showing; it is kept only when the rider acts on it (Update, Use these zones, Keep), so a rougher copy never replaces a better one.
   const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt) : undefined;
   const result: TestResult = late ? { ...found, ...breathFields(late), lthrEstimate: found.lthrEstimate ?? late.vt2?.hr, lthrBefore: found.lthrBefore ?? (late.vt2?.hr ? profile.lthr : undefined) } : found;
   const change = (x: TestResult) => {
@@ -683,6 +684,5 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
     void setSetting(testResultKey(r.id), x);
     if (rec) void patchRecording(rec.id, { test: x });
   };
-  if (late && !own) queueMicrotask(() => change(result));
   return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact /></div>;
 }

@@ -263,7 +263,7 @@ function round5(n: number): number {
 // ---- breathing (Step 4, 3 Nov 2026) ------------------------------------------
 
 /** The breathing zones' names: below and up to the first threshold, between the two, just above the second, and the top. */
-export const BREATH_ZONE_NAMES = ['Easy', 'Endurance', 'Tempo', 'Threshold', 'Max'] as const;
+export const BREATH_ZONE_NAMES = ['Easy', 'Endurance', 'Tempo', 'Above threshold', 'Max'] as const;
 
 /** One breathing zone in litres a minute: low inclusive, high exclusive (Infinity for zone 5). */
 export interface BreathZone { n: number; name: string; low: number; high: number }
@@ -285,15 +285,14 @@ export function standardBreathPcts(vt1Ve: number, vt2Ve: number): number[] | und
  * The rider's breathing zones in L/min, or undefined when the second threshold
  * is not set. Percent mode multiplies the shares by VT2; absolute mode uses
  * the tops as they are; anything missing or out of order falls back to the
- * standard shares from the thresholds.
+ * standard shares from the thresholds (never to the other mode's old table).
  */
 export function breathZones(p: Pick<Profile, 'vt1Ve' | 'vt2Ve' | 'breathZoneMode' | 'breathZonePcts' | 'breathZoneTops'>): BreathZone[] | undefined {
   const vt2 = p.vt2Ve;
   if (!vt2 || vt2 <= 0) return undefined;
   let tops: number[] | undefined;
   if (p.breathZoneMode === 'abs' && validBreathTops(p.breathZoneTops)) tops = p.breathZoneTops;
-  else if (validBreathTops(p.breathZonePcts)) tops = p.breathZonePcts.map((x) => (x / 100) * vt2);
-  else if (validBreathTops(p.breathZoneTops)) tops = p.breathZoneTops;
+  else if (p.breathZoneMode !== 'abs' && validBreathTops(p.breathZonePcts)) tops = p.breathZonePcts.map((x) => (x / 100) * vt2);
   else {
     const std = standardBreathPcts(p.vt1Ve ?? 0, vt2) ?? [60, 75, 100, 115];
     tops = std.map((x) => (x / 100) * vt2);

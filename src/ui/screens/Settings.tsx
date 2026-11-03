@@ -636,8 +636,8 @@ function BreathEditor({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
       <div class="row between wrap" style="align-items:center;gap:10px;margin-bottom:6px">
         <b class="small">Breathing zones</b>
         <div class="seg">
-          <button class={mode === 'pct' ? 'on' : ''} onClick={() => setP({ ...p, breathZoneMode: 'pct', breathZonePcts: pcts })}>% of VT2</button>
-          <button class={mode === 'abs' ? 'on' : ''} onClick={() => setP({ ...p, breathZoneMode: 'abs', breathZoneTops: tops.map(one) })}>Litres a minute</button>
+          <button class={mode === 'pct' ? 'on' : ''} onClick={() => mode !== 'pct' && setP({ ...p, breathZoneMode: 'pct', breathZonePcts: pcts })}>% of VT2</button>
+          <button class={mode === 'abs' ? 'on' : ''} onClick={() => mode !== 'abs' && setP({ ...p, breathZoneMode: 'abs', breathZoneTops: tops.map(one) })}>Litres a minute</button>
         </div>
       </div>
       <table class={`steps zone-ed mode-${mode}`}>

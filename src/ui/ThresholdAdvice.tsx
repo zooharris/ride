@@ -101,7 +101,7 @@ export function CoachZones({ profile, data, label = 'Analyse my zones', onEditFi
   const nowH = ladderTops(rideHrZones(profile), profile.lthr);
   const nowB = breathTopsOf(profile);
   const changed = (a?.powerTops && a.powerTops.some((t, i) => t !== nowP[i])) || (a?.hrTops && a.hrTops.some((t, i) => t !== nowH[i])) || (a?.breathTops && (!nowB || a.breathTops.some((t, i) => t !== nowB[i])));
-  const apply = async () => { setMsg(await applyZones(a?.powerTops, a?.hrTops, a?.breathTops ? { tops: a.breathTops, ...(profile.vt2Ve ? {} : { vt1Ve: a.breathTops[1], vt2Ve: a.breathTops[2] }) } : undefined)); await choose('applied'); onChanged?.(); };
+  const apply = async () => { setMsg(await applyZones(a?.powerTops, a?.hrTops, a?.breathTops ? { tops: a.breathTops, vt1Ve: a.breathTops[1], vt2Ve: a.breathTops[2] } : undefined)); await choose('applied'); onChanged?.(); };
   return (
     <div class="coach-adv">
       {busy ? <p class="muted small" style="margin:6px 0 0">Reading your rides…</p>

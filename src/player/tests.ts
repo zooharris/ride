@@ -262,10 +262,10 @@ export function testLines(r: TestResult): string[] {
     if (r.hrAtFtp != null) out.push(`Heart rate when passing the new FTP: ${r.hrAtFtp} bpm`);
     const b = r.breath;
     const vt = (name: string, v?: import('../engine/breathThresholds').VtPoint) => v ? out.push(`${name}: ${v.watts} W${v.hr ? `, ${v.hr} bpm` : ''}, breathing ${Math.round(v.ve)} L/min${v.certainty === 'unsure' ? ' (less certain)' : ''}`) : undefined;
-    vt('First breathing threshold (VT1, close to LT1)', b?.vt1);
-    vt('Second breathing threshold (VT2, close to LT2)', b?.vt2);
+    vt('First breathing threshold (VT1, close to the first lactate threshold)', b?.vt1);
+    vt('Second breathing threshold (VT2, close to the second lactate threshold)', b?.vt2);
     if (b?.peakVe != null) out.push(`Peak breathing: ${b.peakVe} L/min`);
-    if (r.lthrEstimate != null) out.push(`Threshold heart rate estimate: ${r.lthrEstimate} bpm (heart rate at the second breathing threshold)`);
+    if (r.lthrEstimate != null) out.push(`Threshold heart rate estimate: ${r.lthrEstimate} bpm (from the second breathing threshold)`);
     if (r.stepWatts) out.push(`Step size: ${r.stepWatts} W a minute${r.endedBy ? `, ended ${r.endedBy === 'auto' ? 'by itself when the power fell away' : 'by the rider'}` : ''}`);
   } else {
     if (r.testWatts != null) out.push(`Average power over the 20 minutes: ${r.testWatts} W`);

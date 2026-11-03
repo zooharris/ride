@@ -159,12 +159,14 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
   const time = o.time;
   const bins: Bin[] = [];
   let tried = 0;
+  // Breathing is read only up to the ramp's end: once the cool-down starts it falls, and pairing it with the last
+  // half-minute's power would bend the top of the line down.
   for (let a = o.from + LAG_SECONDS; a + BIN_SECONDS <= o.to; a += BIN_SECONDS) {
     tried++;
     const ve = windowMean(time, s.ve, a, a + BIN_SECONDS, true);
     // A minute of power around the moment 30 seconds earlier: smooths the ramp's one-minute stairs into the rise breathing follows.
     const mid = a + BIN_SECONDS / 2 - LAG_SECONDS;
-    const w = windowMean(time, o.watts, mid - 30, mid + 30, true);
+    const w = windowMean(time, o.watts, mid - 30, Math.min(mid + 30, o.to), true);
     if (!ok(ve.value) || ve.count < BIN_SECONDS / 2 || !ok(w.value)) continue;
     const hr = windowMean(time, o.hr, a, a + BIN_SECONDS, true).value;
     const br = windowMean(time, s.br, a, a + BIN_SECONDS, true).value;

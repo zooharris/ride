@@ -19,8 +19,8 @@ import { addDays } from './load';
  * Everything is measured against the signed-in rider's own settings and
  * history; nothing here is set for any one rider.
  */
-/** 2 (4 Nov 2026, Part A9): a planned test is marked, so its drift is not read. */
-export const READ_VERSION = 2;
+/** 3 (4 Nov 2026, Part A9): a planned test is marked, so its drift and its steps are not read. */
+export const READ_VERSION = 3;
 /** How far back activities are read. */
 export const READ_DAYS = 84;
 /** The steady part of a ride starts after the warm-up. */
@@ -267,7 +267,8 @@ export function readActivity(r: Ride, s: Streams | undefined, ctx: ReadContext):
 /** Each step ridden against its target. Steps the recording never reached are counted, not judged. */
 export function plannedRead(workout: Workout, basis: Basis, p: Profile, time: number[], watts?: number[], hr?: number[], laps?: RideLap[]): PlannedRead {
   const base: PlannedRead = { workoutId: workout.id, name: workout.name, steps: [], ...(workout.test ? { test: true } : {}) };
-  if (workout.kind !== 'ride' || !time.length) return base;
+  // Part A9: a test is read by its results, not step by step against targets (a ramp's steps are there to be failed).
+  if (workout.kind !== 'ride' || !time.length || workout.test) return base;
   const series = basis === 'power' ? watts : hr;
   if (!series?.length) return base;
   const a = analyseRide(workout, p, basis, time, watts, hr, laps);

@@ -117,7 +117,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
                       {zones && zones.some((z) => z > 0) && <ZoneStrip seconds={zones} power={!!r.powerZoneSeconds?.length} />}
                       <div class="act-load">
                         <div class="num" style="font-size:18px;line-height:22px" title={loadTitle(r)}>{r.notTraining ? 'not training' : <>{r.tssBasis === 'estimate' ? '≈ ' : ''}{r.tss ?? '–'}<span class="faint small" style="font-weight:400"> TSS</span></>}</div>
-                        {c && <div class="small" style="color:var(--ink-2)"><span class="sw-dot" style={`background:${verdictColor(c.verdict)}`} /> {verdictLabel(c.verdict)}</div>}
+                        {c && <div class="small" style="color:var(--ink-2)"><span class="sw-dot" style={`background:${verdictColor(c.verdict)}`} /> {w?.test ? 'Done' : verdictLabel(c.verdict)}</div>}
                         {!c && p?.status === 'completed' && <div style="margin-top:3px"><StatusPill status="done" /></div>}
                       </div>
                     </a>
@@ -280,7 +280,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       )}
       {c && w && p && (
         <div class="panel hub" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
-          <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
+          <b style={`color:${verdictColor(c.verdict)}`}>{w.test ? 'Done' : verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
           <p class="muted small" style="margin-top:4px">{w.test === 'ramp' && rampTop != null ? `Ramp test: ridden to ${rampTop} W.` : c.reason}{analysis && !w.test ? ` ${analysis.summary}` : ''}</p>
           {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
@@ -329,7 +329,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         </>
       )}
 
-      {analysis && analysis.steps.some((s) => s.work) && (
+      {/* Part A9: a test's steps are an open-ended ramp or a single effort, not targets to meet; its results card says what it showed. */}
+      {analysis && !testKind && analysis.steps.some((s) => s.work) && (
         <section class="section">
           <h2>Intervals against plan</h2>
           <table class="steps" style="margin-top:8px">

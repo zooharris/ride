@@ -25,7 +25,7 @@ export const GLOSSARY = {
   ftp: {
     term: 'FTP',
     short: 'Functional threshold power: the highest power you can hold for about an hour',
-    long: 'Functional threshold power: the highest power you can hold for about an hour. Every power zone is a share of it.',
+    long: 'Functional threshold power: the highest power you can hold for about an hour. Every power zone is a share of it. Antogo builds it from more than one source of your own data when they are available, where many apps use power alone; Help, under Settings, explains how (How Antogo works out your FTP).',
   },
   lthr: {
     term: 'Threshold heart rate',

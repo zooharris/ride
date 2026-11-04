@@ -36,7 +36,9 @@ import { MonthDone } from './Calendar';
 import { LIBRARY } from '../../library/workouts';
 import { patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
-import { breathFields, rampBreathingFromStreams, resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
+import { bestAverage, breathFields, rampBreathingFromStreams, rampResult, resultFromStreams, testResultKey, TEST_RESULT_VERSION, withActions, type RampContext, type TestResult } from '../../player/tests';
+import { buildTimeline } from '../../player/timeline';
+import { rampContextFor } from '../maxHrSeen';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
@@ -130,6 +132,23 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   );
 }
 
+/** A player ride's streams from its recording on this computer (Part A8): one reading a second, laps as its intervals. */
+export function streamsFromRecording(id: string, rec: Recording): StreamSet {
+  const ss = rec.samples;
+  const pick = (f: (x: Recording['samples'][number]) => number | undefined) => ss.map((x) => f(x) ?? NaN);
+  const has = (f: (x: Recording['samples'][number]) => number | undefined) => ss.some((x) => f(x) != null);
+  return {
+    id, time: ss.map((x) => x.t),
+    ...(has((x) => x.w) ? { watts: pick((x) => x.w) } : {}),
+    ...(has((x) => x.hr) ? { heartrate: pick((x) => x.hr) } : {}),
+    ...(has((x) => x.cad) ? { cadence: pick((x) => x.cad) } : {}),
+    ...(has((x) => x.d) ? { distance: pick((x) => x.d) } : {}),
+    ...(has((x) => x.spd) ? { velocity: pick((x) => (x.spd != null ? x.spd / 3.6 : undefined)) } : {}),
+    ...(has((x) => x.ve) ? { ve: pick((x) => x.ve), br: pick((x) => x.br), tv: pick((x) => x.tv) } : {}),
+    intervals: rec.laps.map((l) => ({ start: l.start, end: l.end })),
+  };
+}
+
 function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const profile = data.profile!;
   const p = data.planned.find((x) => x.activityId === r.id);
@@ -165,7 +184,11 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         await db.streams.put(set);
         if (alive) setStreams(set);
       } catch (e) {
-        if (alive) { setStreams(null); setStreamErr((e as Error).message); }
+        // Part A8 (4 Nov 2026): a player ride always shows its charts: from its recording on this computer when Intervals.icu
+        // can't give the streams (not cached, so Intervals.icu is asked again next time). The cause is for the coach, not the rider.
+        const own = local?.samples.length ? streamsFromRecording(r.id, local) : undefined;
+        if (alive) { if (own) setStreams(own); else { setStreams(null); setStreamErr((e as Error).message); } }
+        if (own) console.info('[Antogo] activity streams from the recording on this computer:', (e as Error).message);
       }
     })();
     return () => { alive = false; };
@@ -181,6 +204,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
     hr: streams.heartrate?.length ? (basis === 'hr' ? analysis : analyseRide(w, profile, 'hr', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
   } : undefined;
+  // Part A9: a ramp's header says how far it was ridden (its best minute), not how it measured against a plan it has no length for.
+  const rampTop = w?.test === 'ramp' && streams?.watts?.length ? (() => { const b = bestAverage(streams.watts!, 60); return b != null ? Math.round(b) : undefined; })() : undefined;
   // Breathing is cut where a strap froze (2E), so nothing frozen is drawn or read.
   const shown = useMemo(() => (streams ? breathingOf(streams) : streams), [streams]);
   const samples = useMemo(() => (shown ? resample(shown, 700) : []), [shown]);
@@ -188,7 +213,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  const items = activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined);
+  const items = activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind);
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];
   const plannedSecs = w ? (plannedSeconds(w) ?? 0) : 0;
@@ -256,7 +281,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {c && w && p && (
         <div class="panel hub" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
-          <p class="muted small" style="margin-top:4px">{c.reason}{analysis ? ` ${analysis.summary}` : ''}</p>
+          <p class="muted small" style="margin-top:4px">{w.test === 'ramp' && rampTop != null ? `Ramp test: ridden to ${rampTop} W.` : c.reason}{analysis && !w.test ? ` ${analysis.summary}` : ''}</p>
           {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
         </div>
@@ -468,7 +493,7 @@ function pace(speedMs: number | undefined, profile: { units?: string }): string 
  * strength or mobility session gets its time, load and heart rate. Nothing
  * that only means something on a bike is shown for anything else.
  */
-function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, tempF?: string, effort?: number): Array<[string, string | number | undefined, string?]> {
+function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, tempF?: string, effort?: number, test?: boolean): Array<[string, string | number | undefined, string?]> {
   const hr: Array<[string, string | number | undefined, string?]> = [
     ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, `Over the whole ${KIND_NOUN[r.sport]}`],
     ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
@@ -485,7 +510,8 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ...hr,
     ['Average cadence', r.averageCadence ? `${Math.round(r.averageCadence)} rpm` : undefined, 'Over the whole ride, while pedalling'],
     ['Efficiency factor', r.efficiencyFactor?.toFixed(2), GLOSSARY.ef.short],
-    ['Heart-rate drift', r.decoupling != null ? `${r.decoupling.toFixed(1)}%` : undefined, GLOSSARY.drift.short],
+    // Part A9: drift means something on steady riding only; on a test (a ramp above all) it is noise.
+    ['Heart-rate drift', r.decoupling != null && !test ? `${r.decoupling.toFixed(1)}%` : undefined, GLOSSARY.drift.short],
     ['Average temperature', tempF],
     ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
   ];
@@ -667,17 +693,32 @@ function SummaryStrip({ items }: { items: Array<[string, string | number | undef
 function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: 'ramp' | '20min'; streams: StreamSet | null; profile: NonNullable<AppData['profile']> }) {
   const [rec, setRec] = useState<Recording | null | undefined>(undefined);
   const [kept, setKept] = useState<TestResult | null | undefined>(undefined);
+  const [ctx, setCtx] = useState<RampContext | undefined>(undefined);
   useEffect(() => {
-    void db.recordings.filter((x) => x.activityId === r.id).first().then((x) => setRec(x ?? null));
+    void db.recordings.filter((x) => x.activityId === r.id).first().then((x) => {
+      setRec(x ?? null);
+      // Part A: read against the settings the test was ridden with (the recording knows them), the highest heart rate seen, and the riding's FTP.
+      void rampContextFor({ ftp: x?.ftp ?? r.ftpAtRide ?? profile.ftp, lthr: x?.lthr ?? profile.lthr, maxHr: profile.maxHr }, r.id).then(setCtx);
+    });
     void getSetting<TestResult | null>(testResultKey(r.id), null).then(setKept);
   }, [r.id]);
   const [own, setOwn] = useState<TestResult | undefined>(undefined);
-  if (rec === undefined || kept === undefined) return null;
-  const found: TestResult | undefined = own ?? (rec?.test?.breath && !kept?.breath ? rec.test : undefined) ?? kept ?? rec?.test ?? (streams ? resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time) : undefined);
+  if (rec === undefined || kept === undefined || (kind === 'ramp' && !ctx)) return null;
+  const stored = own ?? (rec?.test?.breath && !kept?.breath ? rec.test : undefined) ?? kept ?? rec?.test;
+  // Part A (4 Nov 2026): a ramp worked out before the ramp was judged is read again from its recording on this computer, keeping what the rider chose.
+  // Shown, not saved: it is kept only when the rider acts on it.
+  const ramp = LIBRARY.find((x) => x.test === 'ramp');
+  const again = kind === 'ramp' && rec?.samples.length && ramp && (!stored || (stored.v ?? 0) < TEST_RESULT_VERSION)
+    ? withActions(rampResult(rec, buildTimeline(ramp, { ...profile, ftp: rec.ftp }, { rampStep: rec.rampStep, rampEndAt: rec.rampEndAt }), profile.weightKg, ctx), stored ?? undefined)
+    : undefined;
+  const fromStreams = streams && (!stored || (kind === 'ramp' && (stored.v ?? 0) < TEST_RESULT_VERSION && stored.fromStreams))
+    ? withActions(resultFromStreams(kind, streams.watts, streams.heartrate, profile.weightKg, streams.time, kind === 'ramp' ? ctx : undefined), stored ?? undefined)
+    : undefined;
+  const found: TestResult | undefined = again ?? fromStreams ?? stored;
   if (!found) return null;
   // Step 4 (3 Nov 2026): a ramp ridden with a breathing strap but read before breathing thresholds existed is read for them here,
   // for showing; it is kept only when the rider acts on it (Update, Use these zones, Keep), so a rougher copy never replaces a better one.
-  const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt, { ftp: profile.ftp, maxHr: profile.maxHr }) : undefined;
+  const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt, ctx) : undefined;
   const result: TestResult = late ? { ...found, ...breathFields(late), lthrEstimate: found.lthrEstimate ?? late.vt2?.hr, lthrBefore: found.lthrBefore ?? (late.vt2?.hr ? profile.lthr : undefined) } : found;
   const change = (x: TestResult) => {
     setOwn(x);

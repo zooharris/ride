@@ -19,6 +19,7 @@
  */
 import { breathingOf } from './breathFreeze';
 import { standardBreathPcts } from './zones';
+import { judgeRamp, type RampJudgement } from './rampJudge';
 
 /** Seconds in each piece of the ramp. */
 export const BIN_SECONDS = 15;
@@ -33,20 +34,48 @@ export const MIN_BEND = 1.1;
 /** A bend this sharp or sharper is clear; between MIN_BEND and this it is less certain. */
 export const CLEAR_BEND = 1.25;
 /**
- * Review (4 Nov 2026): which threshold a bend is cannot be told from its place
- * on the ramp alone (a ramp that stopped early puts the first threshold where
- * the second usually sits). The heart rate at the bend decides: the second
- * threshold sits at this share of the rider's highest heart rate (the setting
- * or the test's own peak, whichever is higher) or above; the first sits below.
+ * Part A (4 Nov 2026): which threshold a bend is goes by the ramp's judgement
+ * (rampJudge.ts: did the ramp go past the second threshold?), weighed from
+ * several witnesses, not by a fixed share of max heart rate.
  */
-export const VT2_HR_SHARE = 0.86;
 /** A bend counts as clear when the three sub-sample fits put it within this share of the top power of the full fit. */
 export const STEADY_TOL = 0.08;
 /** Where on the ramp each threshold can sit, as shares of the highest power ridden. */
 export const VT1_RANGE: [number, number] = [0.4, 0.85];
 export const VT2_RANGE: [number, number] = [0.6, 0.98];
-/** With no heart rate, the second threshold sits at this share of FTP or above. */
-export const VT2_FTP_SHARE = 0.9;
+/** Part A2: the strap counts as having stopped when its readings end more than this many seconds before the ramp did. */
+export const STRAP_STOP_SECONDS = 60;
+/** Part A2: the strap's first readings of a ride are discarded while it settles. */
+export const SETTLE_SECONDS = 120;
+/** Part A2: a flat trace: ventilation rose less than this share across the ramp while power rose more than FLAT_POWER_RISE. */
+export const FLAT_VE_RISE = 0.4;
+export const FLAT_POWER_RISE = 0.8;
+/** A bend whose heart rate sits further than this from where the other witnesses put the second threshold is less certain. */
+export const HR_PLAUSIBLE_BPM = 15;
+
+/**
+ * Part A2: a reading the strap sends when it cannot measure the chest moving:
+ * breath size exactly 1.00 litre and ventilation equal to breathing rate (the
+ * one is the other times one). Seen 45 times on Todd's ramp of 4 Nov and never
+ * on his strap rides recorded by the Garmin. It is no reading.
+ */
+export function isPlaceholder(ve: number | undefined, br: number | undefined, tv: number | undefined): boolean {
+  return typeof ve === 'number' && typeof br === 'number' && typeof tv === 'number' && Math.abs(tv - 1) < 0.005 && Math.abs(ve - br) < 0.05;
+}
+
+/** Breathing as the thresholds read it: settling-in and placeholder readings removed (NaN), then cut at a freeze. */
+export function cleanBreathing(time: number[], ve?: number[], br?: number[], tv?: number[]): { ve?: number[]; br?: number[]; tv?: number[]; placeholders: number } {
+  if (!ve) return { ve, br, tv, placeholders: 0 };
+  let placeholders = 0;
+  const drop = time.map((t, i) => {
+    if (t < SETTLE_SECONDS) return true;
+    if (isPlaceholder(ve[i], br?.[i], tv?.[i])) { placeholders++; return true; }
+    return false;
+  });
+  const cut = (a?: number[]) => (a ? a.map((x, i) => (drop[i] ? NaN : x)) : a);
+  const s = breathingOf({ time, ve: cut(ve), br: cut(br), tv: cut(tv) });
+  return { ve: s.ve, br: s.br, tv: s.tv, placeholders };
+}
 
 export interface VtPoint {
   /** Power at the threshold, watts. */
@@ -68,8 +97,20 @@ export interface BreathTest {
   peakVe?: number;
   /** The highest 30-second breathing rate of the test. */
   peakBr?: number;
-  /** Why a threshold is missing, when one is. */
-  missing?: 'no-breathing' | 'patchy' | 'too-short' | 'no-vt1' | 'no-vt2' | 'none';
+  /**
+   * Why a threshold is missing, when one is. Part A2: strap-stopped (its readings ended well before the ramp did),
+   * flat (breathing barely rose with the effort: a loose strap).
+   */
+  missing?: 'no-breathing' | 'patchy' | 'too-short' | 'no-vt1' | 'no-vt2' | 'none' | 'strap-stopped' | 'flat';
+  /** Part A2: seconds into the ride of the strap's last real reading during the ramp, and of the ramp's end, when the strap stopped early. */
+  breathEndAt?: number;
+  rampEndAt?: number;
+  /** Part A2: breathing barely rose with the effort (shown with strap-stopped too, when both). */
+  flat?: boolean;
+  /** Part A2: readings set aside as placeholders. */
+  placeholders?: number;
+  /** Part A1: the ramp's judgement, when there was something to judge it by. */
+  judge?: RampJudgement;
 }
 
 interface Bin { t: number; w: number; ve: number; hr?: number; br?: number }
@@ -174,11 +215,34 @@ export function findBends(xs: number[], ys: number[]): Bends {
  * are the ramp's first and last seconds (the warm-up and cool-down are left
  * out). Undefined when the ride has no breathing at all.
  */
-export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: number[]; ve?: number[]; br?: number[]; from: number; to: number; ftp?: number; maxHr?: number }): BreathTest | undefined {
+export interface BreathInput {
+  time: number[]; watts?: number[]; hr?: number[]; ve?: number[]; br?: number[]; tv?: number[];
+  /** The ramp's first and last seconds. */
+  from: number; to: number;
+  /** The ramp's judgement (Part A1). When absent and the rider's settings are given, it is made here. */
+  judge?: RampJudgement;
+  ftp?: number; lthr?: number; maxHr?: number; learnedMaxHr?: number; cpFtp?: number;
+  peakWatts?: number; stepWatts?: number; endedBy?: 'rider' | 'auto';
+}
+
+export function breathThresholds(o: BreathInput): BreathTest | undefined {
   if (!o.ve?.some((v) => ok(v) && v > 0)) return undefined;
   if (!o.watts?.length) return { missing: 'no-breathing' };
-  const s = breathingOf({ time: o.time, ve: o.ve, br: o.br });
   const time = o.time;
+  const s = cleanBreathing(time, o.ve, o.br, o.tv);
+  const judge = o.judge ?? (o.ftp || o.lthr || o.maxHr || o.learnedMaxHr
+    ? judgeRamp({ time, watts: o.watts, hr: o.hr, ve: s.ve, from: o.from, to: o.to, peakWatts: o.peakWatts, stepWatts: o.stepWatts, endedBy: o.endedBy, ftp: o.ftp, lthr: o.lthr, maxHr: o.maxHr, learnedMaxHr: o.learnedMaxHr, cpFtp: o.cpFtp })
+    : undefined);
+  const extra: Partial<BreathTest> = { ...(s.placeholders ? { placeholders: s.placeholders } : {}), ...(judge ? { judge } : {}) };
+
+  // Part A2: did the strap stop well before the ramp did?
+  let lastReal: number | undefined;
+  for (let i = time.length - 1; i >= 0; i--) { const t = time[i]; if (t >= o.to) continue; if (t < o.from) break; if (ok(s.ve?.[i]) && s.ve![i] > 0) { lastReal = t; break; } }
+  const stopped = lastReal == null || o.to - lastReal > STRAP_STOP_SECONDS;
+  const stopFields: Partial<BreathTest> = stopped && lastReal != null ? { breathEndAt: lastReal, rampEndAt: o.to } : {};
+  // Breathing is read only where it was measured: up to the strap's last reading when it stopped early.
+  const readTo = stopped && lastReal != null ? lastReal + 1 : o.to;
+
   const bins: Bin[] = [];
   let tried = 0;
   // Breathing is read only up to the ramp's end: once the cool-down starts it falls, and pairing it with the last
@@ -194,25 +258,40 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
     const br = windowMean(time, s.br, a, a + BIN_SECONDS, true).value;
     bins.push({ t: a, w: w.value, ve: ve.value, hr, br });
   }
-  const peak = peaks(time, s.ve, s.br, o.from, o.to + 60);
-  const peakHr = peakOf(time, o.hr, o.from, o.to + 60);
-  if (tried < MIN_BINS) return { ...peak, missing: 'too-short' };
-  if (bins.length < MIN_BINS) return { ...peak, missing: 'patchy' };
-  if (bins.length < tried * 0.7) return { ...peak, missing: 'patchy' };
+  const peak = peaks(time, s.ve, s.br, o.from, Math.min(o.to + 60, readTo + 60));
+
+  // Part A2: a flat trace (breathing barely rose with the effort) says the strap was not following the chest.
+  let flat = false;
+  if (bins.length >= 8) {
+    const q = Math.max(2, Math.floor(bins.length / 4));
+    const first = bins.slice(0, q), last = bins.slice(-q);
+    const m = (xs: Bin[], k: 'w' | 've') => mean(xs.map((b) => b[k]))!;
+    const veRise = m(last, 've') / m(first, 've') - 1, wRise = m(last, 'w') / m(first, 'w') - 1;
+    flat = veRise < FLAT_VE_RISE && wRise > FLAT_POWER_RISE;
+  }
+  const flatField: Partial<BreathTest> = flat ? { flat } : {};
+
+  if (stopped) {
+    // No breathing past the strap's stop: the second threshold cannot be found. The first can, when it is clear of the stop.
+    if (flat || bins.length < MIN_BINS / 2) return { ...peak, ...extra, ...stopFields, ...flatField, missing: 'strap-stopped' };
+  } else {
+    if (tried < MIN_BINS) return { ...peak, ...extra, missing: 'too-short' };
+    if (bins.length < MIN_BINS) return { ...peak, ...extra, missing: 'patchy' };
+    if (bins.length < tried * 0.7) return { ...peak, ...extra, missing: 'patchy' };
+    if (flat) return { ...peak, ...extra, ...flatField, missing: 'flat' };
+  }
 
   // Breath-to-breath swings are large; a 45-second running mean steadies the line the bends are read from.
   const smooth = bins.map((_, k) => mean(bins.slice(Math.max(0, k - 1), k + 2).map((b) => b.ve))!);
   const xs = bins.map((b) => b.w);
   const bends = findBends(xs, smooth);
-  const top = Math.max(...xs);
+  // The ramp's top power (from the bins), so the plausible ranges are those of the ramp ridden, not of what the strap saw.
+  const top = stopped ? Math.max(...xs, ...(o.peakWatts ? [o.peakWatts] : [])) : Math.max(...xs);
   // Steadiness (review, 4 Nov 2026): fitted again on every third piece, unsmoothed (three samples that share no readings, so
   // their agreement means something), a well-defined bend lands within 8% of the top power of where it did on each of them.
-  // On simulated ramps with breath-by-breath noise this makes "clear" rare but right; the two-half check on the smoothed
-  // line it replaces called a bend clear when it was 30-40 W out about a third of the time.
   const raw = bins.map((b) => b.ve);
   const subs = [0, 1, 2].map((h) => findBends(xs.filter((_, k) => k % 3 === h), raw.filter((_, k) => k % 3 === h)));
   const steady = (x: number) => subs.every((sb) => [sb.x1, sb.x2].some((y) => y != null && Math.abs(y - x) <= top * STEADY_TOL));
-  // A threshold's heart rate, ventilation and breathing rate: read from the pieces either side of the bend's power.
   // A bend read across a hole in the strap's readings (no piece for more than two pieces' time, close to the bend) is not certain.
   const gapped = (watts: number) => {
     const near = bins.filter((b) => Math.abs(b.w - watts) <= top * 0.1);
@@ -230,44 +309,35 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
       certainty: ratio >= CLEAR_BEND && steady(watts) && !gapped(watts) ? 'clear' : 'unsure',
     };
   };
-  // Where on the ramp each threshold can plausibly sit, as shares of the highest power ridden.
+  const binTop = Math.max(...xs);
   const vt1Ok = (p: VtPoint) => p.watts >= top * VT1_RANGE[0] && p.watts <= top * VT1_RANGE[1];
-  const vt2Ok = (p: VtPoint) => p.watts >= top * VT2_RANGE[0] && p.watts <= top * VT2_RANGE[1];
-  // Is this bend the second threshold? By heart rate against the rider's highest (the setting or this test's peak,
-  // whichever is higher), else by power against FTP; undefined when there is nothing to judge by.
-  const hrRef = Math.max(o.maxHr ?? 0, peakHr ?? 0);
-  const looksVt2 = (p: VtPoint): boolean | undefined =>
-    p.hr != null && hrRef > 0 ? p.hr >= VT2_HR_SHARE * hrRef
-      : o.ftp && o.ftp > 0 ? p.watts >= VT2_FTP_SHARE * o.ftp
-      : undefined;
+  const vt2Ok = (p: VtPoint) => p.watts >= binTop * VT2_RANGE[0] && p.watts <= binTop * VT2_RANGE[1];
   const unsure = (p: VtPoint): VtPoint => ({ ...p, certainty: 'unsure' });
+  // A second threshold whose heart rate is far from the threshold-heart-rate setting is less certain (not relabelled).
+  const plausible2 = (p: VtPoint): VtPoint => (p.hr != null && o.lthr && Math.abs(p.hr - o.lthr) > HR_PLAUSIBLE_BPM ? unsure(p) : p);
+  const past = judge?.pastVt2;
   let vt1: VtPoint | undefined, vt2: VtPoint | undefined;
-  if (bends.x1 != null && bends.x2 != null) {
-    const a = at(bends.x1, bends.ratio1!), b = at(bends.x2, bends.ratio2!);
-    const bIs2 = looksVt2(b);
-    if (bIs2 === false) {
-      // The upper bend is only the first threshold (the ramp stopped before the second): the lower one is the settling-in after
-      // the warm-up, or the first threshold itself with the upper one noise. Too little ramp above it to be sure either way.
-      if (vt1Ok(b)) vt1 = unsure(b);
-    } else if (looksVt2(a) === true) {
-      // Both bends sit at threshold heart rate: the lower is the second threshold, the upper noise above it.
-      if (vt2Ok(a)) vt2 = a;
-    } else {
-      if (vt1Ok(a)) vt1 = a;
-      if (vt2Ok(b)) vt2 = b;
-    }
-  } else if (bends.x1 != null) {
-    const a = at(bends.x1, bends.ratio1!);
-    const is2 = looksVt2(a);
-    if (is2 === true) { if (vt2Ok(a)) vt2 = a; else if (vt1Ok(a)) vt1 = a; }
-    else if (is2 === false) { if (vt1Ok(a)) vt1 = a; }
-    // Nothing to judge by: the upper part of the ramp makes it the second threshold, the lower the first, and neither is certain.
-    else if (a.watts >= top * 0.7 && vt2Ok(a)) vt2 = unsure(a);
-    else if (vt1Ok(a)) vt1 = unsure(a);
+  const a = bends.x1 != null ? at(bends.x1, bends.ratio1!) : undefined;
+  const b = bends.x2 != null ? at(bends.x2, bends.ratio2!) : undefined;
+  if (past === 'yes' || past === 'probably') {
+    // The ramp went past the second threshold: the upper bend in its range is the second, the lower the first.
+    const soft = (p: VtPoint) => (past === 'probably' ? unsure(p) : p);
+    if (a && b) { if (vt1Ok(a)) vt1 = a; if (vt2Ok(b)) vt2 = soft(plausible2(b)); }
+    else if (a) { if (vt2Ok(a) && a.watts >= top * 0.7) vt2 = soft(plausible2(a)); else if (vt1Ok(a)) vt1 = soft(a); }
+  } else if (past === 'no') {
+    // The ramp stopped before the second threshold: the only bend it can show is the first.
+    if (a && b) { if (vt1Ok(b)) vt1 = unsure(b); }
+    else if (a) { if (vt1Ok(a)) vt1 = a; }
+  } else {
+    // Nothing to judge by: labelled by place on the ramp, and neither is certain.
+    if (a && b) { if (vt1Ok(a)) vt1 = unsure(a); if (vt2Ok(b)) vt2 = unsure(b); }
+    else if (a) { if (a.watts >= top * 0.7 && vt2Ok(a)) vt2 = unsure(a); else if (vt1Ok(a)) vt1 = unsure(a); }
   }
+  // Past the strap's stop nothing is known: no second threshold, and a first one only well below where the readings ended.
+  if (stopped) { vt2 = undefined; if (vt1 && vt1.watts > binTop * VT1_RANGE[1]) vt1 = undefined; }
   if (vt1 && vt2 && vt2.watts <= vt1.watts) vt2 = undefined;
-  const missing = vt1 && vt2 ? undefined : !vt1 && !vt2 ? 'none' : !vt1 ? 'no-vt1' : 'no-vt2';
-  return { vt1, vt2, ...peak, missing };
+  const missing = stopped ? 'strap-stopped' : vt1 && vt2 ? undefined : !vt1 && !vt2 ? 'none' : !vt1 ? 'no-vt1' : 'no-vt2';
+  return { vt1, vt2, ...peak, ...extra, ...stopFields, missing };
 }
 
 /** The highest 30-second mean of a series in [from, to), at least 15 readings in the half-minute. */
@@ -303,8 +373,8 @@ const rising = (xs: number[]) => xs.every((x, i) => x > 0 && (i === 0 || x > xs[
 
 /**
  * The zone tables a test suggests, anchored on its thresholds:
- * power and heart rate zone 2 top at VT1, zone 3 top half-way to VT2, zone 4
- * top at VT2, zone 1 top below VT1 in the standard proportion; zones 5 and 6,
+ * power and heart rate zone 2 top at VT1, zone 3 top half-way to zone 4's top,
+ * zone 4 top at the test's FTP for power (Part A3) and at VT2 for heart rate, zone 1 top below VT1 in the standard proportion; zones 5 and 6,
  * which a breathing test cannot see, keep the rider's own shares of the
  * threshold (the new FTP, or the heart rate at VT2), heart rate kept below max.
  * A table that cannot be built in rising order is left out.
@@ -314,9 +384,12 @@ export function zonesFromTest(bt: BreathTest | undefined, o: { ftp?: number; lth
   const vt1 = bt?.vt1, vt2 = bt?.vt2;
   if (!vt1 || !vt2) return out;
   const ftp = o.ftp && o.ftp > 0 ? o.ftp : vt2.watts;
+  // Part A3 (4 Nov 2026): zone 4's top is the test's own FTP (which the second threshold has already been weighed into),
+  // so the zone table and FTP never disagree.
+  const z4 = ftp > vt1.watts ? ftp : vt2.watts;
   // Zone 1's top sits below VT1 in the rider's own proportion of zone 1 to zone 2 (the standard ladders give 0.73 for power, 0.92 for heart rate).
   const share = (pcts: number[], fallback: number) => (pcts[0] > 0 && pcts[1] > pcts[0] ? pcts[0] / pcts[1] : fallback);
-  const p = [Math.round(vt1.watts * share(o.powerPcts, 0.73)), vt1.watts, Math.round((vt1.watts + vt2.watts) / 2), vt2.watts, Math.round(ftp * o.powerPcts[4] / 100), Math.round(ftp * o.powerPcts[5] / 100)];
+  const p = [Math.round(vt1.watts * share(o.powerPcts, 0.73)), vt1.watts, Math.round((vt1.watts + z4) / 2), z4, Math.round(ftp * o.powerPcts[4] / 100), Math.round(ftp * o.powerPcts[5] / 100)];
   if (p[4] <= p[3]) p[4] = Math.round(p[3] * 1.12);
   if (p[5] <= p[4]) p[5] = Math.round(p[4] * 1.25);
   if (rising(p)) out.powerTops = p;

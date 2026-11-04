@@ -121,9 +121,9 @@ describe('breathing thresholds from a ramp', () => {
 
 describe('zones from a test', () => {
   const bt = { vt1: { watts: 200, hr: 130, ve: 55, certainty: 'clear' as const }, vt2: { watts: 280, hr: 155, ve: 95, certainty: 'clear' as const } };
-  it('anchors zone 2 at VT1 and zone 4 at VT2, keeping the rider’s upper shares', () => {
+  it('anchors zone 2 at VT1 and zone 4 at the test’s FTP (Part A3: never a different figure from FTP), keeping the rider’s upper shares', () => {
     const z = zonesFromTest(bt, { ftp: 270, maxHr: 175, powerPcts: [55, 75, 90, 105, 120, 150], hrPcts: [82, 89, 94, 100, 106, 110] });
-    expect(z.powerTops).toEqual([147, 200, 240, 280, 324, 405]);
+    expect(z.powerTops).toEqual([147, 200, 235, 270, 324, 405]);
     expect(z.hrTops![1]).toBe(130);
     expect(z.hrTops![3]).toBe(155);
     expect(z.hrTops![5]).toBeLessThan(175);

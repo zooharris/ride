@@ -15,6 +15,9 @@ export interface Compliance {
  * duration and load; step-by-step zone compliance arrives with ride streams.
  */
 export function scoreRide(workout: Workout, ride: Ride): Compliance {
+  // Part A9 (4 Nov 2026): a fitness test is done when the rider has ridden it: a ramp is open-ended (it ends when the legs go),
+  // so its planned length means nothing, and a stopped test is still a test. Never partial, never short of plan.
+  if (workout.test) return { verdict: 'done', durationRatio: 1, loadRatio: 1, reason: workout.test === 'ramp' ? 'Ramp test: ridden until you stopped.' : '20-minute test: ridden.' };
   const planned = workoutStats(workout.blocks);
   const durationRatio = planned.seconds ? ride.seconds / planned.seconds : 0;
   const loadRatio = planned.tss && ride.tss != null ? ride.tss / planned.tss : durationRatio;

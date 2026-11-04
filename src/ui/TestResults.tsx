@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import type { PlannedWorkout, Profile, Workout } from '../engine/types';
-import type { TestResult } from '../player/tests';
+import { breathCoveredRamp, clockOf, ftpBasisWords, spanWords, type TestResult } from '../player/tests';
 export { testLines } from '../player/tests';
 import { fmtDate } from './derived';
 import { resendRides, sentRidesAhead, takeThreshold, zonesFollowFtp } from './testService';
@@ -18,6 +18,7 @@ import { useHasKey } from './thresholdService';
 import { zonesFromTest, type BreathTest, type VtPoint } from '../engine/breathThresholds';
 import { BREATH_ZONE_NAMES, ladderPcts, ladderTops, rideHrZones, ridePowerZones } from '../engine/zones';
 import { applyZones } from './testService';
+import { maxHrInUse, useMaxHrSeen } from './maxHrSeen';
 
 export function TestResults({ result, profile, onChange, compact }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean }) {
   const r = result;
@@ -27,6 +28,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [ahead, setAhead] = useState<Array<{ p: PlannedWorkout; w: Workout }>>([]);
   const [resent, setResent] = useState(false);
+  const [why, setWhy] = useState(false);
   const ftpNow = profile.ftp;
   const ftpEq = r.ftpEstimate != null && r.ftpEstimate === ftpNow;
   const lthrEq = r.lthrEstimate != null && r.lthrEstimate === profile.lthr;
@@ -61,7 +63,11 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
         <p class="muted">{ramp ? 'There weren’t enough power readings to work out an FTP.' : 'The twenty minutes weren’t ridden in full with power, so there’s no FTP to take from this one.'}</p>
       ) : <>
         <p class="test-lead">{ramp ? <>Your best minute was <b class="num">{r.bestMinuteWatts} W</b>.</> : <>You averaged <b class="num">{r.testWatts} W</b> over the twenty minutes.</>}{r.fromStreams && ramp ? <span class="muted small"> (from the recording in Intervals.icu)</span> : null}</p>
-        <p class="test-lead">That suggests an FTP of <b class="num">{r.ftpEstimate} W</b>.</p>
+        <p class="test-lead">That suggests an FTP of <b class="num">{r.ftpEstimate} W</b>.<FtpWhy open={why} onToggle={() => setWhy(!why)} /></p>
+        {why && <p class="small test-why-text">{FTP_WHY}</p>}
+        {ramp && r.ftpWitnesses && r.ftpWitnesses.length > 1 && !r.ftpDisagree && <p class="muted small" style="margin:2px 0 0">From {ftpBasisWords(r)}.</p>}
+        {ramp && r.ftpDisagree && <p class="muted small" style="margin:2px 0 0">{disagreeWords(r)}</p>}
+        {ramp && r.hrAtFtp != null && r.lthrEstimate == null && <p class="muted small" style="margin:2px 0 0">{r.ftpHrAgrees ? <>Your heart rate when the ramp reached it was <b class="num">{r.hrAtFtp} bpm</b>, in line with your threshold heart rate.</> : <>Your heart rate when the ramp reached it was <b class="num">{r.hrAtFtp} bpm</b>.</>}</p>}
         {r.ftpAction === 'updated' ? (
           <p class="small"><span class="rd-state on">Updated</span> Your FTP is {ftpNow} W{r.ftpBefore != null && r.ftpBefore !== ftpNow ? ` (was ${r.ftpBefore} W)` : ''}. {zonesFollowFtp(profile) ? 'Your power zones follow your FTP, so every ride’s targets are updated.' : <>Your power zones are set in watts and stay as they are. <a href="#/settings">Review them in Settings</a>.</>}</p>
         ) : ftpEq ? (
@@ -79,7 +85,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
         )}
       </>}
 
-      {ramp && r.breath && <BreathSection b={r.breath} />}
+      {ramp && r.breath && <BreathSection b={r.breath} allOut={r.judge?.allOut} />}
 
       {r.lthrEstimate != null && (
         <div class="test-row">
@@ -100,12 +106,11 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
       {ramp && (r.vo2maxMlKgMin != null || r.vo2maxLmin != null) && (
         <div class="test-row">
           <p style="margin:0"><span class="caption">VO2max estimate</span>{' '}
-            <b class="num">{r.vo2maxMlKgMin != null ? `${r.vo2maxMlKgMin}` : `${r.vo2maxLmin}`}</b> {r.vo2maxMlKgMin != null ? 'ml/kg/min' : 'litres a minute'}
-            <span class="test-info" tabindex={0} title="Estimated from your peak power and weight. A lab measures it directly; this tracks your trend." aria-label="Estimated from your peak power and weight. A lab measures it directly; this tracks your trend.">i</span></p>
-          <p class="faint small" style="margin:2px 0 0">Estimated from your peak power{r.peakWatts != null ? ` (${Math.round(r.peakWatts)} W)` : ''}{r.vo2maxMlKgMin != null ? ' and weight' : ''}. A lab measures it directly; this tracks your trend.{r.vo2maxMlKgMin == null ? <> <a href="#/settings">Add your weight in Settings</a> to see it per kilo.</> : null}</p>
+            {r.vo2maxAtLeast ? 'at least ' : 'about '}<b class="num">{r.vo2maxMlKgMin != null ? `${Math.round(r.vo2maxMlKgMin)}` : `${r.vo2maxLmin}`}</b> {r.vo2maxMlKgMin != null ? 'ml/kg/min' : 'litres a minute'}
+            {r.vo2maxRange && !r.vo2maxAtLeast ? <span class="muted"> (likely {r.vo2maxRange[0]}–{r.vo2maxRange[1]})</span> : null}</p>
+          <p class="faint small" style="margin:2px 0 0">{r.vo2maxAtLeast ? 'The test looks like it ended before you were all-out, so this is a floor rather than an estimate. ' : ''}Estimated from your peak power{r.peakWatts != null ? ` (${Math.round(r.peakWatts)} W)` : ''}{r.vo2maxMlKgMin != null ? ' and weight' : ''}. A lab measures it directly; this tracks your trend.{r.vo2maxMlKgMin == null ? <> <a href="#/settings">Add your weight in Settings</a> to see it per kilo.</> : null}</p>
         </div>
       )}
-      {ramp && r.hrAtFtp != null && r.lthrEstimate == null && <p class="muted small test-row" style="margin:0">Heart rate when you passed your new FTP: <b class="num">{r.hrAtFtp} bpm</b>.</p>}
       {ramp && r.breath && <TestZones r={r} profile={profile} onChange={onChange} hasKey={hasKey} />}
       {hasKey && r.ftpEstimate != null && (
         <div class="test-row">
@@ -117,15 +122,36 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   );
 }
 
-/** What a missing threshold means, in words the rider can act on. */
-const MISSING: Record<NonNullable<BreathTest['missing']>, string> = {
-  'no-breathing': 'There was breathing but no power to read it against, so the breathing thresholds couldn’t be worked out.',
-  patchy: 'The breathing strap’s readings had gaps through the ramp, so the breathing thresholds couldn’t be read. Check the strap is snug and repeat the test when it suits you.',
-  'too-short': 'The ramp was too short to read breathing thresholds from. They need at least five minutes of ramp.',
-  none: 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. Repeating the test, ridden until you truly can’t turn the pedals, usually shows them.',
-  'no-vt1': 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.',
-  'no-vt2': 'Your second breathing threshold didn’t show: the test may have ended before your breathing turned sharply upward. Riding the next one until you truly can’t turn the pedals should reveal it.',
-};
+/** What a missing threshold means, in words the rider can act on. Part A2: the reason given is the one the readings show. */
+function missingWords(b: BreathTest, allOut?: string): string {
+  const notAllOut = allOut === 'no';
+  switch (b.missing) {
+    case 'no-breathing': return 'There was breathing but no power to read it against, so the breathing thresholds couldn’t be worked out.';
+    case 'strap-stopped': return b.breathEndAt != null && b.rampEndAt != null
+      ? `Your breathing strap stopped sending readings at ${clockOf(b.breathEndAt)}, ${spanWords(b.rampEndAt - b.breathEndAt)} before you stopped, so the test’s last minutes have no breathing and the second threshold couldn’t be found. Check the strap is snug before the next test.`
+      : 'Your breathing strap stopped sending readings before the ramp ended, so the second threshold couldn’t be found. Check the strap is snug before the next test.';
+    case 'patchy': return 'The breathing strap’s readings had gaps through the ramp, so the breathing thresholds couldn’t be read. Check the strap is snug and repeat the test when it suits you.';
+    case 'flat': return 'Your breathing barely rose with the effort on this ramp, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it and repeat.';
+    case 'too-short': return 'The ramp was too short to read breathing thresholds from. They need at least five minutes of ramp.';
+    case 'no-vt1': return 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.';
+    case 'no-vt2': return notAllOut ? 'Your second breathing threshold didn’t show: the test ended before your breathing turned sharply upward. Riding the next one until you truly can’t turn the pedals should reveal it.' : 'Your second breathing threshold didn’t show clearly on this ramp.';
+    default: return notAllOut ? 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. Repeating the test, ridden until you truly can’t turn the pedals, usually shows them.' : 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it.';
+  }
+}
+
+/** Part A10 (4 Nov 2026): why Antogo's FTP may differ from other apps'. The same words for every rider; nothing more. */
+export const FTP_WHY = 'Antogo’s FTP is built from more than one source of your own data when they are available: your test, your heart rate, your breathing thresholds and your recent rides, weighed together. Many apps and devices use power alone, and each uses its own rule, so their figures can differ from Antogo’s and from each other’s.';
+
+function FtpWhy({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return <button type="button" class="test-info test-why" aria-expanded={open} aria-label="How Antogo works out your FTP" title="How Antogo works out your FTP" onClick={onToggle}>?</button>;
+}
+
+/** Part A3: the witnesses disagreed, in one sentence. */
+function disagreeWords(r: TestResult): string {
+  const vt2 = r.ftpWitnesses?.find((x) => x.source === 'vt2'), riding = r.ftpWitnesses?.find((x) => x.source === 'riding');
+  const other = vt2 ? `your second breathing threshold pointed to ${vt2.watts} W` : riding ? `your recent riding points to ${riding.watts} W` : '';
+  return `Your best minute points to ${r.ftpFromBestMinute ?? r.ftpEstimate} W${other ? ` and ${other}` : ''}; these are far enough apart that Antogo offers the best-minute figure.`;
+}
 
 function VtRow({ name, sub, v }: { name: string; sub: string; v: VtPoint }) {
   return (
@@ -142,16 +168,16 @@ function VtRow({ name, sub, v }: { name: string; sub: string; v: VtPoint }) {
 }
 
 /** The two breathing thresholds the ramp showed, or why one is missing. */
-function BreathSection({ b }: { b: BreathTest }) {
+function BreathSection({ b, allOut }: { b: BreathTest; allOut?: string }) {
   const unsure = b.vt1?.certainty === 'unsure' || b.vt2?.certainty === 'unsure';
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:6px">Your breathing thresholds</p>
       {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} />}
       {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} />}
-      {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{MISSING[b.missing ?? 'none']}</p> : null}
+      {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{missingWords(b, allOut)}</p> : null}
       {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a repeat test would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
-      {b.peakVe != null && b.missing !== 'patchy' && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
+      {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
       {(b.vt1 || b.vt2) && <p class="faint small" style="margin:6px 0 0">These stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures.</p>}
     </div>
   );
@@ -164,7 +190,9 @@ function BreathSection({ b }: { b: BreathTest }) {
 function TestZones({ r, profile, onChange, hasKey }: { r: TestResult; profile: Profile; onChange: (r: TestResult) => void; hasKey: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const z = zonesFromTest(r.breath, { ftp: r.ftpEstimate ?? profile.ftp, lthr: r.lthrEstimate ?? profile.lthr, maxHr: profile.maxHr, powerPcts: ladderPcts(ridePowerZones(profile)), hrPcts: ladderPcts(rideHrZones(profile)) });
+  // Part A5: heart rate is capped at the highest seen in the rider's rides when that is above the setting.
+  const seen = useMaxHrSeen();
+  const z = zonesFromTest(r.breath, { ftp: r.ftpEstimate ?? profile.ftp, lthr: r.lthrEstimate ?? profile.lthr, maxHr: maxHrInUse(profile.maxHr, seen ?? undefined), powerPcts: ladderPcts(ridePowerZones(profile)), hrPcts: ladderPcts(rideHrZones(profile)) });
   if (!z.powerTops && !z.hrTops && !z.breathPcts) return null;
   const nowP = ladderTops(ridePowerZones(profile), profile.ftp);
   const nowH = ladderTops(rideHrZones(profile), profile.lthr);

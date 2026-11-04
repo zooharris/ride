@@ -165,24 +165,52 @@ describe('1D: breathing in the ride file, and read back', () => {
 
 describe('1D: read-back from Intervals.icu', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('fetchStreams asks for the custom streams by name on every activity and picks them up when present (2D)', async () => {
+  it('fetchStreams asks for breathing by the names Intervals.icu serves on every activity and picks it up when present (2D; Part A8)', async () => {
     const urls: string[] = [];
     let withBreathing = true;
     vi.stubGlobal('fetch', async (url: string) => {
       urls.push(url);
-      const breath = [{ type: 'tyme_minute_volume', data: [30, 31, 32] }, { type: 'tyme_breath_rate', data: [20, 20, 21] }, { type: 'tyme_tidal_volume', data: [1.5, 1.55, 1.52] }];
+      const breath = [{ type: 'tidal_volume_min', data: [30, 31, 32] }, { type: 'respiration', data: [20, 20, 21] }, { type: 'tidal_volume', data: [1.5, 1.55, 1.52] }];
       const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, ...(withBreathing ? breath : [])] : [];
       return new Response(JSON.stringify(body), { status: 200 });
     });
     // A Garmin ride: no breathing flag anywhere, yet its breathing comes back.
     const st = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
-    expect(urls[0]).toContain('tyme_minute_volume');
+    expect(urls[0]).toContain('tidal_volume_min');
+    expect(urls[0]).not.toContain('tyme_');
     expect(st.ve).toEqual([30, 31, 32]);
     expect(st.br).toEqual([20, 20, 21]);
     withBreathing = false;
     const plain = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
-    expect(urls[2]).toContain('tyme_minute_volume');
+    expect(urls[2]).toContain('tidal_volume_min');
     expect(plain.ve).toBeUndefined();
+  });
+  it('a stream type Intervals.icu refuses (422) is dropped and the rest asked for again (Part A8)', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      if (url.includes('/streams') && url.includes('tidal_volume_min')) return new Response(JSON.stringify({ status: 422, error: 'Invalid stream type [tidal_volume_min]' }), { status: 422 });
+      const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, { type: 'watts', data: [100, 110, 120] }] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const st = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
+    expect(st.watts).toEqual([100, 110, 120]);
+    expect(st.ve).toBeUndefined();
+    expect(urls.filter((u) => u.includes('/streams')).length).toBe(2);
+  });
+  it('a Garmin data field\'s breath size in hundredths of a litre is read as litres; breathing rate alone is not a strap (Part A8)', async () => {
+    vi.stubGlobal('fetch', async (url: string) => {
+      const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, { type: 'tidal_volume_min', data: [38, 40, 42] }, { type: 'respiration', data: [36, 35, 35] }, { type: 'tidal_volume', data: [106, 112, 119] }] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const st = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
+    expect(st.tv).toEqual([1.06, 1.12, 1.19]);
+    vi.stubGlobal('fetch', async (url: string) => {
+      const body = url.includes('/streams') ? [{ type: 'time', data: [0, 1, 2] }, { type: 'respiration', data: [14, 15, 15] }] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const watch = await fetchStreams({ athleteId: 'i1', apiKey: 'k' }, 'a1');
+    expect(watch.br).toBeUndefined();
   });
   it('without the streams: the original file is read; a recording on this computer goes first', async () => {
     const r = rec(90, 0);

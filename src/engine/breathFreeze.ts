@@ -32,6 +32,9 @@ export function findBreathFreeze(time: number[], ve?: number[], br?: number[]): 
     if (Math.abs(ve[i] - v) > SAME || Math.abs(br[i] - b) > SAME) break;
     first = i;
   }
+  // A frozen strap keeps sending its value: a run of a few seconds followed by no readings at all is a strap
+  // that stopped, not one that froze (Part A, 4 Nov 2026), and those seconds are real breathing.
+  if (time[last] - time[first] < 30) return undefined;
   // The run lasts to the end of the ride, not only to the last breathing value.
   const end = time[time.length - 1];
   if (end - time[first] < FREEZE_SECONDS) return undefined;

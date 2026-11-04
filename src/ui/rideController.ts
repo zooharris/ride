@@ -67,6 +67,9 @@ export interface ActiveRide {
   /** Heart rate missing since (ms); after a minute the trainer stops adjusting until it returns. */
   hrMissingSince?: number;
   hrLost?: boolean;
+  /** Part A4 (4 Nov 2026): a breathing strap in use whose readings stopped arriving (ms since), and whether that has lasted 15 s. */
+  breathMissingSince?: number;
+  breathQuiet?: boolean;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number; ve?: number; br?: number; tv?: number; ie?: number };
 }
 
@@ -179,6 +182,7 @@ function second(now: number) {
     if (!a.rec.breathSensor) { const strap = getSensors().find((x) => x.id === src.ve!.from); if (strap) a.rec = { ...a.rec, breathSensor: cleanName(strap.name) }; }
   } else recentBreath.length = 0;
   a.shownBreath = recentBreath.length ? breathShown(recentBreath) : undefined;
+  watchBreath(a, now);
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
   if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(30, a.setup.smoothing)) recentHr.shift(); }
@@ -223,6 +227,33 @@ function second(now: number) {
   const last = a.engine.events[a.engine.events.length - 1];
   if (last?.type === 'eased' && last.t === a.engine.wall(now)) toast({ ok: true, text: 'Cadence dropped: the trainer has eased off. Spin back up over 70 rpm and it builds back to the target.' });
   if (a.engine.timer % 5 === 0) save();
+}
+
+/** Part A4: a breathing strap goes quiet after this long without a reading. */
+export const BREATH_QUIET_MS = 15_000;
+
+/**
+ * Part A4 (4 Nov 2026): once a strap has sent breathing on this ride, 15 seconds without a reading writes a `lost`
+ * event with the strap's name and puts the notice on screen; readings again write `found`. On Todd's ramp of 4 Nov
+ * the strap stopped two minutes before the end and nothing recorded it.
+ */
+function watchBreath(a: ActiveRide, now: number) {
+  if (!a.rec.breathSensor || a.engine.phase !== 'riding') return;
+  if (a.live.ve == null) {
+    a.breathMissingSince ??= now;
+    if (!a.breathQuiet && now - a.breathMissingSince >= BREATH_QUIET_MS) {
+      a.breathQuiet = true;
+      a.engine.mark(now, 'lost', a.rec.breathSensor);
+      toast({ ok: false, text: 'The breathing strap has stopped sending readings. Check it is snug against your chest. The ride keeps recording.' });
+    }
+  } else {
+    a.breathMissingSince = undefined;
+    if (a.breathQuiet) {
+      a.breathQuiet = false;
+      a.engine.mark(now, 'found', a.rec.breathSensor);
+      toast({ ok: true, text: 'Breathing readings are back.' });
+    }
+  }
 }
 
 /** A step as the heart-rate loop sees it. */

@@ -24,9 +24,12 @@ import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
 import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
 import { addDays, today } from '../../engine/load';
+import { useMaxHrSeen } from '../maxHrSeen';
 
 
 export function Settings({ data }: { data: AppData }) {
+  // Part A5: the highest heart rate seen in the last 12 months of rides, shown under the max-heart-rate box (information only).
+  const maxSeen = useMaxHrSeen();
   const [p, setP] = useState<Profile>(data.profile!);
   const hasKey = useHasKey();
   // A card that saved numbers itself (Update, Apply, Use): bring those into this page's copy, so Save never puts the old ones back.
@@ -252,7 +255,9 @@ export function Settings({ data }: { data: AppData }) {
           <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} />
 </div>
           <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
-          <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
+          <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} />
+            {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
+          </div>
         </div>
         {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
         <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}

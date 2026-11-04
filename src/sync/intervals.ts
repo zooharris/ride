@@ -55,6 +55,24 @@ async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit 
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/**
+ * An activity's streams, asked for by type. Part A8 (4 Nov 2026): Intervals.icu answers 422 "Invalid stream type [x]"
+ * for a type it does not know, and it stopped knowing Tymewear's own names; a type it refuses is dropped and the rest
+ * asked for again (up to three times), so one unknown name never costs the whole recording.
+ */
+async function streamList(c: IntervalsCredentials, activityId: string, types: string[]): Promise<Array<{ type: string; data: number[]; data2?: number[] }>> {
+  let want = [...types];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=${want.join(',')}`);
+    } catch (e) {
+      const bad = e instanceof IntervalsError && e.status === 422 ? /\[([^\]]+)\]/.exec(e.message)?.[1] : undefined;
+      if (!bad || attempt >= 3 || !want.includes(bad)) throw e;
+      want = want.filter((t) => t !== bad);
+    }
+  }
+}
+
 export interface AthleteNumbers {
   name: string;
   ftp?: number;
@@ -742,15 +760,30 @@ export interface FetchedStreams {
 
 /** Just time and power for one activity: what the power curve needs, a fraction of the full recording. */
 export async function fetchPowerStream(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[]; ve?: number[]; br?: number[]; tv?: number[] }> {
-  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,${Object.values(BREATH_STREAMS).join(',')}`);
+  const list = await streamList(c, activityId, ['time', 'watts', 'heartrate', ...Object.values(BREATH_STREAMS)]);
   const by = (t: string) => list.find((x) => x.type === t)?.data;
+  return { time: by('time') ?? [], watts: by('watts'), heartrate: by('heartrate'), ...breathOf(by) };
+}
+
+/**
+ * The breathing streams when a strap was worn. Ventilation is the sign of a strap: breathing rate alone can be a
+ * watch's own estimate. Breath size from the Garmin's data field comes in hundredths of a litre (a median of
+ * tens); the player writes litres. Both are read as litres.
+ */
+function breathOf(by: (t: string) => number[] | undefined): { ve?: number[]; br?: number[]; tv?: number[] } {
   const ve = by(BREATH_STREAMS.ve);
-  return { time: by('time') ?? [], watts: by('watts'), heartrate: by('heartrate'), ...(ve?.length ? { ve, br: by(BREATH_STREAMS.br), tv: by(BREATH_STREAMS.tv) } : {}) };
+  if (!ve?.some((v) => typeof v === 'number' && v > 0)) return {};
+  let tv = by(BREATH_STREAMS.tv);
+  if (tv?.length) {
+    const xs = tv.filter((v) => typeof v === 'number' && v > 0).sort((a, b) => a - b);
+    if (xs.length && xs[Math.floor(xs.length / 2)] > 20) tv = tv.map((v) => (typeof v === 'number' ? v / 100 : v));
+  }
+  return { ve, br: by(BREATH_STREAMS.br), tv };
 }
 
 /** What an activity's small picture needs: the route and the power or heart rate, a fraction of the full recording. */
 export async function fetchThumbStreams(c: IntervalsCredentials, activityId: string): Promise<{ time: number[]; watts?: number[]; heartrate?: number[]; lat?: number[]; lng?: number[] }> {
-  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,latlng`);
+  const list = await streamList(c, activityId, ['time', 'watts', 'heartrate', 'latlng']);
   const find = (t: string) => list.find((x) => x.type === t);
   const ll = find('latlng');
   return { time: find('time')?.data ?? [], watts: find('watts')?.data, heartrate: find('heartrate')?.data, lat: ll?.data, lng: ll?.data2 };
@@ -773,8 +806,13 @@ export async function fetchIntervals(c: IntervalsCredentials, activityId: string
 }
 
 /** The recording behind an activity: every stream Intervals.icu has, plus its interval markers. */
-/** The custom streams Intervals.icu makes of a breathing strap's FIT developer fields, by their field names. */
-export const BREATH_STREAMS = { ve: 'tyme_minute_volume', br: 'tyme_breath_rate', tv: 'tyme_tidal_volume' } as const;
+/**
+ * The streams Intervals.icu makes of a breathing strap's readings. Part A8 (4 Nov 2026): it once named them after
+ * Tymewear's FIT fields (tyme_minute_volume and so on) and now serves them as standard streams, refusing the old
+ * names on every activity: ventilation (tidal_volume_min, L/min), breathing rate (respiration) and breath size
+ * (tidal_volume). Found on Todd's ramp of 4 Nov and his Garmin ride of 31 Oct alike.
+ */
+export const BREATH_STREAMS = { ve: 'tidal_volume_min', br: 'respiration', tv: 'tidal_volume' } as const;
 
 /**
  * Every stream of an activity. The breathing streams are asked for on every
@@ -782,8 +820,7 @@ export const BREATH_STREAMS = { ve: 'tyme_minute_volume', br: 'tyme_breath_rate'
  * developer fields the player does, and asking costs nothing when they are absent.
  */
 export async function fetchStreams(c: IntervalsCredentials, activityId: string): Promise<FetchedStreams> {
-  const extra = `,${Object.values(BREATH_STREAMS).join(',')}`;
-  const list = await call<Array<{ type: string; data: number[]; data2?: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,watts,heartrate,cadence,distance,altitude,velocity_smooth,temp,latlng${extra}`);
+  const list = await streamList(c, activityId, ['time', 'watts', 'heartrate', 'cadence', 'distance', 'altitude', 'velocity_smooth', 'temp', 'latlng', ...Object.values(BREATH_STREAMS)]);
   const find = (t: string) => list.find((x) => x.type === t);
   const by = (t: string) => find(t)?.data;
   const time = by('time') ?? [];
@@ -792,13 +829,13 @@ export async function fetchStreams(c: IntervalsCredentials, activityId: string):
   return {
     time, watts: by('watts'), heartrate: by('heartrate'), cadence: by('cadence'), distance: by('distance'), altitude: by('altitude'),
     velocity: by('velocity_smooth'), temp: by('temp'), lat: ll?.data, lng: ll?.data2, intervals,
-    ...(by(BREATH_STREAMS.ve)?.length ? { ve: by(BREATH_STREAMS.ve), br: by(BREATH_STREAMS.br), tv: by(BREATH_STREAMS.tv) } : {}),
+    ...breathOf(by),
   };
 }
 
 /** Whether an activity has breathing streams (a Garmin with Tymewear's data field): one small read. */
 export async function fetchHasBreathing(c: IntervalsCredentials, activityId: string): Promise<boolean> {
-  const list = await call<Array<{ type: string; data: number[] }>>(c, `/activity/${activityId}/streams.json?types=time,${BREATH_STREAMS.ve}`);
+  const list = await streamList(c, activityId, ['time', BREATH_STREAMS.ve]);
   return !!list.find((x) => x.type === BREATH_STREAMS.ve)?.data?.some((v) => typeof v === 'number' && v > 0);
 }
 

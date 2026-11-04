@@ -10,7 +10,8 @@ import { addDays } from './load';
 import { CURVE_SECONDS, aerobicPoints } from './progress';
 import { breathZones, ladderTops, powerZone, rideHrZones, ridePowerZones } from './zones';
 import type { VeAtPower } from './breathOffset';
-import { fitCp, FIT_SECONDS, FTP_OF_CP, type CpFit } from './cpFit';
+import { fitCp, FIT_SECONDS, FTP_OF_CP, W_PRIME, type CpFit } from './cpFit';
+const W_PRIME_MAX = W_PRIME.max;
 import { offVerdict, type SessionVerdict } from './sessionVerdict';
 import { aerobicTrend } from './aerobicTrend';
 import { BANDS } from './hrPower';
@@ -47,6 +48,9 @@ export interface TestInput {
   peakVe?: number;
   /** Why a threshold is missing, when one is. */
   breathMissing?: string;
+  /** Part A1: the ramp's judgement, in the witnesses' own lines, and (A3) what its FTP was built from. */
+  judgeLines?: string[];
+  ftpBasis?: string;
 }
 
 export interface ThresholdEvidence {
@@ -213,7 +217,7 @@ export function gatherEvidence(o: {
     bz ? `Breathing thresholds now: first (VT1) ${p.vt1Ve ?? '?'} L/min, second (VT2) ${p.vt2Ve} L/min${p.breathSetOn ? `, set ${p.breathSetOn}` : ''}. Breathing zone tops now (zones 1-4, L/min; zone 5 open): ${bz.slice(0, 4).map((z) => z.high).join(', ')}.` : 'Breathing zones now: none set yet.',
     bests.length ? `Best power in the window: ${bests.map((b) => `${b.label} ${b.watts} W (${b.date}${b.rideName ? `, ${b.rideName}` : ''}${judgedDates.has(b.date) ? ', on the day of a planned hard session' : ''})`).join('; ')}.` : 'Best power in the window: none recorded.',
     fit ? `The app's critical power fit through the best ${fit.points.map((x) => `${x.seconds / 60} min ${x.watts} W`).join(', ')}: sustainable level (critical power) ${fit.cp} W, reserve ${Math.round(fit.wPrime / 1000)} kJ, largest miss ${Math.round(fit.worstMiss * 100)}%; ${fit.ok ? `a good fit, FTP about ${fit.ftp} W (${Math.round(FTP_OF_CP * 100)}% of critical power)` : `not trustworthy: ${fit.problem}`}.` : 'Critical power fit: not enough hard efforts between 2 and 30 minutes to fit.',
-    tests.length ? `Tests in the last 12 weeks: ${tests.map((t) => `${t.kind === 'ramp' ? 'ramp test' : '20-minute test'} ${t.date}: FTP estimate ${t.ftpEstimate ?? '?'} W${t.lthrEstimate ? `, threshold heart rate ${t.lthrEstimate} bpm` : ''}${t.vo2maxMlKgMin ? `, VO2max ${t.vo2maxMlKgMin} ml/kg/min` : ''}${t.vt1 || t.vt2 ? `; breathing thresholds: ${[vtWords('first (VT1)', t.vt1), vtWords('second (VT2)', t.vt2)].filter(Boolean).join('; ')}` : ''}${t.peakVe ? `; peak breathing ${t.peakVe} L/min` : ''}${t.breathMissing ? `; breathing: ${t.breathMissing}` : ''}${t.ftpAction ? ` (rider ${t.ftpAction} their FTP)` : ''}`).join(' | ')}.` : 'Tests in the last 12 weeks: none.',
+    tests.length ? `Tests in the last 12 weeks: ${tests.map((t) => `${t.kind === 'ramp' ? 'ramp test' : '20-minute test'} ${t.date}: FTP estimate ${t.ftpEstimate ?? '?'} W${t.lthrEstimate ? `, threshold heart rate ${t.lthrEstimate} bpm` : ''}${t.vo2maxMlKgMin ? `, VO2max ${t.vo2maxMlKgMin} ml/kg/min` : ''}${t.vt1 || t.vt2 ? `; breathing thresholds: ${[vtWords('first (VT1)', t.vt1), vtWords('second (VT2)', t.vt2)].filter(Boolean).join('; ')}` : ''}${t.peakVe ? `; peak breathing ${t.peakVe} L/min` : ''}${t.breathMissing ? `; breathing: ${t.breathMissing}` : ''}${t.judgeLines?.length ? `; how the ramp went: ${t.judgeLines.join(' ')}` : ''}${t.ftpBasis ? `; FTP from ${t.ftpBasis}` : ''}${t.ftpAction ? ` (rider ${t.ftpAction} their FTP)` : ''}`).join(' | ')}.` : 'Tests in the last 12 weeks: none.',
     (() => { const s = share('powerZoneSeconds'); return s ? `Riding time by power zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
     (() => { const s = share('hrZoneSeconds'); return s ? `Riding time by heart-rate zone (1-7): ${s.map(pct).join(', ')}.` : ''; })(),
     sessions.length ? `Planned hard sessions, judged against their own steps (held: every interval in its band, the last of a set within 8% of the first; fell short: an interval more than 5% under its band, or the last of a set more than 8% below the first; heart rate high means 105% of threshold heart rate or more on the last interval, low 95% or less): ${sessions.map((x) => `${x.date}${x.name ? ` ${x.name}` : ''}: ${verdictWords(x.verdict)}`).join('; ')}.` : 'Planned hard sessions judged in the window: none.',
@@ -224,7 +228,10 @@ export function gatherEvidence(o: {
     steady.length ? `Steady rides of an hour or more (efficiency factor, heart-rate drift): ${steady.map((x) => `${x.date} ${x.name}: EF ${x.ef?.toFixed(2) ?? '?'}, drift ${x.drift != null ? `${x.drift.toFixed(1)}%` : '?'}`).join('; ')}.` : '',
     notes.length ? `The rider's notes mentioning illness or tiredness: ${notes.join(' | ')}.` : '',
     o.readinessBand ? `Readiness today: ${o.readinessBand}.` : '',
-    estimate != null ? `The app's own FTP estimate: ${estimate} W (${confidence}; from ${sources.join(', ')}).` : "The app's own FTP estimate: none (too little evidence).",
+    // Part A7 (4 Nov 2026): the single best effort is a floor, never an estimate: ordinary riding cannot say how much higher FTP is.
+    basis === 'effort' && fallback
+      ? `Your riding shows an FTP of at least ${fallback.ftp} W (best ${fallback.label} on ${fallback.date}); ${fit && !fit.ok && fit.wPrime > W_PRIME_MAX ? 'it contains no all-out effort longer than about five minutes' : 'it contains no all-out effort long enough to fit'}, so it cannot say how much higher. Treat this as a floor, not as the app's estimate.`
+      : estimate != null ? `The app's own FTP estimate: ${estimate} W (${confidence}; from ${sources.join(', ')}).` : "The app's own FTP estimate: none (too little evidence).",
   ].filter(Boolean);
 
   return {

@@ -1410,6 +1410,9 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .test-res.compact .test-lead { font-size: 15px; }
 .test-res.compact .test-lead b { font-size: 17px; }
 .test-res .btn { white-space: normal; max-width: 100%; }
+.test-why { padding: 0; background: none; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.test-why[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.test-why-text { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel-2, rgba(0,0,0,0.03)); }
 .test-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line-2); color: var(--ink-3); font-size: 11px; font-weight: 700; font-style: normal; cursor: help; vertical-align: 1px; }
 .tests-table { width: 100%; }
 .tests-table th, .tests-table td { white-space: normal; }

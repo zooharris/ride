@@ -13,7 +13,8 @@ import { cleanName } from '../../player/devices';
 import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
-import { rampResult, testResultKey, twentyMinResult, type TestResult } from '../../player/tests';
+import { rampResult, testResultKey, twentyMinResult, withActions, type TestResult } from '../../player/tests';
+import { rampContextFor } from '../maxHrSeen';
 import { TestResults } from '../TestResults';
 import { deleteRecording, downloadRide, getRecording, patchRecording, rideSeconds, uploadRide } from '../../player/rides';
 import { setSetting } from '../../data/db';
@@ -110,6 +111,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
         <KeysHelp />
       </header>
       {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
+      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no readings. Check it is snug against your chest. The ride keeps recording.</div>}
 
       <main class="rd-main">
         <section class="rd-top">
@@ -555,11 +557,25 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   // A test's results, worked out from the recording; what the rider chose is kept with them on the recording.
   const [test, setTest] = useState<TestResult | undefined>(() => {
     if (!testKind) return undefined;
-    const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg, { ftp: profile.ftp, maxHr: profile.maxHr }) : twentyMinResult(rec, timeline);
+    // Read against the settings the test was ridden with; the highest heart rate seen and the riding's FTP follow below.
+    const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg, { ftp: rec.ftp, lthr: rec.lthr, maxHr: profile.maxHr }) : twentyMinResult(rec, timeline);
     const was = rec.test;
     return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction, zonesAction: was?.zonesAction };
   });
-  useEffect(() => { if (test) void patchRecording(rec.id, { test }); }, []);
+  useEffect(() => {
+    if (test) void patchRecording(rec.id, { test });
+    // Part A: the ramp read again with the highest heart rate seen in the rider's rides and the FTP recent riding shows, before the rider acts on it.
+    if (testKind !== 'ramp') return;
+    void rampContextFor({ ftp: rec.ftp, lthr: rec.lthr, maxHr: profile.maxHr }, rec.activityId).then((ctx) => {
+      if (ctx.learnedMaxHr == null && ctx.cpFtp == null) return;
+      setTest((cur) => {
+        if (!cur || cur.ftpAction || cur.lthrAction || cur.zonesAction) return cur;
+        const next = withActions(rampResult(rec, timeline, profile.weightKg, ctx), cur);
+        void patchRecording(rec.id, { test: next });
+        return next;
+      });
+    });
+  }, []);
   const changeTest = async (r: TestResult) => {
     setTest(r);
     await patchRecording(rec.id, { test: r });

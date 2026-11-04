@@ -13,6 +13,7 @@ import { patchRecording } from '../player/rides';
 import { upsertEdit } from '../sync/records';
 import { getSetting, setSetting, STREAMS_VERSION } from '../data/db';
 import { credentials } from '../sync/syncService';
+import { bestMean } from '../engine/rampJudge';
 
 /**
  * Builds the per-ride cache: for every ride with power, its mean-maximal curve and (Step 2b, 30 Oct 2026)
@@ -27,6 +28,8 @@ export const CURVE_VERSION = 2;
 export const JUDGE_VERSION = 2;
 /** 1 (31 Oct): breathing read alongside power, for the strap's normal (2A). Records of the last 12 weeks without it are read again once. */
 export const BREATH_VERSION = 1;
+/** 1 (4 Nov, Part A5): the ride's highest 30-second heart rate kept, for the max heart rate learned from rides. Records of the last 12 months without it are read again once. */
+export const HR_VERSION = 1;
 /** The rider's normal breathing at each effort, learned from their rides (2A). */
 export const BREATH_NORMAL_KEY = 'breathNormal';
 
@@ -68,7 +71,8 @@ async function run(rides: Ride[], ctx0?: CurveContext): Promise<void> {
   // and sessions judged before the steps were found by laps.
   // And (2A) rides of the last 12 weeks read before breathing was kept.
   const breathFrom = addDays(today(), -84);
-  const stale = ctx0 ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx0.sessionOf(r.id)) || (!!c.judged && c.jv !== JUDGE_VERSION) || (r.date >= breathFrom && c.bv !== BREATH_VERSION)); })
+  const hrFrom = addDays(today(), -365);
+  const stale = ctx0 ? withPower.filter((r) => { const c = have.get(r.id); return !!c && (c.v !== CURVE_VERSION || (!c.judged && !!ctx0.sessionOf(r.id)) || (!!c.judged && c.jv !== JUDGE_VERSION) || (r.date >= breathFrom && c.bv !== BREATH_VERSION) || (r.date >= hrFrom && c.hv !== HR_VERSION)); })
     .sort((a, b) => Number(b.date >= recent) - Number(a.date >= recent) || b.date.localeCompare(a.date)) : [];
   const todo = [...missing, ...stale];
   const rebuilding = stale.length > 0;
@@ -128,7 +132,9 @@ type StreamsIn = { time: number[]; watts?: number[]; heartrate?: number[]; ve?: 
 /** One ride's record. Pure apart from the context's lookups. */
 export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: CurveContext, laps?: RideLap[]): PowerCurve {
   const w = s.watts?.length ? meanMaxPower(s.time, s.watts, CURVE_SECONDS) : CURVE_SECONDS.map(() => 0);
-  if (!ctx) return { id: r.id, date: r.date, w };
+  const h = s.heartrate?.length ? bestMean(s.time, s.heartrate, -Infinity, Infinity, 30) : undefined;
+  const hr: Pick<PowerCurve, 'hr30' | 'hv'> = { ...(h != null ? { hr30: Math.round(h) } : {}), hv: HR_VERSION };
+  if (!ctx) return { id: r.id, date: r.date, w, ...hr };
   const p = ctx.profile;
   const bands = hrAtPower(s.time, s.watts, s.heartrate, p.ftp);
   const steady = steadyAtHr(s.time, s.watts, s.heartrate, p.lthr);
@@ -142,7 +148,7 @@ export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: Cu
     id: r.id, date: r.date, w, v: CURVE_VERSION, ftpAtBuild: p.ftp, lthrAtBuild: p.lthr,
     ...(bands.length ? { hrAtPower: bands } : {}), ...(steady ? { steadyAtHr: steady } : {}),
     ...(verdict ? { verdict } : {}), ...(session ? { judged: true, jv: JUDGE_VERSION } : {}),
-    bv: BREATH_VERSION, ...(ve.length ? { veAtPower: ve } : {}), ...(offset != null ? { breathOffset: offset } : {}),
+    bv: BREATH_VERSION, ...(ve.length ? { veAtPower: ve } : {}), ...(offset != null ? { breathOffset: offset } : {}), ...hr,
   };
 }
 

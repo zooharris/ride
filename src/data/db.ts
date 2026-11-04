@@ -67,6 +67,9 @@ export interface PowerCurve {
   veAtPower?: import('../engine/breathOffset').VeAtPower[];
   /** The strap's reading against the rider's normal on this ride (2A); never shown. */
   breathOffset?: number;
+  /** Part A5 (4 Nov 2026): the highest 30-second mean heart rate of the ride, and the reading it was made with (powerCurves HR_VERSION). */
+  hr30?: number;
+  hv?: number;
 }
 
 export interface SyncState {

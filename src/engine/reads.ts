@@ -19,7 +19,8 @@ import { addDays } from './load';
  * Everything is measured against the signed-in rider's own settings and
  * history; nothing here is set for any one rider.
  */
-export const READ_VERSION = 1;
+/** 2 (4 Nov 2026, Part A9): a planned test is marked, so its drift is not read. */
+export const READ_VERSION = 2;
 /** How far back activities are read. */
 export const READ_DAYS = 84;
 /** The steady part of a ride starts after the warm-up. */
@@ -76,6 +77,8 @@ export interface ActivityRead {
 export interface PlannedRead {
   workoutId: string;
   name: string;
+  /** Part A9: a fitness test, whose drift and fade mean nothing (a ramp rises by design). */
+  test?: boolean;
   /** One line per work step ridden: "Hard effort 2 of 3 · target 300 to 320 W · you rode 318 W, in target". */
   steps: string[];
   /** Planned steps reached by the recording, and planned steps in all: a fact, never a verdict. */
@@ -263,7 +266,7 @@ export function readActivity(r: Ride, s: Streams | undefined, ctx: ReadContext):
 
 /** Each step ridden against its target. Steps the recording never reached are counted, not judged. */
 export function plannedRead(workout: Workout, basis: Basis, p: Profile, time: number[], watts?: number[], hr?: number[], laps?: RideLap[]): PlannedRead {
-  const base: PlannedRead = { workoutId: workout.id, name: workout.name, steps: [] };
+  const base: PlannedRead = { workoutId: workout.id, name: workout.name, steps: [], ...(workout.test ? { test: true } : {}) };
   if (workout.kind !== 'ride' || !time.length) return base;
   const series = basis === 'power' ? watts : hr;
   if (!series?.length) return base;
@@ -377,7 +380,7 @@ export function readWords(read: ActivityRead, ctx: WordsContext): string[] {
   if (vs && Math.abs(vs.beats) >= 1) bits.push(`heart rate at ${vs.from} to ${vs.to} W averaged ${Math.abs(Math.round(vs.beats))} bpm ${vs.beats > 0 ? 'above' : 'below'} the rider's usual for that power over the previous 8 weeks`);
   else if (vs) bits.push(`heart rate at ${vs.from} to ${vs.to} W was the rider's usual for that power`);
   // Drift and fade mean something on steady riding; a session of hard steps is read by its steps instead.
-  const steady = !read.planned?.steps.length;
+  const steady = !read.planned?.steps.length && !read.planned?.test;
   if (read.drift != null && steady) bits.push(`heart rate drifted ${read.drift >= 0 ? 'up' : 'down'} ${Math.abs(read.drift)}% against power from the first half to the second`);
   if (read.fade != null && steady) bits.push(read.fade >= 0.97 ? 'power held from the first quarter to the last' : `power in the last quarter ${Math.round((1 - read.fade) * 100)}% below the first`);
   if (read.has.breathing) {

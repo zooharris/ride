@@ -9,7 +9,7 @@ import { db, getSetting, setSetting } from '../data/db';
 import { askThreshold, type ThresholdAdvice, type ThresholdMode } from '../coach/claude';
 import { today } from '../engine/load';
 import { gatherEvidence, type TestInput, type ThresholdEvidence } from '../engine/thresholdEvidence';
-import { testResultKey, type TestResult } from '../player/tests';
+import { breathCoveredRamp, ftpBasisWords, testResultKey, type TestResult } from '../player/tests';
 import { LIBRARY } from '../library/workouts';
 import { fitnessFromRides, fitnessOn, readinessToday } from './derived';
 import { findWorkout, type AppData } from './store';
@@ -21,6 +21,8 @@ const BREATH_MISSING_FOR_COACH: Record<string, string | undefined> = {
   none: 'no clear bend in breathing',
   'no-vt1': 'the first threshold did not show',
   'no-vt2': 'the second threshold did not show (the test may have stopped before it)',
+  'strap-stopped': 'the strap stopped sending readings before the ramp ended, so the second threshold could not be found',
+  flat: 'breathing barely rose with the effort (the strap was likely loose), no thresholds read',
 };
 
 const BAND_WORDS: Record<string, string> = { go: 'Ready', ease: 'Ease off a little', easy: 'Keep it easy', rest: 'Rest' };
@@ -34,7 +36,9 @@ export async function loadTests(data: AppData): Promise<TestInput[]> {
   const seen = new Set<string>();
   const take = (date: string, r: TestResult) => out.push({
     date, kind: r.kind, ftpEstimate: r.ftpEstimate, lthrEstimate: r.lthrEstimate, vo2maxMlKgMin: r.vo2maxMlKgMin, ftpAction: r.ftpAction,
-    ...(r.breath ? { vt1: r.breath.vt1, vt2: r.breath.vt2, peakVe: r.breath.peakVe, breathMissing: BREATH_MISSING_FOR_COACH[r.breath.missing ?? ''] } : {}),
+    ...(r.breath ? { vt1: r.breath.vt1, vt2: r.breath.vt2, peakVe: r.breath.peakVe && breathCoveredRamp(r.breath) ? r.breath.peakVe : undefined, breathMissing: BREATH_MISSING_FOR_COACH[r.breath.missing ?? ''] } : {}),
+    ...(r.judge ? { judgeLines: [`All-out: ${r.judge.allOut ?? 'unknown'}; went past the second threshold: ${r.judge.pastVt2 ?? 'unknown'}.`, ...r.judge.lines] } : {}),
+    ...(r.kind === 'ramp' && r.ftpEstimate != null ? { ftpBasis: `${ftpBasisWords(r)}${r.ftpDisagree ? ' (the witnesses disagreed by more than 8%, so the best-minute figure was offered)' : ''}${r.stepWatts ? `; ramp of ${r.stepWatts} W a minute` : ''}${r.hrAtFtp != null ? `; heart rate at that power ${r.hrAtFtp} bpm` : ''}` } : {}),
   });
   for (const s of kept) {
     const id = s.key.slice(prefix.length);

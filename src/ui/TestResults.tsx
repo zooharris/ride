@@ -83,7 +83,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
 
       {r.lthrEstimate != null && (
         <div class="test-row">
-          {ramp ? <p class="test-lead">Your heart rate at your second breathing threshold was <b class="num">{r.lthrEstimate} bpm</b>: a good threshold heart rate.</p>
+          {ramp ? <p class="test-lead">Your heart rate at your second breathing threshold was <b class="num">{r.lthrEstimate} bpm</b>: {r.breath?.vt2?.certainty === 'unsure' ? 'a fair guide to your threshold heart rate, though that bend was less certain' : 'a good threshold heart rate'}.</p>
             : <p class="test-lead">Your heart rate over the last fifteen minutes averaged <b class="num">{r.lthrEstimate} bpm</b>: a good threshold heart rate.</p>}
           {r.lthrAction === 'updated' ? <p class="small"><span class="rd-state on">Updated</span> Your threshold heart rate is {profile.lthr} bpm{r.lthrBefore != null && r.lthrBefore !== profile.lthr ? ` (was ${r.lthrBefore})` : ''}.</p>
             : lthrEq ? <p class="muted small">That matches your threshold heart rate setting.</p>
@@ -150,7 +150,7 @@ function BreathSection({ b }: { b: BreathTest }) {
       {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} />}
       {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} />}
       {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{MISSING[b.missing ?? 'none']}</p> : null}
-      {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle bend in your breathing; a repeat test would firm it up.</p>}
+      {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a repeat test would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
       {b.peakVe != null && b.missing !== 'patchy' && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
       {(b.vt1 || b.vt2) && <p class="faint small" style="margin:6px 0 0">These stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures.</p>}
     </div>
@@ -180,7 +180,7 @@ function TestZones({ r, profile, onChange, hasKey }: { r: TestResult; profile: P
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:2px">Zones from this test</p>
-      <p class="muted small" style="margin:0">In the power and heart-rate tables, zone 2 ends at your first threshold and zone 4 at your second; the zones above keep the shares of threshold you have now. In the breathing table, zones 2 and 3 end at your two thresholds.{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
+      <p class="muted small" style="margin:0">In the power and heart-rate tables, zone 2 ends at your first threshold and zone 4 at your second; the zones above keep the shares of threshold you have now. In the breathing table, zones 2 and 3 end at your two thresholds.{r.breath?.vt1?.certainty === 'unsure' || r.breath?.vt2?.certainty === 'unsure' ? ' A threshold here was less certain, so these are a first draft until a repeat test confirms it.' : ''}{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
       <div class="coach-tables">
         {z.powerTops && <ZoneCompare title="Power zones (top of each, watts)" now={nowP} next={z.powerTops} unit="W" />}
         {z.hrTops && <ZoneCompare title="Heart-rate zones (top of each, bpm)" now={nowH} next={z.hrTops} unit="bpm" />}

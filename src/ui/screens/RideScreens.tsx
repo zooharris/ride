@@ -555,7 +555,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   // A test's results, worked out from the recording; what the rider chose is kept with them on the recording.
   const [test, setTest] = useState<TestResult | undefined>(() => {
     if (!testKind) return undefined;
-    const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg) : twentyMinResult(rec, timeline);
+    const found = testKind === 'ramp' ? rampResult(rec, timeline, profile.weightKg, { ftp: profile.ftp, maxHr: profile.maxHr }) : twentyMinResult(rec, timeline);
     const was = rec.test;
     return { ...found, ftpBefore: was?.ftpBefore ?? profile.ftp, ftpAction: was?.ftpAction, lthrBefore: was?.lthrBefore ?? (found.lthrEstimate != null ? profile.lthr : undefined), lthrAction: was?.lthrAction, zonesAction: was?.zonesAction };
   });

@@ -677,7 +677,7 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
   if (!found) return null;
   // Step 4 (3 Nov 2026): a ramp ridden with a breathing strap but read before breathing thresholds existed is read for them here,
   // for showing; it is kept only when the rider acts on it (Update, Use these zones, Keep), so a rougher copy never replaces a better one.
-  const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt) : undefined;
+  const late = kind === 'ramp' && !found.breath && streams ? rampBreathingFromStreams(streams, found.endedAt, { ftp: profile.ftp, maxHr: profile.maxHr }) : undefined;
   const result: TestResult = late ? { ...found, ...breathFields(late), lthrEstimate: found.lthrEstimate ?? late.vt2?.hr, lthrBefore: found.lthrBefore ?? (late.vt2?.hr ? profile.lthr : undefined) } : found;
   const change = (x: TestResult) => {
     setOwn(x);

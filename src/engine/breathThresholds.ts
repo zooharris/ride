@@ -32,6 +32,21 @@ export const MIN_SEGMENT = 4;
 export const MIN_BEND = 1.1;
 /** A bend this sharp or sharper is clear; between MIN_BEND and this it is less certain. */
 export const CLEAR_BEND = 1.25;
+/**
+ * Review (4 Nov 2026): which threshold a bend is cannot be told from its place
+ * on the ramp alone (a ramp that stopped early puts the first threshold where
+ * the second usually sits). The heart rate at the bend decides: the second
+ * threshold sits at this share of the rider's highest heart rate (the setting
+ * or the test's own peak, whichever is higher) or above; the first sits below.
+ */
+export const VT2_HR_SHARE = 0.86;
+/** A bend counts as clear when the three sub-sample fits put it within this share of the top power of the full fit. */
+export const STEADY_TOL = 0.08;
+/** Where on the ramp each threshold can sit, as shares of the highest power ridden. */
+export const VT1_RANGE: [number, number] = [0.4, 0.85];
+export const VT2_RANGE: [number, number] = [0.6, 0.98];
+/** With no heart rate, the second threshold sits at this share of FTP or above. */
+export const VT2_FTP_SHARE = 0.9;
 
 export interface VtPoint {
   /** Power at the threshold, watts. */
@@ -119,11 +134,17 @@ export function findBends(xs: number[], ys: number[]): Bends {
   if (n < 2 * MIN_SEGMENT) return {};
   const ones = xs.map(() => 1);
   const hinge = (k: number) => xs.map((x) => Math.max(0, x - xs[k]));
+  const top = Math.max(...xs);
   // The two thresholds sit well apart on any ramp (VT1 is typically 70-80% of VT2's power): the middle line spans at least an eighth of the highest power.
-  const minMiddle = Math.max(...xs) / 8;
+  const minMiddle = top / 8;
+  // Review (4 Nov 2026): bends are looked for only where a threshold can sit (the first at 40-85% of the top power, the second at 60-98%),
+  // so the settling-in after the warm-up or a wobble near the top cannot take a real bend's place.
+  const firstOk = (x: number) => x >= VT1_RANGE[0] * top && x <= VT1_RANGE[1] * top;
+  const secondOk = (x: number) => x >= VT2_RANGE[0] * top && x <= VT2_RANGE[1] * top;
   let best3: { sse: number; i: number; j: number; r1: number; r2: number } | undefined;
   let best2: { sse: number; i: number; r: number } | undefined;
   for (let i = MIN_SEGMENT; i <= n - MIN_SEGMENT; i++) {
+    if (!firstOk(xs[i]) && !secondOk(xs[i])) continue;
     const hi = hinge(i);
     const two = ols([ones, xs, hi], ys);
     if (two) {
@@ -131,8 +152,9 @@ export function findBends(xs: number[], ys: number[]): Bends {
       const r = (b + c) / b;
       if (b > 0 && r >= MIN_BEND && (!best2 || two.sse < best2.sse)) best2 = { sse: two.sse, i, r };
     }
+    if (!firstOk(xs[i])) continue;
     for (let j = i + MIN_SEGMENT; j <= n - MIN_SEGMENT; j++) {
-      if (xs[j] - xs[i] < minMiddle) continue;
+      if (xs[j] - xs[i] < minMiddle || !secondOk(xs[j])) continue;
       const three = ols([ones, xs, hi, hinge(j)], ys);
       if (!three) continue;
       const [, b, c, d] = three.coef;
@@ -152,7 +174,7 @@ export function findBends(xs: number[], ys: number[]): Bends {
  * are the ramp's first and last seconds (the warm-up and cool-down are left
  * out). Undefined when the ride has no breathing at all.
  */
-export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: number[]; ve?: number[]; br?: number[]; from: number; to: number }): BreathTest | undefined {
+export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: number[]; ve?: number[]; br?: number[]; from: number; to: number; ftp?: number; maxHr?: number }): BreathTest | undefined {
   if (!o.ve?.some((v) => ok(v) && v > 0)) return undefined;
   if (!o.watts?.length) return { missing: 'no-breathing' };
   const s = breathingOf({ time: o.time, ve: o.ve, br: o.br });
@@ -173,6 +195,7 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
     bins.push({ t: a, w: w.value, ve: ve.value, hr, br });
   }
   const peak = peaks(time, s.ve, s.br, o.from, o.to + 60);
+  const peakHr = peakOf(time, o.hr, o.from, o.to + 60);
   if (tried < MIN_BINS) return { ...peak, missing: 'too-short' };
   if (bins.length < MIN_BINS) return { ...peak, missing: 'patchy' };
   if (bins.length < tried * 0.7) return { ...peak, missing: 'patchy' };
@@ -182,10 +205,19 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
   const xs = bins.map((b) => b.w);
   const bends = findBends(xs, smooth);
   const top = Math.max(...xs);
-  // Steadiness: fitted again on every other piece (two half-samples), a well-defined bend lands within 6% of the top power of where it did.
-  const halves = [0, 1].map((h) => findBends(xs.filter((_, k) => k % 2 === h), smooth.filter((_, k) => k % 2 === h)));
-  const steady = (x: number) => halves.every((hb) => [hb.x1, hb.x2].some((y) => y != null && Math.abs(y - x) <= top * 0.06));
+  // Steadiness (review, 4 Nov 2026): fitted again on every third piece, unsmoothed (three samples that share no readings, so
+  // their agreement means something), a well-defined bend lands within 8% of the top power of where it did on each of them.
+  // On simulated ramps with breath-by-breath noise this makes "clear" rare but right; the two-half check on the smoothed
+  // line it replaces called a bend clear when it was 30-40 W out about a third of the time.
+  const raw = bins.map((b) => b.ve);
+  const subs = [0, 1, 2].map((h) => findBends(xs.filter((_, k) => k % 3 === h), raw.filter((_, k) => k % 3 === h)));
+  const steady = (x: number) => subs.every((sb) => [sb.x1, sb.x2].some((y) => y != null && Math.abs(y - x) <= top * STEADY_TOL));
   // A threshold's heart rate, ventilation and breathing rate: read from the pieces either side of the bend's power.
+  // A bend read across a hole in the strap's readings (no piece for more than two pieces' time, close to the bend) is not certain.
+  const gapped = (watts: number) => {
+    const near = bins.filter((b) => Math.abs(b.w - watts) <= top * 0.1);
+    return near.some((b, k) => k > 0 && b.t - near[k - 1].t > 2 * BIN_SECONDS);
+  };
   const at = (watts: number, ratio: number): VtPoint => {
     const k = Math.max(1, bins.findIndex((b) => b.w >= watts));
     const pair = [bins[k - 1], bins[k]].filter(Boolean);
@@ -195,39 +227,62 @@ export function breathThresholds(o: { time: number[]; watts?: number[]; hr?: num
       hr: hrs.length ? Math.round(mean(hrs)!) : undefined,
       ve: Math.round(mean(pair.map((_, q) => smooth[k - 1 + q]))! * 10) / 10,
       br: brs.length ? Math.round(mean(brs)!) : undefined,
-      certainty: ratio >= CLEAR_BEND && steady(watts) ? 'clear' : 'unsure',
+      certainty: ratio >= CLEAR_BEND && steady(watts) && !gapped(watts) ? 'clear' : 'unsure',
     };
   };
   // Where on the ramp each threshold can plausibly sit, as shares of the highest power ridden.
-  const vt1Ok = (p: VtPoint) => p.watts >= top * 0.4 && p.watts <= top * 0.85;
-  const vt2Ok = (p: VtPoint) => p.watts >= top * 0.6 && p.watts <= top * 0.98;
+  const vt1Ok = (p: VtPoint) => p.watts >= top * VT1_RANGE[0] && p.watts <= top * VT1_RANGE[1];
+  const vt2Ok = (p: VtPoint) => p.watts >= top * VT2_RANGE[0] && p.watts <= top * VT2_RANGE[1];
+  // Is this bend the second threshold? By heart rate against the rider's highest (the setting or this test's peak,
+  // whichever is higher), else by power against FTP; undefined when there is nothing to judge by.
+  const hrRef = Math.max(o.maxHr ?? 0, peakHr ?? 0);
+  const looksVt2 = (p: VtPoint): boolean | undefined =>
+    p.hr != null && hrRef > 0 ? p.hr >= VT2_HR_SHARE * hrRef
+      : o.ftp && o.ftp > 0 ? p.watts >= VT2_FTP_SHARE * o.ftp
+      : undefined;
+  const unsure = (p: VtPoint): VtPoint => ({ ...p, certainty: 'unsure' });
   let vt1: VtPoint | undefined, vt2: VtPoint | undefined;
   if (bends.x1 != null && bends.x2 != null) {
     const a = at(bends.x1, bends.ratio1!), b = at(bends.x2, bends.ratio2!);
-    if (vt1Ok(a)) vt1 = a;
-    if (vt2Ok(b)) vt2 = b;
+    const bIs2 = looksVt2(b);
+    if (bIs2 === false) {
+      // The upper bend is only the first threshold (the ramp stopped before the second): the lower one is the settling-in after
+      // the warm-up, or the first threshold itself with the upper one noise. Too little ramp above it to be sure either way.
+      if (vt1Ok(b)) vt1 = unsure(b);
+    } else if (looksVt2(a) === true) {
+      // Both bends sit at threshold heart rate: the lower is the second threshold, the upper noise above it.
+      if (vt2Ok(a)) vt2 = a;
+    } else {
+      if (vt1Ok(a)) vt1 = a;
+      if (vt2Ok(b)) vt2 = b;
+    }
   } else if (bends.x1 != null) {
-    // One bend only: the upper part of the ramp makes it the second threshold, the lower the first.
     const a = at(bends.x1, bends.ratio1!);
-    if (a.watts >= top * 0.7 && vt2Ok(a)) vt2 = a;
-    else if (vt1Ok(a)) vt1 = a;
+    const is2 = looksVt2(a);
+    if (is2 === true) { if (vt2Ok(a)) vt2 = a; else if (vt1Ok(a)) vt1 = a; }
+    else if (is2 === false) { if (vt1Ok(a)) vt1 = a; }
+    // Nothing to judge by: the upper part of the ramp makes it the second threshold, the lower the first, and neither is certain.
+    else if (a.watts >= top * 0.7 && vt2Ok(a)) vt2 = unsure(a);
+    else if (vt1Ok(a)) vt1 = unsure(a);
   }
   if (vt1 && vt2 && vt2.watts <= vt1.watts) vt2 = undefined;
   const missing = vt1 && vt2 ? undefined : !vt1 && !vt2 ? 'none' : !vt1 ? 'no-vt1' : 'no-vt2';
   return { vt1, vt2, ...peak, missing };
 }
 
+/** The highest 30-second mean of a series in [from, to), at least 15 readings in the half-minute. */
+function peakOf(time: number[], xs: number[] | undefined, from: number, to: number): number | undefined {
+  let top: number | undefined;
+  for (let a = from; a + 30 <= to; a += 5) {
+    const m = windowMean(time, xs, a, a + 30, true);
+    if (ok(m.value) && m.count >= 15 && (top == null || m.value > top)) top = m.value;
+  }
+  return top;
+}
+
 /** The highest 30-second ventilation and breathing rate in [from, to). */
 function peaks(time: number[], ve: number[] | undefined, br: number[] | undefined, from: number, to: number): Pick<BreathTest, 'peakVe' | 'peakBr'> {
-  const best = (xs: number[] | undefined) => {
-    let top: number | undefined;
-    for (let a = from; a + 30 <= to; a += 5) {
-      const m = windowMean(time, xs, a, a + 30, true);
-      if (ok(m.value) && m.count >= 15 && (top == null || m.value > top)) top = m.value;
-    }
-    return top;
-  };
-  const v = best(ve), b = best(br);
+  const v = peakOf(time, ve, from, to), b = peakOf(time, br, from, to);
   return { peakVe: v != null ? Math.round(v) : undefined, peakBr: b != null ? Math.round(b) : undefined };
 }
 
@@ -259,13 +314,15 @@ export function zonesFromTest(bt: BreathTest | undefined, o: { ftp?: number; lth
   const vt1 = bt?.vt1, vt2 = bt?.vt2;
   if (!vt1 || !vt2) return out;
   const ftp = o.ftp && o.ftp > 0 ? o.ftp : vt2.watts;
-  const p = [Math.round(vt1.watts * 0.73), vt1.watts, Math.round((vt1.watts + vt2.watts) / 2), vt2.watts, Math.round(ftp * o.powerPcts[4] / 100), Math.round(ftp * o.powerPcts[5] / 100)];
+  // Zone 1's top sits below VT1 in the rider's own proportion of zone 1 to zone 2 (the standard ladders give 0.73 for power, 0.92 for heart rate).
+  const share = (pcts: number[], fallback: number) => (pcts[0] > 0 && pcts[1] > pcts[0] ? pcts[0] / pcts[1] : fallback);
+  const p = [Math.round(vt1.watts * share(o.powerPcts, 0.73)), vt1.watts, Math.round((vt1.watts + vt2.watts) / 2), vt2.watts, Math.round(ftp * o.powerPcts[4] / 100), Math.round(ftp * o.powerPcts[5] / 100)];
   if (p[4] <= p[3]) p[4] = Math.round(p[3] * 1.12);
   if (p[5] <= p[4]) p[5] = Math.round(p[4] * 1.25);
   if (rising(p)) out.powerTops = p;
   if (vt1.hr && vt2.hr && vt2.hr > vt1.hr) {
     const lthr = vt2.hr;
-    const h = [Math.round(vt1.hr * 0.92), vt1.hr, Math.round((vt1.hr + vt2.hr) / 2), vt2.hr, Math.round(lthr * o.hrPcts[4] / 100), Math.round(lthr * o.hrPcts[5] / 100)];
+    const h = [Math.round(vt1.hr * share(o.hrPcts, 0.92)), vt1.hr, Math.round((vt1.hr + vt2.hr) / 2), vt2.hr, Math.round(lthr * o.hrPcts[4] / 100), Math.round(lthr * o.hrPcts[5] / 100)];
     const cap = o.maxHr && o.maxHr > 0 ? o.maxHr - 1 : Infinity;
     h[4] = Math.min(h[4], cap - 1);
     h[5] = Math.min(h[5], cap);

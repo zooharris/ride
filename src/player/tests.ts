@@ -98,7 +98,10 @@ const targetOf = (samples: Sample[], index: number): number | undefined => sampl
  * power (last full step plus the share of the unfinished one, from the targets
  * the trainer held), VO2max from peak power, and heart rate at the new FTP.
  */
-export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEndAt' | 'events'>, timeline: TimelineStep[], weightKg?: number): TestResult {
+/** What a ramp's breathing is read against (review, 4 Nov 2026): the rider's FTP and max heart rate, to tell the two thresholds apart. */
+export interface RampContext { ftp?: number; maxHr?: number }
+
+export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEndAt' | 'events'>, timeline: TimelineStep[], weightKg?: number, ctx?: RampContext): TestResult {
   const endP = rec.rampEndAt ?? Infinity;
   const ridden = rec.samples.filter((s) => (s.p ?? 0) < endP);
   const best = bestAverage(ridden.map((s) => s.w), 60);
@@ -121,7 +124,7 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
     if (hrs.length >= 30) hrAtFtp = Math.round(avg(hrs)!);
   }
   const ev = rec.events.find((e) => e.type === 'test');
-  const breath = rampBreathing(rec, timeline);
+  const breath = rampBreathing(rec, timeline, ctx);
   return {
     kind: 'ramp', stepWatts: rec.rampStep, ...breathFields(breath),
     bestMinuteWatts: best != null ? Math.round(best) : undefined, ftpEstimate: ftp,
@@ -137,7 +140,7 @@ export function breathFields(breath: BreathTest | undefined): Pick<TestResult, '
 }
 
 /** The ramp's breathing thresholds from the player's recording: the ramp steps only, up to where it ended. */
-export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, timeline: TimelineStep[]): BreathTest | undefined {
+export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, timeline: TimelineStep[], ctx?: RampContext): BreathTest | undefined {
   if (!rec.samples.some((x) => x.ve != null && x.ve > 0)) return undefined;
   const rampSteps = new Set(timeline.filter((s) => s.ramp).map((s) => s.index));
   const endP = rec.rampEndAt ?? Infinity;
@@ -147,7 +150,7 @@ export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, tim
   return breathThresholds({
     time: ss.map((x) => x.t), watts: ss.map((x) => x.w ?? NaN), hr: ss.map((x) => x.hr ?? NaN),
     ve: ss.map((x) => x.ve ?? NaN), br: ss.map((x) => x.br ?? NaN),
-    from: on[0].t, to: on[on.length - 1].t + 1,
+    from: on[0].t, to: on[on.length - 1].t + 1, ftp: ctx?.ftp, maxHr: ctx?.maxHr,
   });
 }
 
@@ -160,7 +163,7 @@ export const RAMP_WARMUP_SECONDS = 300;
  * from the end of the five-minute warm-up to where it ended (the result's own
  * record of it, or the end of the best minute).
  */
-export function rampBreathingFromStreams(s: { time: number[]; watts?: number[]; heartrate?: number[]; ve?: number[]; br?: number[] }, endedAt?: number): BreathTest | undefined {
+export function rampBreathingFromStreams(s: { time: number[]; watts?: number[]; heartrate?: number[]; ve?: number[]; br?: number[] }, endedAt?: number, ctx?: RampContext): BreathTest | undefined {
   if (!s.ve?.some((v) => v != null && isFinite(v) && v > 0) || !s.watts?.length) return undefined;
   let to = endedAt;
   if (to == null) {
@@ -173,7 +176,7 @@ export function rampBreathingFromStreams(s: { time: number[]; watts?: number[]; 
     }
   }
   if (to == null) return undefined;
-  return breathThresholds({ time: s.time, watts: s.watts, hr: s.heartrate, ve: s.ve, br: s.br, from: RAMP_WARMUP_SECONDS, to });
+  return breathThresholds({ time: s.time, watts: s.watts, hr: s.heartrate, ve: s.ve, br: s.br, from: RAMP_WARMUP_SECONDS, to, ftp: ctx?.ftp, maxHr: ctx?.maxHr });
 }
 
 /** The 20-minute test's twenty minutes, at least nineteen of them ridden: the step named "Test". */

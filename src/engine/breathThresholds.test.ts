@@ -72,6 +72,31 @@ describe('breathing thresholds from a ramp', () => {
     expect(['no-vt2', 'none']).toContain(r.missing);
   });
 
+  it('does not call the first threshold the second when the ramp stopped early (review, 4 Nov 2026)', () => {
+    // VT1 at 190, VT2 at 270; the ramp stops at 260, so the only bend is VT1. Its heart rate (about 148 of a max of 185)
+    // is below threshold heart rate, so it is the first threshold, and the second is reported missing.
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const r = breathThresholds({ ...ramp({ vt1: 190, vt2: 270, lastW: 260, seed }), ftp: 250, maxHr: 185 })!;
+      expect(r.vt2, `seed ${seed}`).toBeUndefined();
+      if (r.vt1) expect(Math.abs(r.vt1.watts - 190), `seed ${seed}`).toBeLessThanOrEqual(35);
+      expect(['no-vt2', 'none'], `seed ${seed}`).toContain(r.missing);
+    }
+  });
+
+  it('still finds the second threshold, by heart rate, on a full ramp', () => {
+    for (const seed of [1, 2, 3]) {
+      const r = breathThresholds({ ...ramp({ vt1: 190, vt2: 270, lastW: 350, seed }), ftp: 250, maxHr: 185 })!;
+      expect(r.vt2, `seed ${seed}`).toBeDefined();
+      expect(Math.abs(r.vt2!.watts - 270), `seed ${seed}`).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it('marks a bend less certain when the strap had a hole beside it', () => {
+    const r = breathThresholds(ramp({ vt1: 200, vt2: 290, lastW: 360, noBreath: [560, 620] }))!;
+    // The hole (ramp seconds 260-320, about 220-240 W) sits just above VT1.
+    if (r.vt1 && Math.abs(r.vt1.watts - 200) <= 36) expect(r.vt1.certainty).toBe('unsure');
+  });
+
   it('says the readings were patchy when the strap dropped out', () => {
     const r = breathThresholds(ramp({ vt1: 200, vt2: 290, lastW: 360, noBreath: [500, 900] }))!;
     expect(r.missing).toBe('patchy');
@@ -98,7 +123,7 @@ describe('zones from a test', () => {
   const bt = { vt1: { watts: 200, hr: 130, ve: 55, certainty: 'clear' as const }, vt2: { watts: 280, hr: 155, ve: 95, certainty: 'clear' as const } };
   it('anchors zone 2 at VT1 and zone 4 at VT2, keeping the rider’s upper shares', () => {
     const z = zonesFromTest(bt, { ftp: 270, maxHr: 175, powerPcts: [55, 75, 90, 105, 120, 150], hrPcts: [82, 89, 94, 100, 106, 110] });
-    expect(z.powerTops).toEqual([146, 200, 240, 280, 324, 405]);
+    expect(z.powerTops).toEqual([147, 200, 240, 280, 324, 405]);
     expect(z.hrTops![1]).toBe(130);
     expect(z.hrTops![3]).toBe(155);
     expect(z.hrTops![5]).toBeLessThan(175);

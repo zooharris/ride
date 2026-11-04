@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanName, optionsFor, pillFor, slotView, type Known } from './devices';
 import { migrateSaved } from './hub';
+import { isBreathName, isTymeHrName } from './ble/breath';
 import { pickSources, type SensorSnapshot } from './sources';
 
 type S = SensorSnapshot & { controllable?: boolean; warning?: string };
@@ -64,15 +65,19 @@ describe('the device boxes', () => {
     expect(fixed).toHaveLength(3);
   });
 
-  it('a breathing strap once filed as a heart-rate monitor is a breathing strap again (4 Nov)', () => {
+  it('the VitalPro is two devices: the TymeHR is a heart-rate monitor even if filed as a breathing strap, the TYME- sensor stays the breathing strap (4 Nov)', () => {
     const fixed = migrateSaved([
-      { id: 'strap', name: 'TYME-2F31', kind: 'hr' },
+      { id: 'pod', name: 'TymeHR 0674329', kind: 'breath' },
+      { id: 'strap', name: 'TYME-9E1C', kind: 'breath' },
       { id: 'epix', name: 'EPIX PRO -', kind: 'hr' },
-      { id: 'strap', name: 'TYME-2F31', kind: 'breath' },
     ]);
+    expect(fixed.find((d) => d.id === 'pod')?.kind).toBe('hr');
     expect(fixed.find((d) => d.id === 'strap')?.kind).toBe('breath');
     expect(fixed.find((d) => d.id === 'epix')?.kind).toBe('hr');
-    expect(fixed).toHaveLength(2);
+    expect(isTymeHrName('TymeHR 0674329')).toBe(true);
+    expect(isTymeHrName('TYME-9E1C')).toBe(false);
+    expect(isBreathName('TYME-9E1C')).toBe(true);
+    expect(isBreathName('TymeHR 0674329')).toBe(false);
   });
 
   it('tidies the name a Garmin watch broadcasts', () => {

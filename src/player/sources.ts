@@ -37,8 +37,7 @@ const PRIORITY: Record<Metric, SensorKind[]> = {
   watts: ['power', 'trainer'],
   cadence: ['power', 'csc', 'trainer'],
   speedKmh: ['trainer', 'csc'],
-  // A breathing strap is also a heart-rate strap.
-  bpm: ['hr', 'breath', 'trainer'],
+  bpm: ['hr', 'trainer'],
   ve: ['breath'],
   br: ['breath'],
   tv: ['breath'],

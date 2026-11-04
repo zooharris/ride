@@ -91,7 +91,6 @@ describe('1A: the hub\'s rules for breathing', () => {
   it('a sixth box, Breathing strap, connected between breaths and while silent', () => {
     expect(SLOTS).toEqual(['trainer', 'watts', 'bpm', 'cadence', 'speedKmh', 've']);
     expect(reportsOf({ kind: 'breath' })).toContain('ve');
-    expect(reportsOf({ kind: 'breath' })).toContain('bpm');
     const silent = { ...strap(0), reading: undefined };
     expect(slotView('ve', [silent], [], {}, {}).state).toBe('connected');
     expect(slotView('ve', [], [], {}, {}).state).toBe('empty');
@@ -211,24 +210,5 @@ describe('1E: the Breathing chart\'s 30-second average', () => {
     const m = trailingMean(t, v, 30);
     expect(m[29]).toBe(30);
     expect(m[39]).toBeCloseTo((20 * 30 + 9 * 60) / 29, 5);
-  });
-});
-
-describe('one strap, both boxes (4 Nov)', () => {
-  it('the breathing strap supplies heart rate and breathing from one connection', () => {
-    const now = 1_000_000;
-    const strap: SensorSnapshot = { id: 'strap', kind: 'breath', name: 'TYME-2F31', status: 'connected', reading: { bpm: 142, ve: 61.2, br: 31, tv: 1.97, ie: 0.8, at: now - 500 } };
-    const src = pickSources([strap], now);
-    expect(src.bpm?.from).toBe('strap');
-    expect(src.ve?.from).toBe('strap');
-    expect(slotView('ve', [strap], [], src, {}).state).toBe('connected');
-    expect(slotView('bpm', [strap], [], src, {}).state).toBe('connected');
-  });
-
-  it('a separate heart-rate monitor still comes first for heart rate', () => {
-    const now = 1_000_000;
-    const strap: SensorSnapshot = { id: 'strap', kind: 'breath', name: 'TYME-2F31', status: 'connected', reading: { bpm: 142, ve: 61.2, at: now - 500 } };
-    const hrm: SensorSnapshot = { id: 'hrm', kind: 'hr', name: 'HRM-Pro', status: 'connected', reading: { bpm: 140, at: now - 500 } };
-    expect(pickSources([strap, hrm], now).bpm?.from).toBe('hrm');
   });
 });

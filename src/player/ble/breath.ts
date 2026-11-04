@@ -12,9 +12,14 @@
 
 export const BREATH_SERVICE = '40b50000-30b5-11e5-a151-feff819cdc90';
 export const BREATH_DATA = '40b50004-30b5-11e5-a151-feff819cdc90';
-/** The strap's name contains one of these. */
-export const BREATH_NAMES = ['VitalPro', 'vitalpro', 'tymewear', 'TYME'];
-export const isBreathName = (name?: string) => !!name && /vitalpro|tymewear|tyme/i.test(name);
+/**
+ * The VitalPro is two Bluetooth devices. Its breathing sensor is named
+ * "TYME-xxxx" (these prefixes find it); its heart-rate sensor is named
+ * "TymeHR nnnnnnn" and is an ordinary heart-rate strap, never the breathing one.
+ */
+export const BREATH_NAMES = ['VitalPro', 'vitalpro', 'tymewear', 'TYME-'];
+export const isTymeHrName = (name?: string) => !!name && /^\s*TymeHR\b/i.test(name);
+export const isBreathName = (name?: string) => !!name && !isTymeHrName(name) && /vitalpro|tymewear|tyme/i.test(name);
 
 export interface Breath {
   /** breaths a minute */

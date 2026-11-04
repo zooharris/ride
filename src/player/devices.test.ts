@@ -64,6 +64,17 @@ describe('the device boxes', () => {
     expect(fixed).toHaveLength(3);
   });
 
+  it('a breathing strap once filed as a heart-rate monitor is a breathing strap again (4 Nov)', () => {
+    const fixed = migrateSaved([
+      { id: 'strap', name: 'TYME-2F31', kind: 'hr' },
+      { id: 'epix', name: 'EPIX PRO -', kind: 'hr' },
+      { id: 'strap', name: 'TYME-2F31', kind: 'breath' },
+    ]);
+    expect(fixed.find((d) => d.id === 'strap')?.kind).toBe('breath');
+    expect(fixed.find((d) => d.id === 'epix')?.kind).toBe('hr');
+    expect(fixed).toHaveLength(2);
+  });
+
   it('tidies the name a Garmin watch broadcasts', () => {
     expect(cleanName('EPIX PRO -')).toBe('EPIX PRO');
   });

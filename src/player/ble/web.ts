@@ -9,7 +9,7 @@ import {
   cmdRequestControl, crankRate, cscWheelRate, cpsWheelRate, parseControlResponse, parseCsc, parseCyclingPower,
   parseHeartRate, parseIndoorBikeData, parsePowerRange, WHEEL_M, type ControlResponse, type Range,
 } from './parse';
-import type { Reading, SensorKind, SensorStatus } from '../sources';
+import { BREATH_STALE_MS, STALE_MS, type Reading, type SensorKind, type SensorStatus } from '../sources';
 import { BREATH_DATA, BREATH_NAMES, BREATH_SERVICE, breathTimestamp, parseBreathPacket } from './breath';
 
 export const bluetoothAvailable = (): boolean => typeof navigator !== 'undefined' && 'bluetooth' in navigator && !!navigator.bluetooth;
@@ -51,6 +51,8 @@ export interface DriverEvents {
   raw?(bytes: Uint8Array): void;
   /** Breathing straps: battery, percent. */
   battery?(pct: number): void;
+  /** The device turned out to send breathing (a strap first picked as a heart-rate monitor). */
+  isBreathStrap?(): void;
 }
 
 export interface Driver {
@@ -129,27 +131,48 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
         const speedKmh = m.wheel ? wheel.update(m.wheel.revs, m.wheel.time, now) * WHEEL_M * 3.6 : undefined;
         ev.reading({ watts: m.watts, cadence, speedKmh });
       });
-    } else if (kind === 'breath') {
-      const svc = await server.getPrimaryService(BREATH_SERVICE);
-      let prev: number | undefined;
-      await listen(svc, BREATH_DATA, (v) => {
-        const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
-        ev.raw?.(bytes);
-        const b = parseBreathPacket(bytes, prev);
-        const ts = breathTimestamp(bytes);
-        if (ts != null) prev = ts;
-        if (b) ev.reading({ ve: Math.round(b.ventilation * 10) / 10, br: Math.round(b.rate * 10) / 10, tv: Math.round(b.size * 100) / 100, ie: Math.round(b.ieRatio * 100) / 100 });
-      });
-      try {
-        const bat = await server.getPrimaryService(SERVICE.battery);
-        const level = await bat.getCharacteristic(CHAR.batteryLevel);
-        ev.battery?.((await level.readValue()).getUint8(0));
-        level.addEventListener('characteristicvaluechanged', onValue((v) => ev.battery?.(v.getUint8(0))));
-        await level.startNotifications().catch(() => undefined);
-      } catch { /* battery is optional */ }
-    } else if (kind === 'hr') {
-      const svc = await server.getPrimaryService(SERVICE.heartRate);
-      await listen(svc, CHAR.heartRateMeasurement, (v) => ev.reading({ bpm: parseHeartRate(v) }));
+    } else if (kind === 'breath' || kind === 'hr') {
+      // A breathing strap is a heart-rate strap too, and connects to one app at a
+      // time (4 Nov): one connection must carry both, whichever box picked it.
+      // So a heart-rate monitor is asked for breathing as well, and a breathing
+      // strap for heart rate; each number keeps its own freshness.
+      const breathSvc = await server.getPrimaryService(BREATH_SERVICE).catch(() => undefined);
+      const hrSvc = await server.getPrimaryService(SERVICE.heartRate).catch(() => undefined);
+      if (kind === 'breath' && !breathSvc) throw new Error('no breathing service');
+      if (kind === 'hr' && !hrSvc) throw new Error('no heart-rate service');
+      let breath: { ve: number; br: number; tv: number; ie: number; at: number } | undefined;
+      let heart: { bpm: number; at: number } | undefined;
+      const send = () => {
+        const now = Date.now();
+        const b = breath && now - breath.at <= BREATH_STALE_MS ? breath : undefined;
+        const h = heart && now - heart.at <= STALE_MS ? heart : undefined;
+        if (!b && !h) return;
+        ev.reading({ ...(b ? { ve: b.ve, br: b.br, tv: b.tv, ie: b.ie } : {}), ...(h ? { bpm: h.bpm } : {}) });
+      };
+      if (breathSvc) {
+        let prev: number | undefined;
+        await listen(breathSvc, BREATH_DATA, (v) => {
+          const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+          ev.raw?.(bytes);
+          const b = parseBreathPacket(bytes, prev);
+          const ts = breathTimestamp(bytes);
+          if (ts != null) prev = ts;
+          if (b) { breath = { ve: Math.round(b.ventilation * 10) / 10, br: Math.round(b.rate * 10) / 10, tv: Math.round(b.size * 100) / 100, ie: Math.round(b.ieRatio * 100) / 100, at: Date.now() }; send(); }
+        });
+        ev.isBreathStrap?.();
+        try {
+          const bat = await server.getPrimaryService(SERVICE.battery);
+          const level = await bat.getCharacteristic(CHAR.batteryLevel);
+          ev.battery?.((await level.readValue()).getUint8(0));
+          level.addEventListener('characteristicvaluechanged', onValue((v) => ev.battery?.(v.getUint8(0))));
+          await level.startNotifications().catch(() => undefined);
+        } catch { /* battery is optional */ }
+      }
+      if (hrSvc) {
+        try {
+          await listen(hrSvc, CHAR.heartRateMeasurement, (v) => { heart = { bpm: parseHeartRate(v), at: Date.now() }; send(); });
+        } catch (e) { if (kind === 'hr') throw e; /* a strap's heart rate is a bonus */ }
+      }
     } else {
       const svc = await server.getPrimaryService(SERVICE.csc);
       await listen(svc, CHAR.cscMeasurement, (v) => {

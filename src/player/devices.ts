@@ -46,7 +46,7 @@ export function cleanName(name: string): string {
 /** What a remembered device can supply: what it has been seen to report, else what its kind usually does. */
 export function reportsOf(d: Pick<Known, 'kind' | 'reports'>): Metric[] {
   if (d.reports?.length) return d.reports;
-  return d.kind === 'trainer' ? ['speedKmh', 'watts'] : d.kind === 'power' ? ['watts', 'cadence'] : d.kind === 'hr' ? ['bpm'] : d.kind === 'breath' ? ['ve', 'br', 'tv', 'ie'] : ['cadence', 'speedKmh'];
+  return d.kind === 'trainer' ? ['speedKmh', 'watts'] : d.kind === 'power' ? ['watts', 'cadence'] : d.kind === 'hr' ? ['bpm'] : d.kind === 'breath' ? ['ve', 'br', 'tv', 'ie', 'bpm'] : ['cadence', 'speedKmh'];
 }
 
 /** Which kind of device the browser's list shows when finding one for a box. */

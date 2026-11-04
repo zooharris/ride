@@ -10,7 +10,7 @@ import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/pa
 import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Metric, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
 import { reportsOf } from './devices';
-import { packetLine } from './ble/breath';
+import { isBreathName, packetLine } from './ble/breath';
 
 export interface SensorState extends SensorSnapshot {
   warning?: string;
@@ -77,8 +77,13 @@ async function saved(): Promise<SavedDevice[]> {
 }
 async function writeSaved(list: SavedDevice[]): Promise<void> { savedCache = list; await setSetting(DEVICES_KEY, list); emitNow(); }
 
-/** A device's way in: a trainer before a power meter before a heart-rate monitor before a speed/cadence sensor. */
-const RANK: Record<SensorKind, number> = { trainer: 0, power: 1, hr: 2, csc: 3, breath: 4 };
+/**
+ * A device's way in: a trainer before a power meter before a breathing strap
+ * before a heart-rate monitor before a speed/cadence sensor. A breathing strap
+ * also sends heart rate, so once it is known to be a strap it stays one (4 Nov:
+ * filed as a heart-rate monitor, it never sent its breathing).
+ */
+const RANK: Record<SensorKind, number> = { trainer: 0, power: 1, breath: 2, hr: 3, csc: 4 };
 
 /** Remember a device, once by id, keeping what was learned about it; never forgets others of its kind. */
 async function remember(d: SavedDevice): Promise<void> {
@@ -96,7 +101,7 @@ async function remember(d: SavedDevice): Promise<void> {
 export function migrateSaved(list: SavedDevice[]): SavedDevice[] {
   const byId = new Map<string, SavedDevice>();
   for (const d of list) {
-    const kind: SensorKind = /\bKICKR\b/i.test(d.name) ? 'trainer' : d.kind;
+    const kind: SensorKind = /\bKICKR\b/i.test(d.name) ? 'trainer' : d.kind === 'hr' && isBreathName(d.name) ? 'breath' : d.kind;
     const old = byId.get(d.id);
     byId.set(d.id, old && RANK[old.kind] <= RANK[kind] ? old : { ...d, kind });
   }
@@ -157,6 +162,14 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
     status: (status: SensorStatus) => { update(id, status === 'connected' ? { status, connectedAt: Date.now() } : { status, reading: undefined }); if (status === 'connected') void touch(id); },
     raw: (bytes) => { const list = rawPackets.get(id) ?? []; list.push(packetLine(bytes)); if (list.length > 20) list.shift(); rawPackets.set(id, list); },
     battery: (pct) => update(id, { battery: pct }, true),
+    isBreathStrap: () => {
+      const s = sensors.find((x) => x.id === id);
+      if (!s || s.kind === 'breath') return;
+      // Picked as a heart-rate monitor, it is a breathing strap: it fills both boxes from now on.
+      for (const other of sensors.filter((x) => x.kind === 'breath' && x.id !== id)) drop(other.id);
+      update(id, { kind: 'breath', connectedAt: s.connectedAt ?? Date.now() });
+      void remember({ id, name: s.name, kind: 'breath' });
+    },
     control: (c) => {
       update(id, {
         controllable: c.controllable,
@@ -196,7 +209,9 @@ const KIND_FALLBACK: Record<SensorKind, string> = { trainer: 'Smart trainer', po
 export async function addSensor(kind: SensorKind): Promise<string | undefined> {
   let device: BluetoothDevice;
   try { device = await chooseDevice(kind); } catch { return undefined; }
-  if (sensors.some((s) => s.id === device.id && s.status !== 'offline')) return device.id;
+  const already = sensors.find((s) => s.id === device.id && s.status !== 'offline');
+  // Already connected: kept as it is, unless it was taken for a heart-rate monitor and is now picked as the breathing strap.
+  if (already && !(kind === 'breath' && already.kind === 'hr')) return device.id;
   await remember({ id: device.id, name: device.name || KIND_FALLBACK[kind], kind });
   start(device, kind);
   return device.id;

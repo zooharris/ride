@@ -45,6 +45,13 @@ export interface TickOut {
 
 const COUNTDOWN = 3;
 const AUTO_PAUSE_S = 10;
+/**
+ * Auto-resume (Todd, 4 Nov 2026): three seconds in a row of real pedalling, at 30 rpm or more (or 30 W or more
+ * from a rider with no cadence reading). A single crank tick (unclipping, a bumped pedal) no longer restarts the ride.
+ */
+export const RESUME_S = 3;
+export const RESUME_RPM = 30;
+export const RESUME_WATTS = 30;
 
 export class RideEngine {
   phase: Phase = 'countdown';
@@ -68,6 +75,7 @@ export class RideEngine {
   private openLap?: Lap;
   private stepIndex?: number;
   private still = 0;
+  private going = 0;
   private autoPaused = false;
   private guardState: GuardState = { eased: false };
   private lastCommand?: string;
@@ -157,10 +165,15 @@ export class RideEngine {
       return out;
     }
 
-    const moving = (live.cadence ?? 0) > 0 || (live.watts ?? 0) >= 10 || (live.speedKmh ?? 0) > 3;
+    // Moving: pedalling (cadence) or power. Speed counts only when there is neither: a roller (a KICKR ROLLR) or a
+    // flywheel keeps turning after the rider stops, so its speed alone would hold off the pause (4 Nov 2026).
+    const noLegs = live.cadence == null && live.watts == null;
+    const moving = (live.cadence ?? 0) > 0 || (live.watts ?? 0) >= 10 || (noLegs && (live.speedKmh ?? 0) > 3);
     const watching = this.o.autoPause && live.canMove !== false;
     if (this.phase === 'paused') {
-      if (this.autoPaused && moving) { this.resume(now); out.note = 'Pedalling again: the ride carries on.'; }
+      const pedalling = live.cadence != null ? live.cadence >= RESUME_RPM : live.watts != null ? live.watts >= RESUME_WATTS : (live.speedKmh ?? 0) > 3;
+      this.going = this.autoPaused && pedalling ? this.going + 1 : 0;
+      if (this.autoPaused && this.going >= RESUME_S) { this.resume(now); out.note = 'Pedalling again: the ride carries on.'; }
       else { out.command = this.send(now / 1000, live.cadence); return out; }
     }
 
@@ -234,6 +247,7 @@ export class RideEngine {
     this.phase = 'paused';
     this.autoPaused = auto;
     this.still = 0;
+    this.going = 0;
     this.event(this.wall(now), 'pause', auto ? 'auto' : 'manual');
   }
 

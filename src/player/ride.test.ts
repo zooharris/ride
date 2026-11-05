@@ -188,7 +188,44 @@ describe('the ride engine', () => {
     expect(e.phase).toBe('riding');
     run(e, 34, 12, { speedKmh: 0, cadence: 0, watts: 0 });
     expect(e.phase).toBe('paused');
-    e.tick(46_000, { speedKmh: 20 });
+    run(e, 46, 3, { speedKmh: 20 });
+    expect(e.phase).toBe('riding');
+  });
+
+  it('pauses when pedalling stops even while a roller is still spinning (its speed is ignored when cadence or power is there)', () => {
+    const e = make();
+    run(e, 1, 3);
+    run(e, 4, 20);
+    run(e, 24, 10, { cadence: 0, watts: 0, speedKmh: 18 });
+    expect(e.phase).toBe('paused');
+  });
+
+  it('resumes after three seconds at 30 rpm or more, not on a single crank tick or a slow turn', () => {
+    const e = make();
+    run(e, 1, 3);
+    run(e, 4, 20);
+    run(e, 24, 10, { cadence: 0, watts: 0, speedKmh: 0 });
+    expect(e.phase).toBe('paused');
+    e.tick(34_000, { cadence: 40, watts: 20 });
+    run(e, 35, 3, { cadence: 0, watts: 0 });
+    expect(e.phase).toBe('paused');
+    run(e, 38, 5, { cadence: 20, watts: 40 });
+    expect(e.phase).toBe('paused');
+    run(e, 43, 2, { cadence: 60, watts: 120 });
+    expect(e.phase).toBe('paused');
+    e.tick(45_000, { cadence: 60, watts: 120 });
+    expect(e.phase).toBe('riding');
+  });
+
+  it('without a cadence reading, resumes on three seconds at 30 W or more', () => {
+    const e = make();
+    run(e, 1, 3);
+    run(e, 4, 20, { watts: 150 });
+    run(e, 24, 10, { watts: 0 });
+    expect(e.phase).toBe('paused');
+    run(e, 34, 3, { watts: 20 });
+    expect(e.phase).toBe('paused');
+    run(e, 37, 3, { watts: 100 });
     expect(e.phase).toBe('riding');
   });
 
@@ -207,7 +244,7 @@ describe('the ride engine', () => {
     expect(e.step?.name).toBe('Sweet spot');
   });
 
-  it('pauses by itself after ten seconds without pedalling, lets the trainer go, and carries on when pedalling starts', () => {
+  it('pauses by itself after ten seconds without pedalling, lets the trainer go, and carries on after three seconds of pedalling', () => {
     const e = make();
     run(e, 1, 3);
     run(e, 4, 20);
@@ -217,7 +254,9 @@ describe('the ride engine', () => {
     const timer = e.timer;
     run(e, 34, 30, { bpm: 110, cadence: 0, watts: 0, speedKmh: 0 });
     expect(e.timer).toBe(timer);
-    e.tick(64_000, pedal);
+    run(e, 64, 2, pedal);
+    expect(e.phase).toBe('paused');
+    e.tick(66_000, pedal);
     expect(e.phase).toBe('riding');
     expect(e.events.map((x) => x.type)).toEqual(['start', 'pause', 'resume']);
   });

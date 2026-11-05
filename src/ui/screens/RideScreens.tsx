@@ -111,7 +111,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
         <KeysHelp />
       </header>
       {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
-      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no readings. Check it is snug against your chest. The ride keeps recording.</div>}
+      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no breaths, and Antogo could not wake it. Take it off for a minute and put it back on; Antogo keeps trying. The ride keeps recording.</div>}
 
       <main class="rd-main">
         <section class="rd-top">

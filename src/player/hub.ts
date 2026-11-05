@@ -10,7 +10,7 @@ import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/pa
 import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Metric, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
 import { reportsOf } from './devices';
-import { isTymeHrName, packetLine } from './ble/breath';
+import { isTymeHrName, packetLine, statusWords, type StrapCommand, type StrapReply, type StrapStatus } from './ble/breath';
 
 export interface SensorState extends SensorSnapshot {
   warning?: string;
@@ -60,6 +60,7 @@ function onReading(id: string, r: Omit<Reading, 'at'>): void {
   if (!s) return;
   const reading: Reading = { ...r, at: Date.now() };
   if (!s.simulated) learn(id, r);
+  if (r.ve != null) strapState(id).lastBreathAt = reading.at;
   const patch: Partial<SensorState> = { reading };
   if (s.kind === 'trainer') {
     const c = rollrCheck(s.name, reading, s.rollrSince, reading.at);
@@ -159,9 +160,14 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
   emitNow();
   drivers.set(id, attach(device, kind, {
     reading: (r) => onReading(id, r),
-    status: (status: SensorStatus) => { update(id, status === 'connected' ? { status, connectedAt: Date.now() } : { status, reading: undefined }); if (status === 'connected') void touch(id); },
-    raw: (bytes) => { const list = rawPackets.get(id) ?? []; list.push(packetLine(bytes)); if (list.length > 20) list.shift(); rawPackets.set(id, list); },
+    status: (status: SensorStatus) => {
+      update(id, status === 'connected' ? { status, connectedAt: Date.now() } : { status, reading: undefined });
+      if (status === 'connected') { void touch(id); if (kind === 'breath') void strapConnected(id); }
+    },
+    raw: (bytes, from) => { if (from === 'cmd') return; const list = rawPackets.get(id) ?? []; list.push(packetLine(bytes)); if (list.length > 20) list.shift(); rawPackets.set(id, list); },
     battery: (pct) => update(id, { battery: pct }, true),
+    strap: (r) => onStrapReply(id, r),
+    motion: (clock) => onMotion(id, clock),
     control: (c) => {
       update(id, {
         controllable: c.controllable,
@@ -176,12 +182,172 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
 /** A breathing strap's last 20 packets as they came, for Copy details. */
 const rawPackets = new Map<string, string[]>();
 
-/** What Copy details puts on the clipboard: the strap's name and its last 20 packets. */
+/** What Copy details puts on the clipboard: the strap's name, what its command channel last said, its health, the commands sent, and its last 20 packets. */
 export function breathDetails(id: string): string {
   const s = sensors.find((x) => x.id === id);
   const list = rawPackets.get(id) ?? [];
-  return [`Breathing strap: ${s?.name ?? 'unknown'}`, `Status: ${s?.status ?? 'gone'}${s?.battery != null ? `, battery ${s.battery}%` : ''}`, `Packets received: ${list.length ? `the last ${list.length}` : 'none'}`, ...list].join('\n');
+  const st = strapState(id);
+  const now = Date.now();
+  const ago = (t?: number) => (t == null ? 'never' : `${Math.round((now - t) / 1000)} s ago`);
+  return [
+    `Breathing strap: ${s?.name ?? 'unknown'}`,
+    `Status: ${s?.status ?? 'gone'}${s?.battery != null ? `, battery ${s.battery}%` : ''}`,
+    `Strap status: ${st.status ? statusWords(st.status) : 'not yet asked'}`,
+    `Minute beacon: ${st.beacon != null ? `#${st.beacon}, ${ago(st.beaconAt)}` : 'none yet'}`,
+    `Last breath: ${ago(st.lastBreathAt)}. Motion clock: ${st.clock == null ? 'no motion frames' : `${st.clock}, last advanced ${ago(st.clockAt)}`}`,
+    ...(st.lastWake ? [`Last wake: ${st.lastWake}`] : []),
+    `Commands (newest last): ${st.log.length ? '' : 'none'}`,
+    ...st.log,
+    `Packets received: ${list.length ? `the last ${list.length}` : 'none'}`,
+    ...list,
+  ].join('\n');
 }
+
+// ── The breathing strap's commands and its recovery (4 Nov 2026) ─────────────
+//
+// From Todd's capture of the Tymewear app: the app starts a session on the strap when an activity starts, stops it
+// and empties the strap's stored sessions when it ends. Antogo now does the same, and when a strap that has been
+// breathing goes quiet, or its motion clock freezes (the 4 Nov stall), it climbs a ladder of remedies until breaths
+// return. See "Antogo — brief: the strap's commands, and a self-healing connection (4 Nov)".
+
+interface StrapState {
+  status?: StrapStatus;
+  beacon?: number; beaconAt?: number;
+  lastBreathAt?: number;
+  /** The motion frames' clock, when one last arrived, and when the clock last moved. */
+  clock?: number; motionAt?: number; clockAt?: number;
+  log: string[];
+  waking?: boolean;
+  lastWake?: string;
+}
+const straps = new Map<string, StrapState>();
+function strapState(id: string): StrapState { let s = straps.get(id); if (!s) { s = { log: [] }; straps.set(id, s); } return s; }
+function strapLog(id: string, line: string): void {
+  const st = strapState(id);
+  st.log.push(`${new Date().toTimeString().slice(0, 8)} ${line}`);
+  if (st.log.length > 30) st.log.shift();
+}
+
+function onStrapReply(id: string, r: StrapReply): void {
+  const st = strapState(id);
+  if (r.type === 'beacon') { st.beacon = r.counter; st.beaconAt = Date.now(); return; }
+  if (r.status) st.status = r.status;
+  strapLog(id, `← reply 0x${r.tag.toString(16).padStart(2, '0')}${r.status ? `: ${statusWords(r.status)}` : ''}${r.sessions ? `: ${r.sessions.length} stored session${r.sessions.length === 1 ? '' : 's'}` : ''}`);
+}
+
+function onMotion(id: string, clock: number): void {
+  const st = strapState(id);
+  const now = Date.now();
+  if (st.clock !== clock) st.clockAt = now;
+  st.clock = clock;
+  st.motionAt = now;
+}
+
+/** A ride is under way: a strap that connects (or reconnects) has a session started on it. */
+let strapRide = false;
+
+async function send(id: string, cmd: StrapCommand): Promise<StrapReply | null> {
+  const d = drivers.get(id)?.strap;
+  if (!d) return null;
+  strapLog(id, `→ ${cmd}`);
+  const r = await d.send(cmd);
+  if (!r) strapLog(id, `  (no reply to ${cmd})`);
+  return r;
+}
+
+/** The Tymewear app's start sequence: status, start, status, apply, status. */
+async function startSequence(id: string): Promise<void> {
+  for (const c of ['status', 'start', 'status', 'apply', 'status'] as StrapCommand[]) await send(id, c);
+}
+
+/** The Tymewear app's stop sequence, then the strap's stored sessions erased (not fetched: Antogo has its own recording). */
+async function stopSequence(id: string): Promise<void> {
+  for (const c of ['status', 'stop', 'apply', 'status'] as StrapCommand[]) await send(id, c);
+  const listed = await send(id, 'list');
+  if (listed?.type === 'reply' && listed.sessions?.length) {
+    await send(id, 'erase');
+    const again = await send(id, 'list');
+    // Once only: a strap that keeps its sessions is left alone and Copy details says so.
+    if (again?.type === 'reply' && again.sessions?.length) strapLog(id, `  ${again.sessions.length} stored session(s) remain after erase; left alone`);
+  }
+  await send(id, 'status');
+}
+
+async function strapConnected(id: string): Promise<void> {
+  strapLog(id, 'connected');
+  await send(id, 'status');
+  if (strapRide) await startSequence(id);
+}
+
+const realStraps = () => sensors.filter((s) => s.kind === 'breath' && s.status === 'connected' && !s.simulated);
+
+/** A ride starts: a session is started on every connected strap, and on any strap that connects during the ride. */
+export async function strapRideStart(): Promise<void> {
+  strapRide = true;
+  for (const s of realStraps()) await startSequence(s.id);
+}
+
+/** A ride ends: the session is stopped and the strap's stored sessions erased. */
+export async function strapRideEnd(): Promise<void> {
+  strapRide = false;
+  for (const s of realStraps()) await stopSequence(s.id);
+}
+
+/** A stall: 20 s without a breath from a strap that has breathed, or motion frames arriving with a clock frozen for 10 s. */
+export const STALL_NO_BREATH_MS = 20_000;
+export const STALL_FROZEN_CLOCK_MS = 10_000;
+/** Each step of the ladder is given this long for breaths to return. */
+export const WAKE_STEP_MS = 15_000;
+
+/** Pure: is this strap stalled? `since` is when breathing was last expected (the last breath, or the ride's start). */
+export function strapStalled(st: Pick<StrapState, 'lastBreathAt' | 'clock' | 'motionAt' | 'clockAt'>, now: number): boolean {
+  const noBreath = st.lastBreathAt != null && now - st.lastBreathAt >= STALL_NO_BREATH_MS;
+  const frozen = st.motionAt != null && now - st.motionAt < 5000 && st.clockAt != null && now - st.clockAt >= STALL_FROZEN_CLOCK_MS;
+  return noBreath || frozen;
+}
+
+/** Whether the strap supplying breathing is stalled now (simulated straps by their readings alone). */
+export function strapStalledNow(id: string, now = Date.now()): boolean {
+  return strapStalled(strapState(id), now);
+}
+
+export type WakeStep = 'start' | 'stop-start' | 'resubscribe' | 'reconnect';
+export const WAKE_WORDS: Record<WakeStep, string> = { start: 'session started again', 'stop-start': 'session stopped and started', resubscribe: 'notifications turned off and on', reconnect: 'disconnected and connected again' };
+
+/**
+ * The ladder: (a) the start sequence; (b) stop then start; (c) re-enable the notifications; (d) disconnect and
+ * reconnect, then (a) again. Each step gets 15 s for breaths to return; it stops at the first that brings them back.
+ * Returns the step that worked, or undefined when none did. One ladder at a time per strap.
+ */
+export async function wakeStrap(id: string, onStep?: (step: WakeStep) => void, stepMs = WAKE_STEP_MS): Promise<WakeStep | undefined> {
+  const st = strapState(id);
+  const d = drivers.get(id)?.strap;
+  if (!d || st.waking) return undefined;
+  st.waking = true;
+  try {
+    const breathedSince = (t: number) => (st.lastBreathAt ?? 0) > t;
+    const wait = async (t0: number) => { const until = t0 + stepMs; while (Date.now() < until) { if (breathedSince(t0)) return true; await new Promise((r) => setTimeout(r, 500)); } return breathedSince(t0); };
+    const steps: Array<[WakeStep, () => Promise<unknown>]> = [
+      ['start', () => startSequence(id)],
+      ['stop-start', async () => { await stopSequence(id); await startSequence(id); }],
+      ['resubscribe', () => d.resubscribe()],
+      // During a ride a reconnected strap has its session started as it connects; outside one, it is started here.
+      ['reconnect', async () => { await d.reconnect(); if (!strapRide) await startSequence(id); }],
+    ];
+    for (const [step, run] of steps) {
+      onStep?.(step);
+      strapLog(id, `wake: ${WAKE_WORDS[step]}`);
+      const t0 = Date.now();
+      try { await run(); } catch { /* the next step tries harder */ }
+      if (await wait(t0)) { st.lastWake = `${new Date().toTimeString().slice(0, 8)}, breathing back after: ${WAKE_WORDS[step]}`; strapLog(id, `wake: breathing back`); return step; }
+    }
+    st.lastWake = `${new Date().toTimeString().slice(0, 8)}, nothing brought breathing back`;
+    return undefined;
+  } finally { st.waking = false; }
+}
+
+/** Whether a ladder is running on this strap. */
+export const strapWaking = (id: string): boolean => !!straps.get(id)?.waking;
 
 const controlListeners = new Set<() => void>();
 /**
@@ -296,7 +462,7 @@ function simTick(): void {
     const reading: Reading = s.kind === 'trainer' ? { watts: r.watts, cadence: r.cadence, speedKmh: r.speedKmh, at }
       : s.kind === 'power' ? { watts: r.watts, cadence: r.cadence, at }
       : s.kind === 'hr' ? { bpm: r.bpm, at }
-      : s.kind === 'breath' ? { ve: r.ve, br: r.br, tv: r.tv, ie: r.ie, at }
+      : s.kind === 'breath' ? (strapState(s.id).lastBreathAt = at, { ve: r.ve, br: r.br, tv: r.tv, ie: r.ie, at })
       : { cadence: r.cadence, speedKmh: r.speedKmh, at };
     return { ...s, reading };
   });

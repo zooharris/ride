@@ -10,7 +10,7 @@ import {
   parseHeartRate, parseIndoorBikeData, parsePowerRange, WHEEL_M, type ControlResponse, type Range,
 } from './parse';
 import type { Reading, SensorKind, SensorStatus } from '../sources';
-import { BREATH_DATA, BREATH_NAMES, BREATH_SERVICE, breathTimestamp, parseBreathPacket } from './breath';
+import { BREATH_BULK, BREATH_CMD, BREATH_DATA, BREATH_NAMES, BREATH_SERVICE, breathTimestamp, motionClock, parseBreathPacket, parseStrapReply, STRAP, tagOf, type StrapCommand, type StrapReply } from './breath';
 
 export const bluetoothAvailable = (): boolean => typeof navigator !== 'undefined' && 'bluetooth' in navigator && !!navigator.bluetooth;
 
@@ -47,15 +47,31 @@ export interface DriverEvents {
   status(s: SensorStatus): void;
   /** Trainers only: whether the player has control, and why not. */
   control?(c: { controllable: boolean; busy?: boolean; powerRange?: Range }): void;
-  /** Breathing straps: every packet as it came, for Copy details. */
-  raw?(bytes: Uint8Array): void;
+  /** Breathing straps: every packet as it came, for Copy details ('cmd' for the command characteristic). */
+  raw?(bytes: Uint8Array, from?: 'cmd'): void;
   /** Breathing straps: battery, percent. */
   battery?(pct: number): void;
+  /** Breathing straps: a reply or beacon on the command characteristic (4 Nov). */
+  strap?(r: StrapReply): void;
+  /** Breathing straps: a motion frame's clock (a clock that stops advancing is a stalled sensor). */
+  motion?(clock: number): void;
+}
+
+/** A breathing strap's command channel (4 Nov 2026): what the Tymewear app sends, and the ways back from a stall. */
+export interface StrapControl {
+  /** Write one command and wait (up to 3 s) for its reply; null when there was none or the write failed. */
+  send(cmd: StrapCommand): Promise<StrapReply | null>;
+  /** Turn the notifications off and on again. */
+  resubscribe(): Promise<void>;
+  /** Drop the connection and connect again; resolves once connected (or after 20 s). */
+  reconnect(): Promise<boolean>;
 }
 
 export interface Driver {
   /** Trainers only, once control is held: write a control-point command and wait for its answer. */
   command?(bytes: Uint8Array): Promise<ControlResponse | null>;
+  /** Breathing straps only. */
+  strap?: StrapControl;
   dispose(): void;
 }
 
@@ -67,6 +83,11 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
   let retry: ReturnType<typeof setTimeout> | undefined;
   let control: BluetoothRemoteGATTCharacteristic | undefined;
   let pending: { resolve: (r: ControlResponse | null) => void; op: number } | undefined;
+  // Breathing straps: the command characteristic, the subscribed ones (for re-subscribing), and replies awaited by tag.
+  let strapCmd: BluetoothRemoteGATTCharacteristic | undefined;
+  let strapChars: BluetoothRemoteGATTCharacteristic[] = [];
+  const awaiting = new Map<number, (r: StrapReply | null) => void>();
+  let connectedWaiters: Array<(ok: boolean) => void> = [];
   const crank = crankRate();
   const wheel = kind === 'csc' ? cscWheelRate() : cpsWheelRate();
 
@@ -131,15 +152,32 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
       });
     } else if (kind === 'breath') {
       const svc = await server.getPrimaryService(BREATH_SERVICE);
+      strapChars = [];
+      awaiting.clear();
+      // 4 Nov 2026: subscribe as the Tymewear app does: commands first, then the live data, then the stored-session channel.
+      try {
+        strapCmd = await listen(svc, BREATH_CMD, (v) => {
+          const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+          ev.raw?.(bytes, 'cmd');
+          const r = parseStrapReply(bytes);
+          if (!r) return;
+          ev.strap?.(r);
+          if (r.type === 'reply') { const w = awaiting.get(r.tag); if (w) { awaiting.delete(r.tag); w(r); } }
+        });
+        strapChars.push(strapCmd);
+      } catch { strapCmd = undefined; /* an older strap without it still streams */ }
       let prev: number | undefined;
-      await listen(svc, BREATH_DATA, (v) => {
+      strapChars.push(await listen(svc, BREATH_DATA, (v) => {
         const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
         ev.raw?.(bytes);
+        const m = motionClock(bytes);
+        if (m != null) ev.motion?.(m);
         const b = parseBreathPacket(bytes, prev);
         const ts = breathTimestamp(bytes);
         if (ts != null) prev = ts;
         if (b) ev.reading({ ve: Math.round(b.ventilation * 10) / 10, br: Math.round(b.rate * 10) / 10, tv: Math.round(b.size * 100) / 100, ie: Math.round(b.ieRatio * 100) / 100 });
-      });
+      }));
+      try { strapChars.push(await listen(svc, BREATH_BULK, () => undefined)); } catch { /* optional */ }
       try {
         const bat = await server.getPrimaryService(SERVICE.battery);
         const level = await bat.getCharacteristic(CHAR.batteryLevel);
@@ -163,21 +201,58 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
     }
     everConnected = true;
     ev.status('connected');
+    const ws = connectedWaiters; connectedWaiters = [];
+    ws.forEach((w) => w(true));
   };
 
+  const sendStrap = async (name: StrapCommand): Promise<StrapReply | null> => {
+    if (!strapCmd) return null;
+    const bytes = Uint8Array.from(STRAP[name]);
+    const tag = tagOf(bytes);
+    const answer = new Promise<StrapReply | null>((resolve) => {
+      awaiting.set(tag, resolve);
+      setTimeout(() => { if (awaiting.get(tag) === resolve) { awaiting.delete(tag); resolve(null); } }, 3000);
+    });
+    try { await write(strapCmd, bytes); } catch { awaiting.delete(tag); return null; }
+    return answer;
+  };
+  const strap: StrapControl = {
+    send: sendStrap,
+    async resubscribe() {
+      for (const c of strapChars) {
+        try { await c.stopNotifications(); } catch { /* already off */ }
+        try { await c.startNotifications(); } catch { /* the next step reconnects */ }
+      }
+    },
+    reconnect() {
+      return new Promise<boolean>((resolve) => {
+        connectedWaiters.push(resolve);
+        setTimeout(() => { connectedWaiters = connectedWaiters.filter((w) => w !== resolve); resolve(false); }, 20_000);
+        try { device.gatt?.disconnect(); } catch { /* already gone */ }
+        // gattserverdisconnected does not always fire for a disconnect we asked for: connect again ourselves.
+        clearTimeout(retry);
+        retry = setTimeout(tryConnect, 1000);
+      });
+    },
+  };
+
+  let connecting = false;
   const tryConnect = async () => {
-    if (disposed) return;
+    // One attempt at a time: a reconnect we asked for and the disconnect event can both schedule one.
+    if (disposed || connecting) return;
+    connecting = true;
     try { await connect(); } catch {
       if (disposed) return;
       // Never reached yet: switched off or asleep. Reached before: dropped out. Either way, keep trying quietly.
       ev.status(everConnected ? 'lost' : 'offline');
       retry = setTimeout(tryConnect, RETRY_MS);
-    }
+    } finally { connecting = false; }
   };
 
   const onDisconnect = () => {
     if (disposed) return;
     control = undefined;
+    strapCmd = undefined;
     ev.status('lost');
     clearTimeout(retry);
     retry = setTimeout(tryConnect, RETRY_MS);
@@ -187,6 +262,7 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
 
   return {
     command: kind === 'trainer' ? command : undefined,
+    strap: kind === 'breath' ? strap : undefined,
     dispose() {
       disposed = true;
       clearTimeout(retry);

@@ -78,3 +78,75 @@ export function packetLine(raw: Uint8Array | DataView): string {
   const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
   return `${b.length} bytes, type 0x${(b[0] ?? 0).toString(16).padStart(2, '0')}: ${hex}`;
 }
+
+// ── The strap's commands (4 Nov 2026, from Todd's capture of the Tymewear app) ──
+//
+// 40B50007 is the command characteristic (write with response; the strap answers
+// by notification on it). A command is two little-endian uint16s, [command][tag],
+// and the reply starts 00 80 <tag>. Every minute the strap also sends an 8-byte
+// beacon on it, 02 40 <counter> 1c …. 40B50001 carries stored-session downloads,
+// which Antogo does not use. Pure.
+
+export const BREATH_CMD = '40b50007-30b5-11e5-a151-feff819cdc90';
+export const BREATH_BULK = '40b50001-30b5-11e5-a151-feff819cdc90';
+
+/** The commands the Tymewear app sends, as captured. */
+export const STRAP = {
+  /** Status: answered with the strap's clock, its current session's start, and a flag byte. */
+  status: [0x01, 0x00, 0x0a, 0x00],
+  /** Start a session (the app sends it when an activity starts). */
+  start: [0x2d, 0x00, 0x2d, 0x00],
+  /** Sent after start and after stop; likely "apply". */
+  apply: [0x2e, 0x00, 0x2e, 0x00],
+  /** Stop the session (the live stream ends at once). */
+  stop: [0x21, 0x00, 0x0c, 0x00],
+  /** List the sessions the strap has stored. */
+  list: [0x09, 0x01, 0x6c, 0x00],
+  /** Erase the stored sessions. */
+  erase: [0x2b, 0x00, 0x2b, 0x00],
+} as const;
+export type StrapCommand = keyof typeof STRAP;
+
+/** The tag a command's reply carries (its bytes 2-3). */
+export const tagOf = (cmd: ArrayLike<number>): number => cmd[2] | (cmd[3] << 8);
+
+export interface StrapStatus {
+  /** The flag byte: 0xe6 seen while sensing with a session, 0x26 idle, 0x66 just after a stop. */
+  flag: number;
+  /** The strap's clock, Unix seconds. */
+  now: number;
+  /** The current session's start, Unix seconds; 0 when there is none. */
+  session: number;
+}
+
+export type StrapReply =
+  | { type: 'reply'; tag: number; status?: StrapStatus; sessions?: number[]; bytes: Uint8Array }
+  | { type: 'beacon'; counter: number; bytes: Uint8Array };
+
+/** A notification on the command characteristic: a reply to a command, or the strap's minute beacon. */
+export function parseStrapReply(raw: Uint8Array | DataView): StrapReply | undefined {
+  const b = bytesOf(raw);
+  if (b.length >= 4 && b[0] === 0x00 && b[1] === 0x80) {
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const tag = v.getUint16(2, true);
+    const out: StrapReply = { type: 'reply', tag, bytes: b };
+    if (tag === tagOf(STRAP.status) && b.length >= 24) out.status = { flag: b[11], now: v.getUint32(16, true), session: v.getUint32(20, true) };
+    if (tag === tagOf(STRAP.list)) { const s: number[] = []; for (let i = 4; i + 12 <= b.length; i += 12) s.push(v.getUint32(i, true)); out.sessions = s; }
+    return out;
+  }
+  if (b.length >= 3 && b[0] === 0x02 && b[1] === 0x40) return { type: 'beacon', counter: b[2], bytes: b };
+  return undefined;
+}
+
+/** The clock of a 0x02 motion frame (40 ms ticks, bytes 1-4). A sensor whose clock stops advancing has stalled. */
+export function motionClock(raw: Uint8Array | DataView): number | undefined {
+  const b = bytesOf(raw);
+  if (b.length < 5 || b[0] !== 0x02) return undefined;
+  return new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(1, true);
+}
+
+/** A status in words, for Copy details. */
+export function statusWords(s: StrapStatus): string {
+  const t = (x: number) => (x ? new Date(x * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : 'none');
+  return `flag 0x${s.flag.toString(16).padStart(2, '0')}, strap clock ${t(s.now)}, session started ${t(s.session)}`;
+}

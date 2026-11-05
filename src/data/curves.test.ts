@@ -27,7 +27,9 @@ describe('2A: a Garmin ride with breathing is learned from in the background pas
     const { getSetting } = await import('./db');
     const { FIRST_BREATHING_KEY } = await import('../player/breathRead');
     const { STREAMS_VERSION } = await import('./db');
-    const date = new Date().toISOString().slice(0, 10);
+    // The app's own date (local), not UTC: between 7pm and midnight Eastern the UTC date is already tomorrow.
+    const { today } = await import('../engine/load');
+    const date = today();
     const time = Array.from({ length: 3600 }, (_, i) => i);
     const ve = time.map((t) => 31 + ((t * 7) % 5) * 0.2), br = time.map((t) => 22 + ((t * 3) % 7) * 0.1);
     await db.streams.put({ id: 'garmin1', v: STREAMS_VERSION, time, watts: time.map(() => 160), heartrate: time.map(() => 130), ve, br, tv: ve.map((v, i) => v / br[i]) });

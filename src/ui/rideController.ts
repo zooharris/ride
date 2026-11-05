@@ -8,7 +8,7 @@
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
-import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl } from '../player/hub';
+import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl, strapRideStart, strapRideEnd, strapStalledNow, wakeStrap, WAKE_WORDS } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { cleanName } from '../player/devices';
 import { RideEngine, type TrainerMode } from '../player/engine';
@@ -67,9 +67,14 @@ export interface ActiveRide {
   /** Heart rate missing since (ms); after a minute the trainer stops adjusting until it returns. */
   hrMissingSince?: number;
   hrLost?: boolean;
-  /** Part A4 (4 Nov 2026): a breathing strap in use whose readings stopped arriving (ms since), and whether that has lasted 15 s. */
-  breathMissingSince?: number;
+  /** The breathing strap in use on this ride (its device id). */
+  breathStrapId?: string;
+  /** Part A4 / strap brief (4 Nov 2026): the recovery ladder is running; it failed (the rider has been told); when to try again. */
+  breathWaking?: boolean;
   breathQuiet?: boolean;
+  breathRetryAt?: number;
+  /** A `lost` event is open (written when the stall was seen, closed by `found`). */
+  breathLost?: boolean;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number; ve?: number; br?: number; tv?: number; ie?: number };
 }
 
@@ -137,6 +142,8 @@ export function startRide(setup: RideSetup): void {
   offControl = onTrainerControl(trainerBack);
   lastTick = now;
   timer = setInterval(loop, 250);
+  // The strap brief: a session is started on the breathing strap, as the Tymewear app does.
+  void strapRideStart();
   void putRecording(rec);
   emit();
 }
@@ -180,6 +187,7 @@ function second(now: number) {
     recentBreath.push({ ve: a.live.ve, br: a.live.br, tv: a.live.tv });
     while (recentBreath.length > 30) recentBreath.shift();
     if (!a.rec.breathSensor) { const strap = getSensors().find((x) => x.id === src.ve!.from); if (strap) a.rec = { ...a.rec, breathSensor: cleanName(strap.name) }; }
+    a.breathStrapId ??= src.ve!.from;
   } else recentBreath.length = 0;
   a.shownBreath = recentBreath.length ? breathShown(recentBreath) : undefined;
   watchBreath(a, now);
@@ -229,31 +237,52 @@ function second(now: number) {
   if (a.engine.timer % 5 === 0) save();
 }
 
-/** Part A4: a breathing strap goes quiet after this long without a reading. */
-export const BREATH_QUIET_MS = 15_000;
-
 /**
- * Part A4 (4 Nov 2026): once a strap has sent breathing on this ride, 15 seconds without a reading writes a `lost`
- * event with the strap's name and puts the notice on screen; readings again write `found`. On Todd's ramp of 4 Nov
- * the strap stopped two minutes before the end and nothing recorded it.
+ * The breath watchdog (strap brief, 4 Nov 2026). Once a strap has sent breathing on this ride, 20 s without a
+ * breath, or motion frames with a frozen clock (the 4 Nov stall), writes a `lost` event and starts the recovery
+ * ladder (start the session again; stop and start it; re-enable notifications; reconnect), quietly. Breaths
+ * back: a `found` event naming the step that worked. Only when the whole ladder fails is the rider told; the
+ * ladder is tried again every minute while the strap stays silent. The ride keeps recording throughout.
  */
+export const WAKE_RETRY_MS = 60_000;
 function watchBreath(a: ActiveRide, now: number) {
-  if (!a.rec.breathSensor || a.engine.phase !== 'riding') return;
-  if (a.live.ve == null) {
-    a.breathMissingSince ??= now;
-    if (!a.breathQuiet && now - a.breathMissingSince >= BREATH_QUIET_MS) {
-      a.breathQuiet = true;
-      a.engine.mark(now, 'lost', a.rec.breathSensor);
-      toast({ ok: false, text: 'The breathing strap has stopped sending readings. Check it is snug against your chest. The ride keeps recording.' });
+  const id = a.breathStrapId;
+  if (!id || !a.rec.breathSensor || a.engine.phase !== 'riding') return;
+  const strap = getSensors().find((x) => x.id === id);
+  // A strap that has dropped its connection is reconnecting by itself and shows as lost on screen already.
+  if (!strap || strap.status !== 'connected') return;
+  const name = a.rec.breathSensor;
+  const stalled = strapStalledNow(id, now);
+  if (!stalled) {
+    if (a.breathLost && !a.breathWaking) {
+      a.breathLost = false;
+      a.engine.mark(now, 'found', name);
+      if (a.breathQuiet) { a.breathQuiet = false; toast({ ok: true, text: 'Breathing readings are back.' }); }
     }
-  } else {
-    a.breathMissingSince = undefined;
-    if (a.breathQuiet) {
-      a.breathQuiet = false;
-      a.engine.mark(now, 'found', a.rec.breathSensor);
-      toast({ ok: true, text: 'Breathing readings are back.' });
-    }
+    return;
   }
+  if (a.breathWaking || (a.breathRetryAt != null && now < a.breathRetryAt)) return;
+  if (!a.breathLost) { a.breathLost = true; a.engine.mark(now, 'lost', name); }
+  a.breathWaking = true;
+  const rideId = a.rec.id;
+  void wakeStrap(id).then((step) => {
+    const r = active;
+    if (!r || r.rec.id !== rideId) return;
+    r.breathWaking = false;
+    if (step) {
+      r.breathRetryAt = undefined;
+      r.breathLost = false;
+      r.engine.mark(Date.now(), 'found', `${name} · ${WAKE_WORDS[step]}`);
+      if (r.breathQuiet) { r.breathQuiet = false; toast({ ok: true, text: 'Breathing readings are back.' }); }
+    } else {
+      r.breathRetryAt = Date.now() + WAKE_RETRY_MS;
+      if (!r.breathQuiet) {
+        r.breathQuiet = true;
+        toast({ ok: false, text: 'The breathing strap has stopped sending breaths and Antogo could not wake it. Take it off for a minute and put it back on. The ride keeps recording.' });
+      }
+    }
+    emit();
+  });
 }
 
 /** A step as the heart-rate loop sees it. */
@@ -400,6 +429,8 @@ export async function endRide(): Promise<Recording | undefined> {
   a.engine.endTest(Date.now(), 'rider');
   const cmd = a.engine.finish(Date.now());
   if (cmd) commandTrainer(cmd);
+  // The strap's session is stopped and its stored sessions erased, as the Tymewear app does.
+  void strapRideEnd();
   clearInterval(timer);
   timer = undefined;
   offControl?.();

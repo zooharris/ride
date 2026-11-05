@@ -21,7 +21,7 @@ import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
 import { APP_SHORT_NAME } from '../../appName';
-import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, type SensorState } from '../../player/hub';
+import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, wakeStrap, WAKE_WORDS, type SensorState, type WakeStep } from '../../player/hub';
 import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
 import { chooseFreeMode, chooseMode } from '../../player/mode';
 import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
@@ -540,14 +540,35 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
         {box('trainer')}{box('watts')}{box('bpm')}
         {box('cadence')}{box('speedKmh')}{box('ve')}
       </div>
-      {quietStrap && (
-        <div class="pl-dev-quiet" role="status">
-          <span>{BREATH_QUIET}</span>
-          <button class="btn sm" onClick={() => copyDetails(quietStrap.id)}>Copy details</button>
-        </div>
-      )}
+      {quietStrap && <QuietStrap id={quietStrap.id} simulated={!!quietStrap.simulated} />}
       {!known.length && !sensors.length && <p class="pl-note">Click a box to choose the device for it. Your browser asks before connecting each one, and this computer remembers them for next time.</p>}
     </section>
+  );
+}
+
+/**
+ * A strap connected but sending no breaths (strap brief, 4 Nov 2026): Wake the strap runs the recovery ladder by
+ * hand (start the session again; stop and start it; re-enable notifications; reconnect), showing each step, so we
+ * learn which one brings a stalled sensor back without waiting for a stall mid-ride.
+ */
+function QuietStrap({ id, simulated }: { id: string; simulated: boolean }) {
+  const [step, setStep] = useState<WakeStep | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true); setSaid(null);
+    const worked = await wakeStrap(id, (s) => setStep(s));
+    setStep(null); setBusy(false);
+    setSaid(worked ? `Breathing is back after: ${WAKE_WORDS[worked]}.` : 'Nothing woke it. Press Copy details and send them to us, then take the strap off for a minute and put it back on.');
+  };
+  return (
+    <div class="pl-dev-quiet" role="status">
+      <span>{busy && step ? `Waking the strap: ${WAKE_WORDS[step]}…` : said ?? BREATH_QUIET}</span>
+      <span class="row" style="gap:6px">
+        {!simulated && <button class="btn sm" disabled={busy} onClick={() => void run()}>Wake the strap</button>}
+        <button class="btn sm" onClick={() => copyDetails(id)}>Copy details</button>
+      </span>
+    </div>
   );
 }
 

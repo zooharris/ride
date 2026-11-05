@@ -93,7 +93,7 @@ export async function longEnough(r: Recording): Promise<boolean> {
 export async function uploadRide(id: string): Promise<UploadResult> {
   const r = await getRecording(id);
   if (!r) return { ok: false, text: 'That ride is no longer on this computer.' };
-  if (r.activityId) return { ok: true, text: 'Already saved to Intervals.icu.', activityId: r.activityId };
+  if (r.activityId) return { ok: true, text: 'Already saved.', activityId: r.activityId };
   if (r.status === 'superseded' && r.supersededBy) return { ok: true, text: 'Kept your Garmin\'s recording of this ride.', activityId: r.supersededBy, superseded: true };
   const c = await credentials();
   if (!c) {
@@ -134,8 +134,8 @@ export async function uploadRide(id: string): Promise<UploadResult> {
     if (r.rpe) { try { await updateActivityEffort(c, activityId, r.rpe); } catch { /* the app keeps it either way */ } }
   } catch { /* the next sync pairs it: the calendar entry already holds the recording's id */ }
   const day = r.date === today() ? "today's" : `${new Date(r.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'long' })}'s`;
-  const text = tooShort ? `Saved to Intervals.icu. Too short to count as ${r.name}, so it's saved as a ride on its own. The session is still on your calendar.`
-    : !entry ? 'Saved to Intervals.icu.' : added ? `Saved to Intervals.icu and added to ${day} calendar as done.` : `Saved to Intervals.icu and matched to ${r.name} on ${day} calendar.`;
+  const text = tooShort ? `Saved. Too short to count as ${r.name}, so it's saved as a ride on its own. The session is still on your calendar.`
+    : !entry ? 'Saved.' : added ? `Saved, and added to ${day} calendar as done.` : `Saved, and matched to ${r.name} on ${day} calendar.`;
   return { ok: true, text, activityId, matched: entry ? r.name : undefined, tooShort };
 }
 

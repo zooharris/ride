@@ -734,10 +734,10 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             </div>
             <div class="rd-grow" />
             {state === 'saved' ? (
-              <div class="rd-saved"><span class="rd-state on">{garmins ? "Garmin's kept" : 'Saved'}</span><span class="small">{said || 'In Intervals.icu.'}</span>
+              <div class="rd-saved"><span class="rd-state on">{garmins ? "Garmin's kept" : 'Saved'}</span><span class="small">{said || 'Your ride is saved.'}</span>
                 {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save Antogo's instead</button>}</div>
             ) : (
-              <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save to Intervals.icu'}</button>
+              <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride'}</button>
             )}
             <div class="row" style="gap:10px">
               <button class="btn" style="flex:1" onClick={() => downloadRide(rec)}>Download the ride file</button>

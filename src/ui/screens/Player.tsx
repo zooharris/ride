@@ -261,7 +261,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
                 <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
                 Start ride
               </button>
-              <p class="pl-start-note">{planned ? 'Saved to Intervals.icu and matched to this session when you finish' : 'Saved to Intervals.icu when you finish'}</p>
+              <p class="pl-start-note">{planned ? 'Saved and matched to this session when you finish' : 'Saved when you finish'}</p>
             </>
           )}
         </aside>
@@ -383,7 +383,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
           <p class="eyebrow">{`Today · ${fmtDate(today())}`}</p>
           <h1>Free ride</h1>
           <p class="pl-sub">No workout: ride as you like</p>
-          <p class="pl-free-text">The ride is recorded and saved to Intervals.icu like any other, and goes on today's calendar as a ride of its own. It counts toward your training load, and your plan takes it into account when it next checks itself.</p>
+          <p class="pl-free-text">The ride is recorded and saved like any other, and goes on today's calendar as a ride of its own. It counts toward your training load, and your plan takes it into account when it next checks itself.</p>
           <div class="pl-free-ways">
             <div><b>Set resistance</b><span class="muted">A road of a fixed steepness, levels 0 to 10. Change gear as you like.</span></div>
             <div><b>Hold watts</b><span class="muted">The trainer holds the watts you choose (ERG), whatever gear you are in.</span></div>
@@ -416,7 +416,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
             <svg width="15" height="17" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
             Start ride
           </button>
-          <p class="pl-start-note">{free.ready ? 'Saved to Intervals.icu when you finish' : 'Connect what the ride needs to start'}</p>
+          <p class="pl-start-note">{free.ready ? 'Saved when you finish' : 'Connect what the ride needs to start'}</p>
         </aside>
       </main>
     </>

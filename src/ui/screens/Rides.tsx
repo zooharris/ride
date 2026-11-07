@@ -1,4 +1,5 @@
 import { footHrZones, footLthr, rideHrZones, ridePowerZones } from '../../engine/zones';
+import { breathNumbers } from '../../engine/breathNumbers';
 import type { AppData } from '../store';
 import { doneHistory, findWorkout, notify } from '../store';
 import { clock } from '../../engine/workout';
@@ -213,7 +214,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
   const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  const items = activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind);
+  const items = [...activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind), ...breathNumbers(shown)];
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];
   const plannedSecs = w ? (plannedSeconds(w) ?? 0) : 0;

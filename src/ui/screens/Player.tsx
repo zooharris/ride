@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { brShown } from '../../engine/breathThresholds';
 import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
 import { allWorkouts, findWorkout } from '../store';
@@ -581,6 +582,7 @@ function copyDetails(id: string): void {
 }
 
 function fmtValue(m: Metric, v: number, profile: Profile): string {
+  if (m === 'br') return brShown(v);
   if (m === 'speedKmh') return profile.units === 'imperial' ? (v / 1.609344).toFixed(1) : v.toFixed(1);
   return String(Math.round(v));
 }

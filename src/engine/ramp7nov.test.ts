@@ -91,3 +91,22 @@ describe('the 7 Nov ramp', () => {
     expect(r.ftpHrAgrees).toBe(true);
   });
 });
+
+describe('breathing rate at the strap’s ceiling (diagnostics Part C)', () => {
+  it('reads 60+ at the ceiling, the number below it', async () => {
+    const { brShown, brAtCeiling } = await import('./breathThresholds');
+    expect(brShown(60)).toBe('60+');
+    expect(brShown(59.6)).toBe('60+');
+    expect(brShown(56.2)).toBe('56');
+    expect(brAtCeiling(undefined)).toBe(false);
+  });
+  it('the 7 Nov ride’s numbers say 60+ for its highest breathing rate', async () => {
+    const { breathNumbers } = await import('./breathNumbers');
+    const f = ramp7Nov();
+    const rows = breathNumbers({ time: f.time, ve: f.ve, br: f.br, tv: f.tv } as never);
+    expect(rows.find(([k]) => k === 'Highest breathing rate')?.[1]).toBe('60+ a minute');
+    expect(rows.find(([k]) => k === 'Highest breathing')?.[1]).toMatch(/L\/min$/);
+    const calm = breathNumbers({ time: f.time, ve: f.ve, br: f.br.map((x) => Math.min(x, 50)), tv: f.tv } as never);
+    expect(calm.find(([k]) => k === 'Highest breathing rate')?.[1]).toMatch(/^\d+ a minute$/);
+  });
+});

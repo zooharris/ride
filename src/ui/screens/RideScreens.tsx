@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { brShown } from '../../engine/breathThresholds';
 import type { Profile, Workout, PlannedWorkout } from '../../engine/types';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
@@ -296,7 +297,7 @@ function BreathTile({ shown, name }: { shown?: { ve?: number; br?: number; tv?: 
       <div class="row between" style="gap:8px;min-width:0"><span class="caption">Breathing · 30-second average</span><span class="faint small rd-breath-from" title={name}>{name}</span></div>
       <div class="rd-big2 num">{shown?.ve != null ? Math.round(shown.ve) : '—'}<small> L/min</small></div>
       <div class="rd-grow" />
-      <div class="rd-tile-foot"><span><b class="num">{shown?.br != null ? Math.round(shown.br) : '—'}</b> breaths a minute</span><span><b class="num">{shown?.tv != null ? shown.tv.toFixed(1) : '—'}</b> L a breath</span></div>
+      <div class="rd-tile-foot"><span><b class="num">{shown?.br != null ? brShown(shown.br) : '—'}</b> breaths a minute</span><span><b class="num">{shown?.tv != null ? shown.tv.toFixed(1) : '—'}</b> L a breath</span></div>
     </section>
   );
 }

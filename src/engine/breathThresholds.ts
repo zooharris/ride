@@ -62,6 +62,10 @@ export const FLAT_BR_RISE = 0.3;
 export const RATE_FLOOR = 0.002;
 /** Breathing rate the strap reports at its ceiling: a reading at or above this is "at least 60", not a measurement. */
 export const BR_CEILING = 60;
+/** Diagnostics brief, Part C (7 Nov 2026): a breathing rate at the strap's ceiling (rounds to 60 or more). */
+export const brAtCeiling = (br: number | undefined): boolean => typeof br === 'number' && Math.round(br) >= BR_CEILING;
+/** A breathing rate as shown: "60+" at the strap's ceiling, otherwise the whole number. */
+export const brShown = (br: number): string => (brAtCeiling(br) ? `${BR_CEILING}+` : String(Math.round(br)));
 /** A bend whose heart rate sits further than this from where the other witnesses put the second threshold is less certain. */
 export const HR_PLAUSIBLE_BPM = 15;
 

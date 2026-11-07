@@ -386,12 +386,42 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
+      <StrapDetails activityId={r.id} />
       <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'VitalPro, through your Garmin' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
       </section>
     </div>
+  );
+}
+
+/**
+ * Diagnostics brief, Part A (7 Nov 2026): the breathing strap's details saved when the ride ended, folded away,
+ * with Copy. Only for a ride recorded by the player on this computer with a strap; nothing else on the screen reads it.
+ */
+function StrapDetails({ activityId }: { activityId: string }) {
+  const [text, setText] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setText(undefined);
+    void db.recordings.filter((x) => x.activityId === activityId).first().then((x) => setText(x?.strapLog));
+  }, [activityId]);
+  if (!text) return null;
+  const copy = () => {
+    const done = () => toast({ ok: true, text: 'Copied.' });
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => window.prompt('Copy these details:', text));
+    else window.prompt('Copy these details:', text);
+  };
+  return (
+    <section class="section">
+      <details class="planned-fold">
+        <summary><h2 style="display:inline">Breathing strap details</h2> <span class="faint small">on this computer</span></summary>
+        <div class="panel" style="margin-top:10px">
+          <pre class="strap-log">{text}</pre>
+          <button class="btn sm" style="margin-top:8px" onClick={copy}>Copy</button>
+        </div>
+      </details>
+    </section>
   );
 }
 

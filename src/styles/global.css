@@ -1454,3 +1454,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 /* Two recordings of one ride (Step 3 Part 2, 2B) */
 .two-recs-rows { display: grid; gap: 6px; margin-top: 8px; }
 .two-recs-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 8px 10px; border-radius: var(--radius-s); background: var(--bg-3); }
+
+/* Diagnostics brief, Part A (7 Nov 2026): the breathing strap's saved details on the activity page. */
+.strap-log { margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; color: var(--ink-2, inherit); }

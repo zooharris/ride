@@ -183,7 +183,7 @@ function start(device: BluetoothDevice, kind: SensorKind): void {
 const rawPackets = new Map<string, string[]>();
 
 /** What Copy details puts on the clipboard: the strap's name, what its command channel last said, its health, the commands sent, and its last 20 packets. */
-export function breathDetails(id: string): string {
+export function breathDetails(id: string, commands?: string[]): string {
   const s = sensors.find((x) => x.id === id);
   const list = rawPackets.get(id) ?? [];
   const st = strapState(id);
@@ -196,8 +196,8 @@ export function breathDetails(id: string): string {
     `Minute beacon: ${st.beacon != null ? `#${st.beacon}, ${ago(st.beaconAt)}` : 'none yet'}`,
     `Last breath: ${ago(st.lastBreathAt)}. Motion clock: ${st.clock == null ? 'no motion frames' : `${st.clock}, last advanced ${ago(st.clockAt)}`}`,
     ...(st.lastWake ? [`Last wake: ${st.lastWake}`] : []),
-    `Commands (newest last): ${st.log.length ? '' : 'none'}`,
-    ...st.log,
+    `Commands (newest last): ${(commands ?? st.log).length ? '' : 'none'}`,
+    ...(commands ?? st.log),
     `Packets received: ${list.length ? `the last ${list.length}` : 'none'}`,
     ...list,
   ].join('\n');
@@ -224,8 +224,43 @@ const straps = new Map<string, StrapState>();
 function strapState(id: string): StrapState { let s = straps.get(id); if (!s) { s = { log: [] }; straps.set(id, s); } return s; }
 function strapLog(id: string, line: string): void {
   const st = strapState(id);
-  st.log.push(`${new Date().toTimeString().slice(0, 8)} ${line}`);
+  const stamped = `${new Date().toTimeString().slice(0, 8)} ${line}`;
+  st.log.push(stamped);
   if (st.log.length > 30) st.log.shift();
+  // The ride's whole log, from its start until the strap's stop sequence has finished (diagnostics brief, Part A, 7 Nov 2026).
+  if (rideLogging) { const r = rideLogs.get(id) ?? []; r.push(stamped); rideLogs.set(id, r); }
+}
+
+/**
+ * Diagnostics brief, Part A (7 Nov 2026): each strap's commands for the whole ride, so its details can be saved
+ * with the recording when the ride ends (Copy details exists only while the player is open).
+ */
+const rideLogs = new Map<string, string[]>();
+let rideLogging = false;
+/** Breathing straps connected at any point in the ride (simulated ones too). */
+const rideStraps = new Set<string>();
+/** Command lines kept per strap in the saved details: the first 10 and the last 50. */
+export const STRAP_LOG_HEAD = 10;
+export const STRAP_LOG_TAIL = 50;
+/** The saved details are cut to this many characters. */
+export const STRAP_DETAILS_MAX = 4096;
+
+/** Lines of a ride's log as saved: all of them, or the first and last with a count of those left out. */
+export function trimRideLog(lines: string[]): string[] {
+  if (lines.length <= STRAP_LOG_HEAD + STRAP_LOG_TAIL) return lines;
+  return [...lines.slice(0, STRAP_LOG_HEAD), `  … ${lines.length - STRAP_LOG_HEAD - STRAP_LOG_TAIL} lines left out …`, ...lines.slice(-STRAP_LOG_TAIL)];
+}
+
+/** The details of every breathing strap used in the ride just ended, as Copy details gives them with the ride's whole command log; undefined with none. */
+export function strapRideDetails(): string | undefined {
+  for (const s of sensors) if (s.kind === 'breath' && s.status === 'connected') rideStraps.add(s.id);
+  const ids = [...rideStraps];
+  if (!ids.length) return undefined;
+  const text = ids.map((id) => {
+    const sim = sensors.find((x) => x.id === id)?.simulated;
+    return breathDetails(id, trimRideLog(rideLogs.get(id) ?? [])) + (sim ? '\n(Simulated strap: no commands are sent to it.)' : '');
+  }).join('\n\n');
+  return text.length > STRAP_DETAILS_MAX ? `${text.slice(0, STRAP_DETAILS_MAX - 30)}\n… cut to fit …` : text;
 }
 
 function onStrapReply(id: string, r: StrapReply): void {
@@ -274,6 +309,7 @@ async function stopSequence(id: string): Promise<void> {
 }
 
 async function strapConnected(id: string): Promise<void> {
+  if (rideLogging) rideStraps.add(id);
   strapLog(id, 'connected');
   await send(id, 'status');
   if (strapRide) await startSequence(id);
@@ -284,13 +320,17 @@ const realStraps = () => sensors.filter((s) => s.kind === 'breath' && s.status =
 /** A ride starts: a session is started on every connected strap, and on any strap that connects during the ride. */
 export async function strapRideStart(): Promise<void> {
   strapRide = true;
+  rideLogs.clear();
+  rideStraps.clear();
+  rideLogging = true;
+  for (const s of sensors) if (s.kind === 'breath' && s.status === 'connected') rideStraps.add(s.id);
   for (const s of realStraps()) await startSequence(s.id);
 }
 
-/** A ride ends: the session is stopped and the strap's stored sessions erased. */
+/** A ride ends: the session is stopped and the strap's stored sessions erased. Resolves once every stop sequence has finished. */
 export async function strapRideEnd(): Promise<void> {
   strapRide = false;
-  for (const s of realStraps()) await stopSequence(s.id);
+  try { for (const s of realStraps()) await stopSequence(s.id); } finally { rideLogging = false; }
 }
 
 /** A stall: 20 s without a breath from a strap that has breathed, or motion frames arriving with a clock frozen for 10 s. */

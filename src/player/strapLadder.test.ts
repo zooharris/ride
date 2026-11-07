@@ -42,7 +42,7 @@ vi.mock('./ble/web', async (orig) => {
   };
 });
 
-import { addSensor, breathDetails, strapRideEnd, strapRideStart, strapStalled, STALL_FROZEN_CLOCK_MS, STALL_NO_BREATH_MS, wakeStrap } from './hub';
+import { addSensor, breathDetails, strapRideDetails, strapRideEnd, strapRideStart, trimRideLog, STRAP_DETAILS_MAX, strapStalled, STALL_FROZEN_CLOCK_MS, STALL_NO_BREATH_MS, wakeStrap } from './hub';
 
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
@@ -64,6 +64,26 @@ describe('the strap’s session, as the Tymewear app runs it', () => {
     fake.sent.length = 0;
     await strapRideEnd();
     expect(fake.sent).toEqual(['status', 'stop', 'apply', 'status', 'list', 'status']);
+  });
+  it('saves the whole ride’s commands for the recording: the start and the stop, with the strap’s name (diagnostics Part A)', async () => {
+    await strapRideStart();
+    await strapRideEnd();
+    const t = strapRideDetails()!;
+    expect(t).toContain('Breathing strap: TYME-TEST');
+    expect(t).toContain('Status: connected');
+    expect(t).toContain('→ start');
+    expect(t).toContain('→ stop');
+    expect(t.indexOf('→ start')).toBeLessThan(t.indexOf('→ stop'));
+    expect(t.length).toBeLessThanOrEqual(STRAP_DETAILS_MAX);
+  });
+  it('a long ride’s log keeps its first 10 and last 50 lines', () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `line ${i}`);
+    const t = trimRideLog(lines);
+    expect(t.length).toBe(61);
+    expect(t[0]).toBe('line 0');
+    expect(t[10]).toContain('140 lines left out');
+    expect(t[60]).toBe('line 199');
+    expect(trimRideLog(lines.slice(0, 5))).toEqual(lines.slice(0, 5));
   });
   it('Copy details shows the decoded status and the commands sent', () => {
     const t = breathDetails('strap1');
@@ -106,5 +126,19 @@ describe('the recovery ladder', () => {
     expect(steps).toEqual(['start', 'stop-start', 'resubscribe', 'reconnect']);
     expect(fake.sent).toContain('reconnect');
     expect(breathDetails('strap1')).toContain('nothing brought breathing back');
+  });
+});
+
+describe('the strap’s details never reach the ride file (diagnostics Part A)', () => {
+  it('a recording with strapLog encodes to the same bytes as without', async () => {
+    const { encodeFit } = await import('./fit');
+    const rec = {
+      id: 'r1', status: 'finished', startedAt: '2026-11-07T11:00:00', startMs: Date.UTC(2026, 10, 7, 16), date: '2026-11-07', name: 'Test', basis: 'power', ftp: 238, lthr: 154,
+      samples: Array.from({ length: 30 }, (_, t) => ({ t, watts: 150, bpm: 120, cadence: 90, ve: 30, br: 25, tv: 1.2 })),
+      laps: [], events: [], timerSeconds: 30, distanceM: 200, savedMs: 0, breathing: true,
+    } as unknown as import('./types').Recording;
+    const totals = { seconds: 30, tss: 1, avgPower: 150, avgHr: 120 } as unknown as Parameters<typeof encodeFit>[1];
+    const a = encodeFit(rec, totals), b = encodeFit({ ...rec, strapLog: 'Breathing strap: X\n→ start' }, totals);
+    expect([...b]).toEqual([...a]);
   });
 });

@@ -8,7 +8,7 @@
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
-import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl, strapRideStart, strapRideEnd, strapStalledNow, wakeStrap, WAKE_WORDS } from '../player/hub';
+import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerControl, strapRideStart, strapRideEnd, strapRideDetails, strapStalledNow, wakeStrap, WAKE_WORDS } from '../player/hub';
 import { pickSources } from '../player/sources';
 import { cleanName } from '../player/devices';
 import { RideEngine, type TrainerMode } from '../player/engine';
@@ -430,7 +430,7 @@ export async function endRide(): Promise<Recording | undefined> {
   const cmd = a.engine.finish(Date.now());
   if (cmd) commandTrainer(cmd);
   // The strap's session is stopped and its stored sessions erased, as the Tymewear app does.
-  void strapRideEnd();
+  const strapDone = strapRideEnd();
   clearInterval(timer);
   timer = undefined;
   offControl?.();
@@ -442,6 +442,13 @@ export async function endRide(): Promise<Recording | undefined> {
   const rec: Recording = { ...snapshot(a), status: 'finished' };
   a.rec = rec;
   await putRecording(rec);
+  // Diagnostics brief, Part A: once the strap has answered its stop commands, its details are saved with the ride.
+  void strapDone.catch(() => undefined).then(async () => {
+    const strapLog = strapRideDetails();
+    if (!strapLog) return;
+    if (active?.rec.id === rec.id) active.rec = { ...active.rec, strapLog };
+    await patchRecording(rec.id, { strapLog });
+  });
   emit();
   return rec;
 }

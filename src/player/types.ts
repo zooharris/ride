@@ -71,6 +71,11 @@ export interface Recording {
   breathSensor?: string;
   /** The strap's reading against the rider's normal on this ride (2A); kept here, never in the file. */
   breathOffset?: number;
+  /**
+   * Diagnostics brief, Part A (7 Nov 2026): the breathing strap's details at the end of the ride (what Copy details
+   * gives, with the ride's whole command log). Kept on this computer only: never in the ride file, never synced.
+   */
+  strapLog?: string;
   /** A fitness test's results, and what the rider did with each suggestion. */
   test?: import('./tests').TestResult;
 }

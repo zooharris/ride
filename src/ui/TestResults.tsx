@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import type { PlannedWorkout, Profile, Workout } from '../engine/types';
-import { breathCoveredRamp, clockOf, ftpBasisWords, spanWords, type TestResult } from '../player/tests';
+import { breathCoveredRamp, clockOf, ftpBasisWords, spanWords, type TestResult, withEstimateIfUsed } from '../player/tests';
 export { testLines } from '../player/tests';
 import { fmtDate } from './derived';
 import { resendRides, sentRidesAhead, takeThreshold, zonesFollowFtp } from './testService';
@@ -16,7 +16,7 @@ import { toast } from './Toast';
 import { CoachZones, ZoneCompare, breathTopsOf } from './ThresholdAdvice';
 import { useHasKey } from './thresholdService';
 import { zonesFromTest, type BreathTest, type VtPoint } from '../engine/breathThresholds';
-import { BREATH_ZONE_NAMES, ladderPcts, ladderTops, rideHrZones, ridePowerZones } from '../engine/zones';
+import { BREATH_ZONE_NAMES, ladderPcts, ladderTops, rideHrZones, ridePowerZones, PROVISIONAL_BREATH_PCTS } from '../engine/zones';
 import { applyZones } from './testService';
 import { maxHrInUse, useMaxHrSeen } from './maxHrSeen';
 
@@ -28,10 +28,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   const shown: TestResult = est ? { ...result, breath: est, lthrEstimate: est.vt2?.hr ?? result.lthrEstimate } : result;
   // Review fix (7 Nov): the estimate is saved only by an action that uses it (Use these zones, Set my second threshold,
   // Update threshold heart rate from its second threshold); any other button saves the strict reading as it was.
-  const save = (x: TestResult) => {
-    const uses = !!est && ((x.zonesAction === 'applied' && result.zonesAction !== 'applied') || (x.vt2Action === 'set' && result.vt2Action !== 'set') || (x.lthrAction === 'updated' && result.lthrAction !== 'updated' && !!est.vt2));
-    onChange(est && !uses ? { ...x, breath: result.breath, lthrEstimate: result.lthrEstimate } : x);
-  };
+  const save = (x: TestResult) => onChange(withEstimateIfUsed(result, est, x));
   const r = shown;
   const ramp = r.kind === 'ramp';
   const hasKey = useHasKey();
@@ -155,7 +152,7 @@ function missingWords(b: BreathTest, allOut?: string): string {
     case 'flat': return 'Your breathing barely rose with the effort on this ramp, neither how much air you moved nor how fast you breathed, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it before your next test, whenever it suits you.';
     case 'too-short': return 'The ramp was too short to read breathing thresholds from. They need at least five minutes of ramp.';
     case 'no-vt1': return b.readBy === 'br'
-      ? 'Your first breathing threshold didn’t show: it appears in how much air you move, which this strap records only faintly. Rides with the strap at easy and steady efforts give Antogo another way to find it.'
+      ? 'Your first breathing threshold didn’t show: it appears in how much air you move, which barely rose in this test. Rides with the strap at easy and steady efforts give Antogo another way to find it.'
       : 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.';
     case 'no-vt2': return notAllOut ? 'Your second breathing threshold didn’t show: the test ended before your breathing turned sharply upward. Riding your next one, whenever it suits you, until you truly can’t turn the pedals should reveal it.' : 'Your second breathing threshold didn’t show clearly on this ramp.';
     default: return notAllOut ? 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. A later test, whenever it suits you, ridden until you truly can’t turn the pedals, usually shows them.' : 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it.';
@@ -166,7 +163,7 @@ function missingWords(b: BreathTest, allOut?: string): string {
 function Imperfect({ r }: { r: TestResult }) {
   const lines: string[] = [];
   const b = r.breath;
-  if (b?.missing === 'patchy' && b.missingSeconds) lines.push(`Your breathing strap’s readings had gaps adding up to about ${spanWords(b.missingSeconds)} of the ramp.`);
+  if (b?.missingSeconds) lines.push(`Your breathing strap’s readings had gaps adding up to about ${spanWords(b.missingSeconds)} of the ramp.`);
   if (r.gaps?.hr) lines.push(`Heart rate was missing for ${spanWords(r.gaps.hr)} of the ramp.`);
   if (r.gaps?.power) lines.push(`Power was missing for ${spanWords(r.gaps.power)} of the ramp.`);
   if (!lines.length) return null;
@@ -210,9 +207,9 @@ function BreathSection({ b, allOut }: { b: BreathTest; allOut?: string }) {
       {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} estimated={b.estimated} />}
       {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} estimated={b.estimated} />}
       {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{missingWords(b, allOut)}</p> : null}
-      {b.readBy === 'br' && (b.vt1 || b.vt2) && <p class="muted small" style="margin:6px 0 0">Read from how fast you breathed: this strap records how much air you move only faintly, so the litres a minute barely rose, while the quickening of your breathing showed the threshold clearly.</p>}
+      {b.readBy === 'br' && (b.vt1 || b.vt2) && <p class="muted small" style="margin:6px 0 0">Read from how fast you breathed: in this test the litres a minute barely rose, while the quickening of your breathing showed the threshold clearly.</p>}
       {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a later test, whenever it suits you, would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
-      {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.brCapped ? ', breathing rate at the strap’s ceiling of 60 a minute' : b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
+      {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.brPlateau != null ? `, breathing rate at least ${Math.round(b.brPlateau)} a minute (your strap’s readings stopped climbing there)` : b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
       {(b.vt1 || b.vt2) && <p class="faint small" style="margin:6px 0 0">These stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures.</p>}
     </div>
   );
@@ -240,7 +237,7 @@ function SecondOnly({ r, profile, onChange }: { r: TestResult; profile: Profile;
     if (res.ok) onChange({ ...r, vt2Action: 'set' });
     setBusy(false);
   };
-  const pcts = [60, 75, 100, 115];
+  const pcts = PROVISIONAL_BREATH_PCTS;
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:2px">Your breathing zones</p>

@@ -1,6 +1,7 @@
 /**
  * A breathing strap that froze mid-ride (Step 3 Part 2, 2E, 31 Oct 2026).
- * On Todd's ride of 31 Oct Tymewear's Garmin data field lost the strap at an
+ * A Garmin data field can lose the strap at an auto-pause and keep showing its last
+ * number to the end (first seen on a ride of 31 Oct 2026): on that ride the field lost the strap at an
  * auto-pause and kept writing its last values for the rest of the ride: a flat
  * line that is not breathing. Real breathing never holds ventilation and
  * breathing rate to the hundredth for two minutes, so a run like that, lasting

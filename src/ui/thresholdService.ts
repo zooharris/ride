@@ -59,7 +59,10 @@ export async function loadTests(data: AppData): Promise<TestInput[]> {
 export async function loadEvidence(data: AppData): Promise<ThresholdEvidence | undefined> {
   if (!data.profile) return undefined;
   const t = today();
-  const [curves, tests] = await Promise.all([db.powerCurves.toArray(), loadTests(data)]);
+  const [allCurves, tests] = await Promise.all([db.powerCurves.toArray(), loadTests(data)]);
+  // A recording left out of training load (a Garmin twin awaiting the rider's choice) is not a ride of its own.
+  const left = new Set(data.edits.filter((e) => e.excluded).map((e) => e.id));
+  const curves = allCurves.filter((c) => !left.has(c.id));
   const fit = fitnessOn(fitnessFromRides(data.rides), t);
   const band = readinessToday(data.wellness, fit, t, data.rides).band;
   return gatherEvidence({ profile: data.profile, rides: data.rides, curves, tests, notes: data.dayNotes, readinessBand: BAND_WORDS[band], today: t });

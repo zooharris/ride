@@ -108,6 +108,25 @@ export interface TestResult {
 
 /** Part B: a stream missing for this many seconds of the ramp or more is reported. */
 export const GAP_REPORT_SECONDS = 15;
+/**
+ * Part B: a heart-rate value that has not changed for a full minute is a dropped sensor holding its last number, and
+ * counts as missing. A real heart can hold one number for half a minute early in a ramp (seen on a real test), not a minute.
+ */
+export const FROZEN_SECONDS = 60;
+
+/**
+ * Part B (review fix, 7 Nov 2026): what is saved when the rider presses a button while Estimate anyway is showing.
+ * The estimate travels with the result only when the button used it: Use these zones, Set my second breathing
+ * threshold, or Update threshold heart rate taken from the estimate's second threshold. Any other button (Keep,
+ * Update FTP) saves the strict reading as it was. Pure, so the rule is tested, not restated.
+ */
+export function withEstimateIfUsed(strict: TestResult, estimate: BreathTest | undefined, pressed: TestResult): TestResult {
+  if (!estimate) return pressed;
+  const uses = (pressed.zonesAction === 'applied' && strict.zonesAction !== 'applied')
+    || (pressed.vt2Action === 'set' && strict.vt2Action !== 'set')
+    || (pressed.lthrAction === 'updated' && strict.lthrAction !== 'updated' && !!estimate.vt2);
+  return uses ? pressed : { ...pressed, breath: strict.breath, lthrEstimate: strict.lthrEstimate };
+}
 
 /** The highest average of `secs` consecutive one-second readings (gaps count as zero). Undefined when the ride is shorter. */
 export function bestAverage(values: Array<number | undefined>, secs: number): number | undefined {
@@ -227,7 +246,16 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
 export function rampGaps(ss: Sample[], span: { from: number; to: number }): TestResult['gaps'] | undefined {
   const on = ss.filter((x) => x.t >= span.from && x.t < span.to);
   const hrHad = on.some((x) => x.hr != null && x.hr > 0), wHad = on.some((x) => x.w != null);
-  const hr = hrHad ? on.filter((x) => !(x.hr != null && x.hr > 0)).length : 0;
+  // A heart rate held at exactly the same number for FROZEN_SECONDS is a sensor that dropped, not a heart; those seconds are missing too.
+  let hr = 0;
+  if (hrHad) {
+    let run = 0, last: number | undefined;
+    for (const x of on) {
+      if (!(x.hr != null && x.hr > 0)) { hr++; run = 0; last = undefined; continue; }
+      if (x.hr === last) { run++; if (run === FROZEN_SECONDS) hr += FROZEN_SECONDS; else if (run > FROZEN_SECONDS) hr++; }
+      else { run = 1; last = x.hr; }
+    }
+  }
   const power = wHad ? on.filter((x) => x.w == null).length : 0;
   const out: NonNullable<TestResult['gaps']> = {};
   if (hr >= GAP_REPORT_SECONDS) out.hr = hr;
@@ -405,8 +433,8 @@ export function testLines(r: TestResult): string[] {
     const vt = (name: string, v?: import('../engine/breathThresholds').VtPoint) => v ? out.push(`${name}: ${v.watts} W${v.hr ? `, ${v.hr} bpm` : ''}, breathing ${Math.round(v.ve)} L/min${v.certainty === 'unsure' ? ' (less certain)' : ''}`) : undefined;
     vt('First breathing threshold (VT1, close to the first lactate threshold)', b?.vt1);
     vt('Second breathing threshold (VT2, close to the second lactate threshold)', b?.vt2);
-    if (b?.peakVe != null && breathCoveredRamp(b)) out.push(`Peak breathing: ${b.peakVe} L/min${b.brCapped ? ', breathing rate at the strap’s ceiling of 60 a minute' : ''}`);
-    if (b?.readBy === 'br' && (b.vt1 || b.vt2)) out.push('Breathing thresholds read from how fast you breathed (this strap records how much air you move only faintly)');
+    if (b?.peakVe != null && breathCoveredRamp(b)) out.push(`Peak breathing: ${b.peakVe} L/min${b.brPlateau != null ? `, breathing rate at least ${Math.round(b.brPlateau)} a minute` : ''}`);
+    if (b?.readBy === 'br' && (b.vt1 || b.vt2)) out.push('Breathing thresholds read from how fast you breathed (the litres a minute barely rose in this test)');
     if (b?.missing === 'strap-stopped' && b.breathEndAt != null && b.rampEndAt != null) out.push(`Breathing strap stopped sending readings at ${clockOf(b.breathEndAt)}, ${spanWords(b.rampEndAt - b.breathEndAt)} before the ramp ended`);
     if (r.lthrEstimate != null) out.push(`Threshold heart rate estimate: ${r.lthrEstimate} bpm (from the second breathing threshold)`);
     if (r.stepWatts) out.push(`Step size: ${r.stepWatts} W a minute${r.endedBy ? `, ended ${r.endedBy === 'auto' ? 'by itself when the power fell away' : 'by the rider'}` : ''}`);

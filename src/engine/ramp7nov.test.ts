@@ -42,7 +42,7 @@ describe('the 7 Nov ramp', () => {
     expect(b.vt2!.certainty).toBe('clear');
     expect(b.vt1).toBeUndefined();
     expect(b.missing).toBe('no-vt1');
-    expect(b.brCapped).toBe(true);
+    expect(b.brPlateau).toBeUndefined();
   });
 
   it('finds the same bend on the 4 Nov ramp, read by breathing rate (the app still reports none there: the strap stopped)', () => {
@@ -92,21 +92,32 @@ describe('the 7 Nov ramp', () => {
   });
 });
 
-describe('breathing rate at the strap’s ceiling (diagnostics Part C)', () => {
-  it('reads 60+ at the ceiling, the number below it', async () => {
-    const { brShown, brAtCeiling } = await import('./breathThresholds');
-    expect(brShown(60)).toBe('60+');
-    expect(brShown(59.6)).toBe('60+');
-    expect(brShown(56.2)).toBe('56');
-    expect(brAtCeiling(undefined)).toBe(false);
+describe('a breathing-rate ceiling is read from the ride, never assumed (diagnostics Part C, review fix)', () => {
+  it('the 7 Nov ride has none: its readings pass 60 (62.5 and 65.2 a minute), so "60" was a breath one second long, not a ceiling', async () => {
+    const { brShown, breathRatePlateau } = await import('./breathThresholds');
+    const f = ramp7Nov();
+    expect(Math.max(...f.br.filter((x) => !isNaN(x)))).toBeGreaterThan(60);
+    expect(breathRatePlateau(f.br)).toBeUndefined();
+    expect(brShown(60, undefined)).toBe('60');
   });
-  it('the 7 Nov ride’s numbers say 60+ for its highest breathing rate', async () => {
+  it('a sensor that stops counting shows a plateau at its own ceiling, whatever that is', async () => {
+    const { brShown, breathRatePlateau } = await import('./breathThresholds');
+    const f = ramp7Nov();
+    for (const cap of [48, 58, 80]) {
+      // A sensor at its ceiling reports the ceiling for as long as the true rate is above it: here the last 20 seconds.
+      const capped = f.br.map((x, i) => (i >= f.br.length - 20 ? cap : x > cap ? cap : x));
+      expect(breathRatePlateau(capped)).toBe(cap);
+      expect(brShown(cap, cap)).toBe(`${cap}+`);
+      expect(brShown(cap - 3, cap)).toBe(String(cap - 3));
+    }
+  });
+  it('the ride’s numbers give the highest rate as read, with "+" only when a plateau was seen', async () => {
     const { breathNumbers } = await import('./breathNumbers');
     const f = ramp7Nov();
-    const rows = breathNumbers({ time: f.time, ve: f.ve, br: f.br, tv: f.tv } as never);
-    expect(rows.find(([k]) => k === 'Highest breathing rate')?.[1]).toBe('60+ a minute');
+    const rows = breathNumbers({ ve: f.ve, br: f.br });
+    expect(rows.find(([k]) => k === 'Highest breathing rate')?.[1]).toMatch(/^\d+ a minute$/);
     expect(rows.find(([k]) => k === 'Highest breathing')?.[1]).toMatch(/L\/min$/);
-    const calm = breathNumbers({ time: f.time, ve: f.ve, br: f.br.map((x) => Math.min(x, 50)), tv: f.tv } as never);
-    expect(calm.find(([k]) => k === 'Highest breathing rate')?.[1]).toMatch(/^\d+ a minute$/);
+    const capped = breathNumbers({ ve: f.ve, br: f.br.map((x) => (x > 50 ? 50 : x)) });
+    expect(capped.find(([k]) => k === 'Highest breathing rate')?.[1]).toBe('50+ a minute');
   });
 });

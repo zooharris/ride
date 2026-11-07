@@ -416,7 +416,7 @@ function StrapDetails({ activityId }: { activityId: string }) {
   return (
     <section class="section">
       <details class="planned-fold">
-        <summary><h2 style="display:inline">Breathing strap details</h2> <span class="faint small">on this computer</span></summary>
+        <summary><h2 style="display:inline">Breathing strap details</h2> <span class="faint small">on this device</span></summary>
         <div class="panel" style="margin-top:10px">
           <pre class="strap-log">{text}</pre>
           <button class="btn sm" style="margin-top:8px" onClick={copy}>Copy</button>

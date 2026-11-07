@@ -32,6 +32,8 @@ export interface BreathAtPower { lo: number; hi: number; seconds: number; ve: nu
 export const FINE_BANDS: Array<[number, number]> = Array.from({ length: 14 }, (_, k) => [Math.round((0.45 + k * 0.05) * 100) / 100, Math.round((0.5 + k * 0.05) * 100) / 100]);
 /** Step 2c: a fine band needs this much riding in one ride to count. */
 export const FINE_BAND_FLOOR = 120;
+/** A second counts toward a band only once power has sat in that band this long (breathing lags the legs; the ramp read uses the same lag). */
+export const STEADY_SECONDS = 30;
 
 /**
  * Step 2c (7 Nov 2026): median ventilation, breathing rate, breath size and heart rate in each 5% band of FTP,
@@ -43,13 +45,16 @@ export function breathAtPower(time: number[], watts: number[] | undefined, ve: n
   if (!watts?.length || !ve?.length || ftp <= 0) return [];
   const n = Math.min(time.length, watts.length, ve.length);
   const per = FINE_BANDS.map(() => ({ ve: [] as Array<{ v: number; w: number }>, br: [] as Array<{ v: number; w: number }>, tv: [] as Array<{ v: number; w: number }>, hr: [] as Array<{ v: number; w: number }>, s: 0 }));
+  // Steady state only: the band power has been in, and since when.
+  let inBand = -1, since = 0;
   for (let i = 0; i < n; i++) {
-    if (time[i] < SKIP_SECONDS) continue;
-    const w = watts[i], v = ve[i], dt = dtAt(time, i, n);
-    if (!(w > 0) || !ok(v) || v <= 0 || dt <= 0) continue;
+    const w = watts[i];
+    const k = w > 0 ? FINE_BANDS.findIndex(([lo, hi]) => w / ftp >= lo && w / ftp < hi) : -1;
+    if (k !== inBand) { inBand = k; since = time[i]; }
+    if (time[i] < SKIP_SECONDS || k < 0 || time[i] - since < STEADY_SECONDS) continue;
+    const v = ve[i], dt = dtAt(time, i, n);
+    if (!ok(v) || v <= 0 || dt <= 0) continue;
     if (isPlaceholder(v, br?.[i], tv?.[i])) continue;
-    const k = FINE_BANDS.findIndex(([lo, hi]) => w / ftp >= lo && w / ftp < hi);
-    if (k < 0) continue;
     const b = per[k];
     b.s += dt;
     b.ve.push({ v, w: dt });

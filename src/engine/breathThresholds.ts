@@ -51,29 +51,55 @@ export const SETTLE_SECONDS = 120;
 export const FLAT_VE_RISE = 0.4;
 export const FLAT_POWER_RISE = 0.8;
 /**
- * 7 Nov 2026: Todd's strap compresses breath size, so its ventilation barely
- * rises with effort (29% across a ramp where power doubled) while breathing
- * rate carries the signal (28 to 56 a minute). Breathing rate is read as a
- * second witness, and leads when ventilation is flat; the trace counts as flat
- * only when breathing rate rose less than this share too.
+ * Some straps record breath size only faintly, so their ventilation barely
+ * rises with effort while breathing rate carries the signal (the general rule;
+ * first seen on a ramp where ventilation rose 29% as power doubled and breathing
+ * rate went from 28 to 56 a minute). Breathing rate is read as a second witness,
+ * and leads when ventilation is flat; the trace counts as flat only when
+ * breathing rate rose less than this share too.
  */
 export const FLAT_BR_RISE = 0.3;
 /** Flat-start bend finding (breathing rate): the slope before a bend is floored at this share of the series' mean, per watt. */
 export const RATE_FLOOR = 0.002;
-/** Breathing rate the strap reports at its ceiling: a reading at or above this is "at least 60", not a measurement. */
-export const BR_CEILING = 60;
-/** Diagnostics brief, Part C (7 Nov 2026): a breathing rate at the strap's ceiling (rounds to 60 or more). */
-export const brAtCeiling = (br: number | undefined): boolean => typeof br === 'number' && Math.round(br) >= BR_CEILING;
-/** A breathing rate as shown: "60+" at the strap's ceiling, otherwise the whole number. */
-export const brShown = (br: number): string => (brAtCeiling(br) ? `${BR_CEILING}+` : String(Math.round(br)));
+
+/**
+ * A sensor's ceiling, read from the ride itself, never assumed: the highest
+ * breathing-rate reading counts as a plateau when the readings sat at exactly
+ * that value in one unbroken run clearly longer than the sensor's ordinary
+ * repeats (sensors send a new value every second or two, so short runs of the
+ * same value are normal), and nothing in the ride read higher. Then that value
+ * is "at least", not a measurement. No number is built in: whatever the sensor
+ * counts up to is what the ride shows.
+ */
+export const PLATEAU_MIN_RUN = 4;
+export const PLATEAU_RUN_FACTOR = 2;
+export function breathRatePlateau(br: Array<number | null | undefined>): number | undefined {
+  const xs = br.filter((v): v is number => typeof v === 'number' && isFinite(v) && v > 0);
+  if (xs.length < PLATEAU_MIN_RUN * 3) return undefined;
+  const max = Math.max(...xs);
+  const runs: number[] = [];
+  let longestAtMax = 0;
+  let n = 1;
+  for (let i = 1; i <= xs.length; i++) {
+    if (i < xs.length && xs[i] === xs[i - 1]) { n++; continue; }
+    runs.push(n);
+    if (xs[i - 1] === max && n > longestAtMax) longestAtMax = n;
+    n = 1;
+  }
+  const sorted = [...runs].sort((a, b) => a - b);
+  const typical = sorted[Math.floor(sorted.length / 2)];
+  return longestAtMax >= Math.max(PLATEAU_MIN_RUN, PLATEAU_RUN_FACTOR * typical) ? max : undefined;
+}
+/** A breathing rate as shown: "N+" when the ride's readings showed a plateau at N and this reading is at it; otherwise the whole number. */
+export const brShown = (br: number, plateau?: number): string => (plateau != null && br >= plateau - 0.05 ? `${Math.round(plateau)}+` : String(Math.round(br)));
 /** A bend whose heart rate sits further than this from where the other witnesses put the second threshold is less certain. */
 export const HR_PLAUSIBLE_BPM = 15;
 
 /**
  * Part A2: a reading the strap sends when it cannot measure the chest moving:
  * breath size exactly 1.00 litre and ventilation equal to breathing rate (the
- * one is the other times one). Seen 45 times on Todd's ramp of 4 Nov and never
- * on his strap rides recorded by the Garmin. It is no reading.
+ * one is the other times one). A firmware pattern, first seen 45 times on one
+ * ramp; it cannot be a real reading, so dropping it harms no sensor.
  */
 export function isPlaceholder(ve: number | undefined, br: number | undefined, tv: number | undefined): boolean {
   return typeof ve === 'number' && typeof br === 'number' && typeof tv === 'number' && Math.abs(tv - 1) < 0.005 && Math.abs(ve - br) < 0.05;
@@ -125,11 +151,11 @@ export interface BreathTest {
   flat?: boolean;
   /**
    * 7 Nov 2026: which series the bends were read from: ventilation (ve), or breathing rate (br) when ventilation
-   * barely rose (this strap compresses breath size) or showed no bend.
+   * barely rose (a strap that records breath size faintly) or showed no bend.
    */
   readBy?: 've' | 'br';
-  /** 7 Nov 2026: breathing rate hit the strap's ceiling (60 a minute) during the ramp: peakBr is "at least". */
-  brCapped?: boolean;
+  /** The ramp's breathing rate showed a plateau at this value (the sensor's ceiling, read from the ride): peakBr is "at least". */
+  brPlateau?: number;
   /** Diagnostics brief, Part B (7 Nov 2026): read leniently from imperfect data at the rider's request; every threshold is less certain. */
   estimated?: boolean;
   /** Part B: seconds of the ramp with no breathing pieces (patchy readings), roughly. */
@@ -330,8 +356,8 @@ export function breathThresholds(o: BreathInput): BreathTest | undefined {
   }
   const flat = flatVe && flatBr;
   const flatField: Partial<BreathTest> = flat ? { flat } : {};
-  const capped = time.some((t, i) => t >= o.from && t < readTo && ok(s.br?.[i]) && s.br![i] >= BR_CEILING - 0.05);
-  const capField: Partial<BreathTest> = capped ? { brCapped: true } : {};
+  const plateau = s.br ? breathRatePlateau(time.map((t, i) => (t >= o.from && t < readTo ? s.br![i] : NaN))) : undefined;
+  const capField: Partial<BreathTest> = plateau != null ? { brPlateau: plateau } : {};
 
   if (stopped) {
     // No breathing past the strap's stop: the second threshold cannot be found. The first can, when it is clear of the stop.

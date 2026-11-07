@@ -424,7 +424,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   );
 }
 
-// ── Your devices, right (Todd, 28 Oct): a box for the trainer and for each number ──
+// ── Your devices, right (decided 28 Oct 2026): a box for the trainer and for each number ──
 
 const SUB_DATE = (iso?: string) => (iso ? `last used ${iso === new Date().toISOString().slice(0, 10) ? 'today' : new Date(iso + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'used before');
 

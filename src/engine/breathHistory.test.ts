@@ -14,7 +14,8 @@ function bands(o: { v1: number; from?: number; to?: number; seconds?: number; fl
     const over = Math.max(0, x - o.v1);
     return {
       lo, hi, seconds: o.seconds ?? 300,
-      ve: o.flat ? 30 : 20 + 25 * x + 120 * over,
+      // Ventilation roughly doubles from half of FTP to FTP, then climbs faster past VT1.
+      ve: o.flat ? 30 : 10 + 50 * x + 120 * over,
       br: o.flat ? 28 : 26 + 1 * x + 90 * over,
       tv: o.flat ? 1.1 : Math.min(0.9 + 1.2 * x, 0.9 + 1.2 * o.v1),
       hr: Math.round(90 + 70 * x),

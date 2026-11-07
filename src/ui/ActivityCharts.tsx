@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { brAtCeiling, brShown } from '../engine/breathThresholds';
+import { breathRatePlateau, brShown } from '../engine/breathThresholds';
 import { useWidth } from './useWidth';
 import type { StreamSet } from '../data/db';
 import { stepAt, stepReadout, type Analysis } from '../engine/analysis';
@@ -95,11 +95,13 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   })();
   const panels = useMemo(() => {
     const list: PanelDef[] = [];
+    // The sensor's ceiling, if the ride's breathing-rate readings showed one; read from the ride, never assumed.
+    const plateau = breathRatePlateau(samples.map((s) => s.br));
     if (ride && samples.some((s) => s.watts != null)) list.push({ key: 'watts', title: 'Power', unit: 'W', color: 'var(--ink)', get: (p) => p.watts, explain: 'Watts at the pedals, smoothed to the chart’s resolution. The dashed line is your FTP. When the ride was from a plan, its steps are drawn underneath in their zone colours, up to each step’s target.', refs: [{ v: profile.ftp, label: `FTP ${profile.ftp}` }] });
     if (samples.some((s) => s.hr != null)) list.push({ key: 'hr', title: 'Heart rate', unit: 'bpm', color: 'var(--z5)', get: (p) => p.hr, explain: ride ? 'Beats per minute. The dashed line is your threshold heart rate. When the ride was from a plan, its steps are drawn underneath, up to the heart rate that matches each step’s target.' : 'Beats per minute. The dashed line is your threshold heart rate.', refs: (ride ? profile.lthr : footLthr(profile)) ? [{ v: ride ? profile.lthr : footLthr(profile), label: `threshold ${ride ? profile.lthr : footLthr(profile)}` }] : [] });
     if (ride && samples.some((s) => s.ve != null)) list.push({ key: 've', title: 'Breathing', unit: 'L/min', color: 'var(--z2)', get: (p) => p.ve, second: { get: (p) => p.br, color: 'var(--ink-3)', unit: 'breaths a minute' },
       explain: 'From your breathing strap. The line is ventilation, the litres of air you breathe a minute, as a 30-second average; the thinner line is breaths a minute, on its own scale at the right.',
-      readout: (p) => [p.ve != null ? `ventilation ${brAtCeiling(p.br) ? 'at least ' : ''}${Math.round(p.ve)} L/min` : '', p.br != null ? `${brShown(p.br)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined,
+      readout: (p) => [p.ve != null ? `ventilation ${plateau != null && p.br != null && p.br >= plateau - 0.05 ? 'at least ' : ''}${Math.round(p.ve)} L/min` : '', p.br != null ? `${brShown(p.br, plateau)} breaths a minute` : '', p.tv != null ? `breath size ${p.tv.toFixed(1)} L` : ''].filter(Boolean).join(' · ') || undefined,
       note: breathStop ? breathStopNote(breathStop.at, breathStop.garmin) : undefined });
     if (ride && samples.some((s) => s.cad != null)) list.push({ key: 'cad', title: 'Cadence', unit: 'rpm', color: 'var(--z3)', get: (p) => p.cad, explain: 'Pedal revolutions per minute; gaps are coasting.' });
     // A run reads as pace, minutes per mile or km (standing still has no pace, so it is a gap).

@@ -2,9 +2,9 @@
  * Step 2c, Part B (7 Nov 2026): Antogo's own read of the rider's breathing
  * across ordinary rides with the strap. Pure. No AI.
  *
- * Why: a strap that compresses breath size (Todd's VitalPro) shows the second
- * breathing threshold on a ramp through breathing rate, but not the first,
- * which lives mostly in breath size. Steady riding at many efforts, gathered
+ * Why: a strap that records breath size faintly shows the second breathing
+ * threshold on a ramp through breathing rate, but not the first, which lives
+ * mostly in breath size. Steady riding at many efforts, gathered
  * over weeks, shows the shape a ramp cannot.
  *
  * How: each ride with a strap keeps the medians of ventilation, breathing rate,
@@ -19,19 +19,22 @@
  */
 import { addDays } from './load';
 import { FINE_BANDS, NORMAL_DAYS, type BreathAtPower } from './breathOffset';
-import { CLEAR_BEND, findBends, FLAT_BR_RISE, FLAT_VE_RISE } from './breathThresholds';
+import { CLEAR_BEND, findBends, FLAT_BR_RISE, FLAT_POWER_RISE, FLAT_VE_RISE } from './breathThresholds';
 
 /** A band counts with this much riding over at least two rides, or ONE_RIDE_SECONDS from one. */
 export const HISTORY_BAND_SECONDS = 480;
 export const ONE_RIDE_SECONDS = 900;
-/** The first threshold is looked for across these shares of FTP (bands whose middle lies inside), and reported only inside VT1_SHARE. */
-export const VT1_LOOK: [number, number] = [0.5, 1.0];
-export const VT1_SHARE: [number, number] = [0.55, 0.85];
+/**
+ * Population windows, not answers: where a first threshold can sit as a share of FTP across riders (untrained to
+ * well trained). A rider whose bend falls outside gets "not found", never a wrong number. Named in Help.
+ */
+export const VT1_LOOK: [number, number] = [0.45, 1.0];
+export const VT1_SHARE: [number, number] = [0.5, 0.85];
 /** The test's second threshold is checked across these shares, and a bend reported only inside VT2_SHARE. */
 export const VT2_LOOK: [number, number] = [0.7, 1.15];
 export const VT2_SHARE: [number, number] = [0.9, 1.1];
-/** Fewest bands each side of a bend: a band curve has few points. */
-export const HISTORY_MIN_SEGMENT = 3;
+/** Fewest bands each side of a bend (the brief's four): a threshold is never claimed from fewer points per line. */
+export const HISTORY_MIN_SEGMENT = 4;
 
 export interface HistoryRide { date: string; breathAtPower?: BreathAtPower[]; breathOffset?: number; ftpAtBuild?: number }
 
@@ -110,12 +113,13 @@ export function historyBands(rides: HistoryRide[], ftp: number, today: string): 
 const mid = (b: { lo: number; hi: number }) => (b.lo + b.hi) / 2;
 const inShare = (b: { lo: number; hi: number }, [a, z]: [number, number]) => mid(b) >= a && mid(b) <= z;
 
-/** A curve barely rising from its first quarter to its last (the strap not following), as on the ramp. */
-function flatRise(ys: number[], share: number): boolean {
+/** A curve barely rising from its first quarter to its last (the strap not following): the ramp's own rule and shares. */
+function flatRise(xs: number[], ys: number[], share: number): boolean {
   if (ys.length < 4) return true;
   const q = Math.max(1, Math.floor(ys.length / 4));
-  const m = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-  return m(ys.slice(-q)) / m(ys.slice(0, q)) - 1 < share;
+  const m = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
+  const powerRise = m(xs.slice(-q)) / m(xs.slice(0, q)) - 1;
+  return powerRise > FLAT_POWER_RISE && m(ys.slice(-q)) / m(ys.slice(0, q)) - 1 < share;
 }
 
 /** Antogo's read of the rider's breathing history. */
@@ -132,7 +136,7 @@ export function breathHistory(rides: HistoryRide[], ftp: number, today: string):
     const hasBr = look.every((b) => ok(b.br));
     const br = hasBr ? look.map((b) => b.br!) : undefined;
     const opts = { oneBend: true, minSegment: HISTORY_MIN_SEGMENT };
-    const veFlat = flatRise(ve, FLAT_VE_RISE / 2);
+    const veFlat = flatRise(xs, ve, FLAT_VE_RISE);
     const byVe = veFlat ? {} : findBends(xs, ve, opts);
     const byBr = br ? findBends(xs, br, { ...opts, flatStart: true }) : {};
     // Breath size: where it stops rising (its highest band), when it rose at all.
@@ -154,7 +158,7 @@ export function breathHistory(rides: HistoryRide[], ftp: number, today: string):
       }
     }
     if (!out.vt1) {
-      const brFlat = !br || flatRise(br, FLAT_BR_RISE / 2);
+      const brFlat = !br || flatRise(xs, br, FLAT_BR_RISE);
       out.notYet = veFlat && brFlat
         ? 'Your breathing barely changes with effort across your rides with the strap, so there is no first threshold to read. Check the strap sits snug.'
         : 'Your rides with the strap don’t show a clear first threshold yet. More easy and steady riding with it will firm it up.';
@@ -179,7 +183,7 @@ export function breathHistory(rides: HistoryRide[], ftp: number, today: string):
  * that are short, with the minutes each still needs, neighbouring short bands joined into one range.
  */
 export function needsSentence(bands: HistoryBand[], ftp: number): string {
-  const wanted = FINE_BANDS.filter(([lo, hi]) => (lo + hi) / 2 >= VT1_LOOK[0] && (lo + hi) / 2 < 0.95);
+  const wanted = FINE_BANDS.filter(([lo, hi]) => (lo + hi) / 2 >= VT1_SHARE[0] && (lo + hi) / 2 < 0.95);
   const short: Array<{ lo: number; hi: number; min: number; anotherDay: boolean }> = [];
   for (const [lo, hi] of wanted) {
     const b = bands.find((x) => x.lo === lo && x.hi === hi);

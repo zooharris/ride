@@ -158,13 +158,26 @@ describe('the 4 Nov ramp, estimated anyway (diagnostics Part B)', () => {
 });
 
 describe('Estimate anyway is saved only by an action that uses it (review fix)', () => {
-  it('Keep on FTP saves the strict reading; Use these zones saves the estimate', () => {
-    // The rule TestResults applies, restated: an estimate travels with the result only on zones applied, second threshold set, or threshold heart rate updated from it.
-    const strict = { kind: 'ramp' as const, breath: { missing: 'patchy' as const } };
-    const est = { estimated: true, vt1: { watts: 180, ve: 30, certainty: 'unsure' as const }, missing: 'no-vt2' as const };
-    const uses = (x: { zonesAction?: string; vt2Action?: string; lthrAction?: string }) => x.zonesAction === 'applied' || x.vt2Action === 'set' || x.lthrAction === 'updated';
-    const save = (x: Record<string, unknown>) => (uses(x) ? x : { ...x, breath: strict.breath });
-    expect(save({ ...strict, breath: est, ftpAction: 'kept' }).breath).toEqual(strict.breath);
-    expect(save({ ...strict, breath: est, zonesAction: 'applied' }).breath).toEqual(est);
+  it('Keep on FTP saves the strict reading; Use these zones, Set my second threshold and Update threshold heart rate save the estimate', async () => {
+    const { withEstimateIfUsed } = await import('../player/tests');
+    const strict = { kind: 'ramp', breath: { missing: 'patchy' }, lthrEstimate: 150 } as never as import('../player/tests').TestResult;
+    const est = { estimated: true, vt2: { watts: 240, hr: 158, ve: 40, certainty: 'unsure' }, missing: 'no-vt1' } as never as import('./breathThresholds').BreathTest;
+    const showing = { ...strict, breath: est, lthrEstimate: 158 };
+    expect(withEstimateIfUsed(strict, est, { ...showing, ftpAction: 'kept' }).breath).toEqual(strict.breath);
+    expect(withEstimateIfUsed(strict, est, { ...showing, ftpAction: 'kept' }).lthrEstimate).toBe(150);
+    expect(withEstimateIfUsed(strict, est, { ...showing, lthrAction: 'kept' }).breath).toEqual(strict.breath);
+    expect(withEstimateIfUsed(strict, est, { ...showing, zonesAction: 'applied' }).breath).toEqual(est);
+    expect(withEstimateIfUsed(strict, est, { ...showing, vt2Action: 'set' }).breath).toEqual(est);
+    expect(withEstimateIfUsed(strict, est, { ...showing, lthrAction: 'updated' }).lthrEstimate).toBe(158);
+    expect(withEstimateIfUsed(strict, undefined, { ...strict, ftpAction: 'kept' }).breath).toEqual(strict.breath);
+  });
+  it('a heart rate frozen at one number for a minute counts as missing; a real half-minute hold does not', async () => {
+    const { rampGaps } = await import('../player/tests');
+    const ss = Array.from({ length: 300 }, (_, t) => ({ t, w: 200, hr: t >= 100 && t < 190 ? 140 : 120 + (t % 7) })) as never;
+    expect(rampGaps(ss, { from: 0, to: 300 })?.hr).toBe(90);
+    const hold = Array.from({ length: 300 }, (_, t) => ({ t, w: 200, hr: t >= 100 && t < 130 ? 140 : 120 + (t % 7) })) as never;
+    expect(rampGaps(hold, { from: 0, to: 300 })).toBeUndefined();
+    const live = Array.from({ length: 300 }, (_, t) => ({ t, w: 200, hr: 120 + (t % 7) })) as never;
+    expect(rampGaps(live, { from: 0, to: 300 })).toBeUndefined();
   });
 });

@@ -287,6 +287,13 @@ export function standardBreathPcts(vt1Ve: number, vt2Ve: number): number[] | und
  * the tops as they are; anything missing or out of order falls back to the
  * standard shares from the thresholds (never to the other mode's old table).
  */
+/**
+ * Breathing zone tops as shares of the second threshold when the rider's first threshold is not yet known: a
+ * population default (five-zone shape, zone 2 ending at a typical first-to-second ratio), labelled provisional on
+ * screen and replaced the moment the rider's own first threshold is found.
+ */
+export const PROVISIONAL_BREATH_PCTS = [60, 75, 100, 115];
+
 export function breathZones(p: Pick<Profile, 'vt1Ve' | 'vt2Ve' | 'breathZoneMode' | 'breathZonePcts' | 'breathZoneTops'>): BreathZone[] | undefined {
   const vt2 = p.vt2Ve;
   if (!vt2 || vt2 <= 0) return undefined;
@@ -294,7 +301,7 @@ export function breathZones(p: Pick<Profile, 'vt1Ve' | 'vt2Ve' | 'breathZoneMode
   if (p.breathZoneMode === 'abs' && validBreathTops(p.breathZoneTops)) tops = p.breathZoneTops;
   else if (p.breathZoneMode !== 'abs' && validBreathTops(p.breathZonePcts)) tops = p.breathZonePcts.map((x) => (x / 100) * vt2);
   else {
-    const std = standardBreathPcts(p.vt1Ve ?? 0, vt2) ?? [60, 75, 100, 115];
+    const std = standardBreathPcts(p.vt1Ve ?? 0, vt2) ?? PROVISIONAL_BREATH_PCTS;
     tops = std.map((x) => (x / 100) * vt2);
   }
   return BREATH_ZONE_NAMES.map((name, i) => ({ n: i + 1, name, low: i === 0 ? 0 : Math.round(tops![i - 1] * 10) / 10, high: i < 4 ? Math.round(tops![i] * 10) / 10 : Infinity }));

@@ -62,7 +62,7 @@ export function breathProfile(b?: BreathPatch): Partial<Profile> {
 }
 
 /** Save numbers on the profile, freshen the coach's note, and send them to Intervals.icu, saying what happened as Settings does. */
-async function applyNumbers(change: Partial<Profile>, what: string): Promise<{ ok: boolean; text: string }> {
+export async function applyNumbers(change: Partial<Profile>, what: string): Promise<{ ok: boolean; text: string }> {
   const before = await db.profile.get('me');
   if (!before) return { ok: false, text: 'No profile on this device yet.' };
   const next: Profile = { ...before, ...change };

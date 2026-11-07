@@ -1,8 +1,8 @@
-import { brAtCeiling, BR_CEILING } from './breathThresholds';
+import { breathRatePlateau } from './breathThresholds';
 
 /**
  * Diagnostics brief, Part C (7 Nov 2026): the ride's breathing at its height, when a strap was worn: the highest
- * 30-second ventilation and breathing rate. A breathing rate at the strap's ceiling reads "60+".
+ * 30-second ventilation and breathing rate. When the readings showed a plateau (the sensor's ceiling, read from the ride), the rate reads "N+".
  */
 export function breathNumbers(s: { ve?: Array<number | null | undefined>; br?: Array<number | null | undefined> } | null | undefined): Array<[string, string | number | undefined, string?]> {
   if (!s?.ve?.some((v) => v != null && v > 0)) return [];
@@ -16,10 +16,10 @@ export function breathNumbers(s: { ve?: Array<number | null | undefined>; br?: A
     return best;
   };
   const ve = top30(s.ve), br = top30(s.br);
-  const capped = !!s.br?.some((x) => brAtCeiling(x ?? undefined));
+  const plateau = s.br ? breathRatePlateau(s.br) : undefined;
   return [
     ['Highest breathing', ve != null ? `${Math.round(ve)} L/min` : undefined, 'The most air you breathed in any 30 seconds, from your breathing strap'],
-    ['Highest breathing rate', capped ? `${BR_CEILING}+ a minute` : br != null ? `${Math.round(br)} a minute` : undefined, capped ? 'Your strap counts up to 60 breaths a minute, and reached that' : 'The most breaths a minute in any 30 seconds'],
+    ['Highest breathing rate', plateau != null ? `${Math.round(plateau)}+ a minute` : br != null ? `${Math.round(br)} a minute` : undefined, plateau != null ? `Your strap’s readings stopped climbing at ${Math.round(plateau)} a minute, so the true rate was at least that` : 'The most breaths a minute in any 30 seconds'],
   ];
 }
 

@@ -20,6 +20,7 @@ import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
 import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
 import { breathHistory, type BreathHistory } from '../../engine/breathHistory';
+import { applyNumbers } from '../testService';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
 import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
@@ -282,7 +283,7 @@ export function Settings({ data }: { data: AppData }) {
             <div class="field"><label>Second threshold, VT2 (L/min)</label><input type="number" step="0.1" value={p.vt2Ve ?? ''} onInput={(e) => setP({ ...p, vt2Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} />
               {p.breathSetOn && <span class="faint small">Set {fmtDate(p.breathSetOn, { month: 'long', day: 'numeric' })}.</span>}</div>
           </div>
-          <BreathFromRides p={p} setP={setP} />
+          <BreathFromRides p={p} setP={setP} data={data} />
           {p.vt2Ve ? <BreathEditor p={p} setP={setP} /> : <p class="faint small" style="margin:8px 0 0">The breathing zone table appears once the second threshold is set.</p>}
         </div>
 
@@ -626,9 +627,12 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
  * the plain sentence saying what more riding would be enough. Worked out from the stored bands when the page opens.
  * Nothing changes until the rider presses a button, and then only in the form, saved with Save.
  */
-function BreathFromRides({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
+function BreathFromRides({ p, setP, data }: { p: Profile; setP: (p: Profile) => void; data: AppData }) {
   const [h, setH] = useState<BreathHistory | undefined>(undefined);
-  useEffect(() => { void db.powerCurves.toArray().then((rs) => setH(breathHistory(rs, p.ftp, today()))); }, [p.ftp]);
+  const [busy, setBusy] = useState(false);
+  // A recording left out of training load (the Garmin's twin of a player ride, until the rider chooses) is not a ride of its own.
+  const excluded = new Set(data.edits.filter((e) => e.excluded).map((e) => e.id));
+  useEffect(() => { void db.powerCurves.toArray().then((rs) => setH(breathHistory(rs.filter((r) => !excluded.has(r.id)), p.ftp, today()))); }, [p.ftp, data.edits.length]);
   if (!h || !(p.ftp > 0)) return null;
   const v = h.vt1;
   // Review fix (7 Nov): the first threshold must sit below the second.
@@ -638,15 +642,33 @@ function BreathFromRides({ p, setP }: { p: Profile; setP: (p: Profile) => void }
   const withZ2 = (tops: number[], at: number) => { const t = [...tops]; t[1] = Math.round(at); return validTops(t) ? t : undefined; };
   const nextP = v ? withZ2(pTops, v.watts) : undefined;
   const nextH = v?.hr ? withZ2(hTops, v.hr) : undefined;
-  const say = (t: string) => toast({ ok: true, text: `${t} Press Save to keep it.` });
+  // Zone 2's new top in the rider's own mode: as a share of the threshold when the zones are shares, in watts or beats when fixed.
+  const z2Patch = (kind: 'power' | 'hr', tops: number[]): Partial<Profile> => {
+    const anchor = kind === 'power' ? p.ftp : p.lthr;
+    const mode = kind === 'power' ? (p.powerZoneMode ?? 'pct') : (p.hrZoneMode ?? 'pct');
+    if (mode === 'pct') {
+      const pcts = ladderPcts(kind === 'power' ? pz : hz);
+      pcts[1] = Math.round((tops[1] / anchor) * 100);
+      return kind === 'power' ? { powerZoneMode: 'pct', powerZonePcts: pcts } : { hrZoneMode: 'pct', hrZonePcts: pcts };
+    }
+    return kind === 'power' ? { powerZoneMode: 'abs', powerZoneWatts: tops } : { hrZoneMode: 'abs', hrZoneTops: tops };
+  };
+  // Saved at once, as Use on the test screen is; the form follows.
+  const apply = async (patch: Partial<Profile>, what: string) => {
+    setBusy(true);
+    const res = await applyNumbers(patch, what);
+    toast(res);
+    if (res.ok) setP({ ...p, ...patch });
+    setBusy(false);
+  };
   return (
     <div class="breath-rides" style="margin-top:12px">
       {v ? <>
         <p class="small" style="margin:0">From your rides with the strap (last 12 weeks, {h.rides} ride{h.rides === 1 ? '' : 's'}, {h.minutes} minutes): first threshold about <b class="num">{v.watts} W</b>{v.hr ? <>, <b class="num">{v.hr} bpm</b></> : null}, <b class="num">{Math.round(v.ve * 10) / 10} L/min</b>{v.certainty === 'unsure' ? <> <span class="pill">less certain</span></> : null}.</p>
         <div class="row wrap" style="gap:8px;margin-top:8px">
-          {fitsBelowVt2 && Math.abs((p.vt1Ve ?? 0) - v.ve) >= 0.1 && <button class="btn sm" onClick={() => { setP({ ...p, vt1Ve: Math.round(v.ve * 10) / 10, breathSetOn: today() }); say('First threshold set.'); }}>Use it</button>}
-          {nextP && Math.round(pTops[1]) !== Math.round(v.watts) && <button class="btn sm quiet" onClick={() => { setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: nextP }); say(`Power zone 2 now ends at ${Math.round(v.watts)} W; your power zones are now set in watts, so they won't move with FTP.`); }}>End power zone 2 at {Math.round(v.watts)} W</button>}
-          {nextH && Math.round(hTops[1]) !== v.hr && <button class="btn sm quiet" onClick={() => { setP({ ...p, hrZoneMode: 'abs', hrZoneTops: nextH }); say(`Heart-rate zone 2 now ends at ${v.hr} bpm.`); }}>End heart-rate zone 2 at {v.hr} bpm</button>}
+          {fitsBelowVt2 && Math.abs((p.vt1Ve ?? 0) - v.ve) >= 0.1 && <button class="btn sm" disabled={busy} onClick={() => void apply({ vt1Ve: Math.round(v.ve * 10) / 10, breathSetOn: today() }, 'your first breathing threshold')}>Use it</button>}
+          {nextP && Math.round(pTops[1]) !== Math.round(v.watts) && <button class="btn sm quiet" disabled={busy} onClick={() => void apply(z2Patch('power', nextP), `power zone 2 ending at ${Math.round(v.watts)} W`)}>End power zone 2 at {Math.round(v.watts)} W</button>}
+          {nextH && Math.round(hTops[1]) !== v.hr && <button class="btn sm quiet" disabled={busy} onClick={() => void apply(z2Patch('hr', nextH), `heart-rate zone 2 ending at ${v.hr} bpm`)}>End heart-rate zone 2 at {v.hr} bpm</button>}
         </div>
         {!fitsBelowVt2 && <p class="faint small" style="margin:6px 0 0">That is at or above your second threshold, so it isn't offered; a later ramp test, whenever it suits you, would settle which is right.</p>}
       </> : <p class="faint small" style="margin:0">{h.notYet}</p>}

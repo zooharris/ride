@@ -81,6 +81,8 @@ export interface TestResult {
   breath?: BreathTest;
   /** What the rider did with the zones the test suggests. */
   zonesAction?: 'applied' | 'kept';
+  /** Step 2c, Part C: a test with only the second breathing threshold: did the rider set it. */
+  vt2Action?: 'set' | 'kept';
   /** Part A1 (4 Nov 2026): was the ramp all-out, did it pass the second threshold; the witness lines are for the coach. */
   judge?: RampJudgement;
   /** Part A3: 75% of the best minute, the rule FTP always starts from. */
@@ -255,7 +257,7 @@ export function withActions(next: TestResult, was: TestResult | undefined): Test
   if (!was) return next;
   // Part B: an estimate the rider acted on stays the breathing shown.
   const kept = was.breath?.estimated ? { breath: was.breath, ...(was.lthrEstimate != null ? { lthrEstimate: was.lthrEstimate } : {}) } : {};
-  return { ...next, ...kept, ftpBefore: was.ftpBefore ?? next.ftpBefore, ftpAction: was.ftpAction, lthrBefore: was.lthrBefore ?? next.lthrBefore, lthrAction: was.lthrAction, zonesAction: was.zonesAction };
+  return { ...next, ...kept, ftpBefore: was.ftpBefore ?? next.ftpBefore, ftpAction: was.ftpAction, lthrBefore: was.lthrBefore ?? next.lthrBefore, lthrAction: was.lthrAction, zonesAction: was.zonesAction, vt2Action: was.vt2Action };
 }
 
 /** The breathing fields of a ramp's result: the thresholds, and threshold heart rate from the second one. */

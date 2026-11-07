@@ -19,6 +19,7 @@ import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
 import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
+import { breathHistory, type BreathHistory } from '../../engine/breathHistory';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
 import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
@@ -275,12 +276,13 @@ export function Settings({ data }: { data: AppData }) {
 
         <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
           <b class="small">Breathing (with a breathing strap)</b>
-          <p class="muted small" style="margin:4px 0 10px">Your two breathing thresholds, in litres of air a minute. A Ramp Test ridden with the strap sets them; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
+          <p class="muted small" style="margin:4px 0 10px">Your two breathing thresholds, in litres of air a minute. A Ramp Test ridden with the strap sets the second; your easy and steady rides with the strap find the first; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
           <div class="form">
             <div class="field"><label>First threshold, VT1 (L/min)</label><input type="number" step="0.1" value={p.vt1Ve ?? ''} onInput={(e) => setP({ ...p, vt1Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} /></div>
             <div class="field"><label>Second threshold, VT2 (L/min)</label><input type="number" step="0.1" value={p.vt2Ve ?? ''} onInput={(e) => setP({ ...p, vt2Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} />
               {p.breathSetOn && <span class="faint small">Set {fmtDate(p.breathSetOn, { month: 'long', day: 'numeric' })}.</span>}</div>
           </div>
+          <BreathFromRides p={p} setP={setP} />
           {p.vt2Ve ? <BreathEditor p={p} setP={setP} /> : <p class="faint small" style="margin:8px 0 0">The breathing zone table appears once the second threshold is set.</p>}
         </div>
 
@@ -617,6 +619,38 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
   );
 }
 
+
+/**
+ * Step 2c, Part C (7 Nov 2026): Antogo's read of the rider's rides with the strap, under the breathing thresholds:
+ * a first threshold with Use it (and the power and heart-rate zone 2 tops it implies, each offered on its own), or
+ * the plain sentence saying what more riding would be enough. Worked out from the stored bands when the page opens.
+ * Nothing changes until the rider presses a button, and then only in the form, saved with Save.
+ */
+function BreathFromRides({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
+  const [h, setH] = useState<BreathHistory | undefined>(undefined);
+  useEffect(() => { void db.powerCurves.toArray().then((rs) => setH(breathHistory(rs, p.ftp, today()))); }, [p.ftp]);
+  if (!h) return null;
+  const v = h.vt1;
+  const pz = ridePowerZones(p), hz = rideHrZones(p);
+  const pTops = ladderTops(pz, p.ftp), hTops = ladderTops(hz, p.lthr);
+  const withZ2 = (tops: number[], at: number) => { const t = [...tops]; t[1] = Math.round(at); return validTops(t) ? t : undefined; };
+  const nextP = v ? withZ2(pTops, v.watts) : undefined;
+  const nextH = v?.hr ? withZ2(hTops, v.hr) : undefined;
+  const say = (t: string) => toast({ ok: true, text: `${t} Press Save to keep it.` });
+  return (
+    <div class="breath-rides" style="margin-top:12px">
+      {v ? <>
+        <p class="small" style="margin:0">From your rides with the strap (last 12 weeks, {h.rides} ride{h.rides === 1 ? '' : 's'}, {h.minutes} minutes): first threshold about <b class="num">{v.watts} W</b>{v.hr ? <>, <b class="num">{v.hr} bpm</b></> : null}, <b class="num">{Math.round(v.ve * 10) / 10} L/min</b>{v.certainty === 'unsure' ? <> <span class="pill">less certain</span></> : null}.</p>
+        <div class="row wrap" style="gap:8px;margin-top:8px">
+          {Math.abs((p.vt1Ve ?? 0) - v.ve) >= 0.1 && <button class="btn sm" onClick={() => { setP({ ...p, vt1Ve: Math.round(v.ve * 10) / 10, breathSetOn: today() }); say('First threshold set.'); }}>Use it</button>}
+          {nextP && Math.round(pTops[1]) !== Math.round(v.watts) && <button class="btn sm quiet" onClick={() => { setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: nextP }); say(`Power zone 2 now ends at ${Math.round(v.watts)} W.`); }}>End power zone 2 at {Math.round(v.watts)} W</button>}
+          {nextH && Math.round(hTops[1]) !== v.hr && <button class="btn sm quiet" onClick={() => { setP({ ...p, hrZoneMode: 'abs', hrZoneTops: nextH }); say(`Heart-rate zone 2 now ends at ${v.hr} bpm.`); }}>End heart-rate zone 2 at {v.hr} bpm</button>}
+        </div>
+      </> : <p class="faint small" style="margin:0">{h.notYet}</p>}
+      {h.vt2Check != null && <p class="faint small" style="margin:6px 0 0">Your rides with the strap put the second threshold at about {h.vt2Check} W.</p>}
+    </div>
+  );
+}
 
 /**
  * The breathing zone table (Step 4, 3 Nov 2026): the tops of zones 1 to 4,

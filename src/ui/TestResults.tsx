@@ -215,13 +215,50 @@ function BreathSection({ b, allOut }: { b: BreathTest; allOut?: string }) {
  * The zones this test suggests, anchored on its breathing thresholds, beside
  * the rider's current ones: Use these zones or Keep my zones.
  */
+/**
+ * Step 2c, Part C (7 Nov 2026): a test that found the second breathing threshold but not the first (a strap that
+ * compresses breath size) can still set the second, so a breathing table exists, provisional until the rider's
+ * rides with the strap find the first. Only the breathing threshold is set; power and heart-rate zones are untouched.
+ */
+function SecondOnly({ r, profile, onChange }: { r: TestResult; profile: Profile; onChange: (r: TestResult) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const v = r.breath!.vt2!;
+  const ve = Math.round(v.ve * 10) / 10;
+  const same = profile.vt2Ve != null && Math.abs(profile.vt2Ve - ve) < 0.1;
+  const set = async () => {
+    setBusy(true);
+    const res = await applyZones(undefined, undefined, { vt2Ve: ve });
+    setMsg(res);
+    if (res.ok) onChange({ ...r, vt2Action: 'set' });
+    setBusy(false);
+  };
+  const pcts = [60, 75, 100, 115];
+  return (
+    <div class="test-row">
+      <p class="test-lead" style="margin-bottom:2px">Your breathing zones</p>
+      <p class="muted small" style="margin:0">This test found your second breathing threshold ({ve} L/min at {v.watts} W) but not your first. Setting the second gives you a breathing table now: provisional until your first threshold is found, which your easy and steady rides with the strap will do. Your power and heart-rate zones stay as they are.</p>
+      <p class="faint small" style="margin:6px 0 0">Zone tops as shares of the second threshold: {pcts.map((x, i) => `Z${i + 1} ${x}% (${Math.round((x / 100) * ve * 10) / 10} L/min)`).join(' · ')}; Z5 above.</p>
+      {r.vt2Action === 'set' || same ? <p class="small" style="margin:8px 0 0"><span class="rd-state on">Set</span> {msg?.text ?? `Your second breathing threshold is ${profile.vt2Ve ?? ve} L/min.`}</p>
+        : <>
+          <div class="row wrap" style="gap:8px;margin-top:10px">
+            <button class="btn" disabled={busy} onClick={() => void set()}>Set my second breathing threshold from this test</button>
+            {r.vt2Action !== 'kept' && <button class="btn quiet" disabled={busy} onClick={() => onChange({ ...r, vt2Action: 'kept' })}>Keep {profile.vt2Ve ? `${profile.vt2Ve} L/min` : 'it unset'}</button>}
+          </div>
+          {r.vt2Action === 'kept' && <p class="muted small" style="margin:6px 0 0">You kept it as it was.</p>}
+          {msg && !msg.ok && <p class="small" style="margin:8px 0 0;color:var(--bad)">{msg.text}</p>}
+        </>}
+    </div>
+  );
+}
+
 function TestZones({ r, profile, onChange, hasKey }: { r: TestResult; profile: Profile; onChange: (r: TestResult) => void; hasKey: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Part A5: heart rate is capped at the highest seen in the rider's rides when that is above the setting.
   const seen = useMaxHrSeen();
   const z = zonesFromTest(r.breath, { ftp: r.ftpEstimate ?? profile.ftp, lthr: r.lthrEstimate ?? profile.lthr, maxHr: maxHrInUse(profile.maxHr, seen ?? undefined), powerPcts: ladderPcts(ridePowerZones(profile)), hrPcts: ladderPcts(rideHrZones(profile)) });
-  if (!z.powerTops && !z.hrTops && !z.breathPcts) return null;
+  if (!z.powerTops && !z.hrTops && !z.breathPcts) return r.breath?.vt2 && !r.breath.vt1 ? <SecondOnly r={r} profile={profile} onChange={onChange} /> : null;
   const nowP = ladderTops(ridePowerZones(profile), profile.ftp);
   const nowH = ladderTops(rideHrZones(profile), profile.lthr);
   const nowB = breathTopsOf(profile);

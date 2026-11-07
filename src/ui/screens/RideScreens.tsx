@@ -290,14 +290,21 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
   );
 }
 
-/** Breathing (Step 3): ventilation over 30 seconds, large; breaths a minute and breath size over 10 seconds under it. No zones yet. */
+/**
+ * Breathing (Step 3): ventilation over 30 seconds and breaths a minute, large and side by side (Step 2c, Part D,
+ * 7 Nov 2026: with a strap that records breath size faintly, breathing rate carries as much as the litres); breath
+ * size under them. No zones yet.
+ */
 function BreathTile({ shown, name }: { shown?: { ve?: number; br?: number; tv?: number }; name: string }) {
   return (
     <section class="rd-card rd-tile rd-breath">
-      <div class="row between" style="gap:8px;min-width:0"><span class="caption">Breathing · 30-second average</span><span class="faint small rd-breath-from" title={name}>{name}</span></div>
-      <div class="rd-big2 num">{shown?.ve != null ? Math.round(shown.ve) : '—'}<small> L/min</small></div>
+      <div class="row between" style="gap:8px;min-width:0"><span class="caption">Breathing</span><span class="faint small rd-breath-from" title={name}>{name}</span></div>
+      <div class="rd-breath-pair">
+        <div class="rd-big2 num">{shown?.ve != null ? Math.round(shown.ve) : '—'}<small> L/min</small></div>
+        <div class="rd-big2 num">{shown?.br != null ? brShown(shown.br) : '—'}<small> a minute</small></div>
+      </div>
       <div class="rd-grow" />
-      <div class="rd-tile-foot"><span><b class="num">{shown?.br != null ? brShown(shown.br) : '—'}</b> breaths a minute</span><span><b class="num">{shown?.tv != null ? shown.tv.toFixed(1) : '—'}</b> L a breath</span></div>
+      <div class="rd-tile-foot"><span><b class="num">{shown?.tv != null ? shown.tv.toFixed(1) : '—'}</b> L a breath</span></div>
     </section>
   );
 }

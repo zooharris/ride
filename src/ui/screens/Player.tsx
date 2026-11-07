@@ -491,7 +491,10 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
           {v.state === 'connected' && <>
             <span class="pl-dev-name">{name}</span>
             {slot === 'trainer' && <span class={`pl-dev-ctl${d?.controllable ? '' : ' off'}`} title={d?.controllable ? 'The player sets the resistance' : 'Another app has the trainer, or it does not take control from the browser'}>{d?.controllable ? 'In control' : 'Not in control'}</span>}
-            {slot !== 'trainer' && v.value != null && <span class="pl-dev-v num">{fmtValue(slot, v.value, profile)}<small> {unitOf(slot, profile)}</small></span>}
+            {slot !== 'trainer' && v.value != null && (slot === 've'
+              // Step 2c, Part D (7 Nov 2026): breathing rate beside the litres a minute, at the same size.
+              ? <span class="pl-dev-v num pl-dev-v-pair"><span>{fmtValue('ve', v.value, profile)}<small> L/min</small></span>{sources.br?.value != null && <span>{fmtValue('br', sources.br.value, profile)}<small> breaths a minute</small></span>}</span>
+              : <span class="pl-dev-v num">{fmtValue(slot, v.value, profile)}<small> {unitOf(slot, profile)}</small></span>)}
             {slot === 've' && quiet
               ? <span class="pl-dev-s warn"><span class="pl-dot connecting" />Connected · no breathing yet</span>
               : <span class="pl-dev-s"><span class="pl-dot ok" />Connected{slot === 've' && d?.battery != null ? ` · battery ${d.battery}%` : ''}</span>}

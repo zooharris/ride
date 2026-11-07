@@ -1457,3 +1457,9 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 
 /* Diagnostics brief, Part A (7 Nov 2026): the breathing strap's saved details on the activity page. */
 .strap-log { margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; color: var(--ink-2, inherit); }
+
+/* Step 2c, Part D (7 Nov 2026): breathing rate beside litres a minute, at the same size. */
+.pl-dev-v-pair { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 2px; }
+.rd-breath-pair { display: flex; flex-wrap: nowrap; column-gap: 18px; align-items: baseline; min-width: 0; }
+.rd-breath-pair .rd-big2 { font-size: clamp(30px, 3.4vw, 54px); white-space: nowrap; }
+.rd-breath-pair .rd-big2 small { font-size: 0.32em; }

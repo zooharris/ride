@@ -8,6 +8,7 @@
 import type { Profile, Ride } from './types';
 import { addDays } from './load';
 import { CURVE_SECONDS, aerobicPoints } from './progress';
+import { breathHistory } from './breathHistory';
 import { breathZones, ladderTops, powerZone, rideHrZones, ridePowerZones } from './zones';
 import type { VeAtPower } from './breathOffset';
 import { fitCp, FIT_SECONDS, FTP_OF_CP, W_PRIME, type CpFit } from './cpFit';
@@ -39,6 +40,8 @@ export interface CurveInput {
   veAtPower?: VeAtPower[];
   /** The strap's reading against the rider's normal on this ride. */
   breathOffset?: number;
+  /** Step 2c (7 Nov 2026): breathing in 5% bands, with breathing rate, breath size and heart rate. */
+  breathAtPower?: import('./breathOffset').BreathAtPower[];
 }
 export interface TestInput {
   date: string; kind: 'ramp' | '20min'; ftpEstimate?: number; lthrEstimate?: number; vo2maxMlKgMin?: number; ftpAction?: 'updated' | 'kept';
@@ -223,6 +226,7 @@ export function gatherEvidence(o: {
     sessions.length ? `Planned hard sessions, judged against their own steps (held: every interval in its band, the last of a set within 8% of the first; fell short: an interval more than 5% under its band, or the last of a set more than 8% below the first; heart rate high means 105% of threshold heart rate or more on the last interval, low 95% or less): ${sessions.map((x) => `${x.date}${x.name ? ` ${x.name}` : ''}: ${verdictWords(x.verdict)}`).join('; ')}.` : 'Planned hard sessions judged in the window: none.',
     trend.weeks.length ? `Power at a steady heart rate (70-80% of threshold heart rate, after the first 10 minutes), weekly median of rides with 15+ steady minutes, weeks with two such rides or more: ${trend.weeks.map((w) => `week of ${w.start} ${w.watts} W (${w.rides} rides)`).join('; ')}.${trend.recent != null ? ` Last three weeks ${trend.recent} W against ${trend.earlier} W six weeks before${trend.dropped ? ': down 5% or more' : ''}.` : ''}` : '',
     hrBands.length ? `Heart rate measured in each power band over the window (after the first 10 minutes of each ride): ${hrBands.map((b) => `${Math.round(b.lo * 100)}-${Math.round(b.hi * 100)}% of FTP (${Math.round(b.lo * p.ftp)}-${Math.round(b.hi * p.ftp)} W): ${b.hr} bpm over ${b.minutes} min`).join('; ')}.` : '',
+    historyLine(o.curves, p.ftp, today),
     breathCurves.length ? `Rides with breathing in the window: ${breathCurves.length}.${veBands.length ? ` Breathing measured in each power band (after the first 10 minutes of each ride, corrected for how the strap sat that day): ${veBands.map((b) => `${Math.round(b.lo * 100)}-${Math.round(b.hi * 100)}% of FTP (${Math.round(b.lo * p.ftp)}-${Math.round(b.hi * p.ftp)} W): ${b.ve} L/min over ${b.minutes} min`).join('; ')}.` : ''}` : 'Rides with breathing in the window: none.',
     !hrBands.length && hrByPowerZone.length ? `Typical average heart rate on rides of 20 minutes or more whose average power fell in each power zone: ${hrByPowerZone.map((x) => `zone ${x.zone} ${x.hr} bpm (${x.rides} ride${x.rides === 1 ? '' : 's'})`).join('; ')}.` : '',
     steady.length ? `Steady rides of an hour or more (efficiency factor, heart-rate drift): ${steady.map((x) => `${x.date} ${x.name}: EF ${x.ef?.toFixed(2) ?? '?'}, drift ${x.drift != null ? `${x.drift.toFixed(1)}%` : '?'}`).join('; ')}.` : '',
@@ -240,4 +244,19 @@ export function gatherEvidence(o: {
     estimate, confidence, proven, sources, lines, signs, sessions, breathRides: breathCurves.length,
     everTested: o.tests.some((t) => t.date <= today), lastTestDate: o.tests.map((t) => t.date).filter((d) => d <= today).sort().pop(),
   };
+}
+
+/**
+ * Step 2c, Part C (7 Nov 2026): Antogo's own read of the rider's rides with the strap, for the coach: the band curve
+ * with breathing rate and breath size beside ventilation, the first threshold it found (or why not), and its check
+ * on the second. Evidence, not an instruction.
+ */
+function historyLine(curves: CurveInput[], ftp: number, today: string): string {
+  const h = breathHistory(curves, ftp, today);
+  const used = h.bands.filter((b) => b.enough);
+  if (!h.rides) return '';
+  const curve = used.length ? ` Breathing in 5% bands of FTP, joined across rides (ventilation and breath size corrected for how the strap sat each day): ${used.map((b) => `${b.watts} W: ${b.ve} L/min${b.br != null ? `, ${b.br} breaths a minute` : ''}${b.tv != null ? `, ${b.tv} L a breath` : ''}${b.hr != null ? `, ${b.hr} bpm` : ''} (${Math.round(b.seconds / 60)} min)`).join('; ')}.` : '';
+  const first = h.vt1 ? ` Antogo's own read: first breathing threshold about ${h.vt1.watts} W${h.vt1.hr ? `, ${h.vt1.hr} bpm` : ''}, ${h.vt1.ve} L/min (${h.vt1.certainty === 'clear' ? 'clear' : 'less certain'}; read from ${h.vt1.readBy === 've' ? 'ventilation' : 'breathing rate'}).` : ` Antogo's own read: no first breathing threshold yet. ${h.notYet ?? ''}`;
+  const second = h.vt2Check != null ? ` The rides put the second threshold at about ${h.vt2Check} W.` : '';
+  return `Antogo's read of the rides with the breathing strap over the last 12 weeks (${h.rides} rides, ${h.minutes} minutes).${curve}${first}${second} Some straps (the Tymewear VitalPro among them) record breath size only faintly: then breathing rate is the witness for the second threshold and breath size's levelling-off for the first.`;
 }

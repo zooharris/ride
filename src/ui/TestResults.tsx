@@ -21,7 +21,11 @@ import { applyZones } from './testService';
 import { maxHrInUse, useMaxHrSeen } from './maxHrSeen';
 
 export function TestResults({ result, profile, onChange, compact }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean }) {
-  const r = result;
+  // Diagnostics brief, Part B (7 Nov 2026): Estimate anyway shows the best estimate from imperfect data in place of the
+  // strict read. It is kept only when the rider acts on something (the result passed to onChange then carries it).
+  const [estimating, setEstimating] = useState(false);
+  const est = estimating && result.breathEstimate ? result.breathEstimate : undefined;
+  const r: TestResult = est ? { ...result, breath: est, lthrEstimate: est.vt2?.hr ?? result.lthrEstimate } : result;
   const ramp = r.kind === 'ramp';
   const hasKey = useHasKey();
   const [busy, setBusy] = useState(false);
@@ -85,7 +89,17 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
         )}
       </>}
 
+      {ramp && <Imperfect r={result} />}
       {ramp && r.breath && <BreathSection b={r.breath} allOut={r.judge?.allOut} />}
+      {ramp && result.breathEstimate && !result.breath?.estimated && (
+        <div class="test-row" style="border-top:0;padding-top:0">
+          {!estimating
+            ? <><button class="btn sm" onClick={() => setEstimating(true)}>Estimate anyway</button>
+              <p class="faint small" style="margin:6px 0 0">Antogo will do its best with the breathing it has. Anything it finds is marked as an estimate.</p></>
+            : <>{!est?.vt1 && !est?.vt2 && <p class="small" style="margin:0">Antogo looked again with what the strap sent and still couldn’t read a breathing threshold from it.</p>}
+              <button class="btn quiet sm" style="margin-top:6px" onClick={() => setEstimating(false)}>Show the strict reading</button></>}
+        </div>
+      )}
 
       {r.lthrEstimate != null && (
         <div class="test-row">
@@ -130,15 +144,26 @@ function missingWords(b: BreathTest, allOut?: string): string {
     case 'strap-stopped': return b.breathEndAt != null && b.rampEndAt != null
       ? `Your breathing strap stopped sending readings at ${clockOf(b.breathEndAt)}, ${spanWords(b.rampEndAt - b.breathEndAt)} before you stopped, so the test’s last minutes have no breathing and the second threshold couldn’t be found. Check the strap is snug before the next test.`
       : 'Your breathing strap stopped sending readings before the ramp ended, so the second threshold couldn’t be found. Check the strap is snug before the next test.';
-    case 'patchy': return 'The breathing strap’s readings had gaps through the ramp, so the breathing thresholds couldn’t be read. Check the strap is snug and repeat the test when it suits you.';
-    case 'flat': return 'Your breathing barely rose with the effort on this ramp, neither how much air you moved nor how fast you breathed, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it and repeat.';
+    case 'patchy': return 'The breathing strap’s readings had gaps through the ramp, so the breathing thresholds couldn’t be read. Check the strap is snug before your next test, whenever it suits you.';
+    case 'flat': return 'Your breathing barely rose with the effort on this ramp, neither how much air you moved nor how fast you breathed, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it before your next test, whenever it suits you.';
     case 'too-short': return 'The ramp was too short to read breathing thresholds from. They need at least five minutes of ramp.';
     case 'no-vt1': return b.readBy === 'br'
       ? 'Your first breathing threshold didn’t show: it appears in how much air you move, which this strap records only faintly. Rides with the strap at easy and steady efforts give Antogo another way to find it.'
       : 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.';
-    case 'no-vt2': return notAllOut ? 'Your second breathing threshold didn’t show: the test ended before your breathing turned sharply upward. Riding the next one until you truly can’t turn the pedals should reveal it.' : 'Your second breathing threshold didn’t show clearly on this ramp.';
-    default: return notAllOut ? 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. Repeating the test, ridden until you truly can’t turn the pedals, usually shows them.' : 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it.';
+    case 'no-vt2': return notAllOut ? 'Your second breathing threshold didn’t show: the test ended before your breathing turned sharply upward. Riding your next one, whenever it suits you, until you truly can’t turn the pedals should reveal it.' : 'Your second breathing threshold didn’t show clearly on this ramp.';
+    default: return notAllOut ? 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. A later test, whenever it suits you, ridden until you truly can’t turn the pedals, usually shows them.' : 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it.';
   }
+}
+
+/** Diagnostics brief, Part B (7 Nov 2026): what was imperfect during the ramp, one plain line per stream, only when true. */
+function Imperfect({ r }: { r: TestResult }) {
+  const lines: string[] = [];
+  const b = r.breath;
+  if (b?.missing === 'patchy' && b.missingSeconds) lines.push(`Your breathing strap’s readings had gaps adding up to about ${spanWords(b.missingSeconds)} of the ramp.`);
+  if (r.gaps?.hr) lines.push(`Heart rate was missing for ${spanWords(r.gaps.hr)} of the ramp.`);
+  if (r.gaps?.power) lines.push(`Power was missing for ${spanWords(r.gaps.power)} of the ramp.`);
+  if (!lines.length) return null;
+  return <div class="test-row">{lines.map((l) => <p key={l} class="small" style="margin:0 0 2px">{l}</p>)}</div>;
 }
 
 /** Part A10 (4 Nov 2026): why Antogo's FTP may differ from other apps'. The same words for every rider; nothing more. */
@@ -155,7 +180,7 @@ function disagreeWords(r: TestResult): string {
   return `Your best minute points to ${r.ftpFromBestMinute ?? r.ftpEstimate} W${other ? ` and ${other}` : ''}; these are far enough apart that Antogo offers the best-minute figure.`;
 }
 
-function VtRow({ name, sub, v }: { name: string; sub: string; v: VtPoint }) {
+function VtRow({ name, sub, v, estimated }: { name: string; sub: string; v: VtPoint; estimated?: boolean }) {
   return (
     <div class="vt-row">
       <div><b>{name}</b> <span class="faint small">{sub}</span></div>
@@ -163,7 +188,7 @@ function VtRow({ name, sub, v }: { name: string; sub: string; v: VtPoint }) {
         <span><b class="num">{v.watts}</b> W</span>
         {v.hr != null && <span><b class="num">{v.hr}</b> bpm</span>}
         <span><b class="num">{Math.round(v.ve)}</b> L/min</span>
-        {v.certainty === 'unsure' && <span class="pill">less certain</span>}
+        {v.certainty === 'unsure' && <span class="pill">{estimated ? 'estimated from imperfect data' : 'less certain'}</span>}
       </div>
     </div>
   );
@@ -171,15 +196,15 @@ function VtRow({ name, sub, v }: { name: string; sub: string; v: VtPoint }) {
 
 /** The two breathing thresholds the ramp showed, or why one is missing. */
 function BreathSection({ b, allOut }: { b: BreathTest; allOut?: string }) {
-  const unsure = b.vt1?.certainty === 'unsure' || b.vt2?.certainty === 'unsure';
+  const unsure = !b.estimated && (b.vt1?.certainty === 'unsure' || b.vt2?.certainty === 'unsure');
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:6px">Your breathing thresholds</p>
-      {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} />}
-      {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} />}
+      {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} estimated={b.estimated} />}
+      {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} estimated={b.estimated} />}
       {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{missingWords(b, allOut)}</p> : null}
       {b.readBy === 'br' && (b.vt1 || b.vt2) && <p class="muted small" style="margin:6px 0 0">Read from how fast you breathed: this strap records how much air you move only faintly, so the litres a minute barely rose, while the quickening of your breathing showed the threshold clearly.</p>}
-      {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a repeat test would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
+      {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a later test, whenever it suits you, would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
       {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.brCapped ? ', breathing rate at the strap’s ceiling of 60 a minute' : b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
       {(b.vt1 || b.vt2) && <p class="faint small" style="margin:6px 0 0">These stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures.</p>}
     </div>
@@ -211,7 +236,7 @@ function TestZones({ r, profile, onChange, hasKey }: { r: TestResult; profile: P
   return (
     <div class="test-row">
       <p class="test-lead" style="margin-bottom:2px">Zones from this test</p>
-      <p class="muted small" style="margin:0">In the power and heart-rate tables, zone 2 ends at your first threshold and zone 4 at your second; the zones above keep the shares of threshold you have now. In the breathing table, zones 2 and 3 end at your two thresholds.{r.breath?.vt1?.certainty === 'unsure' || r.breath?.vt2?.certainty === 'unsure' ? ' A threshold here was less certain, so these are a first draft until a repeat test confirms it.' : ''}{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
+      <p class="muted small" style="margin:0">In the power and heart-rate tables, zone 2 ends at your first threshold and zone 4 at your second; the zones above keep the shares of threshold you have now. In the breathing table, zones 2 and 3 end at your two thresholds.{r.breath?.vt1?.certainty === 'unsure' || r.breath?.vt2?.certainty === 'unsure' ? ' A threshold here was less certain, so these are a first draft until a later test confirms it.' : ''}{hasKey ? '' : ' Antogo can also check them against your recent riding when a coach key is added in Settings.'}</p>
       <div class="coach-tables">
         {z.powerTops && <ZoneCompare title="Power zones (top of each, watts)" now={nowP} next={z.powerTops} unit="W" />}
         {z.hrTops && <ZoneCompare title="Heart-rate zones (top of each, bpm)" now={nowH} next={z.hrTops} unit="bpm" />}

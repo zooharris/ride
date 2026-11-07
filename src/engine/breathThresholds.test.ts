@@ -97,6 +97,21 @@ describe('breathing thresholds from a ramp', () => {
     if (r.vt1 && Math.abs(r.vt1.watts - 200) <= 36) expect(r.vt1.certainty).toBe('unsure');
   });
 
+  it('estimates anyway from patchy readings when asked, every threshold marked estimated (diagnostics Part B)', () => {
+    // Holes adding up to about a third of the ramp: too patchy for the strict read, enough for an estimate.
+    const x = ramp({ vt1: 200, vt2: 290, lastW: 360, seed: 3 });
+    const holes = (t: number) => t >= x.from && t < x.to && Math.floor((t - x.from) / 45) % 3 === 1;
+    const ve = x.ve.map((v, i) => (holes(x.time[i]) ? NaN : v));
+    const br = x.br.map((v, i) => (holes(x.time[i]) ? NaN : v));
+    const strict = breathThresholds({ ...x, ve, br })!;
+    expect(strict.missing).toBe('patchy');
+    expect(strict.missingSeconds).toBeGreaterThan(60);
+    const est = breathThresholds({ ...x, ve, br, lenient: true })!;
+    expect(est.estimated).toBe(true);
+    expect(est.vt1 || est.vt2).toBeDefined();
+    for (const v of [est.vt1, est.vt2]) if (v) expect(v.certainty).toBe('unsure');
+  });
+
   it('says the readings were patchy when the strap dropped out', () => {
     const r = breathThresholds(ramp({ vt1: 200, vt2: 290, lastW: 360, noBreath: [500, 900] }))!;
     expect(r.missing).toBe('patchy');

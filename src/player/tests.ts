@@ -37,8 +37,9 @@ export function rampGaveOut(last10: Array<number | undefined>, target: number, s
 /**
  * 2 (Part A, 4 Nov 2026): judged, reconciled, with the breathing diagnosis. A ramp result before that is read again from its recording when shown.
  * 3 (7 Nov 2026): breathing thresholds read from breathing rate too (a strap that compresses breath size).
+ * 4 (7 Nov 2026, diagnostics Part B): gaps in each stream, and a best estimate held ready for a stopped or patchy strap.
  */
-export const TEST_RESULT_VERSION = 3;
+export const TEST_RESULT_VERSION = 4;
 
 export interface TestResult {
   kind: 'ramp' | '20min';
@@ -93,7 +94,18 @@ export interface TestResult {
   /** Part A6: VO2max's likely range (same unit as vo2maxMlKgMin, or litres a minute without weight), and whether it is a floor (the test was not all-out). */
   vo2maxRange?: [number, number];
   vo2maxAtLeast?: boolean;
+  /**
+   * Diagnostics brief, Part B (7 Nov 2026): when the strict breathing read refused for a stopped or patchy strap,
+   * Antogo's best estimate from what there was (every threshold less certain), shown only when the rider asks
+   * (Estimate anyway) and kept only when they act on it.
+   */
+  breathEstimate?: BreathTest;
+  /** Part B: seconds of the ramp with no heart rate, and with no power, when 15 or more. */
+  gaps?: { hr?: number; power?: number };
 }
+
+/** Part B: a stream missing for this many seconds of the ramp or more is reported. */
+export const GAP_REPORT_SECONDS = 15;
 
 /** The highest average of `secs` consecutive one-second readings (gaps count as zero). Undefined when the ride is shorter. */
 export function bestAverage(values: Array<number | undefined>, secs: number): number | undefined {
@@ -184,6 +196,9 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
   const span = rampSpan(rec, timeline);
   const judge = span ? judgeOf(rec.samples, span, { ...ctx, peakWatts: peak, stepWatts: rec.rampStep, endedBy }) : undefined;
   const breath = span ? rampBreathing(rec, timeline, ctx, judge) : undefined;
+  // Part B: a best estimate held ready when the strict read refused for the strap's sake.
+  const breathEstimate = span && (breath?.missing === 'strap-stopped' || breath?.missing === 'patchy') ? rampBreathing(rec, timeline, ctx, judge, true) : undefined;
+  const gaps = span ? rampGaps(rec.samples, span) : undefined;
   const fields = bmFtp != null ? reconcileFtp(bmFtp, breath, judge, ctx?.cpFtp) : {};
   const ftp = fields.ftpEstimate;
   const vo2 = peak != null ? vo2maxFromPeak(peak, weightKg, rec.rampStep) : undefined;
@@ -200,7 +215,20 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
     ...vo2Fields(vo2, judge), hrAtFtp,
     ...(hrAtFtp != null && ctx?.lthr ? { ftpHrAgrees: Math.abs(hrAtFtp - ctx.lthr) <= HR_AGREES_BPM } : {}),
     endedBy, endedAt: ev?.t, ...(judge ? { judge } : {}),
+    ...(breathEstimate ? { breathEstimate } : {}), ...(gaps ? { gaps } : {}),
   };
+}
+
+/** Part B: seconds of the ramp with no heart rate and with no power (a reading of 0 watts is a reading), when worth saying. */
+export function rampGaps(ss: Sample[], span: { from: number; to: number }): TestResult['gaps'] | undefined {
+  const on = ss.filter((x) => x.t >= span.from && x.t < span.to);
+  const hrHad = on.some((x) => x.hr != null && x.hr > 0), wHad = on.some((x) => x.w != null);
+  const hr = hrHad ? on.filter((x) => !(x.hr != null && x.hr > 0)).length : 0;
+  const power = wHad ? on.filter((x) => x.w == null).length : 0;
+  const out: NonNullable<TestResult['gaps']> = {};
+  if (hr >= GAP_REPORT_SECONDS) out.hr = hr;
+  if (power >= GAP_REPORT_SECONDS) out.power = power;
+  return out.hr || out.power ? out : undefined;
 }
 
 function vo2Fields(vo2: ReturnType<typeof vo2maxFromPeak> | undefined, judge: RampJudgement | undefined): Pick<TestResult, 'vo2maxLmin' | 'vo2maxMlKgMin' | 'vo2maxRange' | 'vo2maxAtLeast'> {
@@ -225,7 +253,9 @@ function judgeOf(ss: Sample[], span: { from: number; to: number }, o: RampContex
 /** What the rider did with a result, carried onto the same test read again. */
 export function withActions(next: TestResult, was: TestResult | undefined): TestResult {
   if (!was) return next;
-  return { ...next, ftpBefore: was.ftpBefore ?? next.ftpBefore, ftpAction: was.ftpAction, lthrBefore: was.lthrBefore ?? next.lthrBefore, lthrAction: was.lthrAction, zonesAction: was.zonesAction };
+  // Part B: an estimate the rider acted on stays the breathing shown.
+  const kept = was.breath?.estimated ? { breath: was.breath, ...(was.lthrEstimate != null ? { lthrEstimate: was.lthrEstimate } : {}) } : {};
+  return { ...next, ...kept, ftpBefore: was.ftpBefore ?? next.ftpBefore, ftpAction: was.ftpAction, lthrBefore: was.lthrBefore ?? next.lthrBefore, lthrAction: was.lthrAction, zonesAction: was.zonesAction };
 }
 
 /** The breathing fields of a ramp's result: the thresholds, and threshold heart rate from the second one. */
@@ -235,7 +265,7 @@ export function breathFields(breath: BreathTest | undefined): Pick<TestResult, '
 }
 
 /** The ramp's breathing thresholds from the player's recording: the ramp steps only, up to where it ended. */
-export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, timeline: TimelineStep[], ctx?: RampContext, judge?: RampJudgement): BreathTest | undefined {
+export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, timeline: TimelineStep[], ctx?: RampContext, judge?: RampJudgement, lenient = false): BreathTest | undefined {
   if (!rec.samples.some((x) => x.ve != null && x.ve > 0)) return undefined;
   const span = rampSpan(rec, timeline);
   if (!span) return undefined;
@@ -243,7 +273,7 @@ export function rampBreathing(rec: Pick<Recording, 'samples' | 'rampEndAt'>, tim
   return breathThresholds({
     time: ss.map((x) => x.t), watts: ss.map((x) => x.w ?? NaN), hr: ss.map((x) => x.hr ?? NaN),
     ve: ss.map((x) => x.ve ?? NaN), br: ss.map((x) => x.br ?? NaN), tv: ss.map((x) => x.tv ?? NaN),
-    ...span, ...ctx, judge,
+    ...span, ...ctx, judge, ...(lenient ? { lenient } : {}),
   });
 }
 

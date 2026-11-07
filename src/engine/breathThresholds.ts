@@ -126,6 +126,10 @@ export interface BreathTest {
   readBy?: 've' | 'br';
   /** 7 Nov 2026: breathing rate hit the strap's ceiling (60 a minute) during the ramp: peakBr is "at least". */
   brCapped?: boolean;
+  /** Diagnostics brief, Part B (7 Nov 2026): read leniently from imperfect data at the rider's request; every threshold is less certain. */
+  estimated?: boolean;
+  /** Part B: seconds of the ramp with no breathing pieces (patchy readings), roughly. */
+  missingSeconds?: number;
   /** Part A2: readings set aside as placeholders. */
   placeholders?: number;
   /** Part A1: the ramp's judgement, when there was something to judge it by. */
@@ -254,7 +258,17 @@ export interface BreathInput {
   judge?: RampJudgement;
   ftp?: number; lthr?: number; maxHr?: number; learnedMaxHr?: number; cpFtp?: number;
   peakWatts?: number; stepWatts?: number; endedBy?: 'rider' | 'auto';
+  /**
+   * Diagnostics brief, Part B (7 Nov 2026): the rider asked for a best estimate from imperfect data. Patchy readings
+   * need only half the ramp's pieces (not 70%); every threshold found is less certain and the result is marked
+   * estimated. A strap that stopped still gives no second threshold.
+   */
+  lenient?: boolean;
 }
+
+/** Part B: the share of the ramp's pieces that must carry breathing, strictly and when estimating. */
+export const PATCHY_SHARE = 0.7;
+export const PATCHY_SHARE_LENIENT = 0.5;
 
 export function breathThresholds(o: BreathInput): BreathTest | undefined {
   if (!o.ve?.some((v) => ok(v) && v > 0)) return undefined;
@@ -315,11 +329,11 @@ export function breathThresholds(o: BreathInput): BreathTest | undefined {
 
   if (stopped) {
     // No breathing past the strap's stop: the second threshold cannot be found. The first can, when it is clear of the stop.
-    if (flat || bins.length < MIN_BINS / 2) return { ...peak, ...extra, ...stopFields, ...flatField, ...capField, missing: 'strap-stopped' };
+    if (flat || bins.length < MIN_BINS / 2) return { ...peak, ...extra, ...stopFields, ...flatField, ...capField, ...(o.lenient ? { estimated: true } : {}), missing: 'strap-stopped' };
   } else {
     if (tried < MIN_BINS) return { ...peak, ...extra, ...capField, missing: 'too-short' };
     if (bins.length < MIN_BINS) return { ...peak, ...extra, ...capField, missing: 'patchy' };
-    if (bins.length < tried * 0.7) return { ...peak, ...extra, ...capField, missing: 'patchy' };
+    if (bins.length < tried * (o.lenient ? PATCHY_SHARE_LENIENT : PATCHY_SHARE)) return { ...peak, ...extra, ...capField, missingSeconds: (tried - bins.length) * BIN_SECONDS, missing: 'patchy' };
     if (flat) return { ...peak, ...extra, ...flatField, ...capField, missing: 'flat' };
   }
 
@@ -395,8 +409,11 @@ export function breathThresholds(o: BreathInput): BreathTest | undefined {
   // Past the strap's stop nothing is known: no second threshold, and a first one only well below where the readings ended.
   if (stopped) { vt2 = undefined; if (vt1 && vt1.watts > binTop * VT1_RANGE[1]) vt1 = undefined; }
   if (vt1 && vt2 && vt2.watts <= vt1.watts) vt2 = undefined;
+  if (o.lenient) { if (vt1) vt1 = unsure(vt1); if (vt2) vt2 = unsure(vt2); }
+  const lenientField: Partial<BreathTest> = o.lenient ? { estimated: true } : {};
+  const gapField: Partial<BreathTest> = !stopped && bins.length < tried * PATCHY_SHARE ? { missingSeconds: (tried - bins.length) * BIN_SECONDS } : {};
   const missing = stopped ? 'strap-stopped' : vt1 && vt2 ? undefined : !vt1 && !vt2 ? 'none' : !vt1 ? 'no-vt1' : 'no-vt2';
-  return { vt1, vt2, ...peak, ...extra, ...stopFields, ...capField, ...(vt1 || vt2 ? { readBy } : {}), missing };
+  return { vt1, vt2, ...peak, ...extra, ...stopFields, ...capField, ...lenientField, ...gapField, ...(vt1 || vt2 ? { readBy } : {}), missing };
 }
 
 /** The highest 30-second mean of a series in [from, to), at least 15 readings in the half-minute. */

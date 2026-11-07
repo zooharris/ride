@@ -122,3 +122,38 @@ describe('Part A pieces', () => {
     expect(c.reason).not.toMatch(/Short of plan/);
   });
 });
+
+describe('the 4 Nov ramp, estimated anyway (diagnostics Part B)', () => {
+  it('still gives no second threshold, and marks whatever it finds as estimated', () => {
+    const f = ramp4Nov();
+    const b = breathThresholds({ ...f, peakWatts: 319, stepWatts: 20, endedBy: 'rider', ...SETTINGS_4NOV, lenient: true })!;
+    expect(b.estimated).toBe(true);
+    expect(b.vt2).toBeUndefined();
+    expect(b.missing).toBe('strap-stopped');
+    if (b.vt1) expect(b.vt1.certainty).toBe('unsure');
+  });
+  it('through the player: the result holds the estimate ready and reports no heart-rate or power gaps', async () => {
+    const { buildTimeline } = await import('../player/timeline');
+    const { RideEngine } = await import('../player/engine');
+    const { rampResult } = await import('../player/tests');
+    const { LIBRARY } = await import('../library/workouts');
+    const f = ramp4Nov();
+    const profile = { name: 'T', ftp: 210, lthr: 154, maxHr: 180, restingHr: 50, weightKg: 107.4, basis: 'power' as const, masters: true, units: 'imperial' as const, rideDays: [], hoursPerWeek: 8 };
+    const tl = buildTimeline(LIBRARY.find((w) => w.id === 'lib-ramp')!, profile, { rampStep: 20 });
+    const e = new RideEngine({ timeline: tl, ftp: 210, basis: 'power', mode: 'erg', autoPause: false, guard: false }, 0);
+    for (let t = 1; t <= 3; t++) e.tick(t * 1000, { watts: 0, cadence: 90 });
+    const at = new Map(f.time.map((t, i) => [t, i]));
+    const num = (x: number) => (isNaN(x) ? undefined : x);
+    let t = 4;
+    for (; t < 970; t++) {
+      const i = at.get(t);
+      e.tick(t * 1000, i == null ? { watts: 0, cadence: 90 } : { watts: f.watts[i], cadence: 90, bpm: f.hr[i], ve: num(f.ve[i]), br: num(f.br[i]), tv: num(f.tv[i]) });
+    }
+    e.endTest(t * 1000, 'rider');
+    const r = rampResult({ samples: e.samples, rampStep: 20, rampEndAt: e.rampEndAt, events: e.events }, tl, 107.4, { ftp: 210, lthr: 154, maxHr: 180 });
+    expect(r.breath?.missing).toBe('strap-stopped');
+    expect(r.breathEstimate?.estimated).toBe(true);
+    expect(r.breathEstimate?.vt2).toBeUndefined();
+    expect(r.gaps).toBeUndefined();
+  });
+});

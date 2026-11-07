@@ -50,6 +50,18 @@ export const SETTLE_SECONDS = 120;
 /** Part A2: a flat trace: ventilation rose less than this share across the ramp while power rose more than FLAT_POWER_RISE. */
 export const FLAT_VE_RISE = 0.4;
 export const FLAT_POWER_RISE = 0.8;
+/**
+ * 7 Nov 2026: Todd's strap compresses breath size, so its ventilation barely
+ * rises with effort (29% across a ramp where power doubled) while breathing
+ * rate carries the signal (28 to 56 a minute). Breathing rate is read as a
+ * second witness, and leads when ventilation is flat; the trace counts as flat
+ * only when breathing rate rose less than this share too.
+ */
+export const FLAT_BR_RISE = 0.3;
+/** Flat-start bend finding (breathing rate): the slope before a bend is floored at this share of the series' mean, per watt. */
+export const RATE_FLOOR = 0.002;
+/** Breathing rate the strap reports at its ceiling: a reading at or above this is "at least 60", not a measurement. */
+export const BR_CEILING = 60;
 /** A bend whose heart rate sits further than this from where the other witnesses put the second threshold is less certain. */
 export const HR_PLAUSIBLE_BPM = 15;
 
@@ -107,6 +119,13 @@ export interface BreathTest {
   rampEndAt?: number;
   /** Part A2: breathing barely rose with the effort (shown with strap-stopped too, when both). */
   flat?: boolean;
+  /**
+   * 7 Nov 2026: which series the bends were read from: ventilation (ve), or breathing rate (br) when ventilation
+   * barely rose (this strap compresses breath size) or showed no bend.
+   */
+  readBy?: 've' | 'br';
+  /** 7 Nov 2026: breathing rate hit the strap's ceiling (60 a minute) during the ramp: peakBr is "at least". */
+  brCapped?: boolean;
   /** Part A2: readings set aside as placeholders. */
   placeholders?: number;
   /** Part A1: the ramp's judgement, when there was something to judge it by. */
@@ -169,13 +188,25 @@ export interface Bends { x1?: number; x2?: number; ratio1?: number; ratio2?: num
  * bends) when the second bend earns its place, otherwise two (one bend).
  * Bends are tried at each point, with at least MIN_SEGMENT points on every
  * line. Exported for the tests.
+ *
+ * 7 Nov 2026: with `flatStart`, the line before a bend may be level or even
+ * fall a little (breathing rate holds near-steady below the second threshold,
+ * then climbs), so its slope is floored at RATE_FLOOR of the series' mean per
+ * watt before the comparison; a bend then counts when the line after it rises
+ * at least MIN_BEND times that floor. With `oneBend`, only two lines are fitted:
+ * breathing rate from a strap that compresses breath size carries one signal,
+ * the second threshold's quickening, and a second bend would be the final gasp.
  */
-export function findBends(xs: number[], ys: number[]): Bends {
+export function findBends(xs: number[], ys: number[], opts: { flatStart?: boolean; oneBend?: boolean } = {}): Bends {
   const n = xs.length;
   if (n < 2 * MIN_SEGMENT) return {};
   const ones = xs.map(() => 1);
   const hinge = (k: number) => xs.map((x) => Math.max(0, x - xs[k]));
   const top = Math.max(...xs);
+  const floor = opts.flatStart ? RATE_FLOOR * (mean(ys) ?? 1) : 0;
+  // The slope of the line before a bend, as the comparison sees it.
+  const before = (s: number) => (opts.flatStart ? Math.max(s, floor) : s);
+  const okBefore = (s: number) => (opts.flatStart ? true : s > 0);
   // The two thresholds sit well apart on any ramp (VT1 is typically 70-80% of VT2's power): the middle line spans at least an eighth of the highest power.
   const minMiddle = top / 8;
   // Review (4 Nov 2026): bends are looked for only where a threshold can sit (the first at 40-85% of the top power, the second at 60-98%),
@@ -190,17 +221,17 @@ export function findBends(xs: number[], ys: number[]): Bends {
     const two = ols([ones, xs, hi], ys);
     if (two) {
       const [, b, c] = two.coef;
-      const r = (b + c) / b;
-      if (b > 0 && r >= MIN_BEND && (!best2 || two.sse < best2.sse)) best2 = { sse: two.sse, i, r };
+      const r = (b + c) / before(b);
+      if (okBefore(b) && b + c > 0 && r >= MIN_BEND && (!best2 || two.sse < best2.sse)) best2 = { sse: two.sse, i, r };
     }
-    if (!firstOk(xs[i])) continue;
+    if (opts.oneBend || !firstOk(xs[i])) continue;
     for (let j = i + MIN_SEGMENT; j <= n - MIN_SEGMENT; j++) {
       if (xs[j] - xs[i] < minMiddle || !secondOk(xs[j])) continue;
       const three = ols([ones, xs, hi, hinge(j)], ys);
       if (!three) continue;
       const [, b, c, d] = three.coef;
-      const r1 = (b + c) / b, r2 = (b + c + d) / (b + c);
-      if (!(b > 0) || !(b + c > 0) || r1 < MIN_BEND || r2 < MIN_BEND) continue;
+      const r1 = (b + c) / before(b), r2 = (b + c + d) / before(b + c);
+      if (!okBefore(b) || !(b + c > 0) || !(b + c + d > 0) || r1 < MIN_BEND || r2 < MIN_BEND) continue;
       if (!best3 || three.sse < best3.sse) best3 = { sse: three.sse, i, j, r1, r2 };
     }
   }
@@ -261,52 +292,80 @@ export function breathThresholds(o: BreathInput): BreathTest | undefined {
   const peak = peaks(time, s.ve, s.br, o.from, Math.min(o.to + 60, readTo + 60));
 
   // Part A2: a flat trace (breathing barely rose with the effort) says the strap was not following the chest.
-  let flat = false;
+  // 7 Nov 2026: ventilation flat on its own means the strap compressed breath size; the trace is flat only when
+  // breathing rate barely rose either.
+  let flatVe = false, flatBr = false;
+  const brBins = bins.filter((b) => ok(b.br));
   if (bins.length >= 8) {
     const q = Math.max(2, Math.floor(bins.length / 4));
     const first = bins.slice(0, q), last = bins.slice(-q);
     const m = (xs: Bin[], k: 'w' | 've') => mean(xs.map((b) => b[k]))!;
     const veRise = m(last, 've') / m(first, 've') - 1, wRise = m(last, 'w') / m(first, 'w') - 1;
-    flat = veRise < FLAT_VE_RISE && wRise > FLAT_POWER_RISE;
+    flatVe = veRise < FLAT_VE_RISE && wRise > FLAT_POWER_RISE;
+    if (brBins.length >= 8) {
+      const qb = Math.max(2, Math.floor(brBins.length / 4));
+      const brRise = mean(brBins.slice(-qb).map((b) => b.br!))! / mean(brBins.slice(0, qb).map((b) => b.br!))! - 1;
+      flatBr = brRise < FLAT_BR_RISE && wRise > FLAT_POWER_RISE;
+    } else flatBr = true;
   }
+  const flat = flatVe && flatBr;
   const flatField: Partial<BreathTest> = flat ? { flat } : {};
+  const capped = time.some((t, i) => t >= o.from && t < readTo && ok(s.br?.[i]) && s.br![i] >= BR_CEILING - 0.05);
+  const capField: Partial<BreathTest> = capped ? { brCapped: true } : {};
 
   if (stopped) {
     // No breathing past the strap's stop: the second threshold cannot be found. The first can, when it is clear of the stop.
-    if (flat || bins.length < MIN_BINS / 2) return { ...peak, ...extra, ...stopFields, ...flatField, missing: 'strap-stopped' };
+    if (flat || bins.length < MIN_BINS / 2) return { ...peak, ...extra, ...stopFields, ...flatField, ...capField, missing: 'strap-stopped' };
   } else {
-    if (tried < MIN_BINS) return { ...peak, ...extra, missing: 'too-short' };
-    if (bins.length < MIN_BINS) return { ...peak, ...extra, missing: 'patchy' };
-    if (bins.length < tried * 0.7) return { ...peak, ...extra, missing: 'patchy' };
-    if (flat) return { ...peak, ...extra, ...flatField, missing: 'flat' };
+    if (tried < MIN_BINS) return { ...peak, ...extra, ...capField, missing: 'too-short' };
+    if (bins.length < MIN_BINS) return { ...peak, ...extra, ...capField, missing: 'patchy' };
+    if (bins.length < tried * 0.7) return { ...peak, ...extra, ...capField, missing: 'patchy' };
+    if (flat) return { ...peak, ...extra, ...flatField, ...capField, missing: 'flat' };
   }
 
-  // Breath-to-breath swings are large; a 45-second running mean steadies the line the bends are read from.
-  const smooth = bins.map((_, k) => mean(bins.slice(Math.max(0, k - 1), k + 2).map((b) => b.ve))!);
   const xs = bins.map((b) => b.w);
-  const bends = findBends(xs, smooth);
   // The ramp's top power (from the bins), so the plausible ranges are those of the ramp ridden, not of what the strap saw.
   const top = stopped ? Math.max(...xs, ...(o.peakWatts ? [o.peakWatts] : [])) : Math.max(...xs);
-  // Steadiness (review, 4 Nov 2026): fitted again on every third piece, unsmoothed (three samples that share no readings, so
-  // their agreement means something), a well-defined bend lands within 8% of the top power of where it did on each of them.
-  const raw = bins.map((b) => b.ve);
-  const subs = [0, 1, 2].map((h) => findBends(xs.filter((_, k) => k % 3 === h), raw.filter((_, k) => k % 3 === h)));
-  const steady = (x: number) => subs.every((sb) => [sb.x1, sb.x2].some((y) => y != null && Math.abs(y - x) <= top * STEADY_TOL));
   // A bend read across a hole in the strap's readings (no piece for more than two pieces' time, close to the bend) is not certain.
   const gapped = (watts: number) => {
     const near = bins.filter((b) => Math.abs(b.w - watts) <= top * 0.1);
     return near.some((b, k) => k > 0 && b.t - near[k - 1].t > 2 * BIN_SECONDS);
   };
+  /**
+   * One series read for bends: ventilation, or breathing rate (7 Nov 2026).
+   * Breath-to-breath swings are large; a 45-second running mean steadies the line the bends are read from.
+   * Steadiness (review, 4 Nov 2026): fitted again on every third piece, unsmoothed (three samples that share no readings, so
+   * their agreement means something), a well-defined bend lands within 8% of the top power of where it did on each of them.
+   */
+  const read = (raw: (number | undefined)[], flatStart: boolean) => {
+    const opts = { flatStart, oneBend: flatStart };
+    const ys = raw.map((v) => (ok(v) ? v : NaN));
+    const smooth = ys.map((_, k) => { const w = ys.slice(Math.max(0, k - 1), k + 2).filter(ok); return w.length ? mean(w)! : NaN; });
+    const usable = ys.every(ok);
+    const bends = usable ? findBends(xs, smooth, opts) : {};
+    const subs = usable ? [0, 1, 2].map((h) => findBends(xs.filter((_, k) => k % 3 === h), ys.filter((_, k) => k % 3 === h), opts)) : [];
+    const near = (sb: Bends, x: number) => [sb.x1, sb.x2].some((y) => y != null && Math.abs(y - x) <= top * STEADY_TOL);
+    return { bends, smooth, steady: (x: number) => usable && subs.every((sb) => near(sb, x)), agrees: (x: number) => near(bends, x) };
+  };
+  const byVe = read(bins.map((b) => b.ve), false);
+  const byBr = read(bins.map((b) => b.br), true);
+  // Ventilation leads unless it is flat (the strap compressed breath size) or shows no bend; then breathing rate does, and
+  // whichever is not leading confirms: a bend the other series also finds within 8% of the top power is steady enough.
+  const lead = !flatVe && byVe.bends.x1 != null ? byVe : byBr.bends.x1 != null ? byBr : byVe;
+  const other = lead === byVe ? byBr : byVe;
+  const readBy: 've' | 'br' = lead === byVe ? 've' : 'br';
+  const bends = lead.bends;
   const at = (watts: number, ratio: number): VtPoint => {
     const k = Math.max(1, bins.findIndex((b) => b.w >= watts));
     const pair = [bins[k - 1], bins[k]].filter(Boolean);
     const hrs = pair.map((b) => b.hr).filter(ok), brs = pair.map((b) => b.br).filter(ok);
+    const ves = pair.map((_, q) => byVe.smooth[k - 1 + q]).filter(ok);
     return {
       watts: Math.round(watts),
       hr: hrs.length ? Math.round(mean(hrs)!) : undefined,
-      ve: Math.round(mean(pair.map((_, q) => smooth[k - 1 + q]))! * 10) / 10,
+      ve: ves.length ? Math.round(mean(ves)! * 10) / 10 : Math.round(mean(pair.map((b) => b.ve))! * 10) / 10,
       br: brs.length ? Math.round(mean(brs)!) : undefined,
-      certainty: ratio >= CLEAR_BEND && steady(watts) && !gapped(watts) ? 'clear' : 'unsure',
+      certainty: ratio >= CLEAR_BEND && (lead.steady(watts) || other.agrees(watts)) && !gapped(watts) ? 'clear' : 'unsure',
     };
   };
   const binTop = Math.max(...xs);
@@ -337,7 +396,7 @@ export function breathThresholds(o: BreathInput): BreathTest | undefined {
   if (stopped) { vt2 = undefined; if (vt1 && vt1.watts > binTop * VT1_RANGE[1]) vt1 = undefined; }
   if (vt1 && vt2 && vt2.watts <= vt1.watts) vt2 = undefined;
   const missing = stopped ? 'strap-stopped' : vt1 && vt2 ? undefined : !vt1 && !vt2 ? 'none' : !vt1 ? 'no-vt1' : 'no-vt2';
-  return { vt1, vt2, ...peak, ...extra, ...stopFields, missing };
+  return { vt1, vt2, ...peak, ...extra, ...stopFields, ...capField, ...(vt1 || vt2 ? { readBy } : {}), missing };
 }
 
 /** The highest 30-second mean of a series in [from, to), at least 15 readings in the half-minute. */

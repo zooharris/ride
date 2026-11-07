@@ -34,8 +34,11 @@ export function rampGaveOut(last10: Array<number | undefined>, target: number, s
  * breathing thresholds to it). Numbers are rounded for showing; the action
  * fields say what the rider did with each suggestion.
  */
-/** 2 (Part A, 4 Nov 2026): judged, reconciled, with the breathing diagnosis. A ramp result before that is read again from its recording when shown. */
-export const TEST_RESULT_VERSION = 2;
+/**
+ * 2 (Part A, 4 Nov 2026): judged, reconciled, with the breathing diagnosis. A ramp result before that is read again from its recording when shown.
+ * 3 (7 Nov 2026): breathing thresholds read from breathing rate too (a strap that compresses breath size).
+ */
+export const TEST_RESULT_VERSION = 3;
 
 export interface TestResult {
   kind: 'ramp' | '20min';
@@ -368,7 +371,8 @@ export function testLines(r: TestResult): string[] {
     const vt = (name: string, v?: import('../engine/breathThresholds').VtPoint) => v ? out.push(`${name}: ${v.watts} W${v.hr ? `, ${v.hr} bpm` : ''}, breathing ${Math.round(v.ve)} L/min${v.certainty === 'unsure' ? ' (less certain)' : ''}`) : undefined;
     vt('First breathing threshold (VT1, close to the first lactate threshold)', b?.vt1);
     vt('Second breathing threshold (VT2, close to the second lactate threshold)', b?.vt2);
-    if (b?.peakVe != null && breathCoveredRamp(b)) out.push(`Peak breathing: ${b.peakVe} L/min`);
+    if (b?.peakVe != null && breathCoveredRamp(b)) out.push(`Peak breathing: ${b.peakVe} L/min${b.brCapped ? ', breathing rate at the strap’s ceiling of 60 a minute' : ''}`);
+    if (b?.readBy === 'br' && (b.vt1 || b.vt2)) out.push('Breathing thresholds read from how fast you breathed (this strap records how much air you move only faintly)');
     if (b?.missing === 'strap-stopped' && b.breathEndAt != null && b.rampEndAt != null) out.push(`Breathing strap stopped sending readings at ${clockOf(b.breathEndAt)}, ${spanWords(b.rampEndAt - b.breathEndAt)} before the ramp ended`);
     if (r.lthrEstimate != null) out.push(`Threshold heart rate estimate: ${r.lthrEstimate} bpm (from the second breathing threshold)`);
     if (r.stepWatts) out.push(`Step size: ${r.stepWatts} W a minute${r.endedBy ? `, ended ${r.endedBy === 'auto' ? 'by itself when the power fell away' : 'by the rider'}` : ''}`);

@@ -131,9 +131,11 @@ function missingWords(b: BreathTest, allOut?: string): string {
       ? `Your breathing strap stopped sending readings at ${clockOf(b.breathEndAt)}, ${spanWords(b.rampEndAt - b.breathEndAt)} before you stopped, so the test’s last minutes have no breathing and the second threshold couldn’t be found. Check the strap is snug before the next test.`
       : 'Your breathing strap stopped sending readings before the ramp ended, so the second threshold couldn’t be found. Check the strap is snug before the next test.';
     case 'patchy': return 'The breathing strap’s readings had gaps through the ramp, so the breathing thresholds couldn’t be read. Check the strap is snug and repeat the test when it suits you.';
-    case 'flat': return 'Your breathing barely rose with the effort on this ramp, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it and repeat.';
+    case 'flat': return 'Your breathing barely rose with the effort on this ramp, neither how much air you moved nor how fast you breathed, which usually means the strap wasn’t snug enough to follow your breathing. Tighten it and repeat.';
     case 'too-short': return 'The ramp was too short to read breathing thresholds from. They need at least five minutes of ramp.';
-    case 'no-vt1': return 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.';
+    case 'no-vt1': return b.readBy === 'br'
+      ? 'Your first breathing threshold didn’t show: it appears in how much air you move, which this strap records only faintly. Rides with the strap at easy and steady efforts give Antogo another way to find it.'
+      : 'Your first breathing threshold didn’t show clearly. Choosing a smaller step on the next ramp gives it more room to appear.';
     case 'no-vt2': return notAllOut ? 'Your second breathing threshold didn’t show: the test ended before your breathing turned sharply upward. Riding the next one until you truly can’t turn the pedals should reveal it.' : 'Your second breathing threshold didn’t show clearly on this ramp.';
     default: return notAllOut ? 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it. Repeating the test, ridden until you truly can’t turn the pedals, usually shows them.' : 'Your breathing didn’t show a clear bend on this ramp, so there are no breathing thresholds from it.';
   }
@@ -176,8 +178,9 @@ function BreathSection({ b, allOut }: { b: BreathTest; allOut?: string }) {
       {b.vt1 && <VtRow name="First threshold (VT1)" sub="the top of all-day endurance riding" v={b.vt1} />}
       {b.vt2 && <VtRow name="Second threshold (VT2)" sub="the most you can sustain for long" v={b.vt2} />}
       {b.missing && b.missing !== 'none' || (!b.vt1 && !b.vt2) ? <p class="small" style="margin:6px 0 0">{missingWords(b, allOut)}</p> : null}
+      {b.readBy === 'br' && (b.vt1 || b.vt2) && <p class="muted small" style="margin:6px 0 0">Read from how fast you breathed: this strap records how much air you move only faintly, so the litres a minute barely rose, while the quickening of your breathing showed the threshold clearly.</p>}
       {unsure && <p class="muted small" style="margin:6px 0 0">A threshold marked less certain was a gentle or unsteady bend in your breathing, or the strap missed some readings beside it; a repeat test would firm it up{b.vt1?.certainty === 'unsure' ? ' (a smaller step gives the first threshold more room to show)' : ''}.</p>}
-      {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
+      {b.peakVe != null && breathCoveredRamp(b) && <p class="muted small" style="margin:6px 0 0">Peak breathing: <b class="num">{b.peakVe} L/min</b>{b.brCapped ? ', breathing rate at the strap’s ceiling of 60 a minute' : b.peakBr != null ? `, ${b.peakBr} breaths a minute` : ''}. Compare it from test to test as a marker of your aerobic fitness.</p>}
       {(b.vt1 || b.vt2) && <p class="faint small" style="margin:6px 0 0">These stand in for your lactate thresholds (LT1 and LT2), which only a blood test measures.</p>}
     </div>
   );

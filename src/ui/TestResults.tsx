@@ -25,7 +25,14 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   // strict read. It is kept only when the rider acts on something (the result passed to onChange then carries it).
   const [estimating, setEstimating] = useState(false);
   const est = estimating && result.breathEstimate ? result.breathEstimate : undefined;
-  const r: TestResult = est ? { ...result, breath: est, lthrEstimate: est.vt2?.hr ?? result.lthrEstimate } : result;
+  const shown: TestResult = est ? { ...result, breath: est, lthrEstimate: est.vt2?.hr ?? result.lthrEstimate } : result;
+  // Review fix (7 Nov): the estimate is saved only by an action that uses it (Use these zones, Set my second threshold,
+  // Update threshold heart rate from its second threshold); any other button saves the strict reading as it was.
+  const save = (x: TestResult) => {
+    const uses = !!est && ((x.zonesAction === 'applied' && result.zonesAction !== 'applied') || (x.vt2Action === 'set' && result.vt2Action !== 'set') || (x.lthrAction === 'updated' && result.lthrAction !== 'updated' && !!est.vt2));
+    onChange(est && !uses ? { ...x, breath: result.breath, lthrEstimate: result.lthrEstimate } : x);
+  };
+  const r = shown;
   const ramp = r.kind === 'ramp';
   const hasKey = useHasKey();
   const [busy, setBusy] = useState(false);
@@ -47,10 +54,10 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
     const before = which === 'ftp' ? ftpNow : profile.lthr;
     const res = await takeThreshold(which === 'ftp' ? { ftp: r.ftpEstimate } : { lthr: r.lthrEstimate });
     setMsg(res);
-    onChange(which === 'ftp' ? { ...r, ftpAction: 'updated', ftpBefore: r.ftpBefore ?? before } : { ...r, lthrAction: 'updated', lthrBefore: r.lthrBefore ?? before });
+    save(which === 'ftp' ? { ...r, ftpAction: 'updated', ftpBefore: r.ftpBefore ?? before } : { ...r, lthrAction: 'updated', lthrBefore: r.lthrBefore ?? before });
     setBusy(false);
   };
-  const keep = (which: 'ftp' | 'lthr') => onChange(which === 'ftp' ? { ...r, ftpAction: 'kept', ftpBefore: r.ftpBefore ?? ftpNow } : { ...r, lthrAction: 'kept', lthrBefore: r.lthrBefore ?? profile.lthr });
+  const keep = (which: 'ftp' | 'lthr') => save(which === 'ftp' ? { ...r, ftpAction: 'kept', ftpBefore: r.ftpBefore ?? ftpNow } : { ...r, lthrAction: 'kept', lthrBefore: r.lthrBefore ?? profile.lthr });
   const resend = async () => {
     setBusy(true);
     const res = await resendRides(ahead);
@@ -125,7 +132,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
           <p class="faint small" style="margin:2px 0 0">{r.vo2maxAtLeast ? 'The test looks like it ended before you were all-out, so this is a floor rather than an estimate. ' : ''}Estimated from your peak power{r.peakWatts != null ? ` (${Math.round(r.peakWatts)} W)` : ''}{r.vo2maxMlKgMin != null ? ' and weight' : ''}. A lab measures it directly; this tracks your trend.{r.vo2maxMlKgMin == null ? <> <a href="#/settings">Add your weight in Settings</a> to see it per kilo.</> : null}</p>
         </div>
       )}
-      {ramp && r.breath && <TestZones r={r} profile={profile} onChange={onChange} hasKey={hasKey} />}
+      {ramp && r.breath && <TestZones r={r} profile={profile} onChange={save} hasKey={hasKey} />}
       {hasKey && r.ftpEstimate != null && (
         <div class="test-row">
           <p class="small" style="margin:0">{ramp && r.breath?.vt1 && r.breath.vt2 ? 'Want the coach to check these zones against your recent riding before you decide?' : 'Want the coach to check your zones against this test?'}</p>

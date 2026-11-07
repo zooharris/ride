@@ -616,7 +616,7 @@ function TestsCard({ data, from, to }: { data: AppData; from: string; to: string
             <tr key={x.key}>
               <td>{x.rideId ? <a href={`#/rides/${x.rideId}`}>{when}</a> : when}</td>
               <td>{label(x.kind)}</td>
-              <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '\u2014' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}{x.result?.breath?.vt1 || x.result?.breath?.vt2 ? <div class="faint small">breathing thresholds {[x.result.breath.vt1, x.result.breath.vt2].filter(Boolean).map((v) => `${v!.watts} W`).join(' and ')}</div> : null}</td>
+              <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '\u2014' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}{x.result?.breath?.vt1 || x.result?.breath?.vt2 ? <div class="faint small">breathing thresholds {[x.result.breath.vt1, x.result.breath.vt2].filter(Boolean).map((v) => `${v!.watts} W`).join(' and ')}{x.result.breath.estimated ? ' (estimated)' : ''}</div> : null}</td>
               <td class="num">{x.kind === 'ramp' ? <>{vo2(x.result)}{x.result?.vo2maxMlKgMin != null ? <span class="faint small"> ml/kg/min</span> : null}</> : '\u2014'}</td>
             </tr>
           );

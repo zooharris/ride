@@ -442,7 +442,10 @@ export async function endRide(): Promise<Recording | undefined> {
   const rec: Recording = { ...snapshot(a), status: 'finished' };
   a.rec = rec;
   await putRecording(rec);
-  // Diagnostics brief, Part A: once the strap has answered its stop commands, its details are saved with the ride.
+  // Diagnostics brief, Part A: the strap's details are saved with the ride now (so closing the tab can't lose them),
+  // and again once the strap has answered its stop commands.
+  const early = strapRideDetails();
+  if (early) await patchRecording(rec.id, { strapLog: early });
   void strapDone.catch(() => undefined).then(async () => {
     const strapLog = strapRideDetails();
     if (!strapLog) return;

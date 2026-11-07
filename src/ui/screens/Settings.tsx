@@ -629,8 +629,10 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
 function BreathFromRides({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
   const [h, setH] = useState<BreathHistory | undefined>(undefined);
   useEffect(() => { void db.powerCurves.toArray().then((rs) => setH(breathHistory(rs, p.ftp, today()))); }, [p.ftp]);
-  if (!h) return null;
+  if (!h || !(p.ftp > 0)) return null;
   const v = h.vt1;
+  // Review fix (7 Nov): the first threshold must sit below the second.
+  const fitsBelowVt2 = !!v && (!p.vt2Ve || v.ve < p.vt2Ve);
   const pz = ridePowerZones(p), hz = rideHrZones(p);
   const pTops = ladderTops(pz, p.ftp), hTops = ladderTops(hz, p.lthr);
   const withZ2 = (tops: number[], at: number) => { const t = [...tops]; t[1] = Math.round(at); return validTops(t) ? t : undefined; };
@@ -642,10 +644,11 @@ function BreathFromRides({ p, setP }: { p: Profile; setP: (p: Profile) => void }
       {v ? <>
         <p class="small" style="margin:0">From your rides with the strap (last 12 weeks, {h.rides} ride{h.rides === 1 ? '' : 's'}, {h.minutes} minutes): first threshold about <b class="num">{v.watts} W</b>{v.hr ? <>, <b class="num">{v.hr} bpm</b></> : null}, <b class="num">{Math.round(v.ve * 10) / 10} L/min</b>{v.certainty === 'unsure' ? <> <span class="pill">less certain</span></> : null}.</p>
         <div class="row wrap" style="gap:8px;margin-top:8px">
-          {Math.abs((p.vt1Ve ?? 0) - v.ve) >= 0.1 && <button class="btn sm" onClick={() => { setP({ ...p, vt1Ve: Math.round(v.ve * 10) / 10, breathSetOn: today() }); say('First threshold set.'); }}>Use it</button>}
-          {nextP && Math.round(pTops[1]) !== Math.round(v.watts) && <button class="btn sm quiet" onClick={() => { setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: nextP }); say(`Power zone 2 now ends at ${Math.round(v.watts)} W.`); }}>End power zone 2 at {Math.round(v.watts)} W</button>}
+          {fitsBelowVt2 && Math.abs((p.vt1Ve ?? 0) - v.ve) >= 0.1 && <button class="btn sm" onClick={() => { setP({ ...p, vt1Ve: Math.round(v.ve * 10) / 10, breathSetOn: today() }); say('First threshold set.'); }}>Use it</button>}
+          {nextP && Math.round(pTops[1]) !== Math.round(v.watts) && <button class="btn sm quiet" onClick={() => { setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: nextP }); say(`Power zone 2 now ends at ${Math.round(v.watts)} W; your power zones are now set in watts, so they won't move with FTP.`); }}>End power zone 2 at {Math.round(v.watts)} W</button>}
           {nextH && Math.round(hTops[1]) !== v.hr && <button class="btn sm quiet" onClick={() => { setP({ ...p, hrZoneMode: 'abs', hrZoneTops: nextH }); say(`Heart-rate zone 2 now ends at ${v.hr} bpm.`); }}>End heart-rate zone 2 at {v.hr} bpm</button>}
         </div>
+        {!fitsBelowVt2 && <p class="faint small" style="margin:6px 0 0">That is at or above your second threshold, so it isn't offered; a later ramp test, whenever it suits you, would settle which is right.</p>}
       </> : <p class="faint small" style="margin:0">{h.notYet}</p>}
       {h.vt2Check != null && <p class="faint small" style="margin:6px 0 0">Your rides with the strap put the second threshold at about {h.vt2Check} W.</p>}
     </div>

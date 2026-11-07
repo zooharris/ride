@@ -199,7 +199,9 @@ export function rampResult(rec: Pick<Recording, 'samples' | 'rampStep' | 'rampEn
   const judge = span ? judgeOf(rec.samples, span, { ...ctx, peakWatts: peak, stepWatts: rec.rampStep, endedBy }) : undefined;
   const breath = span ? rampBreathing(rec, timeline, ctx, judge) : undefined;
   // Part B: a best estimate held ready when the strict read refused for the strap's sake.
-  const breathEstimate = span && (breath?.missing === 'strap-stopped' || breath?.missing === 'patchy') ? rampBreathing(rec, timeline, ctx, judge, true) : undefined;
+  const lenient = span && (breath?.missing === 'strap-stopped' || breath?.missing === 'patchy') ? rampBreathing(rec, timeline, ctx, judge, true) : undefined;
+  // Review fix (7 Nov): offered only when the estimate finds a threshold the strict read did not.
+  const breathEstimate = lenient && ((lenient.vt1 && !breath?.vt1) || (lenient.vt2 && !breath?.vt2)) ? lenient : undefined;
   const gaps = span ? rampGaps(rec.samples, span) : undefined;
   const fields = bmFtp != null ? reconcileFtp(bmFtp, breath, judge, ctx?.cpFtp) : {};
   const ftp = fields.ftpEstimate;

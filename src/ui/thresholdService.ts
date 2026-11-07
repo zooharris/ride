@@ -36,7 +36,7 @@ export async function loadTests(data: AppData): Promise<TestInput[]> {
   const seen = new Set<string>();
   const take = (date: string, r: TestResult) => out.push({
     date, kind: r.kind, ftpEstimate: r.ftpEstimate, lthrEstimate: r.lthrEstimate, vo2maxMlKgMin: r.vo2maxMlKgMin, ftpAction: r.ftpAction,
-    ...(r.breath ? { vt1: r.breath.vt1, vt2: r.breath.vt2, peakVe: r.breath.peakVe && breathCoveredRamp(r.breath) ? r.breath.peakVe : undefined, breathMissing: BREATH_MISSING_FOR_COACH[r.breath.missing ?? ''] } : {}),
+    ...(r.breath ? { vt1: r.breath.vt1, vt2: r.breath.vt2, peakVe: r.breath.peakVe && breathCoveredRamp(r.breath) ? r.breath.peakVe : undefined, breathMissing: r.breath.estimated ? 'the rider chose a best estimate from imperfect strap readings; treat these thresholds as less certain' : BREATH_MISSING_FOR_COACH[r.breath.missing ?? ''] } : {}),
     ...(r.judge ? { judgeLines: [`All-out: ${r.judge.allOut ?? 'unknown'}; went past the second threshold: ${r.judge.pastVt2 ?? 'unknown'}.`, ...r.judge.lines] } : {}),
     ...(r.kind === 'ramp' && r.ftpEstimate != null ? { ftpBasis: `${ftpBasisWords(r)}${r.ftpDisagree ? ' (the witnesses disagreed by more than 8%, so the best-minute figure was offered)' : ''}${r.stepWatts ? `; ramp of ${r.stepWatts} W a minute` : ''}${r.hrAtFtp != null ? `; heart rate at that power ${r.hrAtFtp} bpm` : ''}` } : {}),
   });

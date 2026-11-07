@@ -132,7 +132,7 @@ describe('the 4 Nov ramp, estimated anyway (diagnostics Part B)', () => {
     expect(b.missing).toBe('strap-stopped');
     if (b.vt1) expect(b.vt1.certainty).toBe('unsure');
   });
-  it('through the player: the result holds the estimate ready and reports no heart-rate or power gaps', async () => {
+  it('through the player: nothing new to estimate (no Estimate anyway offered), and no heart-rate or power gaps', async () => {
     const { buildTimeline } = await import('../player/timeline');
     const { RideEngine } = await import('../player/engine');
     const { rampResult } = await import('../player/tests');
@@ -152,8 +152,19 @@ describe('the 4 Nov ramp, estimated anyway (diagnostics Part B)', () => {
     e.endTest(t * 1000, 'rider');
     const r = rampResult({ samples: e.samples, rampStep: 20, rampEndAt: e.rampEndAt, events: e.events }, tl, 107.4, { ftp: 210, lthr: 154, maxHr: 180 });
     expect(r.breath?.missing).toBe('strap-stopped');
-    expect(r.breathEstimate?.estimated).toBe(true);
-    expect(r.breathEstimate?.vt2).toBeUndefined();
+    expect(r.breathEstimate).toBeUndefined();
     expect(r.gaps).toBeUndefined();
+  });
+});
+
+describe('Estimate anyway is saved only by an action that uses it (review fix)', () => {
+  it('Keep on FTP saves the strict reading; Use these zones saves the estimate', () => {
+    // The rule TestResults applies, restated: an estimate travels with the result only on zones applied, second threshold set, or threshold heart rate updated from it.
+    const strict = { kind: 'ramp' as const, breath: { missing: 'patchy' as const } };
+    const est = { estimated: true, vt1: { watts: 180, ve: 30, certainty: 'unsure' as const }, missing: 'no-vt2' as const };
+    const uses = (x: { zonesAction?: string; vt2Action?: string; lthrAction?: string }) => x.zonesAction === 'applied' || x.vt2Action === 'set' || x.lthrAction === 'updated';
+    const save = (x: Record<string, unknown>) => (uses(x) ? x : { ...x, breath: strict.breath });
+    expect(save({ ...strict, breath: est, ftpAction: 'kept' }).breath).toEqual(strict.breath);
+    expect(save({ ...strict, breath: est, zonesAction: 'applied' }).breath).toEqual(est);
   });
 });

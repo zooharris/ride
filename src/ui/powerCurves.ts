@@ -7,7 +7,7 @@ import type { Basis, Profile, Ride, Workout } from '../engine/types';
 import { fetchIntervals, fetchPowerStream } from '../sync/intervals';
 import type { RideLap } from '../engine/analysis';
 import { breathingOf } from '../engine/breathFreeze';
-import { learnNormal, todayOffset, veAtPower, type BreathNormal } from '../engine/breathOffset';
+import { breathAtPower, learnNormal, todayOffset, veAtPower, type BreathNormal } from '../engine/breathOffset';
 import { breathFromRecording, hasBreathing, noteBreathingDate } from '../player/breathRead';
 import { patchRecording } from '../player/rides';
 import { upsertEdit } from '../sync/records';
@@ -27,7 +27,8 @@ export const CURVE_VERSION = 2;
 /** How planned sessions were judged: 2 finds each step by the recording's laps (31 Oct); records judged before that are judged again once. */
 export const JUDGE_VERSION = 2;
 /** 1 (31 Oct): breathing read alongside power, for the strap's normal (2A). Records of the last 12 weeks without it are read again once. */
-export const BREATH_VERSION = 1;
+/** 2 (7 Nov 2026, Step 2c): breathing in finer bands with breathing rate, breath size and heart rate. */
+export const BREATH_VERSION = 2;
 /** 1 (4 Nov, Part A5): the ride's highest 30-second heart rate kept, for the max heart rate learned from rides. Records of the last 12 months without it are read again once. */
 export const HR_VERSION = 1;
 /** The rider's normal breathing at each effort, learned from their rides (2A). */
@@ -143,12 +144,13 @@ export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: Cu
   // Breathing alongside power (2A), with any frozen stretch cut off first.
   const b = s.ve ? breathingOf(s) : undefined;
   const ve = b ? veAtPower(s.time, s.watts, b.ve, p.ftp) : [];
+  const fine = b ? breathAtPower(s.time, s.watts, b.ve, b.br, b.tv, s.heartrate, p.ftp) : [];
   const offset = ve.length ? todayOffset(s.time, s.watts, b!.ve, ctx.breathNormal, p.ftp) : undefined;
   return {
     id: r.id, date: r.date, w, v: CURVE_VERSION, ftpAtBuild: p.ftp, lthrAtBuild: p.lthr,
     ...(bands.length ? { hrAtPower: bands } : {}), ...(steady ? { steadyAtHr: steady } : {}),
     ...(verdict ? { verdict } : {}), ...(session ? { judged: true, jv: JUDGE_VERSION } : {}),
-    bv: BREATH_VERSION, ...(ve.length ? { veAtPower: ve } : {}), ...(offset != null ? { breathOffset: offset } : {}), ...hr,
+    bv: BREATH_VERSION, ...(ve.length ? { veAtPower: ve } : {}), ...(fine.length ? { breathAtPower: fine } : {}), ...(offset != null ? { breathOffset: offset } : {}), ...hr,
   };
 }
 

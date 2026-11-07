@@ -205,9 +205,11 @@ export interface Bends { x1?: number; x2?: number; ratio1?: number; ratio2?: num
  * breathing rate from a strap that compresses breath size carries one signal,
  * the second threshold's quickening, and a second bend would be the final gasp.
  */
-export function findBends(xs: number[], ys: number[], opts: { flatStart?: boolean; oneBend?: boolean } = {}): Bends {
+export function findBends(xs: number[], ys: number[], opts: { flatStart?: boolean; oneBend?: boolean; minSegment?: number } = {}): Bends {
   const n = xs.length;
-  if (n < 2 * MIN_SEGMENT) return {};
+  // Step 2c (7 Nov 2026): a band curve from ride history has few points; it may ask for fewer on each line.
+  const seg = opts.minSegment ?? MIN_SEGMENT;
+  if (n < 2 * seg) return {};
   const ones = xs.map(() => 1);
   const hinge = (k: number) => xs.map((x) => Math.max(0, x - xs[k]));
   const top = Math.max(...xs);
@@ -223,7 +225,7 @@ export function findBends(xs: number[], ys: number[], opts: { flatStart?: boolea
   const secondOk = (x: number) => x >= VT2_RANGE[0] * top && x <= VT2_RANGE[1] * top;
   let best3: { sse: number; i: number; j: number; r1: number; r2: number } | undefined;
   let best2: { sse: number; i: number; r: number } | undefined;
-  for (let i = MIN_SEGMENT; i <= n - MIN_SEGMENT; i++) {
+  for (let i = seg; i <= n - seg; i++) {
     if (!firstOk(xs[i]) && !secondOk(xs[i])) continue;
     const hi = hinge(i);
     const two = ols([ones, xs, hi], ys);
@@ -233,7 +235,7 @@ export function findBends(xs: number[], ys: number[], opts: { flatStart?: boolea
       if (okBefore(b) && b + c > 0 && r >= MIN_BEND && (!best2 || two.sse < best2.sse)) best2 = { sse: two.sse, i, r };
     }
     if (opts.oneBend || !firstOk(xs[i])) continue;
-    for (let j = i + MIN_SEGMENT; j <= n - MIN_SEGMENT; j++) {
+    for (let j = i + seg; j <= n - seg; j++) {
       if (xs[j] - xs[i] < minMiddle || !secondOk(xs[j])) continue;
       const three = ols([ones, xs, hi, hinge(j)], ys);
       if (!three) continue;

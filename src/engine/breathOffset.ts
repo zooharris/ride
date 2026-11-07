@@ -11,6 +11,7 @@
  */
 import { BANDS, SKIP_SECONDS } from './hrPower';
 import { addDays } from './load';
+import { isPlaceholder } from './breathThresholds';
 
 /** A band needs this much riding in one ride to count. */
 export const VE_BAND_FLOOR = 180;
@@ -24,6 +25,52 @@ export const OFFSET_SECONDS = 360;
 export const OFFSET_CLAMP: [number, number] = [0.85, 1.15];
 
 export interface VeAtPower { lo: number; hi: number; seconds: number; ve: number }
+/** Step 2c (7 Nov 2026): one fine band's breathing on one ride (medians, seconds-weighted); shares of the FTP the ride was read against. */
+export interface BreathAtPower { lo: number; hi: number; seconds: number; ve: number; br?: number; tv?: number; hr?: number }
+
+/** Step 2c: the fine bands, 5% of FTP wide from 45% to 115% (14). */
+export const FINE_BANDS: Array<[number, number]> = Array.from({ length: 14 }, (_, k) => [Math.round((0.45 + k * 0.05) * 100) / 100, Math.round((0.5 + k * 0.05) * 100) / 100]);
+/** Step 2c: a fine band needs this much riding in one ride to count. */
+export const FINE_BAND_FLOOR = 120;
+
+/**
+ * Step 2c (7 Nov 2026): median ventilation, breathing rate, breath size and heart rate in each 5% band of FTP,
+ * after the first 10 minutes, the strap's placeholder readings left out. Breathing reaches here through
+ * breathingOf, so frozen stretches are already cut. Ventilation and breath size are as the strap read them (the
+ * day's offset is applied when the history is read); breathing rate needs none.
+ */
+export function breathAtPower(time: number[], watts: number[] | undefined, ve: number[] | undefined, br: number[] | undefined, tv: number[] | undefined, hr: number[] | undefined, ftp: number): BreathAtPower[] {
+  if (!watts?.length || !ve?.length || ftp <= 0) return [];
+  const n = Math.min(time.length, watts.length, ve.length);
+  const per = FINE_BANDS.map(() => ({ ve: [] as Array<{ v: number; w: number }>, br: [] as Array<{ v: number; w: number }>, tv: [] as Array<{ v: number; w: number }>, hr: [] as Array<{ v: number; w: number }>, s: 0 }));
+  for (let i = 0; i < n; i++) {
+    if (time[i] < SKIP_SECONDS) continue;
+    const w = watts[i], v = ve[i], dt = dtAt(time, i, n);
+    if (!(w > 0) || !ok(v) || v <= 0 || dt <= 0) continue;
+    if (isPlaceholder(v, br?.[i], tv?.[i])) continue;
+    const k = FINE_BANDS.findIndex(([lo, hi]) => w / ftp >= lo && w / ftp < hi);
+    if (k < 0) continue;
+    const b = per[k];
+    b.s += dt;
+    b.ve.push({ v, w: dt });
+    const r = br?.[i], t = tv?.[i], h = hr?.[i];
+    if (ok(r) && r > 0) b.br.push({ v: r, w: dt });
+    if (ok(t) && t > 0) b.tv.push({ v: t, w: dt });
+    if (ok(h) && h > 0) b.hr.push({ v: h, w: dt });
+  }
+  const r1 = (x: number | undefined) => (x != null ? Math.round(x * 10) / 10 : undefined);
+  const r2 = (x: number | undefined) => (x != null ? Math.round(x * 100) / 100 : undefined);
+  const out: BreathAtPower[] = [];
+  FINE_BANDS.forEach(([lo, hi], k) => {
+    const b = per[k];
+    if (b.s < FINE_BAND_FLOOR) return;
+    const veM = weightedMedian(b.ve);
+    if (veM == null) return;
+    const brM = weightedMedian(b.br), tvM = weightedMedian(b.tv), hrM = weightedMedian(b.hr);
+    out.push({ lo, hi, seconds: Math.round(b.s), ve: r1(veM)!, ...(brM != null ? { br: r1(brM) } : {}), ...(tvM != null ? { tv: r2(tvM) } : {}), ...(hrM != null ? { hr: Math.round(hrM) } : {}) });
+  });
+  return out;
+}
 export interface BreathNormal { ftp: number; bands: Array<{ lo: number; hi: number; ve: number; seconds: number }>; rides: number; updated: string }
 
 const ok = (v: number | undefined): v is number => typeof v === 'number' && isFinite(v);

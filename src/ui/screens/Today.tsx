@@ -64,6 +64,8 @@ export function Today({ data }: { data: AppData }) {
   const stats = workout ? workoutStats(workout.blocks) : undefined;
   // What is on today's calendar, in one string: the coach note is remade when this changes.
   const recOf = (p: { activityId?: string }) => (p.activityId ? data.rides.find((r) => r.id === p.activityId) : undefined);
+  // Everything done today that was not on the calendar (7 Nov 2026): Today shows what was done, not only what was planned.
+  const extras = data.rides.filter((r) => r.date === date && !data.planned.some((p) => p.activityId === r.id));
 
   const [busy, setBusy] = useState<string | null>(null);
   const setMsg = toast;
@@ -72,7 +74,7 @@ export function Today({ data }: { data: AppData }) {
   // The coach is told about the plan, so it waits until the plan has been read (a note written before would say "no plan").
   const [planRead, setPlanRead] = useState(false);
   const daySig = noteSignature({
-    sessions: withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`),
+    sessions: [...withW.map((x) => `${x.w!.id}:${x.p.status}:${x.p.activityId ?? ''}:${recOf(x.p)?.seconds ?? ''}`), ...extras.map((r) => `extra:${r.id}:${r.seconds}`)],
     noteText: todayNote?.text, badWellness: todayNote?.badWellness,
     wellnessToday: data.wellness.some((w) => w.date === date), band: ready.band, plan: coachPlan(active, date),
   });
@@ -271,14 +273,21 @@ export function Today({ data }: { data: AppData }) {
           {workout.trainerOnly && plan.status !== 'completed' && !playerOffered() && <p class="faint small" style="margin:10px 0 0">{TRAINER_ONLY_ELSEWHERE}</p>}
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>
-      ) : rest.length === 0 ? (
+      ) : rest.length === 0 && extras.length === 0 ? (
         <Empty title="Nothing planned today." action={<a class="btn primary sm" href="#/library">Choose a workout</a>}>Pick something from the library, build a plan, or take the day.</Empty>
       ) : null}
 
-      {rest.length > 0 && (
+      {(rest.length > 0 || extras.length > 0) && (
         <section class="section" style={workout ? '' : 'margin-top:0'}>
           <h2>{workout ? 'Also today' : 'Today'}</h2>
           <div class="stack" style="margin-top:8px">
+            {extras.map((r) => (
+              <a class="cal-item completed" key={r.id} href={`#/rides/${r.id}`}>
+                <ActivityPicture ride={r} profile={profile} height={52} width={88} />
+                <div class="t"><b>{r.name}</b><span>{clock(r.seconds)} · {r.tss ?? '–'} TSS{r.normalizedPower ? ` · ${r.normalizedPower} W normalized` : r.averageHr ? ` · ${r.averageHr} bpm` : ''} · unscheduled · tap for the recording</span></div>
+                <StatusPill status="done" />
+              </a>
+            ))}
             {rest.map(({ p, w }) => { const rs = w!.kind === 'ride' ? workoutStats(w!.blocks) : undefined; return (
               <div class={`cal-item ${p.status}`} key={p.id}>
               <a class="row" style="flex:1;min-width:0;text-decoration:none" href={sessionHref(p, w!.id, 'today', date, data.rides)}>

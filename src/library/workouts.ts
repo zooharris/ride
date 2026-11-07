@@ -147,6 +147,13 @@ const CORE: Workout[] = [
     purpose: 'Start easy and add a step every minute until you can’t hold it. Antogo works out your FTP from your best minute and offers to update it. Wear a breathing strap and it also finds your two breathing thresholds and suggests power, heart-rate and breathing zones from them. About twenty minutes; ride it on the trainer at the start of each block.',
     physiology: 'FTP and VO2max estimates; with a breathing strap, breathing thresholds (VT1 and VT2).',
     blocks: [step(5, 0.46, { label: 'Warm up' }),step(1, 0.52), step(1, 0.58), step(1, 0.64), step(1, 0.7), step(1, 0.76), step(1, 0.82), step(1, 0.88), step(1, 0.94), step(1, 1.0), step(1, 1.06), step(1, 1.12), step(1, 1.18), step(1, 1.24), step(1, 1.3), step(1, 1.36), cool(10)] }),
+  // 7 Nov 2026 (Step 2c): the ride that gives Antogo the steady breathing it needs to find the first breathing
+  // threshold, which a ramp cannot show with every strap. Nine 5-minute steps, one in the middle of each 5%-of-FTP
+  // band from 50% to 95%; ridden twice on different days with the strap, it clears the history read's floors.
+  lib({ id: 'lib-breath-steps', name: 'Breathing Steps', family: 'test', phases: ['any'], bases: ['power'], trainerOnly: true,
+    purpose: 'Nine steady steps of five minutes, each a little harder, from easy to just under threshold, with a breathing strap on. Antogo gathers your breathing at each effort to find your first breathing threshold, which a ramp often can’t show. Ride it twice on different days and Settings will show what it found. If the last two steps are too much on the day, end the ride after the seventh.',
+    physiology: 'Breathing at nine steady efforts for the first breathing threshold (VT1); an easy aerobic ride in itself.',
+    blocks: [step(10, 0.5, { label: 'Warm up' }), step(5, 0.53, { label: 'Step 1' }), step(5, 0.58, { label: 'Step 2' }), step(5, 0.63, { label: 'Step 3' }), step(5, 0.68, { label: 'Step 4' }), step(5, 0.73, { label: 'Step 5' }), step(5, 0.78, { label: 'Step 6' }), step(5, 0.83, { label: 'Step 7' }), step(5, 0.88, { label: 'Step 8' }), step(5, 0.93, { label: 'Step 9' }), cool(5)] }),
   lib({ id: 'lib-20min', name: '20-Minute FTP Test', family: 'test', phases: ['any'], bases: ['power', 'hr'], test: '20min',
     purpose: 'A thorough warm-up, then twenty minutes as hard as you can hold evenly. FTP is ninety-five percent of the result; on heart rate, your average over the last fifteen minutes is a good LTHR. Harder than the ramp test, closer to the truth for steady-state riders.',
     physiology: 'FTP and LTHR estimate.',

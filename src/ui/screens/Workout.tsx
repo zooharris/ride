@@ -7,7 +7,8 @@ import { WorkoutProfile } from '../Profile';
 import { clock, renderIntervalsText, workoutStats } from '../../engine/workout';
 import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
-import { go } from '../router';
+import { go, goBack, replaceRoute } from '../router';
+import { BackLink } from '../BackLink';
 import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
@@ -37,6 +38,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
+  // Where Back goes when nothing is behind this page (a fresh tab); otherwise Back returns to the page before, as it was left.
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? (params.get('date') ? `#/calendar?d=${params.get('date')}` : '#/calendar') : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
   // The calendar entry this page is about: the one on the date in the link, else the nearest upcoming entry for
   // this workout or for a copy of it (a library session is copied when it is put on a date).
@@ -48,9 +50,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const units = profile.units ?? 'imperial';
   // Move, replace or remove this session; the page follows a move to its new date.
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
-    onDone={(what, p) => { if (what === 'moved') go(`workout/${w.id}?from=${from}&date=${p.date}`); else go(backHref.replace(/^#\//, '')); }} />;
+    onDone={(what, p) => { if (what === 'moved') replaceRoute(`workout/${w.id}?from=${from}&date=${p.date}`); else goBack(backHref); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm" style="margin-left:6px" onClick={() => setChange('replace')}>Replace</button></>;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); } : undefined} />;
+  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); } : undefined} />;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -63,7 +65,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
   return (
     <div>
-      <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
+      <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row between" style="margin-bottom:6px">
         <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
         {w.bases.length > 1 ? (
@@ -93,7 +95,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       </div>
       {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (<>
-        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) go(backHref.replace(/^#\//, '') as Parameters<typeof go>[0]); }}>Remove from the calendar</button></p>
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
         {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
       </>)}
 
@@ -150,7 +152,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
   const minutes = w.minutes ?? w.walk?.minutes ?? (estimated || 30);
   return (
     <div>
-      <a href={backHref} class="btn quiet sm" style="margin-left:-10px;margin-bottom:8px">‹ Back</a>
+      <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <h1>{w.name}</h1>
       {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}

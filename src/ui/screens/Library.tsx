@@ -18,14 +18,18 @@ import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
 import { playerOffered } from '../../player/platform';
 import { TrainerOnlyTag } from '../Thumbs';
 import { StrengthLibrary } from '../StrengthLibrary';
+import { readQuery, useUrlSync } from '../router';
 
 type Tab = 'ride' | 'strength' | 'mobility' | 'walk' | 'run';
 const TABS: Array<[Tab, string]> = [['ride', 'Rides'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walks'], ['run', 'Runs']];
 
 export function Library({ data }: { data: AppData }) {
-  const [tab, setTab] = useState<Tab>('ride');
+  // The tab and the filters live in the address (`k`, then the filters' own keys), so Back from a
+  // workout returns to the list as it was left (8 Nov 2026).
+  const [tab, setTab] = useState<Tab>(() => TABS.find(([t]) => t === readQuery().get('k'))?.[0] ?? 'ride');
+  useUrlSync({ k: tab !== 'ride' ? tab : undefined });
   const [adding, setAdding] = useState<Workout | null>(null);
-  const [f, setF] = useFilters();
+  const [f, setF] = useFilters({ url: true });
   const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated'), f, tab);
   const mine = list.filter((w) => w.source === 'mine');
   const ready = list.filter((w) => w.source === 'library');

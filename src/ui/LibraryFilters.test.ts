@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, minutesOf, NO_FILTERS } from './LibraryFilters';
+import { applyFilters, filtersFromQuery, filtersToQuery, minutesOf, NO_FILTERS, type Filters } from './LibraryFilters';
 import { LIBRARY } from '../library/workouts';
 
 const rides = LIBRARY.filter((w) => w.kind === 'ride');
@@ -30,5 +30,22 @@ describe('the shared filters', () => {
   });
   it('no filters: everything, in the given order', () => {
     expect(applyFilters(rides, NO_FILTERS, 'ride')).toEqual(rides);
+  });
+});
+
+/** Encodes filters as the Library's address does, the way `replaceQuery` writes them. */
+const asQuery = (f: Filters) => { const q = new URLSearchParams(); for (const [k, v] of Object.entries(filtersToQuery(f))) if (v !== undefined) q.set(k, v); return q; };
+
+describe('the Library keeps its filters in its address (8 Nov 2026)', () => {
+  it('filters survive the round trip through the address', () => {
+    const f: Filters = { query: 'hill & dale', family: 'endurance', duration: '90-120', sort: 'short' };
+    expect(filtersFromQuery(asQuery(f))).toEqual(f);
+  });
+  it('no filters: nothing in the address, and nothing read back', () => {
+    expect(asQuery(NO_FILTERS).toString()).toBe('');
+    expect(filtersFromQuery(new URLSearchParams())).toEqual(NO_FILTERS);
+  });
+  it('an address with unknown values opens the Library unfiltered rather than broken', () => {
+    expect(filtersFromQuery(new URLSearchParams('t=nonsense&len=7h&sort=sideways'))).toEqual(NO_FILTERS);
   });
 });

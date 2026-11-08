@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { Mark } from './Brand';
 import { Icon } from './icons';
+import { BackLink, backLabel } from './BackLink';
 
 /**
  * The one header every screen uses: a small line above the title (the date,
@@ -12,6 +13,7 @@ import { Icon } from './icons';
 export function PageHead({ title, eyebrow, back, help, children }: {
   title: ComponentChildren;
   eyebrow?: ComponentChildren;
+  /** The way back: `href` is where it goes when nothing is behind this page (a fresh tab); otherwise it returns to the page before. `onClick` (the builders' Cancel) decides for itself. */
   back?: { label: string; href?: string; onClick?: () => void };
   help?: string;
   children?: ComponentChildren;
@@ -31,7 +33,7 @@ export function PageHead({ title, eyebrow, back, help, children }: {
     <header class="page-head" ref={ref}>
       <div class="ph-title">
         {back
-          ? (back.href ? <a class="eyebrow back" href={back.href}>‹ {back.label}</a> : <button class="eyebrow back" onClick={back.onClick}>‹ {back.label}</button>)
+          ? (back.href ? <BackLink class="eyebrow back" fallback={back.href} label={backLabel(back.label)} /> : <button class="eyebrow back" onClick={back.onClick}>‹ {backLabel(back.label)}</button>)
           : eyebrow != null && <p class="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {back && eyebrow != null && <p class="eyebrow" style="margin-top:4px">{eyebrow}</p>}

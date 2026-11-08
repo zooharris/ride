@@ -1,3 +1,4 @@
+import { goBack } from '../router';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { brShown } from '../../engine/breathThresholds';
 import type { ComponentChildren } from 'preact';
@@ -42,8 +43,9 @@ export function useSensors(): { sensors: SensorState[]; now: number } {
   return state;
 }
 
+/** Back to the page the player was opened from; opened with nothing behind it, to Today. */
 function back(): void {
-  if (history.length > 1) history.back(); else location.hash = '/today';
+  goBack('today');
 }
 
 /**

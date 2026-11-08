@@ -3,6 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './ui/App';
 import './styles/global.css';
 import { initTheme } from './ui/theme';
+import { startHistory } from './ui/router';
 import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';
 
 // New versions are checked for on every launch, every 15 minutes while open, and whenever the app
@@ -26,5 +27,7 @@ window.addEventListener('focus', () => { void checkForUpdate(); });
 window.addEventListener('pageshow', () => { void checkForUpdate(); });
 // Every launch opens on Today, whatever screen was showing when the app was last closed.
 if (location.hash && location.hash !== '#/today') history.replaceState(null, '', `${location.pathname}#/today`);
+// This entry is the visit's first: Back buttons on it fall back to their own page (8 Nov 2026).
+startHistory();
 initTheme();
 render(<App />, document.getElementById('app')!);

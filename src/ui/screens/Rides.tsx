@@ -15,7 +15,7 @@ import { keepableRecording, keepVeloiqInstead, undoWindowOpen } from '../../play
 import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
-import { go } from '../router';
+import { go, goBack, readQuery, useUrlSync } from '../router';
 import { fetchActivityFile, fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
 import { breathingOf } from '../../engine/breathFreeze';
 import { cachedStreamsUsable, fillBreathing, FIRST_BREATHING_KEY, hasBreathing, noteBreathingDate } from '../../player/breathRead';
@@ -65,10 +65,14 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
 
 function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }) {
   const profile = data.profile!;
-  const [view, setView] = useState<'list' | 'month'>('list');
-  const [month, setMonth] = useState(monthOf(today()));
+  // The view, the month shown and the show-all switch live in the address (`v`, `m`, `all`), so Back
+  // from an activity returns to the list as it was left (8 Nov 2026).
+  const q0 = readQuery();
+  const [view, setView] = useState<'list' | 'month'>(q0.get('v') === 'month' ? 'month' : 'list');
+  const [month, setMonth] = useState(/^\d{4}-\d{2}$/.test(q0.get('m') ?? '') ? q0.get('m')! : monthOf(today()));
   // Drives and recordings under five minutes are not training; they are kept out of the list unless asked for.
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(q0.get('all') === '1');
+  useUrlSync({ v: view === 'month' ? 'month' : undefined, m: month !== monthOf(today()) ? month : undefined, all: showAll ? '1' : undefined });
   const hidden = data.ridesAll.length - data.rides.length;
   const list = showAll ? data.ridesAll : data.rides;
   // Activities always opens as the list (the rider's preference); the switch changes it for this visit only.
@@ -257,7 +261,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       await deleteRecording(r.id);
       notify();
       toast({ ok: true, text: `Deleted ${r.name}.` });
-      go('rides');
+      goBack('rides');
     } catch (e) {
       toast({ ok: false, text: `Not deleted: ${(e as Error).message}` });
       setBusy(false);

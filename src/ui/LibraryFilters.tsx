@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { FAMILY_LABEL } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
 import type { Family, Workout } from '../engine/types';
+import { readQuery, useUrlSync } from './router';
 
 /**
  * The Library's filter bar (search, type, length, sort), shared with every place a
@@ -34,8 +35,37 @@ export function applyFilters(list: Workout[], f: Filters, kind: string): Workout
   return kind === 'ride' ? ordered.filter((w) => f.family === 'all' || w.family === f.family) : ordered;
 }
 
-export function useFilters(): [Filters, (next: Partial<Filters>) => void] {
-  const [f, setF] = useState<Filters>(NO_FILTERS);
+/** The filters as the Library's address carries them (search `q`, type `t`, length `len`, order `sort`); defaults left out. */
+export function filtersToQuery(f: Filters): Record<string, string | undefined> {
+  return {
+    q: f.query || undefined,
+    t: f.family !== 'all' ? f.family : undefined,
+    len: f.duration !== 'all' ? f.duration : undefined,
+    sort: f.sort !== 'family' ? f.sort : undefined,
+  };
+}
+
+/** The filters read back from an address; anything unknown falls back to no filter. */
+export function filtersFromQuery(q: URLSearchParams): Filters {
+  const t = q.get('t');
+  const len = q.get('len');
+  const sort = q.get('sort');
+  return {
+    query: q.get('q') ?? '',
+    family: ORDER.find((x) => x === t) ?? 'all',
+    duration: DURATIONS.find((d) => d[0] === len)?.[0] ?? 'all',
+    sort: (['family', 'short', 'long'] as SortKey[]).find((x) => x === sort) ?? 'family',
+  };
+}
+
+/**
+ * The filter state. With `url` (the Library), it opens from the address and keeps itself there, so
+ * Back to the Library finds the list as it was left. Without (Replace, the Calendar's add picker, which
+ * open as sheets over another page), it lives only as long as the sheet and never touches the address.
+ */
+export function useFilters(opts: { url?: boolean } = {}): [Filters, (next: Partial<Filters>) => void] {
+  const [f, setF] = useState<Filters>(() => (opts.url ? filtersFromQuery(readQuery()) : NO_FILTERS));
+  useUrlSync(opts.url ? filtersToQuery(f) : {});
   return [f, (next) => setF((prev) => ({ ...prev, ...next }))];
 }
 

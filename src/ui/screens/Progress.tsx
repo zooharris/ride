@@ -1,3 +1,4 @@
+import { replaceQuery } from '../router';
 import { coachConfig } from '../coachConfig';
 import type { CoachConfig } from '../../coach/llm';
 import { useWidth } from '../useWidth';
@@ -62,7 +63,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     if (urlOn) { const id = setTimeout(() => document.getElementById('fitness-card')?.scrollIntoView({ block: 'start' }), 80); return () => clearTimeout(id); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const writeUrl = (o: OverlayKey[], r: RangeKey) => history.replaceState(null, '', `${location.pathname}#/progress?on=${o.join(',')}&r=${r}`);
+  const writeUrl = (o: OverlayKey[], r: RangeKey) => replaceQuery({ on: o.join(','), r });
   const pick = (k: RangeKey) => { setRange(k); setSetting('progressRange', k); writeUrl(on, k); };
   const pickOn = (o: OverlayKey[]) => { setOn(o); setSetting('progressOverlays', o.join(',')); writeUrl(o, range); };
   const [active, setActive] = useState<ActivePlan | null>(null);

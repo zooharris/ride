@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { readQuery, replaceQuery, useUrlSync } from '../router';
 import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { KIND_COLOR } from './Plan';
@@ -35,13 +36,15 @@ function shortName(name: string): string {
 export function Calendar({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;
   const focus = params?.get('d') ?? undefined;
-  const [start, setStart] = useState(weekStart(focus && /^\d{4}-\d{2}-\d{2}$/.test(focus) ? focus : today()));
-  // The calendar always opens as the month (the rider's preference); a link to one day opens the list at that day.
-  const [view, setView] = useState<'list' | 'month'>(focus ? 'list' : 'month');
-  const [month, setMonth] = useState(monthOf(today()));
-  // Opened from Today's week strip or its ⋯ button: show that week as a list, and open the change sheet if asked.
-  useEffect(() => { setView(focus ? 'list' : 'month'); }, [focus]);
-  useEffect(() => { if (focus) setStart(weekStart(focus)); }, [focus]);
+  // The calendar opens as the month (the rider's preference); a link to one day (`d`) opens the list at that day.
+  // The view, the month and the week shown live in the address (`v`, `m`, `w`), so Back from a session returns
+  // to the calendar as it was left (8 Nov 2026); a link to one day wins over them until the rider moves on.
+  const q0 = readQuery();
+  const isDay = (x?: string | null) => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  const [start, setStart] = useState(weekStart(isDay(focus) ? focus! : isDay(q0.get('w')) ? q0.get('w')! : today()));
+  const [view, setView] = useState<'list' | 'month'>(focus || q0.get('v') === 'list' ? 'list' : 'month');
+  const [month, setMonth] = useState(/^\d{4}-\d{2}$/.test(q0.get('m') ?? '') ? q0.get('m')! : monthOf(today()));
+  useUrlSync({ v: view === 'list' ? 'list' : undefined, m: month !== monthOf(today()) ? month : undefined, w: start !== weekStart(today()) ? start : undefined }, ['d']);
   // ...and scroll to that day, outlined for a moment. After a short delay, so it lands after the
   // shell's own scroll to the top of a new screen (which runs after this component's effects).
   const [flash, setFlash] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     if (!changeId) return;
     const p = data.planned.find((x) => x.id === changeId);
     if (p && p.status !== 'completed') setChanging(p);
-    history.replaceState(null, '', `${location.pathname}#/calendar${focus ? `?d=${focus}` : ''}`);
+    replaceQuery({}, ['change']);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeId]);
   const setMsg = toast;

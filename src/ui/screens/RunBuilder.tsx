@@ -10,7 +10,7 @@ import { bandBpm, bandKeyOf, bandZoneWords, recoveryBand, stepBand } from '../..
 import { footLthr } from '../../engine/zones';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
-import { go } from '../router';
+import { go, goBack } from '../router';
 import { deleteWorkoutEverywhere } from '../planService';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
@@ -56,7 +56,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
   }
   function cancel() {
     if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
-    go('library');
+    goBack('library');
   }
 
   const steps = rows.map(toStep);
@@ -81,7 +81,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
     await db.workouts.put(w);
     const added = then === 'date' ? await scheduleWorkout(w, date, profile.basis) : undefined;
     notify(); toast({ ok: true, text: `Saved to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, date)}` : ''}` });
-    go(then === 'date' ? 'calendar' : 'library');
+    if (then === 'date') go('calendar'); else goBack('library');
   }
 
   return (

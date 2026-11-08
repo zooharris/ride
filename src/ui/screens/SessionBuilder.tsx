@@ -11,7 +11,7 @@ import { newId } from '../../engine/workout';
 import { estimateSessionTss } from '../../engine/sessions';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
-import { go } from '../router';
+import { go, goBack } from '../router';
 import { deleteWorkoutEverywhere } from '../planService';
 import { KIND_LABEL } from './Plan';
 import { PageHead } from '../PageHead';
@@ -45,7 +45,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   }
   function cancel() {
     if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
-    go('library');
+    goBack('library');
   }
   const walkSpec = { minutes, zoneLow: hrLow, zoneHigh: hrHigh, packKg: packLb ? packLb / 2.2 : undefined };
   const tss = estimateSessionTss({ kind, minutes, walk: kind === 'walk' ? walkSpec : undefined, effort: kind === 'strength' ? effort : undefined });
@@ -75,7 +75,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
     await db.workouts.put(w);
     const added = then === 'date' ? await scheduleWorkout(w, date, data.profile!.basis) : undefined;
     notify(); toast({ ok: true, text: `Saved to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, date)}` : ''}` });
-    go(then === 'date' ? 'calendar' : 'library');
+    if (then === 'date') go('calendar'); else goBack('library');
   }
 
   const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', hinge: 'Hinge', 'single-leg': 'Single leg', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };

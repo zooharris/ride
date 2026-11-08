@@ -1,7 +1,7 @@
 import { db } from '../data/db';
-import { useRoute } from './router';
+import { arrival, useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { syncDevices } from '../data/devicesync';
 import { autoSync, credentials, matchHistory, onHistoryMatched, onSyncRunning, syncRunning } from '../sync/syncService';
 import { fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
@@ -117,9 +117,20 @@ export function App() {
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); off(); offPulled(); };
   }, []);
-  // Every new screen starts at its top. Keyed on the path only, so a change of query inside a
-  // screen (the Calendar's ?d=) does not jump; a screen that wants a place scrolls there itself.
-  useEffect(() => { window.scrollTo(0, 0); }, [route.path]);
+  // A new screen starts at its top; a screen returned to (Back, or the browser's back or forward) is put
+  // back where it was left (8 Nov 2026). A change of query inside a screen (the Calendar's ?d=) does not
+  // jump; a screen that places itself (the Calendar's focused day, Progress's chart) scrolls after this.
+  const lastPath = useRef(route.path);
+  useEffect(() => {
+    const { nav, scroll } = arrival();
+    const moved = lastPath.current !== route.path;
+    lastPath.current = route.path;
+    if (scroll !== undefined) {
+      // The page may still be filling in: try again briefly until it is tall enough to reach the spot.
+      const put = (tries: number) => { window.scrollTo(0, scroll); if (Math.abs(window.scrollY - scroll) > 2 && tries > 0) setTimeout(() => put(tries - 1), 50); };
+      put(6);
+    } else if (moved && nav !== 'replace') window.scrollTo(0, 0);
+  }, [route.raw]);
   if (!data.loaded) return <Loading />;
   if (!data.profile) return <Onboarding />;
 
@@ -129,8 +140,10 @@ export function App() {
   if (root === 'play') return <><Player data={data} parts={route.parts} /><Toaster /></>;
   let screen;
   switch (root) {
-    case 'calendar': screen = <Calendar data={data} params={route.params} />; break;
-    case 'library': screen = <Library data={data} />; break;
+    // The list screens read their view (filters, tab, month) from the address when they open, so each
+    // address is its own screen: the sidebar's plain link opens it fresh, Back opens it as it was left.
+    case 'calendar': screen = <Calendar key={route.raw} data={data} params={route.params} />; break;
+    case 'library': screen = <Library key={route.raw} data={data} />; break;
     case 'workout': screen = <WorkoutScreen data={data} id={id} params={route.params} />; break;
     case 'build': {
       const copyId = route.params.get('copy') ?? undefined;
@@ -145,7 +158,7 @@ export function App() {
     }
     case 'plan': screen = id ? <PlanPage data={data} id={id} editing={route.parts[2] === 'edit'} /> : <Plan data={data} />; break;
     case 'progress': screen = <Progress data={data} params={route.params} />; break;
-    case 'rides': screen = <Rides data={data} id={id} />; break;
+    case 'rides': screen = <Rides key={route.raw} data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;

@@ -6,7 +6,7 @@ import { clock, newId, stepTargets, workoutStats } from '../../engine/workout';
 import { powerZone, ridePowerZones } from '../../engine/zones';
 import type { Family, Workout, WorkoutBlock, WorkoutStep } from '../../engine/types';
 import { db } from '../../data/db';
-import { go } from '../router';
+import { go, goBack } from '../router';
 import { deleteWorkoutEverywhere } from '../planService';
 import { today } from '../../engine/load';
 import { FAMILY_LABEL } from '../../library/workouts';
@@ -68,7 +68,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   }
   function cancel() {
     if (dirty && !saved && !confirm('Leave without saving? Your edits here will be lost.')) return;
-    go('library');
+    goBack('library');
   }
 
   const blocks = toBlocks(rows);
@@ -102,7 +102,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
     setSaved(w.id);
     toast({ ok: true, text: `Saved “${w.name}” to My Workouts.${added === 'already' ? ` ${alreadyText(w.name, today())}` : ''}` });
     if (then === 'today') go('today');
-    if (then === 'library') go('library');
+    if (then === 'library') goBack('library');
   }
 
   const pctField = (value: number | undefined, on: (v: number | undefined) => void, placeholder = '') => (

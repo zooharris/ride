@@ -11,7 +11,7 @@ import { newId } from '../engine/workout';
 import { hrVsNormal, minutesWords, readWords, type ActivityRead } from '../engine/reads';
 import { activityLine, driverWords, judgeDay, riderLine } from '../coach/claude';
 import { buildPacket, type PacketDay, type PacketGroup, type PacketInput, type PacketOption, type PacketSession } from '../coach/packet';
-import { ceilingsFrom, checkChanges, judgeSig, kindAllowed, toChange, type CheckContext, type CheckSession, type CheckWorkout, type Judgment, type ResolvedChange } from '../coach/judge';
+import { ceilingsFrom, checkChanges, judgeSig, kindAllowed, plainWords, toChange, type CheckContext, type CheckSession, type CheckWorkout, type Judgment, type ResolvedChange } from '../coach/judge';
 import { deleteEvent } from '../sync/intervals';
 import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, loadRatio, readinessToday, weekStart } from './derived';
@@ -299,7 +299,9 @@ async function ask(data: AppData, key: CoachConfig, sig: string, check?: Replan 
     await noteModelResult(true);
     const { ok, dropped } = checkChanges(reply.changes, inputs.check);
     if (dropped.length) console.info('[coach] changes set aside by the app\'s checks:', dropped);
-    const j: Judgment = { date: inputs.packet.date, sig, at: new Date().toISOString(), note: reply.note, assessment: reply.assessment, stance: reply.stance, changes: ok };
+    // The rider never sees a C or W ref: any that slipped into the prose becomes the session's own name.
+    const names = new Map<string, string>([...inputs.check.sessions, ...inputs.check.workouts].map((x) => [x.ref, x.name]));
+    const j: Judgment = { date: inputs.packet.date, sig, at: new Date().toISOString(), note: plainWords(reply.note, names), assessment: plainWords(reply.assessment, names), stance: reply.stance, changes: ok.map((c) => ({ ...c, why: plainWords(c.why, names) })) };
     await setSetting(JUDGMENT_KEY, j);
     listeners.forEach((l) => l());
     notify();

@@ -210,7 +210,8 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
   const [startDate, setStartDate] = useState(plan.start);
   const [preview, setPreview] = useState<{ plan: GeneratedPlan; changes: Change[] } | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyDoing] = useState<false | 'save' | 'preview'>(false);
+  const setBusy = (b: boolean, what: 'save' | 'preview' = 'save') => setBusyDoing(b ? what : false);
 
   // Any edit makes an earlier preview stale.
   useEffect(() => { setPreview(null); }, [goal, av, masters, away, endDate, startDate]);
@@ -218,33 +219,52 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
   const workouts = useMemo(() => new Map(data.mine.map((w) => [w.id, w])), [data.mine]);
   const mine = data.planned.filter((p) => !p.planId || p.planId === plan.id);
 
+  async function build() {
+    const built = await buildPlan(data, goal, av, masters, upcoming ? startDate : plan.start, goal.kind === 'event' ? undefined : endDate, away);
+    const changes = diffPlan(mine, workouts, built, undefined, { includeEdited: true });
+    return { built, changes };
+  }
+
   async function makePreview() {
-    setBusy(true);
+    setBusy(true, 'preview');
     try {
-      const built = await buildPlan(data, goal, av, masters, upcoming ? startDate : plan.start, goal.kind === 'event' ? undefined : endDate, away);
-      const changes = diffPlan(mine, workouts, built, undefined, { includeEdited: true });
+      const { built, changes } = await build();
       setPreview({ plan: built, changes });
       setTicked(new Set(changes.filter((c) => !c.userEdited).map(sig)));
     } finally { setBusy(false); }
   }
 
   const sig = (c: Change) => changeSig(c);
-  const onGarmin = preview ? preview.changes.filter((c) => ticked.has(sig(c)) && mine.some((p) => p.date === c.date && p.icuEventId && p.status !== 'completed' && findWorkout(data.mine, p.workoutId)?.kind === c.kind)).length : 0;
+  const garminCount = (changes: Change[]) => changes.filter((c) => mine.some((p) => p.date === c.date && p.icuEventId && p.status !== 'completed' && findWorkout(data.mine, p.workoutId)?.kind === c.kind)).length;
+  const onGarmin = preview ? garminCount(preview.changes.filter((c) => ticked.has(sig(c)))) : 0;
+
+  /** Save the settings and make the accepted changes; declined ones are turned down so the re-check does not bring them back. */
+  async function apply(built: GeneratedPlan, accepted: Change[], declined: Change[]) {
+    await applyPlan(data, built, goal, av, masters, new Set(accepted.flatMap(changeKeys)), { planId: plan.id, away });
+    // The settings are kept whatever was accepted, so tomorrow's re-check works from them.
+    const saved = (await getPlans()).find((p) => p.id === plan.id);
+    if (saved) await putPlan({ ...saved, goal, availability: av, masters, away, start: upcoming ? (built.weeks[0]?.sessions[0]?.date ?? startDate) : saved.start, goalDate: built.goalDate, projection: built.projection, requiredCtl: built.requiredCtl });
+    if (declined.length) await rejectChanges(declined);
+    setCurrentEquipment(av.equipment);   // the Library builds sessions for this equipment
+    const sent = garminCount(accepted);
+    toast({ ok: true, text: `${accepted.length ? `Plan saved; ${accepted.length} change${accepted.length === 1 ? '' : 's'} made on the calendar.` : 'Plan settings saved; the calendar is unchanged.'}${sent ? ` ${sent} changed session${sent === 1 ? ' was' : 's were'} on your Garmin: send the week again from the calendar.` : ''}` });
+    go(`plan/${plan.id}`);
+  }
+
+  /** Save straight away: the settings, and the changes the plan itself calls for. Sessions the rider added or changed by hand are left alone (the preview is where they can be ticked). */
+  async function saveNow() {
+    setBusy(true);
+    try {
+      const { built, changes } = await build();
+      await apply(built, changes.filter((c) => !c.userEdited), []);
+    } finally { setBusy(false); }
+  }
 
   async function save() {
     if (!preview) return;
     setBusy(true);
     try {
-      const accepted = preview.changes.filter((c) => ticked.has(sig(c)));
-      const declined = preview.changes.filter((c) => !ticked.has(sig(c)));
-      await applyPlan(data, preview.plan, goal, av, masters, new Set(accepted.flatMap(changeKeys)), { planId: plan.id, away });
-      // The settings are kept whatever was ticked, so tomorrow's re-check works from them.
-      const saved = (await getPlans()).find((p) => p.id === plan.id);
-      if (saved) await putPlan({ ...saved, goal, availability: av, masters, away, start: upcoming ? (preview.plan.weeks[0]?.sessions[0]?.date ?? startDate) : saved.start, goalDate: preview.plan.goalDate, projection: preview.plan.projection, requiredCtl: preview.plan.requiredCtl });
-      if (declined.length) await rejectChanges(declined);
-      setCurrentEquipment(av.equipment);   // the Library builds sessions for this equipment
-      toast({ ok: true, text: accepted.length ? `Plan saved; ${accepted.length} change${accepted.length === 1 ? '' : 's'} made on the calendar.` : 'Plan settings saved; the calendar is unchanged.' });
-      go(`plan/${plan.id}`);
+      await apply(preview.plan, preview.changes.filter((c) => ticked.has(sig(c))), preview.changes.filter((c) => !ticked.has(sig(c))));
     } finally { setBusy(false); }
   }
 
@@ -254,7 +274,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
   return (
     <div>
       <PageHead back={{ label: plan.name, href: `#/plan/${plan.id}` }} eyebrow="Edit plan" title={plan.name} />
-      <p class="muted small" style="margin-top:-4px">Change what you need, then Preview. Nothing on the calendar changes until you Save, and only sessions still to come can change: done sessions stay, and anything you added or changed by hand is offered, never replaced unasked.</p>
+      <p class="muted small" style="margin-top:-4px">Change what you need, then Save. Only sessions still to come can change: done sessions stay, and anything you added or changed by hand is never replaced unasked. Preview first if you want to see and choose each calendar change before it is made.</p>
 
       <section class="section">
         <h2 style="margin-bottom:12px">Goal and dates</h2>
@@ -276,7 +296,8 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
       </section>
 
       <div class="row" style="margin-top:20px;gap:8px">
-        <button class="btn" style="flex:1" onClick={makePreview} disabled={busy || av.hours.reduce((s, h) => s + (h || 0), 0) < 2}>{busy && !preview ? 'Working…' : 'Preview changes'}</button>
+        {!preview && <button class="btn primary" style="flex:1" onClick={saveNow} disabled={!!busy || av.hours.reduce((s, h) => s + (h || 0), 0) < 2}>{busy === 'save' ? 'Saving…' : 'Save'}</button>}
+        <button class="btn" style="flex:1" onClick={makePreview} disabled={!!busy || av.hours.reduce((s, h) => s + (h || 0), 0) < 2}>{busy === 'preview' ? 'Working…' : 'Preview changes'}</button>
         <a class="btn quiet" href={`#/plan/${plan.id}`}>Cancel</a>
       </div>
 
@@ -304,7 +325,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
             )}
             {onGarmin > 0 && <p class="msg small" style="margin-top:10px">{onGarmin} session{onGarmin === 1 ? ' is' : 's are'} already on your Garmin and will be replaced; send the week again from the calendar afterwards.</p>}
             <div class="row" style="gap:8px;margin-top:12px">
-              <button class="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : ticked.size ? `Save plan and make ${ticked.size} change${ticked.size === 1 ? '' : 's'}` : 'Save plan settings'}</button>
+              <button class="btn primary" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : ticked.size ? `Save plan and make ${ticked.size} change${ticked.size === 1 ? '' : 's'}` : 'Save plan settings'}</button>
             </div>
           </div>
         </section>

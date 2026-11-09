@@ -58,8 +58,8 @@ export interface ResolvedChange {
 export const JUDGE_SCHEMA = {
   type: 'object',
   properties: {
-    note: { type: 'string', description: "3 to 5 sentences to the rider about today, in the second person." },
-    assessment: { type: 'string', description: '2 to 4 sentences on where the rider is: recovery, how they have been performing, how the week is going.' },
+    note: { type: 'string', description: "3 to 5 sentences to the rider about today, in the second person. The rider reads this: plain words only, sessions named by day and name, never a C or W ref." },
+    assessment: { type: 'string', description: '2 to 4 sentences on where the rider is: recovery, how they have been performing, how the week is going. The rider reads this: never a C or W ref.' },
     stance: { type: 'string', enum: ['as planned', 'lighter', 'easy', 'rest'], description: 'What today should be.' },
     changes: {
       type: 'array',
@@ -72,7 +72,7 @@ export const JUDGE_SCHEMA = {
           session: { type: 'string', description: 'The calendar ref (C…) for replace, remove and move; empty for add.' },
           workout: { type: 'string', description: 'The Library ref (W…) for replace and add; empty otherwise.' },
           toDate: { type: 'string', description: 'YYYY-MM-DD for move; empty otherwise.' },
-          why: { type: 'string', description: 'One sentence naming the evidence.' },
+          why: { type: 'string', description: 'One sentence naming the evidence, in plain words the rider reads: never a C or W ref.' },
         },
         required: ['date', 'action', 'session', 'workout', 'toDate', 'why'],
         additionalProperties: false,
@@ -93,7 +93,7 @@ Judge from the evidence below what the rider needs today and over the next two w
 - How long an activity lasted against its plan is never evidence of fitness or fatigue: a ride may be cut short by weather or an interruption. Judge what happened while riding.
 - Prefer moving sessions within the week, so quality work is kept, over removing them. Replace with something lighter when today should be lighter; remove only when a session cannot be kept.
 - The rider's parameters (section 8) are fixed: hours each day, kinds that may or may never be scheduled, days away, equipment.
-- A workout you put in must be one of the Library refs in section 9, of a kind that day allows. Name calendar entries by their C ref.
+- A workout you put in must be one of the Library refs in section 9, of a kind that day allows. The C and W refs belong only in the "session" and "workout" fields; the rider never sees them. In "note", "assessment" and every "why", call a session by its day and name ("Monday's Elden Street Spin"), never by ref.
 - Read form and fatigue against this rider's own history in the packet, not against a fixed scale.
 - "note" speaks to today's calendar and agrees with your stance and changes. "assessment" is your view of where the rider is.
 - Do not invent numbers. Use the rider's name only exactly as given, or none.
@@ -118,6 +118,21 @@ export function readJudge(data: { content?: Array<{ type: string; text?: string 
     ...(c.toDate ? { toDate: String(c.toDate) } : {}), why: typeof c.why === 'string' ? c.why.trim() : '',
   })) : [];
   return { note, assessment: typeof v.assessment === 'string' ? v.assessment.trim() : '', stance, changes };
+}
+
+/**
+ * No cryptic messages anywhere in the app: the C and W refs are handles for the
+ * JSON fields, never words the rider reads. Should one still slip into the
+ * note, assessment or a change's reason, a parenthetical of nothing but refs
+ * ("(C2, C5)") is dropped, and a bare ref becomes the session's or workout's
+ * own name. An unknown ref is left as it is (it may be an ordinary word).
+ */
+export function plainWords(text: string, names: Map<string, string>): string {
+  return text
+    .replace(/\s*\((?:[CW]\d+)(?:\s*,\s*[CW]\d+)*\)/g, '')
+    .replace(/\b([CW]\d+)\b/g, (m) => names.get(m) ?? m)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 // ---- holding the lines -------------------------------------------------------

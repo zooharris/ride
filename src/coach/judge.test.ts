@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkChanges, judgeSig, readJudge, toChange, type CheckContext, type JudgedChange } from './judge';
+import { checkChanges, judgeSig, plainWords, readJudge, toChange, type CheckContext, type JudgedChange } from './judge';
 import { buildPacket, type PacketInput } from './packet';
 import type { Availability } from '../engine/planner';
 
@@ -85,6 +85,14 @@ describe('C: reading the reply', () => {
     expect('failed' in readJudge({ content: [{ type: 'text', text: 'not json' }] })).toBe(true);
     expect(readJudge({ content: [], stop_reason: 'max_tokens' })).toEqual({ failed: 'the reply was cut off before it finished' });
     expect('failed' in readJudge({ content: [{ type: 'text', text: '{"note":"","changes":[]}' }] })).toBe(true);
+  });
+  it('no cryptic refs reach the rider: a parenthetical of refs is dropped, a bare ref becomes the name', () => {
+    const names = new Map([['C1', 'Morning Mobility'], ['C2', 'Elden Street Spin'], ['C5', 'Elden Street Spin'], ['W3', 'Sugarland Run']]);
+    expect(plainWords('The only thing left is C1, the 12-minute mobility session.', names)).toBe('The only thing left is Morning Mobility, the 12-minute mobility session.');
+    expect(plainWords('The Monday and Wednesday Elden Street spins (C2, C5) recover time.', names)).toBe('The Monday and Wednesday Elden Street spins recover time.');
+    expect(plainWords('Ride W3 instead.', names)).toBe('Ride Sugarland Run instead.');
+    expect(plainWords('Vitamin C3 is not a ref we know; it stays.', names)).toBe('Vitamin C3 is not a ref we know; it stays.');
+    expect(plainWords('Plain words stay exactly as they are (even in brackets).', names)).toBe('Plain words stay exactly as they are (even in brackets).');
   });
 });
 

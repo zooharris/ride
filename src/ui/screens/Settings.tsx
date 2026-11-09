@@ -1,4 +1,5 @@
 import { PlayerSettings } from '../PlayerSettings';
+import { Fold } from '../Fold';
 import { useHasKey } from '../thresholdService';
 import { CoachFtp, CoachZones } from '../ThresholdAdvice';
 import { DAY_SHORT, dayOrder, setFirstDay, fmtDate } from '../derived';
@@ -58,6 +59,9 @@ export function Settings({ data }: { data: AppData }) {
   const [devices, setDevices] = useState<DeviceSyncState | null>(null);
   const setMsg = toast;
   const [busy, setBusy] = useState(false);
+  // One zone table at a time: Power, Heart rate (bike and foot) or Breathing. The other tabs stay mounted, so nothing typed is lost by switching.
+  const [zoneTab, setZoneTab] = useState<'power' | 'hr' | 'breath'>('power');
+  const pane = (t: typeof zoneTab) => `margin-top:12px${zoneTab === t ? '' : ';display:none'}`;
 
   useEffect(() => {
     getSetting<IntervalsCredentials | null>('intervals', null).then((c) => c && setCreds(c));
@@ -191,36 +195,6 @@ export function Settings({ data }: { data: AppData }) {
       <Appearance />
 
       <section class="section">
-        <h2>Intervals.icu</h2>
-        <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold heart rates, max heart rate and the zone tables are kept in step both ways: change them here and Save sends them to Intervals.icu; change them there and the next sync brings them here.</p>
-        <div class="form">
-          <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} /></div>
-          <div class="field"><label>API key</label><input type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>
-        </div>
-        <div class="row wrap" style="margin-top:12px">
-          <button class="btn" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Checking…' : 'Connect'}</button>
-          <button class="btn danger" onClick={disconnect}>Disconnect</button>
-          <button class="btn quiet" onClick={runChecks} disabled={testing || !creds.athleteId || !creds.apiKey} style="margin-left:auto">{testing ? 'Running checks…' : 'Run connection checks'}</button>
-        </div>
-        {checks.length > 0 && (
-          <div class="panel" style="margin-top:12px;padding:10px 14px">
-            <div class="row between"><b class="small">Connection checks</b><span class="faint small">{checks.filter((c) => c.ok).length} of {checks.length} passed{testing ? '…' : ''}</span></div>
-            <div class="stack" style="gap:6px;margin-top:8px">
-              {checks.map((c) => (
-                <div key={c.name} class="row" style="align-items:flex-start;gap:10px">
-                  <span class="tick" style={`width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;background:${c.ok ? 'var(--good)' : 'var(--bad)'};color:var(--on-color)`}>{c.ok ? '✓' : '!'}</span>
-                  <div class="small"><b>{c.name}</b><div class="muted" style="line-height:1.45">{c.detail}</div></div>
-                </div>
-              ))}
-            </div>
-            <p class="faint small" style="margin:10px 0 0">Every kind of call the app makes, tried for real. Writes are limited to a test note and a one-minute test session on 30 Dec 2099, both deleted again at once, and your backup.</p>
-          </div>
-        )}
-      </section>
-
-      <HistoryLoader />
-
-      <section class="section">
         <h2>You</h2>
         <div class="form">
           <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
@@ -246,38 +220,53 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Thresholds and zones</h2>
-        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same zones on the Garmin itself once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them. Threshold heart rate on foot is usually a few beats above the bike's, so runs and walks have their own.</p>
+        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same zones on the Garmin itself once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them.</p>
 
-        <div class="panel" style="margin-top:4px;border-left:4px solid var(--ride)">
-          <div class="row between wrap" style="align-items:baseline;gap:10px;margin-bottom:10px">
-            <h3 style="margin:0;font-size:17px">On the bike</h3>
-            <span class="muted small">Rides: FTP, threshold heart rate, max, and the power and heart-rate tables.</span>
+        <div class="seg" role="tablist" aria-label="Zone tables">
+          <button role="tab" aria-selected={zoneTab === 'power'} class={zoneTab === 'power' ? 'on' : ''} onClick={() => setZoneTab('power')}>Power</button>
+          <button role="tab" aria-selected={zoneTab === 'hr'} class={zoneTab === 'hr' ? 'on' : ''} onClick={() => setZoneTab('hr')}>Heart rate</button>
+          <button role="tab" aria-selected={zoneTab === 'breath'} class={zoneTab === 'breath' ? 'on' : ''} onClick={() => setZoneTab('breath')}>Breathing</button>
+        </div>
+
+        <div class="panel" style={pane('power')} role="tabpanel">
+          <div class="form">
+            <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} /></div>
           </div>
-        <div class="form">
-          <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} />
-</div>
-          <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
-          <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} />
-            {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
+          {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
+          <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
+            onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
+            onPcts={(v) => setP({ ...p, powerZoneMode: 'pct', powerZonePcts: v })} onAbs={(v) => setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: v })}
+            onStandard={() => setP({ ...p, powerZoneMode: undefined, powerZonePcts: undefined, powerZoneWatts: undefined })} />
+        </div>
+
+        <div class="panel" style={pane('hr')} role="tabpanel">
+          <div class="form">
+            <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
+            <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} />
+              {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
+            </div>
+          </div>
+          <ZoneEditor title="Heart-rate zones on the bike" unit="bpm" threshold={p.lthr} max={p.maxHr} zones={rideHrZones(p)} mode={p.hrZoneMode ?? (p.hrZoneTops ? 'abs' : 'pct')} custom={!!(p.hrZonePcts || p.hrZoneTops)}
+            onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
+            onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
+            onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
+          <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+            <b class="small">On foot</b>
+            <p class="muted small" style="margin:4px 0 10px">Runs and walks have their own numbers: threshold heart rate on foot is usually a few beats above the bike's.</p>
+            <div class="form">
+              <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={footThreshold(p)} onInput={(e) => upd('footLthr', Number((e.target as HTMLInputElement).value) || undefined)} />
+                {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
+              <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
+            </div>
+            <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
+              onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
+              onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
+              onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />
           </div>
         </div>
-        {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
-        <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
-          onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
-          onPcts={(v) => setP({ ...p, powerZoneMode: 'pct', powerZonePcts: v })} onAbs={(v) => setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: v })}
-          onStandard={() => setP({ ...p, powerZoneMode: undefined, powerZonePcts: undefined, powerZoneWatts: undefined })} />
-        <ZoneEditor title="Heart-rate zones" unit="bpm" threshold={p.lthr} max={p.maxHr} zones={rideHrZones(p)} mode={p.hrZoneMode ?? (p.hrZoneTops ? 'abs' : 'pct')} custom={!!(p.hrZonePcts || p.hrZoneTops)}
-          onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
-          onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
-          onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
-        {hasKey && <CoachZones profile={data.profile!} data={data} onChanged={() => void takeSaved()} onEditFirst={(pt, ht) => {
-          setP({ ...p, ...(pt ? { powerZoneMode: 'abs' as const, powerZoneWatts: pt } : {}), ...(ht ? { hrZoneMode: 'abs' as const, hrZoneTops: ht } : {}) });
-          toast({ ok: true, text: 'The suggested zones are in the tables above. Change any number, then press Save.' });
-        }} />}
 
-        <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
-          <b class="small">Breathing (with a breathing strap)</b>
-          <p class="muted small" style="margin:4px 0 10px">Your two breathing thresholds, in litres of air a minute. A Ramp Test ridden with the strap sets the second; your easy and steady rides with the strap find the first; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
+        <div class="panel" style={pane('breath')} role="tabpanel">
+          <p class="muted small" style="margin:0 0 10px">Your two breathing thresholds, in litres of air a minute, from a breathing strap. A Ramp Test ridden with the strap sets the second; your easy and steady rides with the strap find the first; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
           <div class="form">
             <div class="field"><label>First threshold, VT1 (L/min)</label><input type="number" step="0.1" value={p.vt1Ve ?? ''} onInput={(e) => setP({ ...p, vt1Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} /></div>
             <div class="field"><label>Second threshold, VT2 (L/min)</label><input type="number" step="0.1" value={p.vt2Ve ?? ''} onInput={(e) => setP({ ...p, vt2Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} />
@@ -287,23 +276,11 @@ export function Settings({ data }: { data: AppData }) {
           {p.vt2Ve ? <BreathEditor p={p} setP={setP} /> : <p class="faint small" style="margin:8px 0 0">The breathing zone table appears once the second threshold is set.</p>}
         </div>
 
-        </div>
-
-        <div class="panel" style="margin-top:16px;border-left:4px solid var(--walk)">
-          <div class="row between wrap" style="align-items:baseline;gap:10px;margin-bottom:10px">
-            <h3 style="margin:0;font-size:17px">On foot</h3>
-            <span class="muted small">Runs and walks: their own threshold heart rate, the run pace, and their own heart-rate table.</span>
-          </div>
-        <div class="form">
-          <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={footThreshold(p)} onInput={(e) => upd('footLthr', Number((e.target as HTMLInputElement).value) || undefined)} />
-            {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
-          <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
-        </div>
-        <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
-          onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
-          onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
-          onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />
-        </div>
+        {hasKey && <CoachZones profile={data.profile!} data={data} onChanged={() => void takeSaved()} onEditFirst={(pt, ht) => {
+          setP({ ...p, ...(pt ? { powerZoneMode: 'abs' as const, powerZoneWatts: pt } : {}), ...(ht ? { hrZoneMode: 'abs' as const, hrZoneTops: ht } : {}) });
+          setZoneTab(pt ? 'power' : 'hr');
+          toast({ ok: true, text: 'The suggested zones are in the Power and Heart rate tabs above. Change any number, then press Save.' });
+        }} />}
       </section>
 
       <section class="section">
@@ -338,10 +315,35 @@ export function Settings({ data }: { data: AppData }) {
           <p class="faint small" style="margin-top:6px">On: each morning, and whenever a new activity arrives or the calendar or your notes change, the coach looks at how you have been riding, your overnight numbers, your notes and your plan, and recommends changes only when the evidence calls for them, saying why beside each. Off: the app's own check of the day recommends changes instead, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
       </section>
 
-      <PlayerSettings />
+      <Fold title="Intervals.icu" summary={creds.apiKey && creds.athleteId ? (p.name ? `Connected as ${p.name}` : 'Connected') : 'Not connected yet'}>
+        <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold heart rates, max heart rate and the zone tables are kept in step both ways: change them here and Save sends them to Intervals.icu; change them there and the next sync brings them here.</p>
+        <div class="form">
+          <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} /></div>
+          <div class="field"><label>API key</label><input type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>
+        </div>
+        <div class="row wrap" style="margin-top:12px">
+          <button class="btn" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Checking…' : 'Connect'}</button>
+          <button class="btn danger" onClick={disconnect}>Disconnect</button>
+          <button class="btn quiet" onClick={runChecks} disabled={testing || !creds.athleteId || !creds.apiKey} style="margin-left:auto">{testing ? 'Running checks…' : 'Run connection checks'}</button>
+        </div>
+        {checks.length > 0 && (
+          <div class="panel" style="margin-top:12px;padding:10px 14px">
+            <div class="row between"><b class="small">Connection checks</b><span class="faint small">{checks.filter((c) => c.ok).length} of {checks.length} passed{testing ? '…' : ''}</span></div>
+            <div class="stack" style="gap:6px;margin-top:8px">
+              {checks.map((c) => (
+                <div key={c.name} class="row" style="align-items:flex-start;gap:10px">
+                  <span class="tick" style={`width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;background:${c.ok ? 'var(--good)' : 'var(--bad)'};color:var(--on-color)`}>{c.ok ? '✓' : '!'}</span>
+                  <div class="small"><b>{c.name}</b><div class="muted" style="line-height:1.45">{c.detail}</div></div>
+                </div>
+              ))}
+            </div>
+            <p class="faint small" style="margin:10px 0 0">Every kind of call the app makes, tried for real. Writes are limited to a test note and a one-minute test session on 30 Dec 2099, both deleted again at once, and your backup.</p>
+          </div>
+        )}
+      </Fold>
 
-      <section class="section">
-        <h2>Across your devices, and backup</h2>
+
+      <Fold title="Across your devices, and backup" summary={devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)">The last sync failed</span> : devices?.locked && !devices?.last ? <span style="color:var(--warn)">The note is encrypted and not unlocked here</span> : devices?.last ? `Last merged ${new Date(devices.last).toLocaleString()}` : 'Not merged with the note yet'}>
         <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. A new device picks everything up from the note on its first merge. Activities come back from Intervals.icu on their own.</p>
         <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
         <div class="row wrap">
@@ -353,7 +355,11 @@ export function Settings({ data }: { data: AppData }) {
           <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
           <label class="btn" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
         </div>
-      </section>
+      </Fold>
+
+      <HistoryLoader />
+
+      <PlayerSettings />
 
       <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · your data stays on your devices and in your Intervals.icu account</p>
       <UpdateCheck />
@@ -510,9 +516,10 @@ function HistoryLoader() {
   // Step 2b (30 Oct 2026): the one-time re-read of rides that keeps heart rate alongside power.
   const [reread, setReread] = useState<CurveProgress | null>(null);
   useEffect(() => watchPowerCurves((p) => setReread(p.rebuilding && p.total > 0 && p.done < p.total && !p.error ? p : null)), []);
+  const summary = busy ? `Loading… ${prog!.done} of ${prog!.total}`
+    : cov?.from ? `${cov.activities} activities, back to ${fmtDate(cov.from, { month: 'short', year: 'numeric' })}` : 'Nothing synced yet';
   return (
-    <section class="section">
-      <h2>History</h2>
+    <Fold title="History" summary={summary}>
       <p class="muted small" style="margin:4px 0 12px;max-width:70ch">The first sync brings the last 120 days; every sync after that brings the last two weeks. Load older history for the long ranges on Progress, a fuller power curve, and a fitness number built on your whole record. It only adds what this device does not have, so it is safe to run again, for example after importing older history into Intervals.icu. <b>Your other devices follow</b>: load history on one and the rest load back to the same date on their own the next time they open, so fitness, readiness and the plan's suggestions are the same everywhere.</p>
       <div class="panel">
         <p class="small" style="margin-bottom:10px">{cov?.from ? <>This device has <b>{cov.activities}</b> activities, back to <b>{fmtDate(cov.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>{cov.wellnessFrom ? <>, and wellness (sleep, HRV, resting heart rate) back to <b>{fmtDate(cov.wellnessFrom, { month: 'long', day: 'numeric', year: 'numeric' })}</b></> : ''}.</> : 'Nothing synced yet. Press Sync on Today first.'}</p>
@@ -528,7 +535,7 @@ function HistoryLoader() {
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. Its Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
       </div>
-    </section>
+    </Fold>
   );
 }
 

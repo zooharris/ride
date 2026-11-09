@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { Fold } from './Fold';
 import { getSetting, setSetting } from '../data/db';
 import { forget, removeSimulated, savedDevices, SIM_KEY, type SavedDevice } from '../player/hub';
 import { KIND_WORD } from '../player/sources';
@@ -29,8 +30,7 @@ export function PlayerSettings() {
   };
 
   return (
-    <section class="section">
-      <h2>Ride player</h2>
+    <Fold title="Ride player" summary={`${devices.length ? `${devices.length} device${devices.length === 1 ? '' : 's'} remembered` : 'No devices remembered yet'}${sim ? ' · practice mode on' : ''}`}>
       <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. It needs Chrome or Edge on a computer{bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}. Everything here belongs to this computer only.</p>
       <div class="panel">
         <b class="small">Your trainer and sensors on this computer</b>
@@ -59,6 +59,6 @@ export function PlayerSettings() {
       <div class="field" style="margin-top:14px"><label>Practice with a simulated trainer</label>
         <div class="seg"><button class={sim ? 'on' : ''} aria-pressed={sim} onClick={() => void setPractice(true)}>On</button><button class={!sim ? 'on' : ''} aria-pressed={!sim} onClick={() => void setPractice(false)}>Off</button></div>
         <p class="faint small" style="margin-top:6px">On: each device box on the ride screen also offers a simulated one (trainer, power meter, heart rate), so you can try the player without the bike. A simulated rider pedals for you.</p></div>
-    </section>
+    </Fold>
   );
 }

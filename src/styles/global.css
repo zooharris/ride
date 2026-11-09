@@ -169,6 +169,10 @@ p { margin: 0; }
 .wrap { flex-wrap: wrap; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* a folded section: the whole heading is the button, with the state on the right */
+.fold-head { display: flex; align-items: baseline; gap: 10px; width: 100%; background: transparent; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; letter-spacing: inherit; }
+.fold-head .chev { color: var(--ink-2); font-size: 12px; flex: 0 0 auto; }
+.fold-head .fold-sum { margin-left: auto; font-weight: 400; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 .panel.accent { border-color: color-mix(in srgb, var(--today) 60%, var(--line)); }
 .hr { height: 1px; background: var(--line); margin: 16px 0; }

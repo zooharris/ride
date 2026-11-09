@@ -93,6 +93,24 @@ export function Logo({ height = 26, tag, mono = false }: { height?: number; tag?
   );
 }
 
+/**
+ * The sidebar's stacked lockup (option C "Framed", chosen 8 Nov 2026): the
+ * rider centered above the wordmark, "CYCLING" set between two hairlines
+ * beneath. Built as three pieces in a flex column (styles: .logo-framed in
+ * global.css); `width` is the wordmark's width, which sets the whole block's.
+ */
+export function FramedLogo({ width = 160 }: { width?: number }) {
+  const riderH = Math.round(width * 0.29);
+  const tagW = Math.round(width * 0.35);
+  return (
+    <div class="logo-framed" role="img" aria-label={APP_NAME} style={{ width }}>
+      <svg viewBox="99 14 232 120" width={(riderH * 232) / 120} height={riderH} aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}><Rider c={C} thick={2.2} /></svg>
+      <svg viewBox={`0 -810 ${WORD_W} 1042`} width={width} height={(width * 1042) / WORD_W} aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}><Word c={C} /></svg>
+      <div class="logo-framed-tag"><svg viewBox={`0 -712 ${TAG_BELOW.w} 724`} width={tagW} height={(tagW * 724) / TAG_BELOW.w} aria-hidden="true" style={{ display: 'block' }}><path d={TAG_BELOW.d} fill={C.tag} /></svg></div>
+    </div>
+  );
+}
+
 // The stacked lockup (as antogo-logo-stacked-tagline.svg, without the tagline,
 // which is set as text beneath): the rider above, the wordmark, "CYCLING".
 const ST_SC = 8.7, ST_MX = WORD_W * 0.17, ST_TOP = -880 - 118 * ST_SC + 40, ST_TAG = 0.21;

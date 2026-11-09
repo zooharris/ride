@@ -29,7 +29,7 @@ import { Player } from './screens/Player';
 import { sendWaitingRides, tidyRecordings } from '../player/rides';
 import { watchGarminRule } from './garminWatch';
 import { Icon } from './icons';
-import { Logo } from './Brand';
+import { FramedLogo, Logo } from './Brand';
 import { toast, Toaster } from './Toast';
 import { UpdateBanner } from './UpdateBanner';
 import { Skeleton } from './PageHead';
@@ -168,7 +168,7 @@ export function App() {
   return (
     <div class="shell">
       <nav class="nav">
-        <div class="brand"><Logo height={54} tag="below" /></div>
+        <div class="brand"><FramedLogo width={160} /></div>
         {TABS.map((t) => [
           <a key={t.path} href={`#/${t.path}`} aria-current={active === t.path ? 'page' : undefined} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>,
           'groupEnd' in t && t.groupEnd ? <div key={`${t.path}-sep`} class="nav-sep" /> : null,

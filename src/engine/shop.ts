@@ -56,6 +56,8 @@ export interface ShopContext {
   requiredLongest: number;
   /** Quality families held from the calendar for this week (a re-check that keeps them). */
   heldFamilies?: Family[];
+  /** Re-checking: Library ids the calendar already has this week; preferred over an equally good alternative (9 Nov 2026). */
+  onCalendar?: Set<string>;
 }
 
 /** What the Library could not supply, for the sweep. Never shown to the rider. */
@@ -115,6 +117,8 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext, fi
   const variety = (w: Workout) => {
     const id = w.libraryId ?? w.id;
     if (usedIds.has(id)) return 40;
+    // Already on the calendar this week: keep it unless something better is genuinely called for.
+    if (ctx.onCalendar?.has(id)) return -6;
     const ago = ctx.recent.get(id);
     return ago == null ? 0 : ago <= 1 ? 12 : ago === 2 ? 7 : ago === 3 ? 3 : 0;
   };

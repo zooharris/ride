@@ -1484,3 +1484,4 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .star-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .star-btn.on { color: var(--logo-orange); }
 .wcard .tag { white-space: nowrap; }
+.rd-cue-own { font-weight: 600; color: var(--ink); max-width: 30ch; margin-inline: auto; }

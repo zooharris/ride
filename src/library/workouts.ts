@@ -4,6 +4,7 @@ import { OUTDOOR } from './outdoor';
 import { INDOOR } from './indoor';
 import { RIDE_NAMES } from './names';
 import { withTags } from './tags';
+import { BATCH1 } from './batch1';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -211,10 +212,10 @@ const CORE: Workout[] = [
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */
-export const LIBRARY: Workout[] = [...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
+export const LIBRARY: Workout[] = [...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
   return withTags(place ? { ...w, name: place, subtitle: w.name } : w);
-});
+}), ...BATCH1];
 
 export function libraryById(id: string): Workout | undefined {
   return LIBRARY.find((w) => w.id === id);

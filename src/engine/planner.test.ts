@@ -369,7 +369,8 @@ describe('re-checking a plan keeps its layout', () => {
     const original = generatePlan(req({ goal: { kind: 'weight', weeks: 12 } }));
     const layout = original.weeks.map((w) => ({ start: w.start, phase: w.phase }));
     const later = addDays(today, 2);
-    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout, ...pastOf(original, later) }));
+    const onCalendar = original.weeks.flatMap((w) => w.sessions).filter((x) => x.date >= later).map((x) => ({ date: x.date, id: x.workout.libraryId ?? x.workout.id }));
+    const again = generatePlan(req({ goal: { kind: 'weight', weeks: 12 }, start: layout[0].start, notBefore: later, layout, ...pastOf(original, later), onCalendar }));
     const from = later;
     const name = (p: typeof original) => new Map(p.weeks.flatMap((w) => w.sessions).filter((x) => x.date >= from).map((x) => [`${x.date}|${x.kind}`, x.workout.name]));
     const a = name(original), b = name(again);

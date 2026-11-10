@@ -201,7 +201,7 @@ export async function buildPlan(data: AppData, goal: Goal, availability: Availab
       .map((r) => ({ date: r.date, tss: r.tss ?? 0, seconds: r.seconds, intensity: rideIntensity(r, profile.lthr, rideLadders(profile)), kind: r.sport }));
     // The plan's sessions from its first day until today stand as they are (the steady re-check, 30 Oct 2026).
     const planStart = startDate && startDate < t ? startDate : undefined;
-    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality, keepBudgets, recentPicks: recentPicks(data, t),
+    return generatePlan({ start: layout[0].start, notBefore: t, goal, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, layout, done, ownWorkouts: ownWorkouts(data.mine), keepQuality, keepBudgets, recentPicks: recentPicks(data, t), onCalendar: upcomingPlanIds(data, t),
       planStart: startDate, pastSessions: planStart ? pastPlanSessions(data, planStart, t) : [] });
   }
   return generatePlan({ start, notBefore, goal: g, availability, basis: profile.basis, masters, profile, assessment, longRideKmh, away, ownWorkouts: ownWorkouts(data.mine), recentPicks: recentPicks(data, notBefore) });
@@ -220,6 +220,17 @@ function pastPlanSessions(data: AppData, from: string, before: string): PlannedS
     out.push({ date: p.date, kind: w.kind, type: type as PlannedSession['type'], workout: w, seconds: Math.round(c.minutes * 60), tss: Math.round(c.tss), reason: p.reason ?? '' });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** The plan's sessions still to come on the calendar, as Library ids, so a re-check keeps them where nothing has changed. */
+function upcomingPlanIds(data: AppData, from: string): Array<{ date: string; id: string }> {
+  const out: Array<{ date: string; id: string }> = [];
+  for (const p of data.planned) {
+    if (!p.planId || p.date < from || p.status === 'completed') continue;
+    const w = findWorkout(data.mine, p.workoutId);
+    if (w) out.push({ date: p.date, id: w.libraryId ?? w.id });
+  }
+  return out;
 }
 
 /** What was on the calendar in the three weeks before this week, as Library ids, so the plan does not repeat it straight away. */

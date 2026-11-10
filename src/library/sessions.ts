@@ -154,5 +154,5 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   run('lib-run-fartlek-35', generateRun({ kind: 'fartlek', minutes: 35, where: runWhere, reason: 'Speed play by feel: eight one-minute pickups with two easy minutes after each; the watch holds the band, you pick the stretches of trail.' }));
   run('lib-run-progression-40', generateRun({ kind: 'progression', minutes: 40, where: runWhere, reason: 'A run that finishes faster than it starts, the way a race does: easy, steady, then ten strong minutes.' }));
   run('lib-run-walk-30', generateRun({ kind: 'run-walk', minutes: 30, where: runWhere, reason: 'For a cyclist starting to run: ten two-minute runs with a minute of walking after each; the tendons and feet get the impact in doses.' }));
-  return out.map(withTags);
+  return out.map((w) => withTags(w));
 }

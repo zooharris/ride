@@ -12,6 +12,7 @@
  *   - events: POST /athlete/{id}/events with category WORKOUT and the workout
  *     text in `description`; Intervals.icu pushes it to Garmin Connect.
  */
+import { outdoorVersion } from '../library/tags';
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
 import { defaultHrZoneTops, defaultZonePcts, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, rideLadders, ridePowerZones, validTops } from '../engine/zones';
@@ -415,7 +416,8 @@ export async function sendWorkout(c: IntervalsCredentials, workout: Workout, dat
   const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
     : workout.kind === 'run' ? runEvent(workout, date, profile)
     : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)
-    : rideEvent(workout, date, basis, profile);
+    // A ride the Library rates adjusted for outdoors goes to the bike computer in its outdoor version (9 Nov 2026).
+    : rideEvent(outdoorVersion(workout).workout, date, basis, profile);
   const ev = await call<{ id: number }>(c, `/athlete/${c.athleteId}/events`, { method: 'POST', body: JSON.stringify(body) });
   return ev.id;
 }

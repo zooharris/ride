@@ -90,6 +90,12 @@ export interface PlanRequest {
   /** Library workouts on the calendar before the plan's first rebuilt day, for variety: the plan avoids repeating them for three weeks. */
   recentPicks?: Array<{ date: string; id: string }>;
   /**
+   * Re-checking: the plan's sessions already on the calendar from the first rebuilt day on, as Library ids (9 Nov 2026).
+   * Where nothing has changed, the shopper keeps them rather than trading one equally good workout for another, so a
+   * bigger Library does not make the plan shuffle itself every morning.
+   */
+  onCalendar?: Array<{ date: string; id: string }>;
+  /**
    * Re-checking (30 Oct 2026, the steady re-check): the plan's first day as placed, and its sessions on the calendar from
    * then until today. Days of the week under way before the plan's first day are gone, as they were when it was placed;
    * days from then until today keep what the calendar has on them, which counts toward the week. A test among them (or
@@ -286,7 +292,8 @@ export function generatePlan(req: PlanRequest): Plan {
     }
     const held = req.keepQuality && !scoresMoved ? req.keepQuality.byWeek[weekStart]?.filter((q) => q !== 'test') as Family[] | undefined : undefined;
     const fixedSessions = refit ? (req.pastSessions ?? []).filter((x) => x.date >= weekStart && x.date < req.notBefore! && !gone(x.date)) : [];
-    const shop = shopWeek(need, slots, { ...ctxBase, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined }, refit ? { before: req.notBefore!, sessions: fixedSessions } : undefined);
+    const keep = new Set((req.onCalendar ?? []).filter((x) => x.date >= weekStart && x.date < addDays(weekStart, 7)).map((x) => x.id));
+    const shop = shopWeek(need, slots, { ...ctxBase, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined, onCalendar: keep.size ? keep : undefined }, refit ? { before: req.notBefore!, sessions: fixedSessions } : undefined);
     let sessions = refit ? [...fixedSessions, ...shop.sessions] : shop.sessions;
     if (sessions.some((x) => x.type === 'test' || x.workout.family === 'test')) testPending = false;
     if (need.test && sessions.some((x) => x.type === 'test') && !saidTest) { saidTest = true; decisions.push(`A test ${i === 0 ? 'in week 1' : 'in the first full week'} because ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)} Later tests are added only when your rides suggest the number has moved.`); }

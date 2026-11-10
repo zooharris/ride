@@ -78,6 +78,13 @@ export interface WorkoutStep {
   noFloor?: boolean;
   label?: string;
   cadence?: number;
+  /**
+   * Lines the ride player shows during this step (9 Nov 2026, "the Library grows up", Part C). `at` is
+   * seconds into the step, or before its end when negative; each line stays up until the next one or
+   * the step's end. `rep` limits a line in a repeated set to one repetition ('last' for the final one).
+   * Not sent to the Garmin, which shows the step's label as it always has.
+   */
+  cues?: Array<{ at: number; text: string; rep?: number | 'last' }>;
 }
 
 export interface WorkoutRepeat {

@@ -16,6 +16,9 @@ export interface TimelineStep {
   name: string;
   /** "Set 2 of 3" when the step is part of a repeated set. */
   setNote?: string;
+  /** The repetition this step belongs to in a repeated set (1-based) and how many there are. */
+  rep?: number;
+  reps?: number;
   zone: number;             // power zone 1..7, for colour
   /** Target as a share of threshold: low and high (equal for a single value). */
   low: number;
@@ -68,6 +71,7 @@ function plainTimeline(workout: Workout, profile: Profile): TimelineStep[] {
     const s: TimelineStep = {
       index, intensity: step.intensity, start: t, end: t + step.seconds, seconds: step.seconds, name,
       setNote: set && set.times > 1 ? `set ${set.rep} of ${set.times}` : undefined,
+      rep: set?.rep, reps: set?.times,
       zone, low, high, noFloor: !!step.noFloor, cadence: step.cadence,
       work: step.intensity >= 0.75 && !EASY.test(name),
       step,
@@ -177,4 +181,20 @@ export function rampView(tl: TimelineStep[], at: number): TimelineStep[] {
   const cur = stepAt(tl, at);
   const upTo = Math.max(cur?.index ?? 0, 1) + 3;
   return tl.filter((s) => !s.rampOpen && s.index <= upTo);
+}
+
+/**
+ * The ride's own line for this moment of a step (9 Nov 2026): the latest of the step's cues that has
+ * come up, kept until the next one or the step's end. Undefined when the step has none yet.
+ */
+export function cueAt(step: TimelineStep, secondsIntoStep: number): string | undefined {
+  const cues = step.step.cues;
+  if (!cues?.length) return undefined;
+  let best: { t: number; text: string } | undefined;
+  for (const c of cues) {
+    if (c.rep === 'last' ? step.rep !== step.reps : c.rep != null && c.rep !== step.rep) continue;
+    const t = c.at >= 0 ? c.at : step.seconds + c.at;
+    if (t <= secondsIntoStep && (!best || t >= best.t)) best = { t, text: c.text };
+  }
+  return best?.text;
 }

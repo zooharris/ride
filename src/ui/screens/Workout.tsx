@@ -8,7 +8,7 @@ import { clock, renderIntervalsText, workoutStats } from '../../engine/workout';
 import { addDays, today } from '../../engine/load';
 import { go, goBack, replaceRoute } from '../router';
 import { BackLink } from '../BackLink';
-import type { Basis, PlannedWorkout, Ride } from '../../engine/types';
+import type { Basis, PlannedWorkout, Ride, Workout } from '../../engine/types';
 import { fmtDate } from '../derived';
 import { SessionLog } from '../SessionLog';
 import { type HrProfile } from '../../sync/intervals';
@@ -23,7 +23,8 @@ import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { Star } from '../Star';
-import { PURPOSE_LABEL, tagsOf } from '../../library/tags';
+import { outdoorVersion, PURPOSE_LABEL, tagsOf } from '../../library/tags';
+import { LIBRARY } from '../../library/workouts';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
 import { ExercisePictures } from '../ExercisePictures';
@@ -82,6 +83,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, touch: true }} />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
+      <OutdoorNote w={w} />
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
         {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
@@ -123,7 +125,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
-        {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(w, basis)}</pre>}
+        {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(outdoorVersion(w).workout, basis)}</pre>}
       </section>}
       {changeSheet}
     </div>
@@ -265,4 +267,21 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       {changeSheet}
     </div>
   );
+}
+
+/**
+ * How the ride fares on a bike computer outdoors (9 Nov 2026, Part C): what the Garmin copy softens, or,
+ * for a ride with no honest outdoor version, the nearest Library ride of the same purpose that rides well outdoors.
+ */
+function OutdoorNote({ w }: { w: Workout }) {
+  const t = tagsOf(w);
+  if (w.trainerOnly) return null;
+  if (t.outdoor === 'adjustable') {
+    const { note } = outdoorVersion(w);
+    return note ? <p class="faint small" style="margin-top:6px"><b>On the Garmin:</b> {note.replace(/^Adjusted for riding outdoors: /, '').replace(/^./, (c) => c.toUpperCase())} The ride player on the trainer keeps the steps exactly as written.</p> : null;
+  }
+  if (t.outdoor !== 'indoor') return null;
+  const alt = LIBRARY.filter((x) => x.id !== w.id && tagsOf(x).purpose === t.purpose && tagsOf(x).outdoor === 'well' && w.bases.some((b) => x.bases.includes(b)))
+    .sort((a, b) => Math.abs(tagsOf(a).minutes - t.minutes) - Math.abs(tagsOf(b).minutes - t.minutes))[0];
+  return <p class="faint small" style="margin-top:6px"><b>Best on the trainer:</b> its quick changes can't be followed on an open road.{alt ? <> For a road ride, <a href={`#/workout/${alt.id}?from=library`}>{alt.name}</a> ({alt.subtitle ?? PURPOSE_LABEL[t.purpose]}) does a similar job.</> : null}</p>;
 }

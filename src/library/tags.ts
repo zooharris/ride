@@ -1,4 +1,4 @@
-import type { Workout, WorkoutStep } from '../engine/types';
+import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 import { workoutStats } from '../engine/workout';
 
 /**
@@ -87,7 +87,7 @@ function flatSteps(w: Workout): WorkoutStep[] {
   return out;
 }
 
-/** The outdoor rule, from the steps alone. */
+/** The outdoor rule, from the steps alone: indoors only for fast on/off work; otherwise adjusted when the outdoor version changes anything. */
 export function outdoorRating(w: Workout): OutdoorRating {
   if (w.trainerOnly) return 'indoor';
   const s = flatSteps(w);
@@ -97,16 +97,83 @@ export function outdoorRating(w: Workout): OutdoorRating {
     run = s[i].seconds < 60 ? run + 1 : 0;
     if (run >= 8 && s.slice(i - 7, i + 1).some((x) => x.intensity >= WORK)) return 'indoor';
   }
-  // A target held for three minutes or more with no range: a single number of watts is hard to keep on an
-  // open road. (A one-minute pickup at a single number is ridden by feel anywhere.)
-  const tight = s.some((x) => x.intensity >= WORK && x.intensity < ALL_OUT && x.seconds >= 180 && !x.intensityHigh && !x.noFloor);
-  // A cluster: three or more steps in a row of two minutes or less, with work among them.
-  let cluster = false;
-  for (let i = 0; i + 2 < s.length && !cluster; i++) {
-    const three = s.slice(i, i + 3);
-    cluster = three.every((x) => x.seconds <= 120) && three.some((x) => x.intensity >= WORK);
+  // Too busy to follow on a road: more than eight changes of target inside any ten minutes of hard riding (a criterium simulation).
+  let t = 0;
+  const starts = s.map((x) => { const at = t; t += x.seconds; return at; });
+  for (let i = 0; i < s.length; i++) {
+    let j = i;
+    while (j + 1 < s.length && starts[j + 1] < starts[i] + 600) j++;
+    if (j - i > 8 && s.slice(i, j + 1).some((x) => x.intensity >= WORK)) return 'indoor';
   }
-  return tight || cluster ? 'adjustable' : 'well';
+  return adjustBlocks(w.blocks).changes.length ? 'adjustable' : 'well';
+}
+
+/** Narrower than about 4% of FTP (a single number, in practice) a held target is too tight for an open road; an outdoor band is 6% wide. */
+const TIGHT = 0.035;
+const OUTDOOR_BAND = 0.06;
+/** Efforts shorter than this are ridden by feel anywhere (a pickup, a surge): left alone. */
+const HELD = 120;
+const isWork = (x: WorkoutStep) => x.intensity >= WORK && x.intensity < ALL_OUT;
+
+/**
+ * The outdoor version of a ride's steps (9 Nov 2026, Part C): back-to-back efforts of two minutes or
+ * less at different targets (over-unders, pyramids) become one steady effort at their average, and a
+ * target held for two minutes or more whose range is narrower than about 4% of FTP is widened to 6%,
+ * centred on the same effort. Sprints, surges, recoveries and everything else are left as they are.
+ * `changes` says, in plain words, what was softened (nothing: the ride needs no adjusting).
+ */
+function adjustBlocks(blocks: WorkoutBlock[]): { blocks: WorkoutBlock[]; changes: string[] } {
+  let merged = 0, widened = 0;
+  const mergeRun = (steps: WorkoutStep[]): WorkoutStep[] => {
+    const out: WorkoutStep[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      let j = i;
+      while (j < steps.length && isWork(steps[j]) && steps[j].seconds <= HELD) j++;
+      const group = steps.slice(i, j);
+      if (group.length >= 2 && new Set(group.map((x) => x.intensity)).size > 1) {
+        const secs = group.reduce((a, x) => a + x.seconds, 0);
+        const avg = (f: (x: WorkoutStep) => number) => Math.round(group.reduce((a, x) => a + f(x) * x.seconds, 0) / secs * 1000) / 1000;
+        out.push({ kind: 'step', seconds: secs, intensity: avg((x) => x.intensity), intensityHigh: avg((x) => x.intensityHigh ?? x.intensity), label: `${group[0].label ?? 'Effort'}, ridden steady` });
+        merged++;
+        i = j - 1;
+      } else out.push(steps[i]);
+    }
+    return out;
+  };
+  const widen = (x: WorkoutStep): WorkoutStep => {
+    if (!isWork(x) || x.noFloor || x.seconds < HELD) return x;
+    const hi = x.intensityHigh ?? x.intensity;
+    if (hi - x.intensity >= TIGHT) return x;
+    const mid = (x.intensity + hi) / 2;
+    widened++;
+    return { ...x, intensity: Math.round((mid - OUTDOOR_BAND / 2) * 1000) / 1000, intensityHigh: Math.round((mid + OUTDOOR_BAND / 2) * 1000) / 1000 };
+  };
+  // Runs of plain steps at the top level are merged together; a repeated set is merged within itself.
+  const out: WorkoutBlock[] = [];
+  let pending: WorkoutStep[] = [];
+  const flush = () => { out.push(...mergeRun(pending).map(widen)); pending = []; };
+  for (const b of blocks) {
+    if (b.kind === 'step') { pending.push(b); continue; }
+    flush();
+    out.push({ ...b, steps: mergeRun(b.steps).map(widen) });
+  }
+  flush();
+  const changes: string[] = [];
+  if (merged) changes.push('quick back-and-forth changes of target are ridden as steady efforts at their average');
+  if (widened) changes.push('held targets get a wider range (6% of FTP) around the same effort');
+  return { blocks: out, changes };
+}
+
+/**
+ * The ride as it goes to a bike computer for an open road: unchanged unless it is rated adjusted for
+ * outdoors, then softened as above. `note` is one plain sentence for the rider; absent when nothing changed.
+ */
+export function outdoorVersion(w: Workout): { workout: Workout; note?: string } {
+  if (w.kind !== 'ride' || tagsOf(w).outdoor !== 'adjustable') return { workout: w };
+  const { blocks, changes } = adjustBlocks(w.blocks);
+  if (!changes.length) return { workout: w };
+  const said = changes.join(', and ');
+  return { workout: { ...w, blocks }, note: `Adjusted for riding outdoors: ${said}.` };
 }
 
 function rideIntensity(w: Workout, purpose: Purpose): Intensity {
@@ -115,15 +182,16 @@ function rideIntensity(w: Workout, purpose: Purpose): Intensity {
   return atLeast(byIf, PURPOSE_FLOOR[purpose]);
 }
 
-function compute(w: Workout): WorkoutTags {
+function compute(w: Workout, given: Partial<WorkoutTags> = {}): WorkoutTags {
   if (w.kind === 'ride') {
-    const o = OVERRIDES[w.id] ?? {};
+    const o = { ...(OVERRIDES[w.id] ?? {}), ...given };
     const purpose = o.purpose ?? RIDE_PURPOSE[w.family];
     return {
       purpose,
       minutes: Math.round(workoutStats(w.blocks).seconds / 60),
       intensity: o.intensity ?? rideIntensity(w, purpose),
       outdoor: o.outdoor ?? outdoorRating(w),
+      ...(o.series ? { series: o.series } : {}),
     };
   }
   const minutes = Math.round(w.walk?.minutes ?? w.minutes ?? 0);
@@ -158,7 +226,11 @@ export function tagsOf(w: Workout): WorkoutTags {
   return cache.get(key)!;
 }
 
-/** The workout with its tags set as data (the Library's own workouts are assembled through this). */
-export function withTags(w: Workout): Workout {
-  return w.tags ? w : { ...w, tags: compute(w) };
+/**
+ * The workout with its tags set as data (the Library's own workouts are assembled through this). `given`
+ * is what a new workout states about itself (its purpose when the steps can't say, its family and rung);
+ * the rest is worked out from its content.
+ */
+export function withTags(w: Workout, given?: Partial<WorkoutTags>): Workout {
+  return w.tags && !given ? w : { ...w, tags: compute(w, given) };
 }

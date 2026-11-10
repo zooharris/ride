@@ -11,7 +11,7 @@ import { go } from '../router';
 import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
-import { hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
+import { cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { CUE_WORDS } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
 import { rampResult, testResultKey, twentyMinResult, withActions, type TestResult } from '../../player/tests';
@@ -450,6 +450,7 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
         </div>
       </div>
       {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
+        : cueAt(step, done) ? <p class="rd-cue rd-cue-own">{cueAt(step, done)}</p>
         : step.cadence ? <p class="rd-cue">Hold about {step.cadence} rpm.</p> : <p class="rd-cue">{step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
       <div class="rd-grow" />
       <div class="rd-next">

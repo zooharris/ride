@@ -251,7 +251,7 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
             <div class="rd-band-ok" style={`left:${pos(band.low || lo - span)}%;width:${Math.max(2, pos(band.high) - pos(band.low || lo - span))}%`} />
             {mb != null && <div class="rd-band-mark" style={`left:${pos(mb)}%`} />}
           </div>
-          <div class="rd-band-words"><span>Too easy</span><span>{band && mb != null ? zoneWords(mb, band) : ''}</span><span>Too hard</span></div>
+          <div class="rd-band-words"><span>Too easy</span><span>{band && mb != null ? zoneWords(mb, band, !adjusting && ride.cueState.closing) : ''}</span><span>Too hard</span></div>
         </>
       ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
       {/* One message slot (10 Nov 2026): an instruction, the trainer's account of itself, or nothing; its space is always kept, so nothing below moves. */}

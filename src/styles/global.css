@@ -1115,8 +1115,8 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 @media (max-height: 760px) {
   .rd-next > div + div { display: none; }
   .rd-ring-text span.small { display: none; }
-  .rd-big { font-size: clamp(64px, 13vh, 176px); }
-  .rd-band-words { display: none; }
+  .rd-big { font-size: clamp(64px, 11.5vh, 176px); }
+  .rd-band-words { margin-top: 0; }
   .rd-target { margin-top: 4px; }
   .rd-band { margin-top: 6px; }
 }

@@ -199,7 +199,7 @@ function second(now: number) {
   const byHr = a.setup.basis === 'hr';
   const step = a.engine.step;
   // A new step starts its label and cue afresh, so a target change is not met with a stale verdict.
-  if (step && step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; a.cueState = { lastTone: a.cueState.lastTone }; a.cue = undefined; }
+  if (step && step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; a.cueState = { lastTone: a.cueState.lastTone, hist: a.cueState.hist }; a.cue = undefined; }
   if (!byHr && a.live.watts != null && a.engine.phase === 'riding') {
     a.markerWatts = ewma(a.markerWatts, a.live.watts);
     if (step) {

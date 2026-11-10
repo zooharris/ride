@@ -54,7 +54,7 @@ describe('where, when the rider hasn’t chosen', () => {
   });
   it("with no plan, the ride's own setting: written for indoors gives trainer, anything else outdoors", () => {
     expect(defaultWhere(entry('2026-11-17', { planId: undefined }), overUnder, [])).toBe('outdoor');
-    expect(defaultWhere(entry('2026-11-17', { planId: undefined }), { setting: 'indoor' }, [])).toBe('trainer');
+    expect(defaultWhere(entry('2026-11-17', { planId: undefined }), { setting: 'indoor', source: 'library' }, [])).toBe('trainer');
   });
   it("the rider's choice wins over the plan", () => {
     expect(whereFor(entry('2026-11-14', { where: 'trainer' }), overUnder, [plan])).toBe('trainer');

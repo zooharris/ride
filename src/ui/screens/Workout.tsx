@@ -42,10 +42,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const plannedEntry = !w ? undefined : params.get('date')
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
-  // Power or heart rate (10 Nov 2026): a calendar entry's own choice, else the rider's default; switching it on an
-  // entry's page changes the entry, so the player and the Garmin follow what the page shows.
-  const [basis, setBasisHere] = useState<Basis>(plannedEntry && w?.bases.includes(plannedEntry.basis) ? plannedEntry.basis : w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
-  const setBasis = (b: Basis) => { setBasisHere(b); if (plannedEntry && plannedEntry.status !== 'completed' && plannedEntry.basis !== b) void setEntryBasis(plannedEntry.id, b); };
+  // Power or heart rate (10 Nov 2026 review, B1): the switch is a view. It starts on the calendar entry's own setting,
+  // else the rider's default, and the player opens with whatever it shows; it never changes anything stored.
+  const [basis, setBasis] = useState<Basis>(plannedEntry && w?.bases.includes(plannedEntry.basis) ? plannedEntry.basis : w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
   const [adding, setAdding] = useState(false);
   const [showText, setShowText] = useState(false);
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
@@ -95,10 +94,10 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {plannedEntry && plannedEntry.status === 'sent' && <StaleCopy w={w} entry={plannedEntry} where={whereFor(plannedEntry, w, plans)} profile={profile} />}
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
-        {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
+        {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}?basis=${basis}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
         <button class={`btn${w.trainerOnly ? '' : ' primary'}`} onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
-        {!w.trainerOnly && playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
+        {!w.trainerOnly && playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}?basis=${basis}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
         {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         {/* The same Add to a date sheet as every other page (10 Nov 2026): a hidden date box over a label opened nothing on a laptop. */}
@@ -107,6 +106,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (<>
         <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
+        {plannedEntry.status !== 'completed' && plannedEntry.basis !== basis && w.bases.includes(plannedEntry.basis) && (
+          <p class="small" style="margin:-8px 0 14px">This entry is set to ride by {plannedEntry.basis === 'hr' ? 'heart rate' : 'power'}. <button class="btn sm" onClick={() => void setEntryBasis(plannedEntry.id, basis)}>Change it to {basis === 'hr' ? 'heart rate' : 'power'}</button></p>
+        )}
         {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
       </>)}
 
@@ -297,7 +299,7 @@ function OutdoorNote({ w, entry, plans }: { w: Workout; entry?: PlannedWorkout; 
         <div class="row wrap" style="gap:10px;align-items:center">
           <span class="small muted">Riding it</span>
           <div class="seg" role="group" aria-label="Riding it">
-            {(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={where === x ? 'on' : ''} aria-pressed={where === x} onClick={() => void setWhere(entry.id, x)}>{x === 'outdoor' ? 'Outdoors' : 'On a trainer'}</button>)}
+            {(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={where === x ? 'on' : ''} aria-pressed={where === x} onClick={() => void setWhere(entry.id, x, where)}>{x === 'outdoor' ? 'Outdoors' : 'On a trainer'}</button>)}
           </div>
         </div>
         <p class="faint small" style="margin:6px 0 0">{where === 'outdoor' ? <><b>On the Garmin:</b> {softened}</> : 'Sent to your Garmin exactly as written.'} The ride player on the trainer always keeps the steps as written.</p>

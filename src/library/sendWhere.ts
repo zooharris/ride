@@ -19,8 +19,12 @@ export const hasTwoVersions = (w: Workout | undefined): boolean => !!w && w.kind
 
 const weekday = (date: string) => new Date(date + 'T00:00:00').getDay();
 
-/** The choice when the rider hasn't made one: the plan's weekday, else the ride's own setting. */
-export function defaultWhere(entry: Pick<PlannedWorkout, 'date' | 'planId'> | undefined, w: Pick<Workout, 'setting'>, plans: PlanDays[]): Where {
+/**
+ * The choice when the rider hasn't made one: a workout the rider built goes as written (10 Nov 2026 review, B3: the app
+ * doesn't rewrite someone's own workout unless they ask); otherwise the plan's weekday, else the ride's own setting.
+ */
+export function defaultWhere(entry: Pick<PlannedWorkout, 'date' | 'planId'> | undefined, w: Pick<Workout, 'setting' | 'source'>, plans: PlanDays[]): Where {
+  if (w.source === 'mine') return 'trainer';
   if (entry) {
     const plan = (entry.planId && plans.find((p) => p.id === entry.planId)) || plans.find((p) => p.start <= entry.date && entry.date <= p.goalDate);
     const out = plan?.availability?.outdoor?.[weekday(entry.date)];

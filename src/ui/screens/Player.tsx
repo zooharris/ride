@@ -137,9 +137,10 @@ function NoBluetooth() {
 
 function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean; mine: Workout[] }) {
   const allowsHr = workout.bases.includes('hr');
-  // Power or heart rate (10 Nov 2026): the calendar entry's, else what the ride's page had selected, else the rider's default.
+  // Power or heart rate (10 Nov 2026 review, B1): what the ride's page showed when the rider came from it, else the
+  // calendar entry's setting, else the rider's default.
   const asked = readQuery().get('basis') as Basis | null;
-  const [basis, setBasis] = useState<Basis>(planned && workout.bases.includes(planned.basis) ? planned.basis : asked && workout.bases.includes(asked) ? asked : (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
+  const [basis, setBasis] = useState<Basis>(asked && workout.bases.includes(asked) ? asked : planned && workout.bases.includes(planned.basis) ? planned.basis : (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
   const { sensors, now } = useSensors();
   const sources = pickSources(sensors, now, getSlots());
   const choice = chooseMode(basis, sensors, sources, allowsHr);

@@ -94,15 +94,20 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
     setBusy(ws);
     let sent = 0;
+    const outdoor: string[] = [];
     try {
       for (const p of todo) {
         const w = findWorkout(data.mine, p.workoutId);
         if (!w) continue;
         // Through sendPlanned, so each entry goes in the version its page shows (outdoors or on a trainer, 10 Nov 2026).
-        await sendPlanned(c, p, w, profile);
+        const r = await sendPlanned(c, p, w, profile);
+        if (r.version === 'outdoor') outdoor.push(w.name);
         sent++;
       }
-      setMsg({ ok: true, text: `Sent ${sent} session${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.` });
+      // Name any ride that went softened for the road (10 Nov 2026 review, B2).
+      const names = outdoor.length > 1 ? `${outdoor.slice(0, -1).join(', ')} and ${outdoor[outdoor.length - 1]}` : outdoor[0];
+      const soft = !outdoor.length ? '' : ` ${names} went in ${outdoor.length > 1 ? 'their' : 'its'} outdoor version; change that on ${outdoor.length > 1 ? 'their pages' : 'its page'}.`;
+      setMsg({ ok: true, text: `Sent ${sent} session${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.${soft}` });
     } catch (e) {
       setMsg({ ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` });
     } finally { setBusy(null); notify(); }

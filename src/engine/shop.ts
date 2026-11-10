@@ -429,7 +429,8 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext, fi
       for (const w of fillAlternatives(rides, f.s, f.afterLong, ctx, okBasis, fitsSetting)) {
         if (w === f.w || (usedIds.has(w.id) && w.id !== f.w.id)) continue;
         const nt = t - cur.tss + Math.round(contribution(w).tss);
-        const gain = Math.abs(t - needs.budgetTss) - Math.abs(nt - needs.budgetTss) - variety(w) * 0.05;
+        // A swap must earn its place: a few TSS closer to the budget does not justify handing back a ride done recently.
+        const gain = Math.abs(t - needs.budgetTss) - Math.abs(nt - needs.budgetTss) - variety(w);
         if (gain > bestGain + 0.5) { bestGain = gain; bestSwap = { f, w }; }
       }
     }
@@ -503,6 +504,9 @@ function fillAlternatives(rides: Workout[], s: Slot, afterLong: boolean, ctx: Sh
   });
 }
 
+/** Minutes either side of an easy day's target within which every ride is an equally good fit (9 Nov 2026). */
+const FIT_SLACK = 10;
+
 function fillRide(rides: Workout[], s: Slot, afterLong: boolean, _want: number, ctx: ShopContext, variety: (w: Workout) => number,
   okBasis: (w: Workout) => boolean, fitsSetting: (w: Workout, s: Slot) => boolean): Workout | null {
   const alts = fillAlternatives(rides, s, afterLong, ctx, okBasis, fitsSetting);
@@ -511,7 +515,10 @@ function fillRide(rides: Workout[], s: Slot, afterLong: boolean, _want: number, 
   let best: Workout | null = null, bestScore = -Infinity;
   for (const w of alts) {
     const c = contribution(w);
-    const score = -Math.abs(c.minutes - target) - variety(w) * 0.5 - (w.family === 'recovery' && !afterLong ? 10 : 0);
+    // Any ride within ten minutes of the target fits the day equally well; among those, the one done longest ago wins
+    // (9 Nov 2026), so an hour-long Tuesday rotates through the Library's hour-long rides instead of repeating one.
+    const misfit = Math.max(0, Math.abs(c.minutes - target) - FIT_SLACK);
+    const score = -misfit - variety(w) * 1.5 - (w.family === 'recovery' && !afterLong ? 10 : 0);
     if (score > bestScore) { bestScore = score; best = w; }
   }
   return best ?? (afterLong ? fillRide(rides, s, false, 0, ctx, variety, okBasis, fitsSetting) : null);

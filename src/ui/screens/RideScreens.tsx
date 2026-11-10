@@ -450,7 +450,8 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
         </div>
       </div>
       {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
-        : cueAt(step, done) ? <p class="rd-cue rd-cue-own">{cueAt(step, done)}</p>
+        // A new cue (or the same one on a new step) is drawn afresh, so it slides in and glows for a moment (9 Nov 2026).
+        : cueAt(step, done) ? <p key={`${step.index}|${cueAt(step, done)}`} class="rd-cue rd-cue-own" aria-live="polite">{cueAt(step, done)}</p>
         : step.cadence ? <p class="rd-cue">Hold about {step.cadence} rpm.</p> : <p class="rd-cue">{step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
       <div class="rd-grow" />
       <div class="rd-next">

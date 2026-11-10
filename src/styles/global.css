@@ -1484,4 +1484,8 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .star-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .star-btn.on { color: var(--logo-orange); }
 .wcard .tag { white-space: nowrap; }
-.rd-cue-own { font-weight: 600; color: var(--ink); max-width: 30ch; margin-inline: auto; }
+.rd-cue-own { font-weight: 600; color: var(--ink); max-width: 30ch; margin-inline: auto; padding: 6px 12px; border-radius: 10px; animation: cue-in .45s cubic-bezier(.2, .8, .2, 1) both, cue-glow 3s ease-out both; }
+/* A new cue slides up into place and glows in the accent's wash, fading over three seconds, so a glance catches it. */
+@keyframes cue-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes cue-glow { 0%, 25% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .rd-cue-own { animation: cue-glow 3s ease-out both; } }

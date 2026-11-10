@@ -245,6 +245,8 @@ export interface PlannedWorkout {
    */
   where?: 'outdoor' | 'trainer';
   sentWhere?: 'outdoor' | 'trainer';
+  /** The basis the copy on the Garmin was sent with (10 Nov 2026), so a later switch on the page can offer Send again. */
+  sentBasis?: Basis;
 }
 
 /** One exercise as done: the plan's by default, then whatever the rider corrects. */

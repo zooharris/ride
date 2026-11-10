@@ -49,6 +49,12 @@ describe('the Library grows up (9 Nov 2026, Part B)', () => {
     expect(out.every((w) => tagsOf(w).outdoor === 'well')).toBe(true);
     expect(out.map((w) => w.id)).not.toContain('lib-vo2-30-30');
   });
+  it('works by heart rate keeps only rides with a heart-rate version (10 Nov 2026)', () => {
+    const out = applyFilters(rides, { ...NO_FILTERS, hrOnly: true }, 'ride');
+    expect(out.length).toBeGreaterThan(20);
+    expect(out.every((w) => w.bases.includes('hr'))).toBe(true);
+    expect(out.length).toBeLessThan(rides.length);
+  });
   it('body focus: strength only', () => {
     const legs = applyFilters(strength, { ...NO_FILTERS, focus: 'legs' }, 'strength');
     expect(legs.length).toBeGreaterThan(0);
@@ -75,7 +81,7 @@ const asQuery = (f: Filters) => { const q = new URLSearchParams(); for (const [k
 
 describe('the Library keeps its filters in its address (8 Nov 2026)', () => {
   it('filters survive the round trip through the address', () => {
-    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, focus: 'all', show: 'favorites', duration: '90-120', sort: 'short' };
+    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, hrOnly: true, focus: 'all', show: 'favorites', duration: '90-120', sort: 'short' };
     expect(filtersFromQuery(asQuery(f))).toEqual(f);
     const s: Filters = { ...NO_FILTERS, focus: 'upper', show: 'recent' };
     expect(filtersFromQuery(asQuery(s))).toEqual(s);

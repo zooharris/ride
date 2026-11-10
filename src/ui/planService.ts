@@ -447,8 +447,14 @@ export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w:
   // Outdoors or on a trainer (10 Nov 2026): the entry's choice, else the plan's weekday; every send goes through here.
   const where = whereFor(p, w, await getPlans());
   const id = await sendWorkout(c, w, p.date, p.basis, profile, where);
-  await db.planned.update(p.id, { status: 'sent', icuEventId: id, sentWhere: hasTwoVersions(w) ? where : undefined });
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id, sentBasis: p.basis, sentWhere: hasTwoVersions(w) ? where : undefined });
   return id;
+}
+
+/** The rider's choice of power or heart rate for a calendar entry (10 Nov 2026); the Garmin copy waits for Send again. */
+export async function setEntryBasis(id: string, basis: 'power' | 'hr'): Promise<void> {
+  await db.planned.update(id, { basis });
+  notify();
 }
 
 /** The rider's choice of where a ride will be ridden; the copy on the Garmin is left as it is until they send again. */

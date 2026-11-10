@@ -32,13 +32,15 @@ export interface Filters {
   intensity: Intensity | 'all';
   /** Rides only: just those that ride well outdoors on a bike computer. */
   outdoor: boolean;
+  /** Rides only: just those that can be ridden by heart rate, without a power meter (10 Nov 2026). */
+  hrOnly: boolean;
   /** Strength only. */
   focus: StrengthFocus | 'all';
   show: Show;
   duration: Duration;
   sort: SortKey;
 }
-export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, focus: 'all', show: 'all', duration: 'all', sort: 'family' };
+export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'family' };
 
 /** What the rider has starred, and when each workout was last done (Library id → YYYY-MM-DD). */
 export interface Mine { favorites: Set<string>; recent: Map<string, string> }
@@ -66,6 +68,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
     if (kind === 'ride' && f.purpose !== 'all' && t.purpose !== f.purpose) return false;
     if (f.intensity !== 'all' && t.intensity !== f.intensity) return false;
     if (kind === 'ride' && f.outdoor && t.outdoor !== 'well') return false;
+    if (kind === 'ride' && f.hrOnly && !w.bases.includes('hr')) return false;
     if (kind === 'strength' && f.focus !== 'all' && w.strength?.focus !== f.focus) return false;
     return !q || `${w.name} ${w.subtitle ?? ''} ${PURPOSE_LABEL[t.purpose]} ${w.purpose}`.toLowerCase().includes(q);
   });
@@ -75,7 +78,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
 }
 
 /** Whether any filter narrows the list (Clear shows only then). */
-export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.focus !== 'all' || f.show !== 'all' || f.duration !== 'all';
+export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.hrOnly || f.focus !== 'all' || f.show !== 'all' || f.duration !== 'all';
 
 /** The filters as the Library's address carries them; defaults left out. */
 export function filtersToQuery(f: Filters): Record<string, string | undefined> {
@@ -84,6 +87,7 @@ export function filtersToQuery(f: Filters): Record<string, string | undefined> {
     p: f.purpose !== 'all' ? f.purpose : undefined,
     i: f.intensity !== 'all' ? f.intensity : undefined,
     out: f.outdoor ? '1' : undefined,
+    hr: f.hrOnly ? '1' : undefined,
     focus: f.focus !== 'all' ? f.focus : undefined,
     show: f.show !== 'all' ? f.show : undefined,
     len: f.duration !== 'all' ? f.duration : undefined,
@@ -102,6 +106,7 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
     purpose: RIDE_PURPOSES.find((x) => x === p) ?? 'all',
     intensity: INTENSITIES.find((x) => x === q.get('i')) ?? 'all',
     outdoor: q.get('out') === '1',
+    hrOnly: q.get('hr') === '1',
     focus: FOCI.find((x) => x === q.get('focus')) ?? 'all',
     show: (['favorites', 'recent'] as Show[]).find((x) => x === q.get('show')) ?? 'all',
     duration: DURATIONS.find((d) => d[0] === q.get('len'))?.[0] ?? 'all',
@@ -132,7 +137,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
   // A sheet that switches kind keeps only what applies to the new one.
   useEffect(() => {
     const clear: Partial<Filters> = {};
-    if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor)) Object.assign(clear, { purpose: 'all', outdoor: false });
+    if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor || f.hrOnly)) Object.assign(clear, { purpose: 'all', outdoor: false, hrOnly: false });
     if (kind !== 'strength' && f.focus !== 'all') clear.focus = 'all';
     if (Object.keys(clear).length) set(clear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,6 +166,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
         <Menu label={SHOW_LABEL[f.show]} active={f.show !== 'all'} open={menu === 'show'} onOpen={open('show')} onClose={close} title="Show"
           options={(Object.keys(SHOW_LABEL) as Show[]).map((x) => [x, SHOW_LABEL[x]] as [string, string])} value={f.show} onPick={(v) => set({ show: v as Show })} />
         {kind === 'ride' && <button class={`chip${f.outdoor ? ' on' : ''}`} aria-pressed={f.outdoor} onClick={() => set({ outdoor: !f.outdoor })}>Rides well outdoors</button>}
+        {kind === 'ride' && <button class={`chip${f.hrOnly ? ' on' : ''}`} aria-pressed={f.hrOnly} onClick={() => set({ hrOnly: !f.hrOnly })}>Works by heart rate</button>}
         <Menu label={f.sort === 'family' ? (f.show === 'recent' ? 'Most recent first' : 'Library order') : f.sort === 'short' ? 'Shortest first' : 'Longest first'} active={false} open={menu === 'sort'} onOpen={open('sort')} onClose={close} title="Order"
           options={[['family', f.show === 'recent' ? 'Most recent first' : 'Library order'], ['short', 'Shortest first'], ['long', 'Longest first']]} value={f.sort} onPick={(v) => set({ sort: v as SortKey })} />
         {narrowed(f) && <button class="btn sm quiet" onClick={() => set({ ...NO_FILTERS, sort: f.sort })}>Clear</button>}

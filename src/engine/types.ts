@@ -184,6 +184,8 @@ export interface Workout {
   strength?: { quality: StrengthQuality; focus: StrengthFocus; needs: Equipment[]; dose?: StrengthDose };
   /** For a calendar copy of a Library session: the Library session it came from. */
   libraryId?: string;
+  /** What it is for, how long, how hard, and how it rides outdoors (9 Nov 2026): set on every Library workout; see library/tags.ts. */
+  tags?: import('../library/tags').WorkoutTags;
 }
 
 export interface WorkoutStats {

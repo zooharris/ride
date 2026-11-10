@@ -3,6 +3,7 @@ import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 import { OUTDOOR } from './outdoor';
 import { INDOOR } from './indoor';
 import { RIDE_NAMES } from './names';
+import { withTags } from './tags';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -212,7 +213,7 @@ const CORE: Workout[] = [
 /** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */
 export const LIBRARY: Workout[] = [...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
-  return place ? { ...w, name: place, subtitle: w.name } : w;
+  return withTags(place ? { ...w, name: place, subtitle: w.name } : w);
 });
 
 export function libraryById(id: string): Workout | undefined {

@@ -1477,9 +1477,9 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .filters { margin-bottom: 16px; }
 .filters .filterbar { margin-bottom: 0; }
 .purpose-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-.purpose-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
-.purpose-chips::-webkit-scrollbar { display: none; }
-@media (min-width: 900px) { .purpose-chips { flex-wrap: wrap; overflow: visible; } }
+/* Every purpose in view at once, wrapped onto as many lines as the width needs (no sideways scrolling); a little tighter on a phone. */
+.purpose-chips { flex-wrap: wrap; }
+@media (max-width: 600px) { .purpose-chips { gap: 5px; } .purpose-chips .chip { padding: 4px 9px; font-size: 12.5px; } }
 .star-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin: -6px -6px -6px 0; border: 0; border-radius: 999px; background: transparent; color: var(--ink-3); cursor: pointer; flex: none; }
 .star-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .star-btn.on { color: var(--logo-orange); }

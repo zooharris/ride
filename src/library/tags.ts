@@ -39,7 +39,7 @@ export interface WorkoutTags {
 
 export const PURPOSE_LABEL: Record<Purpose, string> = {
   recovery: 'Recovery', endurance: 'Endurance', tempo: 'Tempo', sweetspot: 'Sweet spot', threshold: 'Threshold',
-  vo2: 'VO2max', anaerobic: 'Anaerobic and sprints', mixed: 'Race and group-ride simulation', test: 'Test',
+  vo2: 'VO2max', anaerobic: 'Anaerobic and sprints', mixed: 'Race and group rides', test: 'Test',
   strength: 'Strength', mobility: 'Mobility',
 };
 export const INTENSITY_LABEL: Record<Intensity, string> = { easy: 'Easy', moderate: 'Moderate', hard: 'Hard', 'very-hard': 'Very hard' };

@@ -26,6 +26,7 @@ export const Icon = {
   theme: (p: P) => <svg {...base} {...sz(p, 20)}><circle cx="12" cy="12" r="8.5" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" /></svg>,
   close: (p: P) => <svg {...base} {...sz(p, 18)}><path d="M6 6l12 12M18 6L6 18" /></svg>,
   more: (p: P) => <svg {...base} {...sz(p, 18)}><circle cx="5.5" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="18.5" cy="12" r="1.2" fill="currentColor" /></svg>,
+  star: (p: P & { on?: boolean }) => <svg {...base} {...sz(p, 18)} fill={p.on ? 'currentColor' : 'none'}><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" /></svg>,
   chevron: (p: P) => <svg {...base} {...sz(p, 16)}><path d="M9 6l6 6-6 6" /></svg>,
 };
 

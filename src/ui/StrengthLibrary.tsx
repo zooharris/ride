@@ -6,7 +6,8 @@ import { DOSE_WORDS, EQUIPMENT_WORDS, FOCUS_WORDS, hasNeeds, redose } from '../l
 import { strengthTss } from '../library/sessions';
 import { QUALITY_LABEL } from '../library/strength';
 import { PictureStrip, picturedCount } from './ExercisePictures';
-import { applyFilters, type Filters } from './LibraryFilters';
+import { applyFilters, NothingMatches, type Filters, type Mine } from './LibraryFilters';
+import { Star } from './Star';
 
 /**
  * The Library's Strength tab (30 Oct 2026): sessions by what they train, a switch
@@ -39,11 +40,11 @@ export function useStrengthPrefs(): [Prefs, (p: Partial<Prefs>) => void] {
   return [p, (next) => setP((prev) => { const v = { ...prev, ...next }; void setSetting(PREFS_KEY, v).catch(() => {}); return v; })];
 }
 
-export function StrengthLibrary({ f, onAdd }: { f: Filters; onAdd: (w: Workout) => void }) {
+export function StrengthLibrary({ f, mine: mineSets, onAdd }: { f: Filters; mine: Mine; onAdd: (w: Workout) => void }) {
   const [prefs, setPrefs] = useStrengthPrefs();
   const mine = getCurrentEquipment();
   const pool = readyMade(prefs.show === 'all' ? ALL_EQUIPMENT : mine).filter((w) => w.kind === 'strength' && w.source === 'library');
-  const list = applyFilters(pool.map((w) => (w.strength ? redose(w, prefs.level, strengthTss) : w)), f, 'strength');
+  const list = applyFilters(pool.map((w) => (w.strength ? redose(w, prefs.level, strengthTss) : w)), f, 'strength', mineSets);
   const byQuality = (q: StrengthQuality) => list.filter((w) => w.strength?.quality === q);
   const purpose = list.filter((w) => !w.strength);
   return (
@@ -64,7 +65,7 @@ export function StrengthLibrary({ f, onAdd }: { f: Filters; onAdd: (w: Workout) 
         </div>
       </div>
       <p class="muted small" style="margin:0 0 16px;max-width:66ch">{LEVEL_NOTE[prefs.level]} {prefs.show === 'mine' ? 'Showing what your equipment allows (as ticked in your plan’s week); switch to Everything to see the gym sessions too.' : 'Showing every session; those that need equipment you have not ticked say what they need.'}</p>
-      {list.length === 0 && <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length or clear the search.</span></div>}
+      {list.length === 0 && <NothingMatches f={f} />}
       {QUALITIES.map((q) => byQuality(q).length > 0 && (
         <section key={q} class="str-group">
           <h2>{QUALITY_LABEL[q]}</h2>
@@ -90,7 +91,7 @@ function StrengthCard({ w, have, onAdd }: { w: Workout; have: Equipment[]; onAdd
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">
       <div class="row between wrap" style="gap:6px">
         <span class="faint small">Strength{w.strength ? ` · ${FOCUS_WORDS[w.strength.focus]}` : ''}</span>
-        {missing.length > 0 && !hasNeeds(w.strength!.needs, have) && <span class="tag" style="--c:var(--z5)">Needs {missing.map((q) => EQUIPMENT_WORDS[q] ?? q).join(', ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</span>}
+        <span class="row" style="gap:8px">{missing.length > 0 && !hasNeeds(w.strength!.needs, have) && <span class="tag" style="--c:var(--z5)">Needs {missing.map((q) => EQUIPMENT_WORDS[q] ?? q).join(', ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</span>}<Star w={w} /></span>
       </div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
       <p class="muted small" style="margin:0">{w.subtitle ? `${w.subtitle} · ` : ''}about {w.minutes} min · {ex.length} exercises</p>

@@ -6,12 +6,13 @@ import { WorkoutProfile } from './Profile';
 import { clock, workoutStats } from '../engine/workout';
 import { today } from '../engine/load';
 import { fmtDate, quickMoveDays, quickMoveLabel } from './derived';
-import { FAMILY_LABEL } from '../library/workouts';
+import { PURPOSE_LABEL, tagsOf } from '../library/tags';
 import type { PlannedWorkout, Workout } from '../engine/types';
 import { KIND_LABEL, KindDot } from './screens/Plan';
 import { movePlanned, removePlanned, replacePlanned } from './planService';
 import { toast } from './Toast';
 import { applyFilters, FilterBar, useFilters } from './LibraryFilters';
+import { useMine } from './favorites';
 
 /**
  * Move a session to another day and say so. If the day already has a session of
@@ -103,7 +104,8 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
   const kinds = ['ride', 'strength', 'mobility', 'walk', 'run'] as const;
   // The Library's filters, so a shorter ride is a length filter away (Batch 10 C). Kept while the sheet is open.
   const [f, setF] = useFilters();
-  const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === kind && w.source !== 'generated'), f, kind);
+  const mine = useMine(data.planned, (id) => findWorkout(data.mine, id), data);
+  const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === kind && w.source !== 'generated'), f, kind, mine);
   return (
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
@@ -115,7 +117,7 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
           {kinds.map((k) => <button key={k} class={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : k === 'run' ? 'Runs' : KIND_LABEL[k]}</button>)}
         </div>
         <FilterBar kind={kind} f={f} set={setF} />
-        <p class="faint small" style="margin:0 0 10px">{list.length === 0 ? 'Nothing matches: widen the length or clear the search. ' : ''}Or <a href="#/build">make a new workout</a>.</p>
+        <p class="faint small" style="margin:0 0 10px">{list.length === 0 ? (f.show === 'favorites' ? 'No favorites of this kind yet. ' : f.show === 'recent' ? 'Nothing of this kind done in the last 90 days. ' : 'Nothing matches: widen the length or effort, or clear the search. ') : ''}Or <a href="#/build">make a new workout</a>.</p>
         <div class="stack">
           {list.map((w) => {
             const s = workoutStats(w.blocks);
@@ -123,7 +125,7 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
             return (
               <button class="cal-item" key={w.id} onClick={() => onPick(w)} style="cursor:pointer;text-align:left">
                 {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : FAMILY_LABEL[w.family] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w, data.profile ?? undefined)}${w.source === 'mine' ? ' · mine' : ''}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}${w.source === 'mine' ? ' · mine' : ''}`}</span></div>
+                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : PURPOSE_LABEL[tagsOf(w).purpose] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w, data.profile ?? undefined)}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`}</span></div>
               </button>
             );
           })}

@@ -5,7 +5,6 @@ import type { AppData } from '../store';
 import { alreadyText, doneHistory, findWorkout, notify, scheduleWorkout } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { clock, renderIntervalsText, workoutStats } from '../../engine/workout';
-import { FAMILY_LABEL } from '../../library/workouts';
 import { addDays, today } from '../../engine/load';
 import { go, goBack, replaceRoute } from '../router';
 import { BackLink } from '../BackLink';
@@ -23,6 +22,8 @@ import { removePlanned, sendPlanned } from '../planService';
 import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
+import { Star } from '../Star';
+import { PURPOSE_LABEL, tagsOf } from '../../library/tags';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
 import { ExercisePictures } from '../ExercisePictures';
@@ -67,7 +68,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
     <div>
       <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row between" style="margin-bottom:6px">
-        <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{FAMILY_LABEL[w.family]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
+        <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{PURPOSE_LABEL[tagsOf(w).purpose]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
         {w.bases.length > 1 ? (
           <div class="seg">
             <button class={basis === 'power' ? 'on' : ''} onClick={() => setBasis('power')}>Power</button>
@@ -75,7 +76,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
           </div>
         ) : <span class="faint small">{w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>}
       </div>
-      <h1>{w.name}</h1>
+      <div class="row" style="gap:8px;align-items:center"><h1>{w.name}</h1><Star w={w} /></div>
       {w.subtitle && <p style="margin:2px 0 0;font-size:16px;color:var(--ink-2)">{w.subtitle}</p>}
       <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · intensity {s.intensityFactor.toFixed(2)}</p>
       <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, touch: true }} />
@@ -154,7 +155,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
     <div>
       <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
-      <h1>{w.name}</h1>
+      <div class="row" style="gap:8px;align-items:center"><h1>{w.name}</h1><Star w={w} /></div>
       {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
       {planned?.reason && <p style="margin:8px 0 0;font-size:15px"><b>Why it’s on your plan:</b> {planned.reason}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>

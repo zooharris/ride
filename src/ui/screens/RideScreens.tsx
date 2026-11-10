@@ -12,7 +12,7 @@ import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
 import { cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
-import { CUE_WORDS } from '../../player/hrCue';
+import { CUE_WORDS, hrSlot, zoneWords } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
 import { rampResult, testResultKey, twentyMinResult, withActions, type TestResult } from '../../player/tests';
 import { rampContextFor } from '../maxHrSeen';
@@ -235,8 +235,6 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
   const mid = band ? (lo + band.high) / 2 : 0;
   const pos = (x: number) => Math.max(0, Math.min(100, band ? ((x - (mid - span)) / (2 * span)) * 100 : 50));
   const zone = step ? hrZoneOf(step, profile) : undefined;
-  const away = band && mb != null ? (mb > band.high ? Math.round(mb - band.high) : band.low && mb < band.low ? Math.round(band.low - mb) : 0) : 0;
-  const cue = ride.cue ? CUE_WORDS[ride.cue] : undefined;
   const adjusting = e.mode === 'erg' && ride.timeline.length > 0;
   return (
     <section class="rd-card rd-hero">
@@ -253,22 +251,24 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
             <div class="rd-band-ok" style={`left:${pos(band.low || lo - span)}%;width:${Math.max(2, pos(band.high) - pos(band.low || lo - span))}%`} />
             {mb != null && <div class="rd-band-mark" style={`left:${pos(mb)}%`} />}
           </div>
-          <div class="rd-band-words"><span>Too easy</span><span>Too hard</span></div>
+          <div class="rd-band-words"><span>Too easy</span><span>{band && mb != null ? zoneWords(mb, band) : ''}</span><span>Too hard</span></div>
         </>
       ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
-      {adjusting ? (
-        <div class="rd-cueline" aria-live="polite">
-          <span>{ride.hr?.status || 'The trainer starts each step at the watts that usually keep you in its zone.'}</span>
-        </div>
-      ) : (
-      <div class={`rd-cueline${cue ? ` ${ride.cue}` : ''}`} aria-live="polite">
-        {cue ? <><b>{cue.head}</b><span>{cue.how}</span></>
-          : step && band && zone && e.position - step.start < 20 ? <span>New step: <b class="rd-cue-inline">Zone {zone}, {band.text.replace(/–/, ' to ')}</b>. Change your effort now; your heart rate takes a minute or two to follow.</span>
-          : step && mb != null && away > 0 ? <span><b class="rd-cue-inline">{away} bpm {mb > band!.high ? 'above' : 'below'} the zone.</b> <span class="muted">If it stays there, you'll be told to {mb > band!.high ? 'reduce' : 'increase'} intensity.</span></span>
-          : step && mb != null ? <span class="muted">In the zone. Hold it steady.</span>
-          : null}
-      </div>
-      )}
+      {/* One message slot (10 Nov 2026): an instruction, the trainer's account of itself, or nothing; its space is always kept, so nothing below moves. */}
+      {(() => {
+        const slot = hrSlot({ adjusting, status: ride.hr?.status, cue: step && band ? ride.cue : undefined });
+        if (slot.kind === 'status') return <div class="rd-signal quiet" aria-live="polite"><span>{slot.text}</span></div>;
+        if (slot.kind === 'signal') {
+          const w = CUE_WORDS[slot.cue];
+          return (
+            <div class="rd-signal on" role="status" aria-live="polite">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{slot.cue === 'under' ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}</svg>
+              <b>{w.head}</b><span class="rd-signal-how">{w.short}</span>
+            </div>
+          );
+        }
+        return <div class="rd-signal" aria-hidden="true" />;
+      })()}
       {adjusting && ride.hr?.st.asking && (
         <div class="rd-ask" role="group" aria-label="Heart rate staying low">
           <span>Your heart rate is staying low today.</span>
@@ -433,7 +433,7 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
   return (
     <section class="rd-card rd-dial">
       <div class="row between" style="align-self:stretch">
-        <span class="caption">{step.ramp ? `Ramp step ${step.ramp}` : `Step ${index} of ${of}`}</span>
+        <span class="caption">{step.ramp ? `Ramp step ${step.ramp}` : `Step ${index} of ${of}${step.setNote ? ` · ${step.setNote}` : ''}`}</span>
         {(() => { const z = ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone; return <span class="rd-zone" style={`--c:${ZONE_VAR[z - 1]}`}>Zone {z}{step.ramp ? '' : ` · ${step.name}`}</span>; })()}
       </div>
       <div class="rd-ring">
@@ -446,13 +446,16 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
         <div class="rd-ring-text">
           <span class="num rd-dial-time">{mmss(left)}</span>
           <span class="muted">left in this step</span>
-          <span class="faint small">{mmss(done)} of {mmss(step.seconds)} done{step.setNote ? <><br />{step.setNote}</> : null}</span>
+          <span class="faint small">{mmss(done)} of {mmss(step.seconds)} done</span>
         </div>
       </div>
-      {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
-        // A new cue (or the same one on a new step) is drawn afresh, so it slides in and glows for a moment (9 Nov 2026).
-        : cueAt(step, done) ? <p key={`${step.index}|${cueAt(step, done)}`} class="rd-cue rd-cue-own" aria-live="polite">{cueAt(step, done)}</p>
-        : step.cadence ? <p class="rd-cue">Hold about {step.cadence} rpm.</p> : <p class="rd-cue">{step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
+      {/* The message line (10 Nov 2026): the workout's own voice, directly under the ring. Two lines' room, so a long
+          cue doesn't move Next. A ride's cue arrives in teal and settles to ink; a step without one shows the plain default. */}
+      <div class="rd-msg" aria-live="polite">
+        {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
+          : cueAt(step, done) ? <p key={`${step.index}|${cueAt(step, done)}`} class="rd-cue rd-cue-own">{cueAt(step, done)}</p>
+          : <p class="rd-cue rd-cue-default">{step.cadence ? `Hold about ${step.cadence} rpm.` : step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
+      </div>
       <div class="rd-grow" />
       <div class="rd-next">
         {next ? <div><span class="caption">Next</span><i style={`background:${ZONE_VAR[(ride.setup.basis === 'hr' ? hrZoneOf(next, profile) : next.zone) - 1]}`} /><b>{next.name}</b><span class="num muted">{mmss(next.seconds)} · {band(next)}</span></div>

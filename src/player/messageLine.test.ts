@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import rideScreens from '../ui/screens/RideScreens.tsx?raw';
 import { hrCue, hrSlot, zoneWords, type CueState } from './hrCue';
 import { buildTimeline, cueAt } from './timeline';
 import { LIBRARY } from '../library/workouts';
@@ -44,7 +44,7 @@ describe('the heart-rate card holds one message at most', () => {
   });
 
   it('the three removed sentences are gone from the ride screen', () => {
-    const src = readFileSync(new URL('../ui/screens/RideScreens.tsx', import.meta.url), 'utf8');
+    const src = rideScreens;
     expect(src).not.toMatch(/Change your effort now/);
     expect(src).not.toMatch(/you'll be told to/);
     expect(src).not.toMatch(/In the zone\. Hold it steady/);

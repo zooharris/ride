@@ -1107,6 +1107,9 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
    with the heart-rate card's message slot (10 Nov 2026); the spare room falls below the message, above Next. */
 .rd-ring { position: relative; flex: 0 1 auto; height: clamp(120px, 26vh, 240px); min-height: 96px; aspect-ratio: 1; margin-top: 4px; }
 .rd-dial > .rd-grow { flex: 1 1 8px; }
+/* The ring is the one part of the dial card that gives way when the window is short (10 Nov 2026 review, Part A):
+   it shrinks to its minimum before anything is clipped, so Next always has its room. */
+.rd-dial > .rd-ring { flex: 0 1 auto; }
 .rd-cue-inline { font-size: inherit; }
 /* A short window: the ring shrinks first; below this the "Then" line goes before anything is cut off. */
 @media (max-height: 760px) {
@@ -1506,3 +1509,18 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .rd-signal-how { margin-left: auto; font-size: 13px; color: color-mix(in srgb, var(--warn) 75%, var(--ink-2)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .rd-signal.quiet { padding: 0; color: var(--ink-2); }
 @media (max-width: 520px) { .rd-signal-how { display: none; } }
+/* Short windows: the message line reserves one line (a two-line cue still shows in full, taking room from the ring). */
+/* Short windows (10 Nov 2026 review, Part A), placed after the rules they override: the message line reserves one line
+   (a two-line cue still shows in full, taking room from the ring); the ring and its time are sized for the room there
+   is; the right-hand tiles tighten their padding. Nothing on the ride screen is cut off. */
+@media (max-height: 760px) {
+  .rd-msg { min-height: calc(1.4em + 4px); margin-top: 4px; }
+  .rd-dial > .rd-ring { height: clamp(96px, 20vh, 150px); }
+  .rd-dial-time { font-size: clamp(28px, 4.8vh, 72px); }
+  .rd-ring-text { font-size: 13px; padding-bottom: 4%; }
+  .rd-tile { padding-top: 12px; padding-bottom: 10px; }
+  .rd-tile-foot { padding-top: 6px; }
+  .rd-chart { gap: 2px; }
+  .rd-chart-pw { min-height: 50px; }
+  .rd-chart-h { height: 18px; }
+}

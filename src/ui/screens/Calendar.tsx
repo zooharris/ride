@@ -10,12 +10,10 @@ import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, garminSendable, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
-import { db } from '../../data/db';
 import type { PlannedWorkout, Ride, Workout } from '../../engine/types';
 import { credentials } from '../../sync/syncService';
-import { sendWorkout } from '../../sync/intervals';
 import { KIND_LABEL, KindDot } from './Plan';
-import { getPlans, replacePlanned } from '../planService';
+import { getPlans, replacePlanned, sendPlanned } from '../planService';
 import { ChangeSheet, WorkoutPicker, moveSession } from '../ChangeSheet';
 import { useDragMove } from '../useDragMove';
 import { toast } from '../Toast';
@@ -100,8 +98,8 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       for (const p of todo) {
         const w = findWorkout(data.mine, p.workoutId);
         if (!w) continue;
-        const id = await sendWorkout(c, w, p.date, p.basis, profile);
-        await db.planned.update(p.id, { status: 'sent', icuEventId: id });
+        // Through sendPlanned, so each entry goes in the version its page shows (outdoors or on a trainer, 10 Nov 2026).
+        await sendPlanned(c, p, w, profile);
         sent++;
       }
       setMsg({ ok: true, text: `Sent ${sent} session${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.` });

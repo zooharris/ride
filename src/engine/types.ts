@@ -239,6 +239,12 @@ export interface PlannedWorkout {
   matchedByHand?: boolean;
   /** When the rider undid a hand-logged completion: an explicit choice that outranks a completion another device still holds. */
   undoneAt?: string;
+  /**
+   * A ride with an outdoor version (10 Nov 2026): where the rider will ride it, as they chose on its page. Absent: the
+   * plan's setting for the weekday decides (library/sendWhere.ts). `sentWhere` is the version on the Garmin now.
+   */
+  where?: 'outdoor' | 'trainer';
+  sentWhere?: 'outdoor' | 'trainer';
 }
 
 /** One exercise as done: the plan's by default, then whatever the rider corrects. */

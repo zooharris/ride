@@ -1,3 +1,4 @@
+import { hasTwoVersions, whereFor } from '../library/sendWhere';
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
@@ -443,9 +444,17 @@ export async function storeSessionWorkout(w: Workout): Promise<string> {
  */
 export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w: Workout, profile?: HrProfile): Promise<number> {
   if (p.icuEventId) { try { await deleteEvent(c, p.icuEventId); } catch { /* already gone: harmless */ } }
-  const id = await sendWorkout(c, w, p.date, p.basis, profile);
-  await db.planned.update(p.id, { status: 'sent', icuEventId: id });
+  // Outdoors or on a trainer (10 Nov 2026): the entry's choice, else the plan's weekday; every send goes through here.
+  const where = whereFor(p, w, await getPlans());
+  const id = await sendWorkout(c, w, p.date, p.basis, profile, where);
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id, sentWhere: hasTwoVersions(w) ? where : undefined });
   return id;
+}
+
+/** The rider's choice of where a ride will be ridden; the copy on the Garmin is left as it is until they send again. */
+export async function setWhere(id: string, where: 'outdoor' | 'trainer'): Promise<void> {
+  await db.planned.update(id, { where });
+  notify();
 }
 
 /**

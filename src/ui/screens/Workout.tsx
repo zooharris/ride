@@ -1,5 +1,5 @@
 import { footLthr } from '../../engine/zones';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { AppData } from '../store';
 import { alreadyText, doneHistory, findWorkout, notify, scheduleWorkout } from '../store';
@@ -18,12 +18,13 @@ import { paceHint, timeWords } from '../../engine/run';
 import { bandBpm, bandKeyOf, bandZoneWords, capFirst, hasNoFloor, recoveryBand, stepBand, walkBand, walkZoneWords } from '../../engine/foot';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
-import { removePlanned, sendPlanned } from '../planService';
+import { getPlans, removePlanned, sendPlanned, setWhere } from '../planService';
 import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { Star } from '../Star';
 import { outdoorVersion, PURPOSE_LABEL, tagsOf } from '../../library/tags';
+import { hasTwoVersions, versionFor, whereFor, type PlanDays, type Where } from '../../library/sendWhere';
 import { LIBRARY } from '../../library/workouts';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
@@ -38,6 +39,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [basis, setBasis] = useState<Basis>(w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
   const [showText, setShowText] = useState(false);
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
+  // The plans' outdoor weekdays, for where a ride with an outdoor version will be ridden (10 Nov 2026).
+  const [plans, setPlans] = useState<PlanDays[]>([]);
+  useEffect(() => { void getPlans().then(setPlans).catch(() => {}); }, [data.planned]);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
   // Where Back goes when nothing is behind this page (a fresh tab); otherwise Back returns to the page before, as it was left.
@@ -83,7 +87,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, touch: true }} />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
-      <OutdoorNote w={w} />
+      <OutdoorNote w={w} entry={plannedEntry && plannedEntry.status !== 'completed' ? plannedEntry : undefined} plans={plans} profile={profile} />
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
         {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
@@ -125,7 +129,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
-        {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(outdoorVersion(w).workout, basis)}</pre>}
+        {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(versionFor(w, whereFor(plannedEntry, w, plans)).workout, basis)}</pre>}
       </section>}
       {changeSheet}
     </div>
@@ -273,12 +277,38 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
  * How the ride fares on a bike computer outdoors (9 Nov 2026, Part C): what the Garmin copy softens, or,
  * for a ride with no honest outdoor version, the nearest Library ride of the same purpose that rides well outdoors.
  */
-function OutdoorNote({ w }: { w: Workout }) {
+function OutdoorNote({ w, entry, plans, profile }: { w: Workout; entry?: PlannedWorkout; plans: PlanDays[]; profile?: HrProfile }) {
   const t = tagsOf(w);
+  const [sending, setSending] = useState(false);
   if (w.trainerOnly) return null;
-  if (t.outdoor === 'adjustable') {
+  if (hasTwoVersions(w)) {
     const { note } = outdoorVersion(w);
-    return note ? <p class="faint small" style="margin-top:6px"><b>On the Garmin:</b> {note.replace(/^Adjusted for riding outdoors: /, '').replace(/^./, (c) => c.toUpperCase())} The ride player on the trainer keeps the steps exactly as written.</p> : null;
+    const softened = note ? note.replace(/^Adjusted for riding outdoors: /, '').replace(/^./, (c) => c.toUpperCase()) : '';
+    // From the Library (no date yet): what the Garmin copy would soften, for information.
+    if (!entry) return note ? <p class="faint small" style="margin-top:6px"><b>On the Garmin, outdoors:</b> {softened} On a trainer it goes as written, and the ride player always keeps the steps as written.</p> : null;
+    // On the calendar (10 Nov 2026): the rider says where, and the Garmin gets that version.
+    const where = whereFor(entry, w, plans);
+    const stale = entry.status === 'sent' && entry.sentWhere != null && entry.sentWhere !== where;
+    const sendAgain = async () => {
+      const c = await credentials();
+      if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send rides to your Garmin.' }); return; }
+      setSending(true);
+      try { await sendPlanned(c, entry, w, profile); notify(); toast({ ok: true, text: 'Sent again: the copy on your Garmin is replaced after its next phone sync.' }); }
+      catch (e) { toast({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
+      finally { setSending(false); }
+    };
+    return (
+      <div class="where" style="margin-top:10px">
+        <div class="row wrap" style="gap:10px;align-items:center">
+          <span class="small muted">Riding it</span>
+          <div class="seg" role="group" aria-label="Riding it">
+            {(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={where === x ? 'on' : ''} aria-pressed={where === x} onClick={() => void setWhere(entry.id, x)}>{x === 'outdoor' ? 'Outdoors' : 'On a trainer'}</button>)}
+          </div>
+        </div>
+        <p class="faint small" style="margin:6px 0 0">{where === 'outdoor' ? <><b>On the Garmin:</b> {softened}</> : 'Sent to your Garmin exactly as written.'} The ride player on the trainer always keeps the steps as written.</p>
+        {stale && <p class="small" style="margin:6px 0 0">The copy on your Garmin is the {entry.sentWhere === 'outdoor' ? 'outdoor version' : 'ride as written'}. <button class="btn sm" disabled={sending} onClick={() => void sendAgain()}>{sending ? 'Sending…' : 'Send again'}</button></p>}
+      </div>
+    );
   }
   if (t.outdoor !== 'indoor') return null;
   const alt = LIBRARY.filter((x) => x.id !== w.id && tagsOf(x).purpose === t.purpose && tagsOf(x).outdoor === 'well' && w.bases.some((b) => x.bases.includes(b)))

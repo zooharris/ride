@@ -394,7 +394,7 @@ describe('ready-made sessions', () => {
     const { readyMadeSessions } = await import('../library/sessions');
     const list = readyMadeSessions(['bodyweight', 'dumbbells', 'bench', 'treadmill']);
     expect(new Set(list.map((w) => w.id)).size).toBe(list.length);
-    expect(list.filter((w) => w.kind === 'strength').length).toBe(83);   // 26 by quality (30 Oct 2026) + 10 for a purpose (the kettlebell ones need a kettlebell) + 47 from Part D batch 1 (11 Nov) a dumbbell-and-bench rider can do
+    expect(list.filter((w) => w.kind === 'strength').length).toBe(103);   // 26 by quality (30 Oct 2026) + 10 for a purpose (the kettlebell ones need a kettlebell) + 20 from Part D batch 2 (11 Nov) + 47 from Part D batch 1 (11 Nov) a dumbbell-and-bench rider can do
     expect(list.filter((w) => w.kind === 'mobility').length).toBe(30);
     expect(list.filter((w) => w.kind === 'walk').length).toBe(33);   // 29 without a treadmill: the four incline sessions need one
     for (const w of list) if (w.kind !== 'walk' && w.kind !== 'run') expect((w.exercises ?? []).length).toBeGreaterThanOrEqual(4);

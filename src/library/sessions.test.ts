@@ -43,9 +43,9 @@ describe('Library, Batch 5c', () => {
     expect(names('lib-str-hip-power').filter((n) => /swing/i.test(n))).toHaveLength(1);
     expect(names('lib-sq-heavy-legs-kb')).toContain('Kettlebell single-leg deadlift');
   });
-  it('every mobility routine uses stretches that exist; every exercise in the Library is one of the 86', () => {
+  it('every mobility routine uses stretches that exist; every exercise in the Library is one of the 108 (22 added 11 Nov 2026)', () => {
     const known = new Set([...EXERCISES.map((e) => e.name), ...MOBILITY.map((m) => m.name)]);
-    expect(known.size).toBe(86);
+    expect(known.size).toBe(108);
     for (const w of readyMadeSessions(EVERYTHING)) for (const e of w.exercises ?? []) expect(known.has(e.name), e.name).toBe(true);
     for (const w of readyMadeSessions(EVERYTHING).filter((x) => x.kind === 'mobility')) expect(w.exercises!.length).toBeGreaterThanOrEqual(4);
   });
@@ -92,7 +92,7 @@ describe('strength by quality (30 Oct 2026)', () => {
       expect(d.strength!.dose).toBe(dose);
     }
     const short = readyMadeSessions(EVERYTHING).filter((w) => / short$/.test(w.name));
-    expect(short.length).toBe(12);
+    expect(short.length).toBe(14);   // two four-exercise injury-proofing sessions added 11 Nov 2026
     for (const w of short) for (const dose of ['foundation', 'build', 'maintain', 'light'] as const) expect(redose(w, dose, strengthTss).minutes!).toBeLessThanOrEqual(30);
   });
 });

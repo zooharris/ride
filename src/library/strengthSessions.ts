@@ -1,6 +1,7 @@
 import type { Equipment, Exercise, StrengthDose, StrengthFocus, StrengthQuality, Workout } from '../engine/types';
 import { EXERCISES, firstFirst, lightLoad, type ExerciseDef } from './strength';
 import { STRENGTH_D1 } from './strengthD1';
+import { STRENGTH_D2 } from './strengthD2';
 
 /**
  * The Library's strength sessions by quality and focus (30 Oct 2026, the plan
@@ -43,7 +44,7 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Pull-ups, dips and the barbell: the heaviest upper-body and posterior-chain session in the Library.' },
   { id: 'heavy-legs-bw', name: 'Legs: strength, bodyweight', quality: 'heavy', focus: 'legs', needs: [], ids: ['split-squat', 'single-leg-rdl', 'reverse-lunge', 'single-leg-bridge', 'calf-raise', 'side-plank'],
     purpose: 'With no weights, strength comes from one leg doing the work of two and from slow lowering: the hardest bodyweight versions.' },
-  { id: 'heavy-upper-bw', name: 'Upper body: strength, bodyweight', quality: 'heavy', focus: 'upper', needs: [], ids: ['pushup', 'single-leg-rdl', 'single-leg-bridge', 'side-plank', 'hollow-hold', 'bird-dog'],
+  { id: 'heavy-upper-bw', name: 'Upper body: strength, bodyweight', quality: 'heavy', focus: 'upper', needs: [], ids: ['pushup', 'single-leg-rdl', 'table-row', 'side-plank', 'hollow-hold', 'bird-dog'],
     purpose: 'No equipment: push-ups lowered slowly (feet on a step once they are easy) and the posterior chain one leg at a time.' },
 
   // Power
@@ -53,9 +54,9 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Fast presses and rows with the hips snapping through a swing: power for out-of-the-saddle efforts.' },
   { id: 'power-legs-kb', name: 'Legs: power, kettlebell', quality: 'power', focus: 'legs', needs: ['kettlebell'], ids: ['kb-swing', 'kb-goblet-squat', 'kb-rack-lunge', 'kb-halo', 'kb-rack-carry', 'kb-get-up'], fast: ['kb-goblet-squat'],
     purpose: 'Swings first, then a fast squat and lunge, a halo and the get-up: power with one bell.' },
-  { id: 'power-legs-bw', name: 'Legs: power, bodyweight', quality: 'power', focus: 'legs', needs: [], ids: ['step-up', 'bw-squat', 'reverse-lunge', 'lateral-lunge', 'russian-twist', 'hollow-hold'], fast: ['step-up', 'bw-squat', 'reverse-lunge'],
-    purpose: 'No weights: speed is the load. Quick step-ups, squats and lunges for the legs that start a sprint.' },
-  { id: 'power-upper-bw', name: 'Upper body: power, bodyweight', quality: 'power', focus: 'upper', needs: [], ids: ['pushup', 'glute-bridge', 'lateral-lunge', 'russian-twist', 'side-plank', 'bird-dog'], fast: ['pushup', 'glute-bridge', 'lateral-lunge'],
+  { id: 'power-legs-bw', name: 'Legs: power, bodyweight', quality: 'power', focus: 'legs', needs: [], ids: ['step-up', 'bw-squat', 'reverse-lunge', 'lateral-lunge', 'glute-bridge', 'hollow-hold'], fast: ['step-up', 'bw-squat', 'reverse-lunge'],
+    purpose: 'No weights: speed is the load. Quick step-ups, squats, lunges and hip drives for the legs that start a sprint.' },
+  { id: 'power-upper-bw', name: 'Upper body: power, bodyweight', quality: 'power', focus: 'upper', needs: [], ids: ['pushup', 'glute-bridge', 'towel-row', 'russian-twist', 'side-plank', 'bird-dog'], fast: ['pushup', 'glute-bridge'],
     purpose: 'No equipment: fast push-ups, a hip drive and quick lateral lunges, with the trunk holding it together.' },
 
   // Strength endurance
@@ -63,11 +64,11 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Higher reps and long holds: legs and a trunk that last to the end of a long day.' },
   { id: 'endurance-upper', name: 'Upper body: endurance', quality: 'endurance', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['pushup', 'bench-dip', 'bent-row', 'reverse-fly', 'overhead-carry', 'plank'],
     purpose: 'Many reps and carries for the shoulders, arms and upper back that hold the position for hours.' },
-  { id: 'endurance-upper-bands', name: 'Upper body: endurance, bands', quality: 'endurance', focus: 'upper', needs: ['band'], ids: ['band-row', 'band-pull-apart', 'band-face-pull', 'band-lat-pulldown', 'band-woodchop', 'monster-walk'],
+  { id: 'endurance-upper-bands', name: 'Upper body: endurance, bands', quality: 'endurance', focus: 'upper', needs: ['band'], ids: ['band-row', 'band-pull-apart', 'band-face-pull', 'band-lat-pulldown', 'band-woodchop', 'pushup'],
     purpose: 'A band and a door frame: rows, pulldowns and the rear shoulders that hours on the hoods let go.' },
   { id: 'endurance-legs-bands', name: 'Legs: endurance, bands', quality: 'endurance', focus: 'legs', needs: ['band'], ids: ['band-good-morning', 'bw-squat', 'monster-walk', 'walking-lunge', 'pallof', 'side-plank'],
     purpose: 'Bands and bodyweight, many reps: the posterior chain and hips for a long climb.' },
-  { id: 'endurance-upper-bw', name: 'Upper body and trunk, bodyweight', quality: 'endurance', focus: 'upper', needs: [], ids: ['pushup', 'plank', 'hollow-hold', 'russian-twist', 'side-plank', 'bird-dog'],
+  { id: 'endurance-upper-bw', name: 'Upper body and trunk, bodyweight', quality: 'endurance', focus: 'upper', needs: [], ids: ['pushup', 'plank', 'hollow-hold', 'towel-row', 'side-plank', 'bird-dog'],
     purpose: 'No equipment: push-ups and the trunk work that keeps the upper body in position for hours.' },
 
   // One leg at a time
@@ -75,7 +76,7 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Single-leg lifts and hip control: finds and fixes the weaker side, the way the pedal stroke works.' },
   { id: 'stability-upper', name: 'Upper body: one side at a time', quality: 'stability', focus: 'upper', needs: ['dumbbells'], ids: ['one-arm-row', 'pushup', 'lateral-lunge', 'single-leg-rdl', 'overhead-carry', 'side-plank'],
     purpose: 'One arm, one leg, one side at a time: the trunk resists the twist while the limbs work.' },
-  { id: 'stability-upper-bw', name: 'Upper body: one side at a time, bodyweight', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'bird-dog', 'dead-bug', 'lateral-lunge', 'single-leg-rdl'],
+  { id: 'stability-upper-bw', name: 'Upper body: one side at a time, bodyweight', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'bird-dog', 'dead-bug', 'towel-row', 'single-leg-rdl'],
     purpose: 'No equipment: one side at a time, with the trunk holding still while the arms and legs move.' },
 
   // Short versions (30 Oct 2026, from the sweep): four exercises, so a session fits half an hour at any level.
@@ -85,26 +86,28 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Press, row, press overhead and carry: heavy upper-body work in half an hour.' },
   { id: 'heavy-legs-bw-short', name: 'Legs: strength, bodyweight, short', quality: 'heavy', focus: 'legs', needs: [], ids: ['split-squat', 'single-leg-rdl', 'single-leg-bridge', 'side-plank'],
     purpose: 'One leg doing the work of two, in half an hour and no equipment.' },
-  { id: 'heavy-upper-bw-short', name: 'Upper body: strength, bodyweight, short', quality: 'heavy', focus: 'upper', needs: [], ids: ['pushup', 'single-leg-rdl', 'hollow-hold', 'bird-dog'],
+  { id: 'heavy-upper-bw-short', name: 'Upper body: strength, bodyweight, short', quality: 'heavy', focus: 'upper', needs: [], ids: ['pushup', 'table-row', 'hollow-hold', 'bird-dog'],
     purpose: 'Slow push-ups and the posterior chain, in half an hour and no equipment.' },
   { id: 'power-legs-short', name: 'Legs: power, short', quality: 'power', focus: 'legs', needs: ['dumbbells'], ids: ['db-swing', 'step-up', 'goblet-squat', 'hollow-hold'], fast: ['step-up', 'goblet-squat'],
     purpose: 'Swings, fast step-ups and fast squats: leg power in half an hour.' },
   { id: 'power-upper-short', name: 'Upper body: power, short', quality: 'power', focus: 'upper', needs: ['dumbbells'], ids: ['floor-press', 'bent-row', 'db-swing', 'suitcase-carry'], fast: ['floor-press', 'bent-row'],
     purpose: 'Fast presses and rows with a swing: upper-body power in half an hour.' },
-  { id: 'power-legs-bw-short', name: 'Legs: power, bodyweight, short', quality: 'power', focus: 'legs', needs: [], ids: ['step-up', 'bw-squat', 'reverse-lunge', 'hollow-hold'], fast: ['step-up', 'bw-squat', 'reverse-lunge'],
+  { id: 'power-legs-bw-short', name: 'Legs: power, bodyweight, short', quality: 'power', focus: 'legs', needs: [], ids: ['step-up', 'bw-squat', 'glute-bridge', 'hollow-hold'], fast: ['step-up', 'bw-squat'],
     purpose: 'Quick step-ups, squats and lunges: leg speed in half an hour, no equipment.' },
-  { id: 'power-upper-bw-short', name: 'Upper body: power, bodyweight, short', quality: 'power', focus: 'upper', needs: [], ids: ['pushup', 'glute-bridge', 'lateral-lunge', 'side-plank'], fast: ['pushup', 'glute-bridge', 'lateral-lunge'],
+  { id: 'power-upper-bw-short', name: 'Upper body: power, bodyweight, short', quality: 'power', focus: 'upper', needs: [], ids: ['pushup', 'glute-bridge', 'towel-row', 'side-plank'], fast: ['pushup', 'glute-bridge'],
     purpose: 'Fast push-ups, a hip drive and quick lateral lunges, in half an hour.' },
   { id: 'endurance-legs-short', name: 'Legs: endurance, short', quality: 'endurance', focus: 'legs', needs: [], ids: ['wall-sit', 'walking-lunge', 'glute-bridge', 'side-plank'],
     purpose: 'Long holds and many reps for the legs, in half an hour.' },
-  { id: 'endurance-upper-short', name: 'Upper body: endurance, short', quality: 'endurance', focus: 'upper', needs: [], ids: ['pushup', 'plank', 'russian-twist', 'bird-dog'],
+  { id: 'endurance-upper-short', name: 'Upper body: endurance, short', quality: 'endurance', focus: 'upper', needs: [], ids: ['pushup', 'plank', 'towel-row', 'bird-dog'],
     purpose: 'Push-ups and the trunk work that holds the position, in half an hour.' },
   { id: 'stability-legs-short', name: 'Legs: one leg at a time, short', quality: 'stability', focus: 'legs', needs: [], ids: ['single-leg-rdl', 'step-up', 'clamshell', 'bird-dog'],
     purpose: 'Single-leg work and hip control in half an hour.' },
-  { id: 'stability-upper-short', name: 'Upper body: one side at a time, short', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'dead-bug', 'lateral-lunge'],
+  { id: 'stability-upper-short', name: 'Upper body: one side at a time, short', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'dead-bug', 'towel-row'],
     purpose: 'One side at a time, with the trunk holding still, in half an hour.' },
   // Part D, batch 1 (11 Nov 2026)
   ...STRENGTH_D1,
+  // Part D, batch 2 (11 Nov 2026)
+  ...STRENGTH_D2,
 ];
 
 // ---------------------------------------------------------------------------

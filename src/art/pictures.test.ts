@@ -1,3 +1,4 @@
+import { EXERCISES_AWAITING_PICTURES } from '../library/strength';
 import { describe, expect, it } from 'vitest';
 import list from './exercises.json';
 import { picturesFor } from './pictures';
@@ -9,8 +10,10 @@ const ids = [...EXERCISES.map((e) => e.id), ...MOBILITY.map((m) => m.id)];
 
 describe('the exercise pictures', () => {
   it('has a start picture for every exercise and stretch, and nothing else', () => {
-    expect(ids).toHaveLength(86);
-    for (const id of ids) expect(poses[id], id).toContain('a');
+    // The 22 exercises approved on 11 Nov 2026 wait for Todd's pictures and show without one until then.
+    const waiting = new Set(EXERCISES_AWAITING_PICTURES);
+    expect(ids).toHaveLength(108);
+    for (const id of ids) if (!waiting.has(id)) expect(poses[id], id).toContain('a');
     const known = new Set(ids);
     for (const id of Object.keys(poses)) expect(known.has(id), id).toBe(true);
     expect(Object.keys(poses)).toHaveLength(86);

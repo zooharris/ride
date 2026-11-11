@@ -1,3 +1,4 @@
+import { EXERCISES } from '../library/strength';
 import { useEffect, useState } from 'preact/hooks';
 import { useNarrow } from './Glance';
 import { workoutStats } from '../engine/workout';
@@ -60,6 +61,8 @@ export interface Filters {
   hrOnly: boolean;
   /** Strength only. */
   focus: StrengthFocus | 'all';
+  /** Strength only (Part D batch 2, 11 Nov 2026): sessions that include all of these kinds of movement. */
+  includes: Includes[];
   show: Show;
   duration: Duration;
   /** 'default': the kind's own default (rides A to Z). */
@@ -67,7 +70,19 @@ export interface Filters {
   /** The sort's direction flipped (the arrow). */
   desc: boolean;
 }
-export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'default', desc: false };
+export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', includes: [], show: 'all', duration: 'all', sort: 'default', desc: false };
+
+/**
+ * What a strength session works (Part D batch 2, 11 Nov 2026), from its exercises' movement patterns: push, pull,
+ * posterior chain (any hinge: deadlifts, swings, hip thrusts, bridges, good mornings, Nordic lowering) and trunk.
+ */
+export type Includes = 'push' | 'pull' | 'posterior' | 'trunk';
+export const INCLUDES: Includes[] = ['push', 'pull', 'posterior', 'trunk'];
+export const INCLUDES_LABEL: Record<Includes, string> = { push: 'Push', pull: 'Pull', posterior: 'Posterior chain', trunk: 'Trunk' };
+const PATTERN_OF = new Map(EXERCISES.map((e) => [e.name, e.pattern]));
+const INCLUDES_PATTERN: Record<Includes, string> = { push: 'push', pull: 'pull', posterior: 'hinge', trunk: 'trunk' };
+/** Whether a session has at least one exercise of that kind of movement. */
+export const sessionIncludes = (w: Pick<Workout, 'exercises'>, x: Includes): boolean => (w.exercises ?? []).some((e) => PATTERN_OF.get(e.name) === INCLUDES_PATTERN[x]);
 
 /** What the rider has starred, and when each workout was last done (Library id → YYYY-MM-DD). */
 /** `last`: when each workout was last done, at any time (for the Last done sort); `recent` is the last 90 days. */
@@ -111,6 +126,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
     if (kind === 'ride' && f.outdoor && t.outdoor !== 'well') return false;
     if (kind === 'ride' && f.hrOnly && !w.bases.includes('hr')) return false;
     if (kind === 'strength' && f.focus !== 'all' && w.strength?.focus !== f.focus) return false;
+    if (kind === 'strength' && f.includes.length && !f.includes.every((x) => sessionIncludes(w, x))) return false;
     return !q || `${w.name} ${w.subtitle ?? ''} ${PURPOSE_LABEL[t.purpose]} ${w.purpose}`.toLowerCase().includes(q);
   });
   // A sort the kind doesn't offer falls back to Suggested; ties keep the Suggested order (the sort is stable).
@@ -125,7 +141,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
 }
 
 /** Whether any filter narrows the list (Clear shows only then). */
-export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.hrOnly || f.focus !== 'all' || f.show !== 'all' || f.duration !== 'all';
+export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.hrOnly || f.focus !== 'all' || f.includes.length > 0 || f.show !== 'all' || f.duration !== 'all';
 
 /** The filters as the Library's address carries them; defaults left out. */
 export function filtersToQuery(f: Filters): Record<string, string | undefined> {
@@ -136,6 +152,7 @@ export function filtersToQuery(f: Filters): Record<string, string | undefined> {
     out: f.outdoor ? '1' : undefined,
     hr: f.hrOnly ? '1' : undefined,
     focus: f.focus !== 'all' ? f.focus : undefined,
+    has: f.includes.length ? f.includes.join(',') : undefined,
     show: f.show !== 'all' ? f.show : undefined,
     len: f.duration !== 'all' ? f.duration : undefined,
     sort: f.sort !== 'default' ? f.sort : undefined,
@@ -156,6 +173,7 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
     outdoor: q.get('out') === '1',
     hrOnly: q.get('hr') === '1',
     focus: FOCI.find((x) => x === q.get('focus')) ?? 'all',
+    includes: (q.get('has') ?? '').split(',').filter((x): x is Includes => (INCLUDES as string[]).includes(x)),
     show: (['favorites', 'recent'] as Show[]).find((x) => x === q.get('show')) ?? 'all',
     duration: DURATIONS.find((d) => d[0] === q.get('len'))?.[0] ?? 'all',
     // An address saved with the old order (Shortest first, Longest first) opens as Length, the same way round.
@@ -190,6 +208,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
     const clear: Partial<Filters> = {};
     if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor || f.hrOnly)) Object.assign(clear, { purpose: 'all', outdoor: false, hrOnly: false });
     if (kind !== 'strength' && f.focus !== 'all') clear.focus = 'all';
+    if (kind !== 'strength' && f.includes.length) clear.includes = [];
     if (f.sort !== 'default' && !sortsFor(kind).includes(f.sort)) Object.assign(clear, { sort: 'default', desc: false });
     if (Object.keys(clear).length) set(clear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,6 +249,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
           options={DURATIONS.map(([d, l]) => [d, l] as [string, string])} value={f.duration} onPick={(v) => set({ duration: v as Duration })} />
         {kind === 'strength' && <Menu label={f.focus === 'all' ? 'Whole body or part' : cap(FOCUS_WORDS[f.focus])} active={f.focus !== 'all'} open={menu === 'focus'} onOpen={open('focus')} onClose={close} title="Body focus"
           options={[['all', 'Any focus'], ...FOCI.map((x) => [x, cap(FOCUS_WORDS[x])] as [string, string])]} value={f.focus} onPick={(v) => set({ focus: v as StrengthFocus | 'all' })} />}
+        {kind === 'strength' && <span class="chips includes-chips" role="group" aria-label="Includes"><span class="faint small">Includes</span>{INCLUDES.map((x) => { const on = f.includes.includes(x); return <button key={x} class={`chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => set({ includes: on ? f.includes.filter((y) => y !== x) : [...f.includes, x] })}>{INCLUDES_LABEL[x]}</button>; })}</span>}
         <Menu label={SHOW_LABEL[f.show]} active={f.show !== 'all'} open={menu === 'show'} onOpen={open('show')} onClose={close} title="Show"
           options={(Object.keys(SHOW_LABEL) as Show[]).map((x) => [x, SHOW_LABEL[x]] as [string, string])} value={f.show} onPick={(v) => set({ show: v as Show })} />
         {kind === 'ride' && <button class={`chip${f.outdoor ? ' on' : ''}`} aria-pressed={f.outdoor} onClick={() => set({ outdoor: !f.outdoor })}>Rides well outdoors</button>}
@@ -241,7 +261,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
 }
 
 /** How many filters narrow the list, besides the search (which shows on its own), for the folded button's count. */
-const activeCount = (f: Filters) => [f.purpose !== 'all', f.duration !== 'all', f.focus !== 'all', f.show !== 'all', f.outdoor, f.hrOnly].filter(Boolean).length;
+const activeCount = (f: Filters) => [f.purpose !== 'all', f.duration !== 'all', f.focus !== 'all', f.includes.length > 0, f.show !== 'all', f.outdoor, f.hrOnly].filter(Boolean).length;
 
 /** The empty list, saying why in words that fit the filter that emptied it. */
 export function NothingMatches({ f }: { f: Filters }) {

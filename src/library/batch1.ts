@@ -82,7 +82,7 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-z2-cadpyramid-70', name: 'Pohick', subtitle: 'Endurance 70, cadence pyramid', family: 'endurance', bases: BOTH, tag: { series: { id: 'endurance-cadence', rung: 3 } },
     purpose: 'Seventy minutes of zone 2 with the cadence climbing and falling in five-minute steps: 85, 95, 105, 95, 85, twice. Easy effort, busy legs.',
     physiology: 'Aerobic base with pedalling efficiency across cadences.',
-    blocks: [warm(10), rep(2, 'Cadence pyramid', z2(5, { cadence: 85 }), z2(5, { cadence: 95 }), z2(5, { cadence: 105, cues: [{ at: 0, text: 'Top of the pyramid: 105 rpm. Smooth, not bouncy.' }] }), z2(5, { cadence: 95 }), z2(5, { cadence: 85 })), cool(10)] }),
+    blocks: [warm(10), rep(2, 'Cadence pyramid', z2(5, { cadence: 85 }), z2(5, { cadence: 95 }), z2(5, { cadence: 105, cues: [{ at: 0, text: 'Top of the pyramid: 105 rpm. Smooth, not bouncy.' }] }), z2(5, { cadence: 95 })), z2(10, { cadence: 85 }), cool(10)] }),
   ride({ id: 'b1-z2-seated-85', name: 'Cub Run', subtitle: 'Endurance 85 with seated climbs', family: 'endurance', bases: BOTH,
     purpose: 'Eighty-five minutes with five three-minute seated climbs at a low cadence and a firm tempo effort. Strength on the bike without leaving zone 2 for long.',
     physiology: 'Aerobic base; climbing strength.',
@@ -164,8 +164,9 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-ss-long-4x15', name: 'Clinch', subtitle: 'Long 3:15 with sweet spot 4 × 15', family: 'sweetspot', bases: BOTH, setting: 'outdoor',
     purpose: 'Three and a quarter hours with four fifteen-minute sweet-spot blocks spread through the middle. Long, with the work broken into pieces you can manage.',
     physiology: 'Threshold development with durability.',
-    blocks: [warm(20), z2(40), rep(4, 'Sweet spot', st(15, 0.87, 0.92, { label: 'Sweet spot', cues: [{ at: 0, text: 'Fifteen minutes of sweet spot.' }, lastRep('The last block. Same as the first.', 0)] }), z2(8)), z2(38), cool(5)] }),
-  ride({ id: 'b1-ss-stairs-3x9', name: 'Gilberts Corner', subtitle: 'Sweet spot 3 × 9, stepping up', family: 'sweetspot', bases: BOTH,
+    blocks: [warm(20), z2(40), rep(4, 'Sweet spot', st(15, 0.87, 0.92, { label: 'Sweet spot', cues: [{ at: 0, text: 'Fifteen minutes of sweet spot.' }, lastRep('The last block. Same as the first.', 0)] }), z2(8)), z2(38, { cues: [{ at: 0, text: 'Sweet spot done. Zone 2 from here, and keep eating.' }] }), cool(5)] }),
+  // Power only (10 Nov 2026, step rule): its stairs climb a few watts at a time, far less than heart rate can show.
+  ride({ id: 'b1-ss-stairs-3x9', name: 'Gilberts Corner', subtitle: 'Sweet spot 3 × 9, stepping up', family: 'sweetspot', bases: ['power'],
     purpose: 'Three nine-minute blocks, each climbing through three steps of sweet spot: low, middle, high. Under an hour, with a finish in every block.',
     physiology: 'Threshold development.',
     blocks: [warm(10), rep(3, 'Sweet spot', st(3, 0.86, 0.9, { label: 'Sweet spot, low' }), st(3, 0.89, 0.93, { label: 'Sweet spot, middle' }), st(3, 0.92, 0.96, { label: 'Sweet spot, high', cues: [{ at: 0, text: 'Top step. Hold it to the end of the block.' }] }), easy(3)), cool(8)] }),
@@ -176,7 +177,7 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-ss-rolling-150', name: 'Holston', subtitle: 'Sweet spot 2:30, rolling', family: 'sweetspot', bases: BOTH, setting: 'outdoor',
     purpose: 'Two and a half hours alternating twelve minutes of sweet spot and twelve of zone 2, four times, then zone 2 home. A long ride with real work in it.',
     physiology: 'Threshold development with durability.',
-    blocks: [warm(20), rep(4, 'Sweet spot', st(12, 0.87, 0.92, { label: 'Sweet spot', cues: [{ at: 0, text: 'Twelve minutes of sweet spot.' }] }), z2(12)), z2(30), cool(4)] }),
+    blocks: [warm(20), rep(4, 'Sweet spot', st(12, 0.87, 0.92, { label: 'Sweet spot', cues: [{ at: 0, text: 'Twelve minutes of sweet spot.' }] }), z2(12)), z2(30, { cues: [{ at: 0, text: 'Sweet spot done. Zone 2 to the finish.' }] }), cool(4)] }),
 
   // ── Recovery ─────────────────────────────────────────────────────────────
   ride({ id: 'b1-rec-spinups-25', name: 'Dyke Marsh', subtitle: 'Recovery 25 with spin-ups', family: 'recovery', bases: BOTH, tag: { series: { id: 'recovery', rung: 1 } },
@@ -198,7 +199,7 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-rec-50', name: 'Mason Neck', subtitle: 'Recovery 50 with three spin-ups', family: 'recovery', bases: BOTH, tag: { series: { id: 'recovery', rung: 4 } },
     purpose: 'Fifty easy minutes with three one-minute spin-ups. A longer recovery day that still leaves you fresher.',
     physiology: 'Recovery with leg speed.',
-    blocks: [st(12, 0.45, 0.55, { label: 'Easy' }), rep(3, 'Easy', st(1, 0.5, 0.58, { label: 'Spin-up', cadence: 105, cues: [{ at: 0, text: 'Spin up, no extra effort.' }] }), st(10, 0.45, 0.55, { label: 'Easy' })), st(5, 0.45, 0.55, { label: 'Easy' })] }),
+    blocks: [st(12, 0.45, 0.55, { label: 'Easy' }), rep(2, 'Easy', st(1, 0.5, 0.58, { label: 'Spin-up', cadence: 105, cues: [{ at: 0, text: 'Spin up, no extra effort.' }] }), st(10, 0.45, 0.55, { label: 'Easy' })), st(1, 0.5, 0.58, { label: 'Spin-up', cadence: 105, cues: [{ at: 0, text: 'Last spin-up, no extra effort.' }] }), st(15, 0.45, 0.55, { label: 'Easy' })] }),
 
   // ── Tempo ────────────────────────────────────────────────────────────────
   ride({ id: 'b1-tempo-3x20', name: 'York', subtitle: 'Tempo 1:45, 3 × 20', family: 'tempo', bases: BOTH,
@@ -216,7 +217,7 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-tempo-long-150', name: 'Nottoway', subtitle: 'Endurance 2:30 with tempo blocks', family: 'tempo', bases: BOTH, setting: 'outdoor',
     purpose: 'Two and a half hours with three fifteen-minute tempo blocks in the middle. A long ride that asks a little more than zone 2.',
     physiology: 'Muscular endurance with aerobic volume.',
-    blocks: [warm(20), z2(30), rep(3, 'Tempo', st(15, 0.78, 0.84, { label: 'Tempo', cues: [{ at: 0, text: 'Fifteen minutes of tempo.' }] }), z2(10)), z2(20), cool(5)] }),
+    blocks: [warm(20), z2(30), rep(3, 'Tempo', st(15, 0.78, 0.84, { label: 'Tempo', cues: [{ at: 0, text: 'Fifteen minutes of tempo.' }] }), z2(10)), z2(20, { cues: [{ at: 0, text: 'Tempo done. Zone 2 to the finish.' }] }), cool(5)] }),
   ride({ id: 'b1-tempo-climb-75', name: 'Bull Run', subtitle: 'Tempo 75, seated climbing', family: 'tempo', bases: BOTH,
     purpose: 'Three twelve-minute tempo blocks at a climbing cadence, with easy spinning between. Strength for the long climbs.',
     physiology: 'Muscular endurance and climbing strength.',
@@ -266,5 +267,5 @@ export const BATCH1: Workout[] = [
   ride({ id: 'b1-ana-3sets-3x1', name: 'Humpback Rocks', subtitle: 'Anaerobic capacity, three sets of 3 × 1', family: 'anaerobic', bases: POWER,
     purpose: 'Three sets of three one-minute efforts far above threshold, two minutes easy between and five between sets. The kind of work that wins a hard finish.',
     physiology: 'Anaerobic capacity and buffering.',
-    blocks: [warm(15), rep(3, 'Set 1', st(1, 1.3, 1.45, { label: 'Anaerobic', cues: [{ at: 0, text: 'One minute, very hard.' }] }), easy(2)), easy(5, { label: 'Between sets' }), rep(3, 'Set 2', st(1, 1.3, 1.45, { label: 'Anaerobic' }), easy(2)), easy(5, { label: 'Between sets' }), rep(3, 'Set 3', st(1, 1.3, 1.45, { label: 'Anaerobic', cues: [{ at: 0, text: 'The last set.' }] }), easy(2)), z2(8), cool(8)] }),
+    blocks: [warm(15), rep(3, 'Set 1', st(1, 1.3, 1.45, { label: 'Anaerobic', cues: [{ at: 0, text: 'One minute, very hard.' }] }), easy(2)), easy(5, { cues: [{ at: 0, text: 'Between sets. Easy until the next one.' }], label: 'Between sets' }), rep(3, 'Set 2', st(1, 1.3, 1.45, { label: 'Anaerobic' }), easy(2)), easy(5, { cues: [{ at: 0, text: 'Between sets. Easy until the next one.' }], label: 'Between sets' }), rep(3, 'Set 3', st(1, 1.3, 1.45, { label: 'Anaerobic', cues: [{ at: 0, text: 'The last set.' }] }), easy(2)), z2(8), cool(8)] }),
 ];

@@ -91,7 +91,9 @@ describe('Batch 6 C3: the quality type holds unless the evidence moves', () => {
     const base = generatePlan(req);
     const wk = base.weeks.find((w) => w.phase === 'build')!;
     const was = wk.sessions.filter((x) => x.kind === 'ride').map((x) => x.workout.family).filter((f) => ['sweetspot', 'threshold', 'tempo', 'vo2max'].includes(f));
-    const other = was[0] === 'threshold' ? 'sweetspot' : 'threshold';
+    // A quality type the week doesn't have, so a held one can only come from the calendar (chosen, not assumed: the
+    // Library's rides shape which types a week gets).
+    const other = (['threshold', 'sweetspot', 'tempo', 'vo2max'] as const).find((f) => !was.includes(f))!;
     expect(was.length).toBeGreaterThan(0);
     expect(was[0]).not.toBe(other);
     expect(was).not.toContain(other);   // so a held 'other' can only come from the calendar

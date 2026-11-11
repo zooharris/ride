@@ -15,9 +15,9 @@ function warmUp(): WorkoutBlock[] {
   return [
     step(15, 0.55, { intensityHigh: 0.7, label: 'Warm up, build gently' }),
     step(1, 0.95, { label: 'Pickup' }),
-    step(3, 0.6, { label: 'Easy' }),
+    step(3, 0.55, { label: 'Easy' }),
     step(1, 0.95, { label: 'Pickup' }),
-    step(5, 0.6, { label: 'Easy' }),
+    step(5, 0.55, { label: 'Easy' }),
   ];
 }
 
@@ -37,7 +37,7 @@ function trail(opts: {
   }
   const fill = opts.total - used - 5;
   if (fill > 0) blocks.push(step(fill, 0.6, { intensityHigh: 0.72, label: 'Zone 2 for the rest' }));
-  blocks.push(step(5, 0.5, { label: 'Cool down' }));
+  blocks.push(step(5, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] }));
   return relaxFloors({ ...opts, blocks, source: 'library', setting: 'outdoor', kind: 'ride' });
 }
 
@@ -48,7 +48,7 @@ function finish(opts: { id: string; name: string; total: number; set: Set; purpo
   const fill = opts.total - 25 - setMinutes - 5;
   if (fill > 0) blocks.push(step(fill, 0.6, { intensityHigh: 0.72, label: 'Zone 2' }));
   blocks.push({ kind: 'repeat', times: opts.set.reps, label: opts.set.label, steps: [step(opts.set.work, opts.set.lo, { intensityHigh: opts.set.hi }), ...(opts.set.rest ? [step(opts.set.rest, 0.55, { label: 'Easy between' })] : [])] });
-  blocks.push(step(5, 0.5, { label: 'Cool down' }));
+  blocks.push(step(5, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] }));
   return { id: opts.id, name: opts.name, family: opts.set.label === 'Tempo' ? 'tempo' : 'sweetspot', phases: ['build', 'peak'], bases: BOTH, purpose: opts.purpose, physiology: opts.physiology, blocks, source: 'library', setting: 'outdoor', kind: 'ride' };
 }
 
@@ -60,7 +60,7 @@ function century(opts: { id: string; name: string; total: number }): Workout {
   for (let i = 0; i < 3; i++) { blocks.push(step(easy, 0.6, { intensityHigh: 0.72, label: 'Zone 2' })); blocks.push(step(15, 0.86, { intensityHigh: 0.9, label: `Sweet spot block ${i + 1}` })); }
   blocks.push(step(easy, 0.6, { intensityHigh: 0.72, label: 'Zone 2' }));
   blocks.push(step(20, 0.78, { intensityHigh: 0.84, label: 'Tempo finish' }));
-  blocks.push(step(5, 0.5, { label: 'Cool down' }));
+  blocks.push(step(5, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] }));
   return { id: opts.id, name: opts.name, family: 'endurance', phases: ['build', 'peak'], bases: BOTH, blocks, source: 'library', setting: 'outdoor', kind: 'ride',
     purpose: 'A dress rehearsal for a century: five hours with three fifteen-minute sweet-spot blocks where the climbs would be and a tempo finish for the last twenty minutes. Eat and drink on the schedule you will use on the day.',
     physiology: 'Event-specific durability; pacing and fuelling rehearsal.' };
@@ -73,7 +73,7 @@ function group(opts: { id: string; name: string; total: number }): Workout {
     step(10, 0.82, { intensityHigh: 0.88 }), step(0.25, 1.6, { label: 'Sprint' }), step(5, 0.6), step(5, 1.0, { label: 'Climb' }), step(3, 0.6), step(1, 1.1, { label: 'Finish' })];
   const used = 25 + 53.25;
   blocks.push(step(opts.total - used - 5, 0.6, { intensityHigh: 0.72, label: 'Zone 2 home' }));
-  blocks.push(step(5, 0.5, { label: 'Cool down' }));
+  blocks.push(step(5, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] }));
   return { id: opts.id, name: opts.name, family: 'threshold', phases: ['build', 'peak'], bases: ['power'], blocks, source: 'library', setting: 'outdoor', kind: 'ride',
     purpose: 'Two and a half hours shaped like a Saturday group ride: tempo in the bunch, surges, two climbs and a sprint, then zone 2 home. Ride it alone to practise the surges, or take it to the group and let the road set the timing.',
     physiology: 'Variable-intensity tolerance; surge recovery.' };

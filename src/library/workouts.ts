@@ -11,7 +11,7 @@ const m = (minutes: number) => Math.round(minutes * 60);
 const step = (minutes: number, intensity: number, extra: Partial<WorkoutStep> = {}): WorkoutStep =>
   ({ kind: 'step', seconds: m(minutes), intensity, ...extra });
 const warm = (minutes = 10) => step(minutes, 0.5, { intensityHigh: 0.65, label: 'Warm up' });
-const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down' });
+const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] });
 const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
 
 const lib = (w: Omit<Workout, 'source' | 'setting' | 'kind'>): Workout => relaxFloors({ ...w, source: 'library', setting: 'any', kind: 'ride' });
@@ -92,7 +92,7 @@ const CORE: Workout[] = [
   lib({ id: 'lib-vo2-30-30', name: '30/30s', family: 'vo2max', phases: ['build', 'peak'], bases: ['power'],
     purpose: 'Two sets of ten repetitions of thirty seconds hard, thirty seconds easy. The short intervals keep you at a high oxygen cost for longer than you could hold it continuously. Power only: heart rate cannot keep up.',
     physiology: 'VO2max with lower perceived strain per minute.',
-    blocks: [warm(15), rep(10, 'Set 1', step(0.5, 1.2), step(0.5, 0.5)), step(5, 0.5, { label: 'Between sets' }), rep(10, 'Set 2', step(0.5, 1.2), step(0.5, 0.5)), cool(10)] }),
+    blocks: [warm(15), rep(10, 'Set 1', step(0.5, 1.2), step(0.5, 0.5)), step(5, 0.5, { label: 'Between sets', cues: [{ at: 0, text: 'Between sets. Easy until the next one.' }] }), rep(10, 'Set 2', step(0.5, 1.2), step(0.5, 0.5)), cool(10)] }),
 
   // Anaerobic and sprint
   lib({ id: 'lib-sprints', name: 'Neuromuscular Sprints', family: 'anaerobic', phases: ['build', 'peak', 'any'], bases: ['power'],
@@ -106,9 +106,10 @@ const CORE: Workout[] = [
 
   // Longer and extra sessions
   lib({ id: 'lib-spin-45', name: 'Easy Spin 45', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
-    purpose: 'Forty-five minutes of light pedalling with a few minutes of higher cadence in the middle. For the day after the long ride when thirty minutes is not quite enough to feel loose.',
+    purpose: 'Forty-five minutes of light pedalling with five one-minute spin-ups in the middle. For the day after the long ride when thirty minutes is not quite enough to feel loose.',
     physiology: 'Circulation and neuromuscular refresh.',
-    blocks: [step(15, 0.45, { intensityHigh: 0.55 }), step(10, 0.55, { cadence: 100, label: 'High cadence' }), step(20, 0.45, { intensityHigh: 0.55 })] }),
+    // Spin-ups inside one easy ceiling (10 Nov 2026, step rule): the change is cadence, said in a cue, never watts.
+    blocks: [step(15, 0.45, { intensityHigh: 0.55, label: 'Easy' }), rep(4, 'Spin-ups', step(1, 0.5, { intensityHigh: 0.58, cadence: 105, label: 'Spin-up', cues: [{ at: 0, text: 'Spin up to 105 rpm. No extra effort: same light gear.' }] }), step(1, 0.45, { intensityHigh: 0.55, label: 'Easy', cues: [{ at: 0, text: 'Back to your own cadence.' }] })), step(1, 0.5, { intensityHigh: 0.58, cadence: 105, label: 'Spin-up', cues: [{ at: 0, text: 'The last spin-up. Same light gear.' }] }), step(21, 0.45, { intensityHigh: 0.55, label: 'Easy', cues: [{ at: 0, text: 'Easy to the end.' }] })] }),
   lib({ id: 'lib-z2-120', name: 'Foundation 120', family: 'endurance', phases: ['base', 'build', 'any'], bases: ['power', 'hr'],
     purpose: 'Two hours of zone 2 with a cadence change every half hour. The mid-week long ride for a rider with the time, or a weekend ride in a recovery week.',
     physiology: 'Aerobic base; fat oxidation.',

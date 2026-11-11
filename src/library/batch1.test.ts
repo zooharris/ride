@@ -12,7 +12,7 @@ const WANTED: Array<{ purpose: string; band: string; n: number; hr: number }> = 
   { purpose: 'endurance', band: '45–60 min', n: 7, hr: 7 }, { purpose: 'endurance', band: '1–1½ h', n: 4, hr: 4 },
   { purpose: 'endurance', band: '1½–2 h', n: 2, hr: 2 }, { purpose: 'endurance', band: '2–3 h', n: 2, hr: 2 }, { purpose: 'endurance', band: '3–4 h', n: 1, hr: 1 },
   { purpose: 'vo2', band: '1–1½ h', n: 4, hr: 4 }, { purpose: 'vo2', band: '45–60 min', n: 2, hr: 2 }, { purpose: 'vo2', band: '1½–2 h', n: 2, hr: 0 }, { purpose: 'vo2', band: 'under 45 min', n: 2, hr: 0 },
-  { purpose: 'sweetspot', band: '3–4 h', n: 3, hr: 3 }, { purpose: 'sweetspot', band: '45–60 min', n: 2, hr: 2 }, { purpose: 'sweetspot', band: '2–3 h', n: 1, hr: 1 },
+  { purpose: 'sweetspot', band: '3–4 h', n: 3, hr: 3 }, { purpose: 'sweetspot', band: '45–60 min', n: 2, hr: 1 /* Gilberts Corner became power only on 10 Nov: its stairs are too close for heart rate (step rule) */ }, { purpose: 'sweetspot', band: '2–3 h', n: 1, hr: 1 },
   { purpose: 'recovery', band: 'under 45 min', n: 4, hr: 4 }, { purpose: 'recovery', band: '45–60 min', n: 1, hr: 1 },
   { purpose: 'tempo', band: '1½–2 h', n: 2, hr: 2 }, { purpose: 'tempo', band: '45–60 min', n: 1, hr: 1 }, { purpose: 'tempo', band: '2–3 h', n: 1, hr: 1 }, { purpose: 'tempo', band: '1–1½ h', n: 1, hr: 1 },
   { purpose: 'threshold', band: '45–60 min', n: 4, hr: 4 },

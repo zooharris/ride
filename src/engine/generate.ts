@@ -128,7 +128,7 @@ export function generateSession(intent: SessionIntent): Workout {
   blocks.push(...main);
   const fill = budget - mainMinutes;
   if (fill >= 5) blocks.push(step(fill, 0.6, { intensityHigh: 0.72, label: outdoor ? 'Zone 2 for the rest of the ride' : 'Zone 2 to finish' }));
-  blocks.push(step(cm, 0.5, { label: 'Cool down' }));
+  blocks.push(step(cm, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] }));
 
   const bases: Workout['bases'] = type === 'vo2max' || type === 'anaerobic' || type === 'openers' ? ['power'] : ['power', 'hr'];
   return relaxFloors({

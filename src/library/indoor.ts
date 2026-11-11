@@ -6,7 +6,7 @@ const m = (minutes: number) => Math.round(minutes * 60);
 const step = (minutes: number, intensity: number, extra: Partial<WorkoutStep> = {}): WorkoutStep =>
   ({ kind: 'step', seconds: m(minutes), intensity, ...extra });
 const warm = (minutes = 10) => step(minutes, 0.5, { intensityHigh: 0.65, label: 'Warm up' });
-const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down' });
+const cool = (minutes = 10) => step(minutes, 0.5, { label: 'Cool down', cues: [{ at: 0, text: 'The work is done. Spin it out easy.' }] });
 const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
 const lib = (w: Omit<Workout, 'source' | 'setting' | 'kind'>): Workout => relaxFloors({ ...w, source: 'library', setting: 'indoor', kind: 'ride' });
 
@@ -19,7 +19,7 @@ export const INDOOR: Workout[] = [
   lib({ id: 'in-z2-surges-75', name: 'Endurance with Surges', family: 'endurance', phases: ['base', 'build'], bases: ['power'],
     purpose: 'Seventy-five minutes of zone 2 with six short surges to threshold scattered through it. Mimics a rolling road without leaving the aerobic zone for long.',
     physiology: 'Aerobic base with brief lactate exposure.',
-    blocks: [warm(10), rep(6, 'Z2 with surge', step(9, 0.65), step(1, 1.0, { label: 'Surge' })), cool(5)] }),
+    blocks: [warm(10), rep(6, 'Z2 with surge', step(9, 0.65, { intensityHigh: 0.72, label: 'Zone 2' }), step(1, 1.0, { label: 'Surge' })), cool(5)] }),
   lib({ id: 'in-z2-90', name: 'Indoor Foundation 90', family: 'endurance', phases: ['base', 'build'], bases: ['power', 'hr'],
     purpose: 'Ninety minutes of zone 2 on the trainer, broken into three blocks with a cadence change so it passes. The weather-backup long ride.',
     physiology: 'Aerobic base.',
@@ -61,7 +61,7 @@ export const INDOOR: Workout[] = [
   lib({ id: 'in-vo2-40-20', name: '40/20s', family: 'vo2max', phases: ['build', 'peak'], bases: ['power'],
     purpose: 'Two sets of eight: forty seconds hard, twenty seconds easy. The short recoveries keep oxygen demand high for the whole set. Power only.',
     physiology: 'VO2max with high time at intensity.',
-    blocks: [warm(15), rep(8, 'Set 1', step(2 / 3, 1.2), step(1 / 3, 0.5)), step(5, 0.5, { label: 'Between sets' }), rep(8, 'Set 2', step(2 / 3, 1.2), step(1 / 3, 0.5)), cool(10)] }),
+    blocks: [warm(15), rep(8, 'Set 1', step(2 / 3, 1.2), step(1 / 3, 0.5)), step(5, 0.5, { label: 'Between sets', cues: [{ at: 0, text: 'Between sets. Easy until the next one.' }] }), rep(8, 'Set 2', step(2 / 3, 1.2), step(1 / 3, 0.5)), cool(10)] }),
   lib({ id: 'in-vo2-hard-start', name: 'Hard-Start VO2max 4 x 4', family: 'vo2max', phases: ['peak'], bases: ['power'],
     purpose: 'Each four-minute effort opens with thirty seconds well above target, then settles. Gets you to maximal oxygen uptake faster so more of each minute counts.',
     physiology: 'VO2max kinetics.',
@@ -75,7 +75,7 @@ export const INDOOR: Workout[] = [
   lib({ id: 'in-spinups', name: 'Spin-ups and Single Leg', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
     purpose: 'Forty-five easy minutes of pedalling drills: spin-ups to the fastest smooth cadence you can hold, and single-leg blocks. Recovery-day work that makes the stroke better.',
     physiology: 'Pedalling economy; neuromuscular coordination.',
-    blocks: [warm(8), rep(4, 'Spin-up', step(1, 0.6, { cadence: 110, label: 'Spin-up' }), step(2, 0.55, { cadence: 85 })), rep(4, 'Single leg', step(1, 0.55, { label: 'Left leg' }), step(1, 0.55, { label: 'Right leg' }), step(1, 0.55, { label: 'Both' })), cool(13)] }),
+    blocks: [warm(8), rep(4, 'Spin-up', step(1, 0.6, { cadence: 110, label: 'Spin-up' }), step(2, 0.55, { cadence: 85 })), rep(4, 'Single leg', step(1, 0.55, { label: 'Left leg', cues: [{ at: 0, text: 'Left leg only. Rest the right foot out of the way.' }] }), step(1, 0.55, { label: 'Right leg', cues: [{ at: 0, text: 'Right leg only. Smooth all the way round.' }] }), step(1, 0.55, { label: 'Both', cues: [{ at: 0, text: 'Both legs, easy.' }] })), cool(13)] }),
   lib({ id: 'in-recovery-30', name: 'Recovery 30', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
     purpose: 'Half an hour on the trainer at recovery pace with the cadence drifting up and down. The ride for a day when the legs need blood more than rest.',
     physiology: 'Circulation; almost no training stress.',

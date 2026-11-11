@@ -188,6 +188,9 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   run('lib-run-easy-25', generateRun({ kind: 'easy', minutes: 25, where: runWhere, reason: 'Twenty-five easy minutes: enough to count, little enough to ride hard tomorrow.' }));
   run('lib-run-easy-35', generateRun({ kind: 'easy', minutes: 35, where: runWhere, reason: 'Thirty-five easy minutes at a conversational heart rate: aerobic work with the impact cycling lacks.' }));
   run('lib-run-easy-40', generateRun({ kind: 'easy', minutes: 40, where: runWhere, reason: 'Forty easy minutes: walk any hill that pushes the heart rate over the band.' }));
+  run('lib-run-easy-15', generateRun({ kind: 'easy', minutes: 15, where: runWhere, reason: 'Fifteen easy minutes: the smallest run that still counts, for a day with almost no time.' }));
+  run('lib-run-easy-50', generateRun({ kind: 'easy', minutes: 50, where: runWhere, reason: 'Fifty easy minutes at a heart rate you could talk at the whole way.' }));
+  run('lib-run-long-55', generateRun({ kind: 'long', minutes: 55, where: runWhere, reason: 'Fifty-five minutes at an easy heart rate, two or more days clear of the long ride.' }));
   run('lib-run-long-75', generateRun({ kind: 'long', minutes: 75, where: runWhere, reason: 'An hour and a quarter at an easy heart rate, well away from the long ride: time on feet for a runner who has built up to it.' }));
   run('lib-run-long-90', generateRun({ kind: 'long', minutes: 90, where: runWhere, reason: 'Ninety easy minutes: the longest run in the Library, for riders who also run. Walk a minute every so often if that keeps it easy.' }));
   return out.map((w) => withTags(w));

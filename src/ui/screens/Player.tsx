@@ -1,4 +1,3 @@
-import { readQuery } from '../router';
 import { goBack } from '../router';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { brShown } from '../../engine/breathThresholds';
@@ -137,10 +136,9 @@ function NoBluetooth() {
 
 function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean; mine: Workout[] }) {
   const allowsHr = workout.bases.includes('hr');
-  // Power or heart rate (10 Nov 2026 review, B1): what the ride's page showed when the rider came from it, else the
-  // calendar entry's setting, else the rider's default.
-  const asked = readQuery().get('basis') as Basis | null;
-  const [basis, setBasis] = useState<Basis>(asked && workout.bases.includes(asked) ? asked : planned && workout.bases.includes(planned.basis) ? planned.basis : (workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]));
+  // Power or heart rate (10 Nov 2026 evening): chosen here, on the opening screen, starting on the rider's default
+  // whatever page the player was opened from and however the ride was sent.
+  const [basis, setBasis] = useState<Basis>(workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]);
   const { sensors, now } = useSensors();
   const sources = pickSources(sensors, now, getSlots());
   const choice = chooseMode(basis, sensors, sources, allowsHr);

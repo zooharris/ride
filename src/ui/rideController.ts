@@ -14,7 +14,7 @@ import { cleanName } from '../player/devices';
 import { RideEngine, type TrainerMode } from '../player/engine';
 import { buildTimeline, hrZoneOf, rampRef, targetBand, type TimelineStep } from '../player/timeline';
 import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, startWatts, type HrCtl, type HrPowerTable, type HrStep } from '../player/hrControl';
-import { getSetting, setSetting } from '../data/db';
+import { db, getSetting, setSetting } from '../data/db';
 import { putRecording, patchRecording } from '../player/rides';
 import { bandOf, breathShown, ewma, settle, type Settled } from '../player/smooth';
 import type { Recording } from '../player/types';
@@ -442,6 +442,8 @@ export async function endRide(): Promise<Recording | undefined> {
   const rec: Recording = { ...snapshot(a), status: 'finished' };
   a.rec = rec;
   await putRecording(rec);
+  // A ride from the calendar is judged by the targets it was ridden to (10 Nov 2026 evening): the player's choice.
+  if (rec.plannedId) { try { await db.planned.update(rec.plannedId, { basis: a.setup.basis }); } catch { /* the session was removed meanwhile */ } }
   // Diagnostics brief, Part A: the strap's details are saved with the ride now (so closing the tab can't lose them),
   // and again once the strap has answered its stop commands.
   const early = strapRideDetails();

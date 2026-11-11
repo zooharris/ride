@@ -1,4 +1,4 @@
-import { hasTwoVersions, whereFor } from '../library/sendWhere';
+import { basisFor, defaultWhere, hasTwoVersions, onGarmin, sendDefault, type SendChoice } from '../library/sendWhere';
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
@@ -442,39 +442,22 @@ export async function storeSessionWorkout(w: Workout): Promise<string> {
  * sent has its old event deleted first, so "Send again" replaces the copy on
  * the Garmin with the current version instead of adding a second one.
  */
-export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w: Workout, profile?: HrProfile): Promise<{ id: number; version?: 'outdoor' | 'as written' }> {
-  if (p.icuEventId) { try { await deleteEvent(c, p.icuEventId); } catch { /* already gone: harmless */ } }
-  // Outdoors or on a trainer (10 Nov 2026): the entry's choice, else the plan's weekday; every send goes through here.
-  const where = whereFor(p, w, await getPlans());
-  const id = await sendWorkout(c, w, p.date, p.basis, profile, where);
+export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w: Workout, profile?: HrProfile, choice?: Partial<SendChoice>): Promise<{ id: number; version?: 'outdoor' | 'as written'; sent: SendChoice }> {
+  // What goes (10 Nov 2026 evening): chosen when sent. Without a choice, a sent entry goes again as the Garmin has it
+  // (a re-send after new numbers); an unsent one with the rider's default targets and the plan's version for that day.
+  const plans = await getPlans();
+  const preferred = (await db.profile.get('me'))?.basis ?? p.basis;
+  const base = p.status === 'sent' ? onGarmin(p, w, plans) : sendDefault(p, w, preferred, plans);
   const two = hasTwoVersions(w);
-  await db.planned.update(p.id, { status: 'sent', icuEventId: id, sentBasis: p.basis, sentWhere: two ? where : undefined });
-  // Which version went, for a ride that has two, so the confirmation can name it (10 Nov 2026 review, B2).
-  return { id, version: two ? (where === 'outdoor' ? 'outdoor' : 'as written') : undefined };
-}
-
-/**
- * The rider changes a calendar entry's power or heart rate, by its explicit button (10 Nov 2026 review, B1). The Garmin
- * copy waits for Send again; an entry sent before the 10 Nov builds has no record of what the Garmin holds, so the old
- * setting is recorded as sent, and Send again is offered.
- */
-export async function setEntryBasis(id: string, basis: 'power' | 'hr'): Promise<void> {
-  const p = await db.planned.get(id);
-  if (!p) return;
-  await db.planned.update(id, { basis, ...(p.status === 'sent' && !p.sentBasis ? { sentBasis: p.basis } : {}) });
-  notify();
-}
-
-/**
- * The rider's choice of where a ride will be ridden; the copy on the Garmin is left as it is until they send again.
- * `shown` is what the page showed before the switch: for an entry sent before 10 Nov, that is recorded as what the
- * Garmin holds, so Send again is offered.
- */
-export async function setWhere(id: string, where: 'outdoor' | 'trainer', shown?: 'outdoor' | 'trainer'): Promise<void> {
-  const p = await db.planned.get(id);
-  if (!p) return;
-  await db.planned.update(id, { where, ...(p.status === 'sent' && !p.sentWhere && shown ? { sentWhere: shown } : {}) });
-  notify();
+  const sent: SendChoice = {
+    basis: choice?.basis && w.bases.includes(choice.basis) ? choice.basis : basisFor(w, base.basis),
+    where: two ? (choice?.where ?? base.where ?? defaultWhere(p, w, plans)) : undefined,
+  };
+  if (p.icuEventId) { try { await deleteEvent(c, p.icuEventId); } catch { /* already gone: harmless */ } }
+  const id = await sendWorkout(c, w, p.date, sent.basis, profile, sent.where);
+  // The one record kept: how it went. The entry's own setting follows it, so a ride from the Garmin is judged by its targets.
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id, basis: sent.basis, sentBasis: sent.basis, where: sent.where, sentWhere: sent.where });
+  return { id, version: two ? (sent.where === 'outdoor' ? 'outdoor' : 'as written') : undefined, sent };
 }
 
 /**

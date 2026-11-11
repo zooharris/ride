@@ -18,13 +18,14 @@ import { paceHint, timeWords } from '../../engine/run';
 import { bandBpm, bandKeyOf, bandZoneWords, capFirst, hasNoFloor, recoveryBand, stepBand, walkBand, walkZoneWords } from '../../engine/foot';
 import { KIND_LABEL, KindDot } from './Plan';
 import { AddToDate } from './Library';
-import { getPlans, removePlanned, sendPlanned, setEntryBasis, setWhere } from '../planService';
+import { getPlans, removePlanned, sendPlanned } from '../planService';
 import { ChangeSheet } from '../ChangeSheet';
 import { toast } from '../Toast';
 import { Empty } from '../PageHead';
 import { Star } from '../Star';
 import { outdoorVersion, PURPOSE_LABEL, tagsOf } from '../../library/tags';
-import { hasTwoVersions, versionFor, whereFor, type PlanDays, type Where } from '../../library/sendWhere';
+import { basisFor, hasTwoVersions, onGarmin, sendDefault, sendWords, versionFor, type PlanDays } from '../../library/sendWhere';
+import { SendButton } from '../SendButton';
 import { LIBRARY } from '../../library/workouts';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
@@ -42,13 +43,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const plannedEntry = !w ? undefined : params.get('date')
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
-  // Power or heart rate (10 Nov 2026, one control). On a calendar entry's page (opened from the Calendar or Today, not
-  // done) the switch is the entry's setting, "Ride by", and flipping it changes the entry. Anywhere else it is a view,
-  // "Show as", starting on the rider's default; it changes nothing stored. The player opens with whatever it shows.
-  const entryPage = !!plannedEntry && !!params.get('date') && plannedEntry.status !== 'completed' && !!w?.bases.includes(plannedEntry.basis);
-  const [viewBasis, setViewBasis] = useState<Basis>(plannedEntry && w?.bases.includes(plannedEntry.basis) ? plannedEntry.basis : w?.bases.includes(profile.basis) ? profile.basis : (w?.bases[0] ?? 'power'));
-  const basis: Basis = entryPage ? plannedEntry!.basis : viewBasis;
-  const setBasis = (b: Basis) => { if (entryPage) { if (b !== plannedEntry!.basis) void setEntryBasis(plannedEntry!.id, b); } else setViewBasis(b); };
+  // Power or heart rate, and outdoors or as written (10 Nov 2026 evening): chosen when the ride is sent, or in the
+  // player. The page shows every target and sets nothing; the rider's default only orders what is drawn.
+  const basis: Basis = w ? basisFor(w, profile.basis) : profile.basis;
   const [adding, setAdding] = useState(false);
   const [showText, setShowText] = useState(false);
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
@@ -81,31 +78,21 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row between" style="margin-bottom:6px">
         <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{PURPOSE_LABEL[tagsOf(w).purpose]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
-        {w.bases.length > 1 ? (
-          <div class="row" style="gap:8px;align-items:center">
-            <span class="small muted">{entryPage ? 'Ride by' : 'Show as'}</span>
-            <div class="seg" role="group" aria-label={entryPage ? 'Ride by' : 'Show as'}>
-              <button class={basis === 'power' ? 'on' : ''} aria-pressed={basis === 'power'} onClick={() => setBasis('power')}>Power</button>
-              <button class={basis === 'hr' ? 'on' : ''} aria-pressed={basis === 'hr'} onClick={() => setBasis('hr')}>Heart rate</button>
-            </div>
-          </div>
-        ) : <span class="faint small">{w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>}
+        <span class="faint small">{w.bases.length > 1 ? 'Works by power or by heart rate' : w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>
       </div>
-      {entryPage && !w.trainerOnly && <GarminLine w={w} entry={plannedEntry!} where={whereFor(plannedEntry, w, plans)} profile={profile} />}
       <div class="row" style="gap:8px;align-items:center"><h1>{w.name}</h1><Star w={w} /></div>
       {w.subtitle && <p style="margin:2px 0 0;font-size:16px;color:var(--ink-2)">{w.subtitle}</p>}
       <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · intensity {s.intensityFactor.toFixed(2)}</p>
       <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, touch: true }} />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
-      <OutdoorNote w={w} entry={plannedEntry && plannedEntry.status !== 'completed' ? plannedEntry : undefined} plans={plans} />
-      {!entryPage && plannedEntry && plannedEntry.status === 'sent' && <StaleCopy w={w} entry={plannedEntry} where={whereFor(plannedEntry, w, plans)} profile={profile} />}
+      <OutdoorNote w={w} />
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
-        {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}?basis=${basis}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
+        {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
         <button class={`btn${w.trainerOnly ? '' : ' primary'}`} onClick={() => schedule(today())}>Ride today</button>
         <button class="btn" onClick={() => schedule(addDays(today(), 1))}>Tomorrow</button>
-        {!w.trainerOnly && playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}?basis=${basis}` : `#/play/workout/${w.id}?basis=${basis}`}>Ride indoors on the trainer</a>}
+        {!w.trainerOnly && playerOffered() && <a class="btn" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
         {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         {/* The same Add to a date sheet as every other page (10 Nov 2026): a hidden date box over a label opened nothing on a laptop. */}
@@ -113,14 +100,14 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       </div>
       {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (<>
-        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{entryPage && !w.trainerOnly && plannedEntry.status !== 'sent' && <SendButton w={w} entry={plannedEntry} profile={profile} />}{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{plannedEntry.status !== 'completed' && !w.trainerOnly && <> <SendButton w={w} entry={plannedEntry} profile={profile} plans={plans} /></>}{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
         {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
       </>)}
 
       <section class="section">
         <h2>Steps</h2>
         {w.test === 'ramp' ? <p class="faint small" style="margin:4px 0 8px">The standard ramp, each step as a share of FTP (yours is {profile.ftp} W). In the ride player you choose the step size, the trainer holds each step, and the steps keep climbing until you stop.</p>
-        : <p class="faint small" style="margin:4px 0 8px">Each step as a share of FTP, and what that is in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). The Garmin holds you to the {basis === 'power' ? 'watts' : 'heart rate'}; the other column is there to read.</p>}
+        : <p class="faint small" style="margin:4px 0 8px">Each step's targets in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). Your Garmin holds you to whichever you send.</p>}
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
       </section>
 
@@ -140,7 +127,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
-        {showText && <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{renderIntervalsText(versionFor(w, whereFor(plannedEntry, w, plans)).workout, basis)}</pre>}
+        {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it is on your Garmin' : 'As Send to Garmin sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{renderIntervalsText(versionFor(w, c.where ?? 'trainer').workout, c.basis)}</pre></>; })()}
       </section>}
       {changeSheet}
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}
@@ -286,103 +273,20 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
 }
 
 /**
- * How the ride fares on a bike computer outdoors (9 Nov 2026, Part C): what the Garmin copy softens, or,
- * for a ride with no honest outdoor version, the nearest Library ride of the same purpose that rides well outdoors.
+ * How the ride fares on a bike computer outdoors (9 Nov 2026, Part C): what its outdoor version changes, as
+ * information (which version goes is chosen when it is sent, 10 Nov 2026 evening), or, for a ride with no honest
+ * outdoor version, the nearest Library ride of the same purpose that rides well outdoors.
  */
-function OutdoorNote({ w, entry, plans }: { w: Workout; entry?: PlannedWorkout; plans: PlanDays[] }) {
+function OutdoorNote({ w }: { w: Workout }) {
   const t = tagsOf(w);
   if (w.trainerOnly) return null;
   if (hasTwoVersions(w)) {
     const { note } = outdoorVersion(w);
-    const softened = note ? note.replace(/^Adjusted for riding outdoors: /, '').replace(/^./, (c) => c.toUpperCase()) : '';
-    // From the Library (no date yet): what the Garmin copy would soften, for information.
-    if (!entry) return note ? <p class="faint small" style="margin-top:6px"><b>On the Garmin, outdoors:</b> {softened} On a trainer it goes as written, and the ride player always keeps the steps as written.</p> : null;
-    // On the calendar (10 Nov 2026): the rider says where, and the Garmin gets that version.
-    const where = whereFor(entry, w, plans);
-    return (
-      <div class="where" style="margin-top:10px">
-        <div class="row wrap" style="gap:10px;align-items:center">
-          <span class="small muted">Riding it</span>
-          <div class="seg" role="group" aria-label="Riding it">
-            {(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={where === x ? 'on' : ''} aria-pressed={where === x} onClick={() => void setWhere(entry.id, x, where)}>{x === 'outdoor' ? 'Outdoors' : 'On a trainer'}</button>)}
-          </div>
-        </div>
-        <p class="faint small" style="margin:6px 0 0">{where === 'outdoor' ? <><b>On the Garmin:</b> {softened}</> : 'Sent to your Garmin exactly as written.'} The ride player on the trainer always keeps the steps as written.</p>
-      </div>
-    );
+    if (!note) return null;
+    return <p class="faint small" style="margin-top:6px">This ride has an outdoor version for the Garmin: {note.replace(/^Adjusted for riding outdoors: /, '')} You choose it or the ride as written when you send it; the ride player on the trainer always keeps the steps as written.</p>;
   }
   if (t.outdoor !== 'indoor') return null;
   const alt = LIBRARY.filter((x) => x.id !== w.id && tagsOf(x).purpose === t.purpose && tagsOf(x).outdoor === 'well' && w.bases.some((b) => x.bases.includes(b)))
     .sort((a, b) => Math.abs(tagsOf(a).minutes - t.minutes) - Math.abs(tagsOf(b).minutes - t.minutes))[0];
   return <p class="faint small" style="margin-top:6px"><b>Best on the trainer:</b> its quick changes can't be followed on an open road.{alt ? <> For a road ride, <a href={`#/workout/${alt.id}?from=library`}>{alt.name}</a> ({alt.subtitle ?? PURPOSE_LABEL[t.purpose]}) does a similar job.</> : null}</p>;
-}
-
-/**
- * The copy on the Garmin no longer matches the page (10 Nov 2026): the rider switched outdoors/trainer or power/heart
- * rate after sending. Never re-sent by itself; one line says what the Garmin has, with Send again.
- */
-function StaleCopy({ w, entry, where, profile }: { w: Workout; entry: PlannedWorkout; where: Where; profile?: HrProfile }) {
-  const [sending, setSending] = useState(false);
-  const parts: string[] = [];
-  if (entry.sentBasis && entry.sentBasis !== entry.basis) parts.push(entry.sentBasis === 'hr' ? 'by heart rate' : 'by power');
-  if (hasTwoVersions(w) && entry.sentWhere && entry.sentWhere !== where) parts.push(entry.sentWhere === 'outdoor' ? 'the outdoor version' : 'the ride as written');
-  if (!parts.length) return null;
-  const sendAgain = async () => {
-    const c = await credentials();
-    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send rides to your Garmin.' }); return; }
-    setSending(true);
-    try { await sendPlanned(c, entry, w, profile); notify(); toast({ ok: true, text: 'Sent again: the copy on your Garmin is replaced after its next phone sync.' }); }
-    catch (e) { toast({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
-    finally { setSending(false); }
-  };
-  return <p class="small" style="margin:8px 0 0">The copy on your Garmin is {parts.join(', and ')}. <button class="btn sm" disabled={sending} onClick={() => void sendAgain()}>{sending ? 'Sending…' : 'Send again'}</button></p>;
-}
-
-/** The words for a power or heart-rate setting, as the Garmin line uses them. */
-const targetWord = (b: Basis) => (b === 'hr' ? 'heart-rate' : 'power');
-
-/**
- * What the Garmin gets for this entry (10 Nov 2026, one control): always shown under Ride by on an entry's page. Not
- * yet sent, what it will get; sent, what it has, with Send again when that differs from the page (power or heart
- * rate, or the outdoor version or the ride as written). Never re-sent by itself.
- */
-function GarminLine({ w, entry, where, profile }: { w: Workout; entry: PlannedWorkout; where: Where; profile?: HrProfile }) {
-  const [sending, setSending] = useState(false);
-  if (entry.status !== 'sent') return <p class="faint small garmin-line">Your Garmin gets {targetWord(entry.basis)} targets when you send it.</p>;
-  const hasBasis = entry.sentBasis ?? entry.basis;
-  const whereDiffers = hasTwoVersions(w) && !!entry.sentWhere && entry.sentWhere !== where;
-  const differs = hasBasis !== entry.basis || whereDiffers;
-  const sendAgain = async () => {
-    const c = await credentials();
-    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send rides to your Garmin.' }); return; }
-    setSending(true);
-    try {
-      const r = await sendPlanned(c, entry, w, profile); notify();
-      const which = r.version === 'outdoor' ? ' the outdoor version' : r.version === 'as written' ? ' as written' : '';
-      toast({ ok: true, text: `Sent again${which}: the copy on your Garmin is replaced after its next phone sync.` });
-    } catch (e) { toast({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
-    finally { setSending(false); }
-  };
-  const version = whereDiffers ? (entry.sentWhere === 'outdoor' ? ', in its outdoor version' : ', as written') : '';
-  return (
-    <p class={`small garmin-line${differs ? '' : ' faint'}`}>Your Garmin has the {targetWord(hasBasis)} version{version}.
-      {differs && <> <button class="btn sm" disabled={sending} onClick={() => void sendAgain()}>{sending ? 'Sending…' : 'Send again'}</button></>}</p>
-  );
-}
-
-/** Send to Garmin from an entry's page (10 Nov 2026): the same send as Today's, naming the version for a two-version ride. */
-function SendButton({ w, entry, profile }: { w: Workout; entry: PlannedWorkout; profile?: HrProfile }) {
-  const [sending, setSending] = useState(false);
-  const send = async () => {
-    const c = await credentials();
-    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send rides to your Garmin.' }); return; }
-    setSending(true);
-    try {
-      const r = await sendPlanned(c, entry, w, profile); notify();
-      const which = r.version === 'outdoor' ? ' the outdoor version' : r.version === 'as written' ? ' as written' : '';
-      toast({ ok: true, text: `Sent${which}. It will be on your Garmin after the next phone sync, under Training, Workouts.` });
-    } catch (e) { toast({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
-    finally { setSending(false); }
-  };
-  return <button class="btn sm" style="margin-left:6px" disabled={sending} onClick={() => void send()}>{sending ? 'Sending…' : 'Send to Garmin'}</button>;
 }

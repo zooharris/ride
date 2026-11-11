@@ -2,21 +2,25 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from './db';
 import { libraryById } from '../library/workouts';
-import { defaultWhere, hasTwoVersions, type PlanDays } from '../library/sendWhere';
-import type { PlannedWorkout, Workout } from '../engine/types';
+import { defaultWhere, hasTwoVersions, sendWords, type PlanDays } from '../library/sendWhere';
+import type { PlannedWorkout, Profile, Workout } from '../engine/types';
 import playerSrc from '../ui/screens/Player.tsx?raw';
 import workoutSrc from '../ui/screens/Workout.tsx?raw';
+import todaySrc from '../ui/screens/Today.tsx?raw';
 
 (globalThis as { navigator?: unknown }).navigator ??= { userAgent: 'test' };
 
-/** Fixes from the review of the 9–10 Nov builds, Part B (10 Nov 2026). */
+/** How a ride goes to the Garmin is chosen when it is sent, and in the player (10 Nov 2026 evening brief). */
 
-const overUnder = libraryById('lib-over-under')!;
-const oldRag = libraryById('b1-vo2-hr-5x4')!;
+const powerOnly = libraryById('lib-over-under')!;   // power only, with an outdoor version
+/** The same ride as if it worked both ways: two kinds of target and two versions. */
+const overUnder: Workout = { ...powerOnly, id: 'ou-both', bases: ['power', 'hr'] };
 // A plan whose Saturdays are outdoor days. 2026-11-14 is a Saturday.
 const plan: PlanDays = { id: 'p1', start: '2026-11-09', goalDate: '2027-01-31', availability: { outdoor: [true, false, false, false, false, false, true] } };
 /** A ride the rider built, with quick alternating targets, so it has an outdoor version. */
-const mine: Workout = { ...overUnder, id: 'mine-ou', name: 'My over-unders', source: 'mine', tags: undefined };
+const mine: Workout = { ...powerOnly, id: 'mine-ou', name: 'My over-unders', source: 'mine', tags: undefined };
+const me = (basis: 'power' | 'hr') => ({ id: 'me', name: 'T', ftp: 250, lthr: 160, maxHr: 180, restingHr: 50, weightKg: 75, basis, masters: true, units: 'imperial', rideDays: [0, 6], hoursPerWeek: 7 }) as unknown as Profile & { id: 'me' };
+const putPlan = () => db.plans.put({ id: 'p1', start: plan.start, goalDate: plan.goalDate, availability: { outdoor: plan.availability.outdoor, hours: [1, 1, 1, 1, 1, 1, 1], equipment: ['bodyweight'] }, goal: { kind: 'general', weeks: 12 } } as never);
 
 /** What a send carries to Intervals.icu, captured. */
 function captureSends() {
@@ -31,68 +35,92 @@ function captureSends() {
 beforeEach(async () => { await db.delete(); await db.open(); });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('One control for power or heart rate (10 Nov 2026)', () => {
-  it('on an entry page the switch is the setting, "Ride by"; elsewhere a view, "Show as"; no second control', () => {
-    expect(workoutSrc).toMatch(/entryPage \? 'Ride by' : 'Show as'/);
-    expect(workoutSrc).not.toMatch(/Change it to/);
-    expect(workoutSrc).not.toMatch(/This entry is set to/);
-    expect(workoutSrc).toMatch(/if \(entryPage\) \{ if \(b !== plannedEntry!\.basis\) void setEntryBasis/);
+describe('nothing is set on a ride’s page or the calendar', () => {
+  it('the ride page has no switches: no Ride by, Show as or Riding it', () => {
+    expect(workoutSrc).not.toMatch(/'Ride by'|'Show as'|Riding it|setEntryBasis|setWhere/);
+    expect(workoutSrc).toMatch(/<SendButton /);
   });
-
-  it('an entry page needs a date in its link, so a Library page never changes a calendar entry', () => {
-    expect(workoutSrc).toMatch(/const entryPage = !!plannedEntry && !!params\.get\('date'\)/);
+  it('Today has the same Send button, and no separate outdoor line', () => {
+    expect(todaySrc).toMatch(/<SendButton /);
+    expect(todaySrc).not.toMatch(/Goes to your Garmin/);
   });
-
-  it('the player opened from the page uses the page’s choice, ahead of the entry’s setting', () => {
+  it('the player opens on the rider’s default, whatever the page or the send', () => {
     const line = playerSrc.split('\n').find((l) => l.includes('useState<Basis>('))!;
-    expect(line.indexOf('asked')).toBeLessThan(line.indexOf('planned.basis'));
-    expect(workoutSrc).toMatch(/#\/play\/planned\/\$\{plannedEntry\.id\}\?basis=\$\{basis\}/);
-  });
-
-  it('Ride by changes the entry; on an entry sent before 10 Nov it records what the Garmin holds, so Send again is offered', async () => {
-    const { setEntryBasis } = await import('../ui/planService');
-    const old: PlannedWorkout = { id: 'e1', date: '2026-11-18', workoutId: oldRag.id, basis: 'power', status: 'sent', icuEventId: 9 };
-    await db.planned.put(old);
-    await setEntryBasis('e1', 'hr');
-    const after = await db.planned.get('e1');
-    expect(after!.basis).toBe('hr');
-    expect(after!.sentBasis).toBe('power');
-  });
-
-  it('the outdoors/trainer switch on an entry sent before 10 Nov records what the page showed', async () => {
-    const { setWhere } = await import('../ui/planService');
-    await db.planned.put({ id: 'e2', date: '2026-11-14', workoutId: overUnder.id, basis: 'power', status: 'sent', icuEventId: 9 });
-    await setWhere('e2', 'trainer', 'outdoor');
-    const after = await db.planned.get('e2');
-    expect(after!.where).toBe('trainer');
-    expect(after!.sentWhere).toBe('outdoor');
+    expect(line).toMatch(/profile\.basis/);
+    expect(line).not.toMatch(/planned|asked/);
+    expect(workoutSrc).not.toMatch(/\?basis=/);
   });
 });
 
-describe('B2 and B3: what goes to the Garmin, and what the rider is told', () => {
-  it("a ride the rider built goes as written on a plan's outdoor weekday", () => {
+describe('the main Send sends what its words say', () => {
+  it('an unsent two-way ride goes with the rider’s default targets, and its plan’s version for that day', async () => {
+    await db.profile.put(me('hr')); await putPlan();
+    const bodies = captureSends();
+    const { sendPlanned } = await import('../ui/planService');
+    const e1: PlannedWorkout = { id: 'e1', date: '2026-11-14', workoutId: overUnder.id, basis: 'power', status: 'planned', planId: 'p1' };
+    await db.planned.put(e1);
+    const r = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, e1, overUnder);
+    expect(r.sent).toEqual({ basis: 'hr', where: 'outdoor' });
+    expect(sendWords(r.sent)).toBe('by heart rate, outdoor version');
+    expect(bodies).toHaveLength(1);
+    const after = await db.planned.get('e1');
+    expect(after).toMatchObject({ status: 'sent', basis: 'hr', sentBasis: 'hr', sentWhere: 'outdoor' });
+  });
+
+  it('the arrow’s choice wins: by power, as written', async () => {
+    await db.profile.put(me('hr')); await putPlan();
+    const bodies = captureSends();
+    const { sendPlanned } = await import('../ui/planService');
+    const r = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, { id: 'e2', date: '2026-11-14', workoutId: overUnder.id, basis: 'hr', status: 'planned', planId: 'p1' }, overUnder, undefined, { basis: 'power', where: 'trainer' });
+    expect(r.sent).toEqual({ basis: 'power', where: 'trainer' });
+    expect(bodies[0].description).toMatch(/105%/);   // as written keeps the over at 105%
+  });
+
+  it('a one-way ride goes its one way whatever is asked', async () => {
+    await db.profile.put(me('hr'));
+    captureSends();
+    const { sendPlanned } = await import('../ui/planService');
+    const r = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, { id: 'e3', date: '2026-11-17', workoutId: powerOnly.id, basis: 'power', status: 'planned' }, powerOnly, undefined, { basis: 'hr' });
+    expect(powerOnly.bases).toEqual(['power']);
+    expect(r.sent.basis).toBe('power');
+  });
+
+  it('a sent ride with no choice goes again as the Garmin has it (a re-send after new numbers)', async () => {
+    await db.profile.put(me('power')); await putPlan();
+    captureSends();
+    const { sendPlanned } = await import('../ui/planService');
+    const sent: PlannedWorkout = { id: 'e4', date: '2026-11-14', workoutId: overUnder.id, basis: 'hr', status: 'sent', icuEventId: 7, planId: 'p1', sentBasis: 'hr', sentWhere: 'trainer' };
+    await db.planned.put(sent);
+    const r = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, sent, overUnder);
+    expect(r.sent).toEqual({ basis: 'hr', where: 'trainer' });
+  });
+});
+
+describe('a workout the rider built goes as written unless they choose Outdoor', () => {
+  it("as written on a plan's outdoor weekday", () => {
     expect(hasTwoVersions(mine)).toBe(true);
     expect(defaultWhere({ date: '2026-11-14', planId: 'p1' }, mine, [plan])).toBe('trainer');
     expect(defaultWhere({ date: '2026-11-14', planId: 'p1' }, overUnder, [plan])).toBe('outdoor');
   });
-
-  it('the rider’s own ride is sent as written by default, and softened once they choose Outdoors', async () => {
-    const { sendPlanned } = await import('../ui/planService');
-    await db.plans.put({ id: 'p1', start: plan.start, goalDate: plan.goalDate, availability: { outdoor: plan.availability.outdoor, hours: [1, 1, 1, 1, 1, 1, 1], equipment: ['bodyweight'] }, goal: { kind: 'general', weeks: 12 } } as never);
+  it('sent as written by default, and softened when Outdoor is chosen', async () => {
+    await db.profile.put(me('power')); await putPlan();
     const bodies = captureSends();
-    const entry: PlannedWorkout = { id: 'e3', date: '2026-11-14', workoutId: mine.id, basis: 'power', status: 'planned', planId: 'p1' };
-    const asWritten = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, entry, mine);
-    expect(asWritten.version).toBe('as written');
+    const { sendPlanned } = await import('../ui/planService');
+    const entry: PlannedWorkout = { id: 'e5', date: '2026-11-14', workoutId: mine.id, basis: 'power', status: 'planned', planId: 'p1' };
+    expect((await sendPlanned({ athleteId: 'x', apiKey: 'y' }, entry, mine)).version).toBe('as written');
     expect(bodies[0].description).toMatch(/105%/);
-    const softened = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, { ...entry, where: 'outdoor' }, mine);
-    expect(softened.version).toBe('outdoor');
+    expect((await sendPlanned({ athleteId: 'x', apiKey: 'y' }, entry, mine, undefined, { basis: 'power', where: 'outdoor' })).version).toBe('outdoor');
     expect(bodies[1].description).not.toMatch(/105%/);
   });
+});
 
-  it('a one-version ride reports no version, so no extra words are shown', async () => {
-    const { sendPlanned } = await import('../ui/planService');
-    captureSends();
-    const r = await sendPlanned({ athleteId: 'x', apiKey: 'y' }, { id: 'e4', date: '2026-11-14', workoutId: oldRag.id, basis: 'power', status: 'planned' }, oldRag);
-    expect(r.version).toBeUndefined();
+describe('the calendar row says how a ride went', () => {
+  it('"On Garmin, by power, outdoor"; a session that is not a ride keeps "On Garmin"', async () => {
+    const { sentRowWord } = await import('../ui/SendButton');
+    const e: PlannedWorkout = { id: 'e6', date: '2026-11-14', workoutId: overUnder.id, basis: 'power', status: 'sent', sentBasis: 'power', sentWhere: 'outdoor' };
+    expect(sentRowWord(e, overUnder, [plan])).toBe('On Garmin, by power, outdoor');
+    expect(sentRowWord({ ...e, sentBasis: 'hr', sentWhere: 'trainer' }, overUnder, [plan])).toBe('On Garmin, by heart rate');
+    expect(sentRowWord({ ...e, status: 'planned' }, overUnder, [plan])).toBeUndefined();
+    expect(sentRowWord(e, { ...overUnder, kind: 'strength' }, [plan])).toBeUndefined();
   });
 });

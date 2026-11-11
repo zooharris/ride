@@ -55,7 +55,8 @@ export function StatusMark({ status, size = 18, title }: { status: SessionStatus
   );
 }
 
-export function StatusPill({ status }: { status: SessionStatus }) {
+/** `word` replaces the status word where a row says more, e.g. how a sent ride went ("On Garmin, by power"). */
+export function StatusPill({ status, word }: { status: SessionStatus; word?: string }) {
   const colour = status === 'done' ? 'var(--good)' : status === 'sent' ? 'var(--z2)' : 'var(--ink-3)';
-  return <span class={`pill status-pill ${status}`} style={`color:${colour};border-color:color-mix(in srgb, ${colour} 45%, var(--line))`}>{STATUS_WORD[status]}</span>;
+  return <span class={`pill status-pill ${status}`} style={`color:${colour};border-color:color-mix(in srgb, ${colour} 45%, var(--line))`}>{word ?? STATUS_WORD[status]}</span>;
 }

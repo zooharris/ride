@@ -5,15 +5,16 @@ import { STATUS_WORD, StatusMark, StatusPill, statusOf } from '../StatusMark';
 import { KIND_COLOR } from './Plan';
 import { ZONE_VAR } from '../Profile';
 import type { AppData } from '../store';
-import { alreadyText, findWorkout, notify, scheduleWorkout, sessionHref } from '../store';
+import { alreadyText, findWorkout, scheduleWorkout, sessionHref } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, garminSendable, workoutStats } from '../../engine/workout';
 import { fmtDate, plannedOn, weekStart } from '../derived';
 import type { PlannedWorkout, Ride, Workout } from '../../engine/types';
-import { credentials } from '../../sync/syncService';
 import { KIND_LABEL, KindDot } from './Plan';
-import { getPlans, replacePlanned, sendPlanned } from '../planService';
+import { getPlans, replacePlanned } from '../planService';
+import { sentRowWord, WeekSendButton } from '../SendButton';
+import type { PlanDays } from '../../library/sendWhere';
 import { ChangeSheet, WorkoutPicker, moveSession } from '../ChangeSheet';
 import { useDragMove } from '../useDragMove';
 import { toast } from '../Toast';
@@ -64,6 +65,9 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
   const [choosing, setChoosing] = useState<string | null>(null);
   // Recovery weeks of every plan, to shade them on the month view.
   const [recoveryWeeks, setRecoveryWeeks] = useState<Set<string>>(new Set());
+  // The plans' outdoor weekdays, for the version each two-version ride goes in when sent (10 Nov 2026 evening).
+  const [planDays, setPlanDays] = useState<PlanDays[]>([]);
+  useEffect(() => { getPlans().then((ps) => setPlanDays(ps)).catch(() => {}); }, [data.planned]);
   useEffect(() => { getPlans().then((ps) => setRecoveryWeeks(new Set(ps.flatMap((p) => (p.weeks ?? []).filter((w) => w.phase === 'recovery').map((w) => weekStart(w.start)))))); }, [data.planned.length]);
   const changeId = params?.get('change');
   useEffect(() => {
@@ -73,8 +77,6 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     replaceQuery({}, ['change']);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeId]);
-  const setMsg = toast;
-  const [busy, setBusy] = useState<string | null>(null);
   const days = Array.from({ length: 14 }, (_, i) => addDays(start, i));
 
   // Drag a session to another day with the mouse (laptop); the ⋯ sheet does the same anywhere.
@@ -85,34 +87,6 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
     if (r === 'already') { toast({ ok: false, text: alreadyText(w.name, picking?.replace?.date ?? date) }); return; }
     setPicking(null);
   }
-
-  async function sendWeek(ws: string) {
-    const c = await credentials();
-    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
-    const end = addDays(ws, 6);
-    const todo = data.planned.filter((p) => p.date >= ws && p.date <= end && p.date >= today() && p.status === 'planned' && garminSendable(findWorkout(data.mine, p.workoutId)));
-    if (todo.length === 0) { setMsg({ ok: true, text: 'Nothing unsent in that week.' }); return; }
-    setBusy(ws);
-    let sent = 0;
-    const outdoor: string[] = [];
-    try {
-      for (const p of todo) {
-        const w = findWorkout(data.mine, p.workoutId);
-        if (!w) continue;
-        // Through sendPlanned, so each entry goes in the version its page shows (outdoors or on a trainer, 10 Nov 2026).
-        const r = await sendPlanned(c, p, w, profile);
-        if (r.version === 'outdoor') outdoor.push(w.name);
-        sent++;
-      }
-      // Name any ride that went softened for the road (10 Nov 2026 review, B2).
-      const names = outdoor.length > 1 ? `${outdoor.slice(0, -1).join(', ')} and ${outdoor[outdoor.length - 1]}` : outdoor[0];
-      const soft = !outdoor.length ? '' : ` ${names} went in ${outdoor.length > 1 ? 'their' : 'its'} outdoor version; change that on ${outdoor.length > 1 ? 'their pages' : 'its page'}.`;
-      setMsg({ ok: true, text: `Sent ${sent} session${sent === 1 ? '' : 's'}. They reach your Garmin on its next phone sync.${soft}` });
-    } catch (e) {
-      setMsg({ ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` });
-    } finally { setBusy(null); notify(); }
-  }
-
 
   return (
     <div>
@@ -167,11 +141,12 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
       {[0, 7].map((offset) => {
         const ws = addDays(start, offset);
         const wk = weekSummary(ws, data.planned, data.rides, data.mine);
-        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && garminSendable(findWorkout(data.mine, p.workoutId))).length;
+        const unsent = data.planned.filter((p) => p.date >= ws && p.date <= addDays(ws, 6) && p.date >= today() && p.status === 'planned' && garminSendable(findWorkout(data.mine, p.workoutId)))
+          .map((p) => ({ p, w: findWorkout(data.mine, p.workoutId)! })).sort((a, b) => a.p.date.localeCompare(b.p.date));
         return (
           <section class="section" key={ws} style={offset ? '' : 'margin-top:0'}>
             <WeekBar week={wk}>
-              {unsent > 0 && <button class="btn sm" onClick={() => sendWeek(ws)} disabled={busy === ws}><Icon.send size={14} />{busy === ws ? 'Sending…' : `Send ${unsent} to Garmin`}</button>}
+              {unsent.length > 0 && <WeekSendButton items={unsent} profile={profile} plans={planDays} />}
             </WeekBar>
             <div class="cal-week">
               {days.slice(offset, offset + 7).map((d) => {
@@ -191,14 +166,15 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                         const recorded = rec ? `${clock(rec.seconds)} · ${rec.tss ?? '–'} TSS${rec.normalizedPower ? ` · ${rec.normalizedPower} W normalized` : rec.averageHr ? ` · ${rec.averageHr} bpm` : ''}` : p.status === 'completed' ? 'logged by hand' : '';
                         const plannedLine = w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : ''}${clock(s.seconds)} · ${s.tss} TSS` : `${KIND_LABEL[w.kind]}${w.minutes ? ` · ${w.minutes} min` : ''}${w.estimatedTss ? ` · ≈ ${w.estimatedTss} TSS` : ''}`;
                         const st = statusOf(p.status);
+                        const rowWord = sentRowWord(p, w, planDays);
                         return (
                           <div class={`cal-item ${p.status}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})}>
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88}  /> : <PlanPicture w={w} />}
-                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
+                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{rowWord && <span class="t2 narrow-only">{rowWord}</span>}{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
-                            <StatusPill status={st} />
+                            <StatusPill status={st} word={rowWord} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Move, replace or remove" onClick={() => setChanging(p)}>⋯</button>}
                             {rec && <a class="btn sm quiet" href={`#/workout/${w.id}?from=calendar&date=${d}`} title="The session as it was planned">Plan ›</a>}
                           </div>

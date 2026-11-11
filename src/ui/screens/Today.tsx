@@ -4,7 +4,8 @@ import { GettingStarted } from './Help';
 import { findWorkout } from '../store';
 import { WorkoutProfile } from '../Profile';
 import { FAMILY_LABEL } from '../../library/workouts';
-import { hasTwoVersions, whereFor, type PlanDays } from '../../library/sendWhere';
+import { type PlanDays } from '../../library/sendWhere';
+import { SendButton } from '../SendButton';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
 import { distance, fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
@@ -23,7 +24,7 @@ import { addDays } from '../../engine/load';
 import { KIND_LABEL, ReplanView } from './Plan';
 import { useRecommended } from '../useRecommended';
 import { StatusPill, statusOf } from '../StatusMark';
-import { changeSig, coachPlan, recentWeeks, tomorrowLines, freshData, getActivePlan, markChecked, recentNoteLines, rejectChanges, replan, sendPlanned, getPlans, type ActivePlan } from '../planService';
+import { changeSig, coachPlan, recentWeeks, tomorrowLines, freshData, getActivePlan, markChecked, recentNoteLines, rejectChanges, replan, getPlans, type ActivePlan } from '../planService';
 import { acceptRecommended, getJudgment, onJudgment } from '../judgeService';
 import { STANCE_TEXT, type Judgment } from '../../coach/judge';
 import type { Change, Replan } from '../../engine/adapt';
@@ -151,23 +152,6 @@ export function Today({ data }: { data: AppData }) {
     plan: coachPlan(active, date), tomorrow: tomorrowLines(data, date), recentWeeks: recentWeeks(data, date),
   };
 
-  async function send() {
-    if (!plan || !workout) return;
-    const c = await credentials();
-    if (!c) { setMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
-    setBusy('send');
-    try {
-      const again = plan.status === 'sent';
-      const r = await sendPlanned(c, plan, workout, profile ?? undefined);
-      notify();
-      // A ride with two versions: say which went (10 Nov 2026 review, B2).
-      const which = r.version === 'outdoor' ? ' the outdoor version' : r.version === 'as written' ? ' as written' : '';
-      setMsg({ ok: true, text: again ? `Sent again${which}: the copy on your Garmin is replaced after its next phone sync.` : `Sent${which}. It will be on your Garmin after the next phone sync, under Training, Workouts.` });
-    } catch (e) {
-      setMsg({ ok: false, text: `Could not send: ${(e as Error).message}` });
-    } finally { setBusy(null); }
-  }
-
   async function sync() {
     setBusy('sync');
     try {
@@ -262,24 +246,20 @@ export function Today({ data }: { data: AppData }) {
           </div>
           <h2 style="font-size:28px;line-height:32px;font-weight:700;letter-spacing:-0.02em;margin:12px 0 2px">{workout.name}</h2>
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
-          {!doneRide && <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)} · {plan.basis === 'power' ? 'power targets' : 'heart-rate targets'}</p>}
+          {!doneRide && <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)}</p>}
           {doneRide ? <DoneHero ride={doneRide} profile={profile} fallback={<WorkoutProfile blocks={workout.blocks} height={96} />} />
             : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>}
           {plan.reason && <p style="font-size:14px;margin:0 0 4px">{plan.reason}</p>}
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
-            {!workout.trainerOnly && plan.status === 'planned' && <button class="btn primary" onClick={send} disabled={busy === 'send'}>{busy === 'send' ? 'Sending…' : 'Send to Garmin'}</button>}
-            {!workout.trainerOnly && plan.status === 'sent' && <button class="btn" onClick={send} disabled={busy === 'send'}>Send again</button>}
-            {plan.status !== 'completed' && playerOffered() && <a class={`btn${workout.trainerOnly ? ' primary' : ''}`} href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
+            {plan.status !== 'completed' && playerOffered() && <a class="btn primary" href={`#/play/planned/${plan.id}`}>Ride indoors on the trainer</a>}
+            {/* How it goes to the Garmin is chosen here, when it is sent (10 Nov 2026 evening). */}
+            {!workout.trainerOnly && (plan.status === 'planned' || plan.status === 'sent') && <SendButton w={workout} entry={plan} profile={profile} plans={planDays} large primary={!playerOffered() && plan.status === 'planned'} />}
             <button class="btn" aria-expanded={showSteps} onClick={() => setShowSteps(!showSteps)}>{showSteps ? 'Hide steps' : 'Steps and targets'}</button>
             {plan.status === 'completed' && plan.activityId && data.rides.some((r) => r.id === plan.activityId) && <a class="btn primary" href={`#/rides/${plan.activityId}`}>See the recording</a>}
             <a class="btn quiet" href={`#/workout/${workout.id}?from=today&date=${date}`}>{plan.status === 'completed' ? 'The plan' : 'Details'}</a>
             {plan.status !== 'completed' && <button class="icon-btn" style="margin-left:auto" onClick={() => setChanging(plan)} title="Move, replace or remove" aria-label="Move, replace or remove"><Icon.more /></button>}
           </div>
-          {/* A ride with two versions for the Garmin: which one will go (10 Nov 2026 review, B2). */}
-          {plan.status !== 'completed' && !workout.trainerOnly && hasTwoVersions(workout) && (
-            <p class="faint small" style="margin:8px 0 0">Goes to your Garmin {whereFor(plan, workout, planDays) === 'outdoor' ? 'in its outdoor version' : 'as written'}. <a href={`#/workout/${workout.id}?from=today&date=${date}`}>Change</a></p>
-          )}
           {workout.trainerOnly && plan.status !== 'completed' && !playerOffered() && <p class="faint small" style="margin:10px 0 0">{TRAINER_ONLY_ELSEWHERE}</p>}
           {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
         </section>

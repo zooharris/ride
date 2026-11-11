@@ -13,7 +13,7 @@ export const ZONE_VAR = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'va
  * `targets` (Batch 7, B): moving the pointer across the diagram shows a label
  * with what that moment of the ride asks for, the step's name, time, share of
  * FTP, watts and heart rate, from the rider's own tables (the same numbers as
- * the steps table), the rider's basis in full and the other in grey. With
+ * the steps table), both with equal weight (10 Nov 2026 evening). With
  * `touch`, pressing and sliding does the same on a phone. Without `targets` the
  * diagram is exactly as it always was.
  */
@@ -68,7 +68,8 @@ export function WorkoutProfile({ blocks, height = 72, hero = false, ratio = 6, t
       <div class="profile-tip" style={style} role="status">
         <div class="pt-title"><span class="z" style={`background:${ZONE_VAR[t.zone - 1]}`} />{t.title}</div>
         <div class="pt-line"><span>{t.time}</span><span>{t.share} of FTP</span></div>
-        <div class="pt-line"><span class={targets.basis === 'power' ? '' : 'faint'}>{t.watts}</span><span class={targets.basis === 'hr' ? '' : 'faint'}>{t.bpm}</span></div>
+        {/* Power and heart rate with equal weight (10 Nov 2026 evening); a breathing line can follow when breathing targets exist. */}
+        <div class="pt-line"><span>{t.watts}</span><span>{t.bpm}</span></div>
       </div>
     );
   })() : null;

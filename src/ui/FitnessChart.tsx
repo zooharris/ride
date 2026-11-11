@@ -74,7 +74,7 @@ const dur = (sec: number) => { const m = Math.round(sec / 60); return m >= 60 ? 
  * aerobic numbers each on its own scale, read through the readout, which also
  * names the day's sessions and what kind of morning it was.
  */
-export function FitnessChart({ series, projection = [], range = '3m', events = [], height = 170, on = ['fitness', 'fatigue', 'form'], data }: {
+export function FitnessChart({ series, projection = [], range = '3m', events = [], height = 170, on = ['fitness', 'fatigue', 'form'], data, onHover }: {
   series: Fitness[];
   projection?: Fitness[];
   range?: RangeKey;
@@ -82,6 +82,8 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
   height?: number;
   on?: OverlayKey[];
   data?: OverlayData;
+  /** Told the day under the pointer (null when it leaves): Progress reads every line for that day above the chart. */
+  onHover?: (date: string | null) => void;
 }) {
   if (series.length < 2) return <div class="empty small">Fitness and fatigue draw here once activities are synced.</div>;
   const days = RANGE_DAYS[range];
@@ -183,6 +185,7 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
       height={height}
       fmtX={fmtDay}
       suffix={suffix}
+      onHover={onHover ? (i) => onHover(i == null ? null : dates[i]) : undefined}
       key={`${first}-${last}-${on.join(',')}`}
     />
   );

@@ -72,6 +72,8 @@ export interface PowerCurve {
   /** Part A5 (4 Nov 2026): the highest 30-second mean heart rate of the ride, and the reading it was made with (powerCurves HR_VERSION). */
   hr30?: number;
   hv?: number;
+  /** Durability (11 Nov 2026): best 5- and 20-minute power before and after work equal to an hour at that day's FTP. */
+  late?: import('../engine/progressMore').LateEfforts;
 }
 
 export interface SyncState {

@@ -27,9 +27,9 @@ export function RouteMap({ samples, hover, onHover, height = 320 }: { samples: S
     L.tileLayer(TILE_URL, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(m);
     el.current.classList.toggle('dark', resolvedTheme() === 'dark');
     const latlngs = pts.map((p) => [p.lat, p.lng] as [number, number]);
-    const halo = cssVar('--bg') || '#0A1220';
+    const halo = cssVar('--bg') || '#06122B';
     L.polyline(latlngs, { color: halo, weight: 7, opacity: 0.55, interactive: false }).addTo(m);   // a halo under the track so it reads on any tile
-    const line = L.polyline(latlngs, { color: cssVar('--accent') || '#20D6B5', weight: 3.5, opacity: 0.95 }).addTo(m);
+    const line = L.polyline(latlngs, { color: cssVar('--accent') || '#5BA4FF', weight: 3.5, opacity: 0.95 }).addTo(m);
     L.circleMarker(latlngs[0], { radius: 5, color: cssVar('--on-color') || '#fff', weight: 2, fillColor: cssVar('--good') || '#34C77B', fillOpacity: 1 }).addTo(m).bindTooltip('Start');
     L.circleMarker(latlngs[latlngs.length - 1], { radius: 5, color: cssVar('--on-color') || '#fff', weight: 2, fillColor: cssVar('--bad') || '#F0506E', fillOpacity: 1 }).addTo(m).bindTooltip('Finish');
     const box = el.current;

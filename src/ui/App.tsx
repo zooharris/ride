@@ -33,6 +33,7 @@ import { FramedLogo, Logo } from './Brand';
 import { toast, Toaster } from './Toast';
 import { UpdateBanner } from './UpdateBanner';
 import { Skeleton } from './PageHead';
+import { SideBlocks, SideStatus } from './SideBlocks';
 
 const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
@@ -170,9 +171,11 @@ export function App() {
       <nav class="nav">
         <div class="brand"><FramedLogo width={160} /></div>
         {TABS.map((t) => [
+          'railFirst' in t && t.railFirst ? <SideBlocks key="side" data={data} page={active} /> : null,
           <a key={t.path} href={`#/${t.path}`} aria-current={active === t.path ? 'page' : undefined} class={`${active === t.path ? 'active' : ''}${'railOnly' in t && t.railOnly ? ' rail-only' : ''}${'railFirst' in t && t.railFirst ? ' rail-first' : ''}`}>{t.icon}<span>{t.label}</span></a>,
           'groupEnd' in t && t.groupEnd ? <div key={`${t.path}-sep`} class="nav-sep" /> : null,
         ])}
+        <SideStatus page={active} />
       </nav>
       <header class="topbar">
         <Logo height={26} tag="beside" />

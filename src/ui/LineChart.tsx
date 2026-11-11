@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { useWidth } from './useWidth';
 
 /**
@@ -34,7 +34,7 @@ export interface ChartBand { from: number; to: number; label: string; color: str
  * readout naming every series. Small on purpose: everything in the app that
  * draws a line over time uses it so the charts read the same way.
  */
-export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], bands = [], height = 170, readout, suffix, fmtX, yMin, yMax }: {
+export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], markers = [], bands = [], height = 170, readout, suffix, fmtX, yMin, yMax, onPick, pickLabel, onHover }: {
   series: ChartSeries[];
   xLabels: string[];                 // one per x position (dates as YYYY-MM-DD)
   xTick?: (label: string, i: number) => string | null;   // what to print under the axis; null for nothing
@@ -48,8 +48,16 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   fmtX?: (label: string) => string;  // how the default readout names the day
   yMin?: number;
   yMax?: number;
+  /** A point that stands for something (a ride, a week, a test) opens it: a click, or a second tap on a touch screen. */
+  onPick?: (i: number) => void;
+  /** The words for what a pick opens, shown in the reading ("open the ride"). */
+  pickLabel?: (i: number) => string | null;
+  /** Told the point under the pointer (null when it leaves), for a reading shown outside the chart. */
+  onHover?: (i: number | null) => void;
 }) {
-  const [hover, setHover] = useState<number | null>(null);
+  const [hover, setHover0] = useState<number | null>(null);
+  const setHover = (v: number | null) => { setHover0(v); onHover?.(v); };
+  const touched = useRef(0);   // a click that follows a tap is the tap's, not a pick
   const [box, W] = useWidth(480);
   const n = xLabels.length;
   if (n < 2) return <div class="empty small">Not enough data to draw.</div>;
@@ -81,8 +89,8 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   };
   const path = (vals: Array<number | null>, yy = y, connect = false) => { let pen = false; return vals.map((v, i) => { if (v == null) { if (!connect) pen = false; return ''; } const c = `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${yy(v).toFixed(1)}`; pen = true; return c; }).join(' '); };
   const barW = Math.max(1.5, Math.min(5, ((W - padL - padR) / Math.max(1, n - 1)) * 0.7));
-  // y ticks: 4 round steps
-  const step = niceStep((hi - lo) / 4);
+  // y ticks: 4 round steps (2 on a short chart, so the labels never sit on each other)
+  const step = niceStep((hi - lo) / (H < 100 ? 2 : 4));
   const ticks: number[] = [];
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(Math.round(v * 1000) / 1000);
   padL = Math.max(40, 24 + Math.max(...ticks.map((t) => fmtStep(t, step).length)) * 6);
@@ -93,8 +101,11 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
   const h = hover;
   return (
     <div class="chart" style="position:relative" ref={box}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" aria-label={yTitle}
-        onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-label={yTitle}
+        style={`display:block;width:100%;touch-action:pan-y${onPick ? ';cursor:pointer' : ''}`}
+        onPointerMove={(e) => { if (e.pointerType !== 'mouse') return; const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.round(((px - padL) / (W - padL - padR)) * (n - 1)); setHover(Math.max(0, Math.min(n - 1, i))); }}
+        onPointerDown={(e) => { if (e.pointerType === 'mouse') return; touched.current = Date.now(); const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.max(0, Math.min(n - 1, Math.round(((px - padL) / (W - padL - padR)) * (n - 1)))); if (onPick && hover === i && (!pickLabel || pickLabel(i))) onPick(i); else setHover(i); }}
+        onClick={(e) => { if (!onPick || Date.now() - touched.current < 800) return; const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.max(0, Math.min(n - 1, Math.round(((px - padL) / (W - padL - padR)) * (n - 1)))); if (!pickLabel || pickLabel(i)) onPick(i); }}
         onMouseLeave={() => setHover(null)}>
         {bands.map((b) => { const top = y(Math.min(hi, b.to)), bot = y(Math.max(lo, b.from)); if (bot <= top) return null; return <g key={b.label}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.09"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">{b.label}</text>}</g>; })}
         {series.filter((s) => s.ownBands?.length).slice(0, 1).flatMap((s) => { const yy = yOf(s); return s.ownBands!.map((b) => { const top = yy(b.to), bot = yy(b.from); if (bot <= top) return null; return <g key={`own-${b.label}`}><rect x={padL} y={top} width={W - padL - padR} height={bot - top} fill={b.color} fill-opacity="0.08"><title>{b.explain ?? b.label}</title></rect>{bot - top > 11 && <text x={W - padR - 3} y={bot - 3} fill={b.color} fill-opacity="0.9" font-size="10" text-anchor="end" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">{b.label}</text>}</g>; }); })}
@@ -111,16 +122,17 @@ export function LineChart({ series, xLabels, xTick, yTitle, refLines = [], marke
         {h != null && <line x1={x(h)} x2={x(h)} y1={padT} y2={H - padB} stroke="var(--accent)" />}
         {h != null && series.map((s) => s.values[h] == null || s.kind === 'bars' ? null : <circle key={s.name} cx={x(h)} cy={yOf(s)(s.values[h] as number)} r="3" fill={s.color} />)}
       </svg>
-      <div class="row wrap faint small chart-legend" style="gap:4px 14px;margin-top:4px">
+      {series.some((s) => !s.hideInLegend) && <div class="row wrap faint small chart-legend" style="gap:4px 14px;margin-top:4px">
         {series.filter((s) => !s.hideInLegend).map((s) => <span key={s.name} title={s.explain}>{s.kind === 'bars'
           ? <span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color};opacity:.35;vertical-align:middle;margin-right:5px`} />
           : s.dots
           ? <span style={`color:${s.color}`}>•</span>
           : <svg width="22" height="8" style="display:inline-block;vertical-align:middle;margin-right:5px" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" stroke={s.color} stroke-width={Math.max(1.6, s.width ?? 1.8)} stroke-dasharray={s.dash} /></svg>}{s.name}</span>)}
-      </div>
+      </div>}
       {h != null && (
         <div class="panel small" style="position:absolute;top:6px;right:6px;padding:6px 10px;pointer-events:none;max-width:70%">
           {readout ? readout(h) : <><b>{fmtX ? fmtX(xLabels[h]) : xLabels[h]}</b>{readoutParts(series, h).map((t) => ` · ${t}`)}{suffix ? suffix(h) : ''}</>}
+          {onPick && pickLabel?.(h) && <span class="faint"> · {pickLabel(h)} ›</span>}
         </div>
       )}
     </div>

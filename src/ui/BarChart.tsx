@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { useWidth } from './useWidth';
 
 export interface BarSeries { name: string; color: string; values: number[] }
@@ -12,7 +12,7 @@ export interface BarSeries { name: string; color: string; values: number[] }
  * one by one (a histogram coloured by zone); `markers` mark a position on the
  * category axis (FTP on a power histogram).
  */
-export function BarChart({ categories, series, outline, outlineName = 'planned', barColor, xTick, yTitle, yFormat = fmt, height = 170, readout, markers = [], normalise = false, partialLast = false }: {
+export function BarChart({ categories, series, outline, outlineName = 'planned', barColor, xTick, yTitle, yFormat = fmt, height = 170, readout, markers = [], normalise = false, partialLast = false, onPick, pickLabel }: {
   categories: string[];
   series: BarSeries[];
   outline?: number[];
@@ -26,15 +26,19 @@ export function BarChart({ categories, series, outline, outlineName = 'planned',
   markers?: Array<{ at: number; label: string; color?: string }>;   // `at` in category units (0 = first bar's left edge)
   normalise?: boolean;              // each stack drawn as shares of 100%
   partialLast?: boolean;            // the last category is still in progress (this month): drawn hatched
+  /** A bar that stands for something (a week, a ride) opens it: a click, or a second tap on a touch screen. */
+  onPick?: (i: number) => void;
+  pickLabel?: (i: number) => string | null;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const touched = useRef(0);   // a click that follows a tap is the tap's, not a pick
   const [box, W] = useWidth(480);
   const n = categories.length;
   if (!n) return <div class="empty small">Nothing to draw yet.</div>;
   const H = height, padR = 8, padT = 12, padB = 22;
   const totals = categories.map((_, i) => series.reduce((a, s) => a + (s.values[i] || 0), 0));
   const top0 = normalise ? 100 : Math.max(1, ...totals, ...(outline ?? []));
-  const step = niceStep(top0 / 4);
+  const step = niceStep(top0 / (H < 100 ? 2 : 4));
   const top = normalise ? 100 : Math.ceil((top0 * 1.04) / step) * step;
   const tickVals: number[] = [];
   for (let v = 0; v <= top + 1e-9; v += normalise ? 25 : step) tickVals.push(v);
@@ -54,8 +58,10 @@ export function BarChart({ categories, series, outline, outlineName = 'planned',
   const pid = `hatch-${Math.random().toString(36).slice(2, 8)}`;
   return (
     <div class="chart" style="position:relative" ref={box}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%" role="img" aria-label={yTitle}
-        onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); setHover(i >= 0 && i < n ? i : null); }}
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={`display:block;width:100%;touch-action:pan-y${onPick ? ';cursor:pointer' : ''}`} role="img" aria-label={yTitle}
+        onPointerMove={(e) => { if (e.pointerType !== 'mouse') return; const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); setHover(i >= 0 && i < n ? i : null); }}
+        onPointerDown={(e) => { if (e.pointerType === 'mouse') return; touched.current = Date.now(); const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); if (i < 0 || i >= n) return; if (onPick && hover === i && (!pickLabel || pickLabel(i))) onPick(i); else setHover(i); }}
+        onClick={(e) => { if (!onPick || Date.now() - touched.current < 800) return; const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; const i = Math.floor((px - padL) / cw); if (i >= 0 && i < n && (!pickLabel || pickLabel(i))) onPick(i); }}
         onMouseLeave={() => setHover(null)}>
         <defs><pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="4" fill="var(--bg-2)" fill-opacity="0.55" /></pattern></defs>
         {ticks.map((t) => <g key={t}><line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" stroke-dasharray="2 4" /><text x={padL - 5} y={y(t) + 3} fill="var(--ink-3)" font-size="10" text-anchor="end">{normalise ? `${t}%` : yFormat(t)}</text></g>)}
@@ -89,6 +95,7 @@ export function BarChart({ categories, series, outline, outlineName = 'planned',
       {h != null && (
         <div class="panel small" style="position:absolute;top:0;right:0;padding:6px 10px;pointer-events:none;max-width:78%">
           {readout ? readout(h) : <><b>{categories[h]}</b>{series.map((s) => ` · ${s.name} ${fmt(s.values[h] || 0)}`)}</>}
+          {onPick && pickLabel?.(h) && <span class="faint"> · {pickLabel(h)} ›</span>}
         </div>
       )}
     </div>

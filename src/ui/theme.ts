@@ -22,7 +22,7 @@ function apply(): void {
   const t = resolvedTheme();
   root.style.colorScheme = t;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', t === 'light' ? '#F4F6FA' : '#0A1220');
+  if (meta) meta.setAttribute('content', t === 'light' ? '#0A2552' : '#0A1F4A');   // the phone's status bar sits over the navy top bar
   listeners.forEach((l) => l(t));
 }
 

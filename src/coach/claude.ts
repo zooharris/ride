@@ -10,7 +10,7 @@ import { exerciseLine } from '../engine/record';
 import type { Readiness, ReadinessDriver } from '../engine/readiness';
 import { workoutStats } from '../engine/workout';
 import { runStepsLine } from '../engine/run';
-import { JUDGE_SCHEMA, judgeSystem, readJudge } from './judge';
+import { JUDGE_SCHEMA, judgeSystem, plainWords, readJudge } from './judge';
 import { complete, type CoachConfig, type CompleteRequest } from './llm';
 
 
@@ -388,4 +388,114 @@ export function readThreshold(mode: ThresholdMode, data: { content?: Array<{ typ
 export async function askThreshold(apiKey: CoachKey, profile: Profile, date: string, evidence: string[], mode: ThresholdMode, limits: { best20?: number; best60?: number; maxHr?: number } = {}): Promise<ThresholdAdvice> {
   const r = await complete(cfgOf(apiKey), { messages: [{ role: 'user', content: thresholdPrompt(profile, date, evidence, mode) }], schema: (mode === 'ftp' ? FTP_SCHEMA : ZONE_SCHEMA) as unknown as Record<string, unknown>, maxTokens: 8000, think: 'medium' });
   return readThreshold(mode, r, limits);
+}
+
+// ---- the coach on Progress (11 Nov 2026) ----------------------------------------
+
+/** What the Progress page shows, in words: the only thing the coach is sent about it. */
+export interface PageFacts {
+  profile: Profile;
+  date: string;
+  from: string;
+  to: string;
+  /** The range in words, the goal and the plan. */
+  context: string[];
+  /** The ticker's cells, one line each. */
+  ticker: string[];
+  /** Key numbers, one line each: now, four weeks ago, change. */
+  key: string[];
+  /** Each card that has numbers: its id (for the reply only), its title and its readout. */
+  cards: Array<{ id: string; title: string; readout: string }>;
+}
+
+export const PROGRESS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['headline', 'cards'],
+  properties: {
+    headline: { type: 'string' },
+    cards: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['card', 'line'], properties: { card: { type: 'string' }, line: { type: 'string' } } } },
+  },
+} as const;
+
+const PAGE_RULES = 'Speak plainly, to the rider in the second person, with no headings and no exclamation marks. Explain any training term you use in a few words, or use the plain word instead (fitness, fatigue, form, training load); never write abbreviations such as CTL, ATL, TSB, EF, VT1 or VT2, and never write the card ids. Rest only on the numbers given; do not invent any. When the numbers are too few to judge, say so rather than guess.';
+
+function pageBlock(f: PageFacts): string {
+  return `The rider is looking at their Progress page for ${f.from} to ${f.to}. Everything it shows:
+${f.context.map((l) => '- ' + l).join('\n')}
+The numbers at the top:
+${f.ticker.map((l) => '- ' + l).join('\n') || '- none'}
+Key numbers (now · four weeks ago · change):
+${f.key.map((l) => '- ' + l).join('\n') || '- none'}
+The cards (id · title: what the card's numbers say):
+${f.cards.map((c) => `- ${c.id} · ${c.title}: ${c.readout}`).join('\n') || '- none'}`;
+}
+
+/** On Progress the coach is told only what the page shows, and the name as set: no profile details beyond those. */
+function pageIntro(profile: Profile): string {
+  return `You are the rider's cycling coach, reading their Progress page with them. ${nameRule(profile)} Units: ${profile.units}.`;
+}
+
+export function progressSystem(f: PageFacts): string {
+  return `${pageIntro(f.profile)} ${PAGE_RULES} ${MEDICAL_RULE} ${SCALE}
+
+${pageBlock(f)}`;
+}
+
+export const PROGRESS_ASK = 'Write two things. "headline": two or three sentences on where my fitness and progress stand over this range: what is going well, what to watch, and whether my goal is on course when there is one. "cards": for each card whose numbers are enough to say something, one or two sentences on what that card\'s numbers mean for me, resting only on that card\'s own line above; give its id as "card". Leave out any card with too little to go on.';
+
+/** One request: the headline and every card's line. */
+export async function writeProgress(key: CoachKey, f: PageFacts): Promise<{ headline: string; cards: Record<string, string> }> {
+  const r = await complete(cfgOf(key), { system: progressSystem(f), messages: [{ role: 'user', content: PROGRESS_ASK }], schema: PROGRESS_SCHEMA as unknown as Record<string, unknown>, maxTokens: 4000 });
+  const text = readText(r);
+  let v: { headline?: unknown; cards?: unknown };
+  try { v = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Error('The coach\'s reply was not in the form the page needs. Try again.'); }
+  if (typeof v.headline !== 'string' || !v.headline.trim()) throw new Error('The coach sent no summary. Try again.');
+  const ids = new Set(f.cards.map((c) => c.id));
+  const cards: Record<string, string> = {};
+  if (Array.isArray(v.cards)) for (const c of v.cards as Array<{ card?: unknown; line?: unknown }>) {
+    if (typeof c?.card === 'string' && ids.has(c.card) && typeof c.line === 'string' && c.line.trim()) cards[c.card] = coachWords(c.line, f.profile);
+  }
+  return { headline: coachWords(v.headline, f.profile), cards };
+}
+
+/** A question about the whole page. */
+export async function askProgress(key: CoachKey, f: PageFacts, question: string): Promise<string> {
+  return coachWords(await callCoach(key, { maxTokens: 1500, system: `${progressSystem(f)}\n\n${ANSWER_RULES}`, messages: [{ role: 'user', content: question }] }), f.profile);
+}
+
+/** A question about one card: that card's numbers, what is switched on in it, and the range. */
+export async function askProgressCard(key: CoachKey, f: PageFacts, card: { title: string; readout: string; extra?: string }, question: string): Promise<string> {
+  const system = `${pageIntro(f.profile)} ${PAGE_RULES} ${ANSWER_RULES} ${MEDICAL_RULE} ${SCALE}
+
+The rider is looking at the "${card.title}" card on their Progress page, for ${f.from} to ${f.to}.
+${f.context.map((l) => '- ' + l).join('\n')}
+- What the card shows: ${card.readout || 'little yet'}${card.extra ? `\n- Switched on in it: ${card.extra}` : ''}`;
+  return coachWords(await callCoach(key, { maxTokens: 1500, system, messages: [{ role: 'user', content: question }] }), f.profile);
+}
+
+/** Ordinary words that can begin a name ("And" for Andrew): never taken for a shortened name. */
+const COMMON = new Set(['and', 'all', 'also', 'any', 'are', 'but', 'can', 'did', 'for', 'had', 'has', 'her', 'his', 'how', 'may', 'more', 'most', 'not', 'now', 'one', 'our', 'out', 'over', 'she', 'still', 'the', 'then', 'this', 'too', 'two', 'way', 'well', 'what', 'when', 'will', 'with', 'yes', 'you', 'your']);
+
+const JARGON: Array<[RegExp, string]> = [
+  [/\bCTL\b/g, 'fitness'], [/\bATL\b/g, 'fatigue'], [/\bTSB\b/g, 'form'], [/\bEF\b/g, 'efficiency'],
+  [/\bVT1\b/g, 'first breathing threshold'], [/\bVT2\b/g, 'second breathing threshold'],
+  [/\b(?:restinghr|wkg|morning|consistency|durability|records|breathing|totals|aerobic|wellness|zones|power|load|tests|body|key|fitness|weight)[-_ ]?card\b/gi, 'card'],
+];
+
+/**
+ * The safety net on everything the coach says on Progress: the judge's net for stray refs, the abbreviations a
+ * rider was never shown turned into words, and the rider's name made whole wherever the coach shortened it.
+ */
+export function coachWords(text: string, profile: Pick<Profile, 'name'>): string {
+  let out = plainWords(text, new Map());
+  for (const [re, w] of JARGON) out = out.replace(re, w);
+  const name = profile.name?.trim();
+  if (name) {
+    const whole = name.split(/\s+/)[0];
+    // A shortened form of the name ("zoo" for "zooharris") becomes the name as set.
+    // Only where it is used to address the rider: a capitalised word directly before a comma or the end of a sentence.
+    out = out.replace(/\b([A-Z][A-Za-z]{2,})(?=[,.!?])/g, (m) => (m.length < whole.length && whole.toLowerCase().startsWith(m.toLowerCase()) && !COMMON.has(m.toLowerCase()) ? whole : m));
+  }
+  return out.replace(/\s{2,}/g, ' ').trim();
 }

@@ -4,7 +4,7 @@
  */
 import type { Basis, Profile, Workout, WorkoutStep } from '../engine/types';
 import { flattenStepsWithSets, stepTargets } from '../engine/workout';
-import { hrZone, powerZone, rideHrZones, ridePowerZones } from '../engine/zones';
+import { breathTargetOf, breathTargetWords, hrZone, powerZone, rideHrZones, ridePowerZones } from '../engine/zones';
 
 export interface TimelineStep {
   index: number;
@@ -113,6 +113,17 @@ export function targetBand(s: TimelineStep, basis: Basis, profile: Profile, scal
   const low = s.noFloor ? 0 : nums[0] ?? 0;
   const high = nums[nums.length - 1] ?? low;
   return { low, high, mid: Math.round((low + high) / 2), text: `${t} bpm` };
+}
+
+/**
+ * Step 5 (11 Nov 2026): a step's breathing band in litres a minute, from its power target (a single value is a band
+ * of 3% either side, as on the ride's page), with its words and breathing zone; undefined with no breathing zones.
+ */
+export function breathBand(s: TimelineStep, profile: Profile, scale = 1): { low: number; high: number; mid: number; text: string; zone: number } | undefined {
+  const lo = s.low * scale, hi = s.high * scale;
+  const t = s.noFloor || s.low !== s.high ? breathTargetOf(lo, hi, s.noFloor, profile) : breathTargetOf(lo * 0.97, hi * 1.03, false, profile);
+  if (!t) return undefined;
+  return { low: t.lo, high: t.hi, mid: (t.lo + t.hi) / 2, text: breathTargetWords(t), zone: t.zone };
 }
 
 /** The heart-rate zone a step's band sits in (its middle), for colour and the zone pill on a ride by heart rate. */

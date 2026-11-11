@@ -1,5 +1,5 @@
 import type { Basis, Profile, Workout, WorkoutBlock, WorkoutStats, WorkoutStep } from './types';
-import { powerToHrFraction, powerZone, rideLadders, ridePowerZones, type Ladders } from './zones';
+import { breathTargetOf, powerToHrFraction, powerZone, rideLadders, ridePowerZones, type BreathTarget, type Ladders } from './zones';
 
 /** Flatten repeats into a plain list of steps, in ride order. */
 export function flattenSteps(blocks: WorkoutBlock[]): WorkoutStep[] {
@@ -133,6 +133,15 @@ export function stepTargets(step: WorkoutStep, profile: Profile): { watts: strin
     watts: step.intensityHigh ? `${w(step.intensity)}–${w(step.intensityHigh)}` : `${w(step.intensity)}`,
     bpm: step.intensityHigh ? `${b(step.intensity)}–${b(step.intensityHigh)}` : `${b(step.intensity)}`,
   };
+}
+
+/**
+ * A step's breathing target (Step 5, 11 Nov 2026), worked out from its power target and the rider's two zone
+ * tables, or undefined when the rider has no breathing zones. A single value is a band of 5% either side, as in the player.
+ */
+export function stepBreath(step: WorkoutStep, profile: Profile): BreathTarget | undefined {
+  const hi = step.intensityHigh ?? step.intensity;
+  return step.intensityHigh || step.noFloor ? breathTargetOf(step.intensity, hi, !!step.noFloor, profile) : breathTargetOf(step.intensity * 0.97, step.intensity * 1.03, false, profile);
 }
 
 /** A step's share of FTP, as the steps table and the diagram's label both show it: "88–93%", "up to 55%". */

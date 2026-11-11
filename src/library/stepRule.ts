@@ -1,6 +1,6 @@
 import type { Workout, WorkoutStep } from '../engine/types';
 import { flattenStepsWithSets } from '../engine/workout';
-import { HR_ZONES, POWER_ZONES, powerToHrFraction } from '../engine/zones';
+import { BREATH_ZONE_NAMES, HR_ZONES, POWER_ZONES, PROVISIONAL_BREATH_PCTS, powerToHrFraction, powerToVe, type BreathZone } from '../engine/zones';
 
 /**
  * Every step change must mean something (10 Nov 2026 brief, Part 1). When a ride moves from one step to the next,
@@ -18,6 +18,13 @@ import { HR_ZONES, POWER_ZONES, powerToHrFraction } from '../engine/zones';
  */
 export const POWER_STEP = 0.03;
 export const HR_STEP = 0.03;
+/**
+ * Breathing (Step 5, 11 Nov 2026), for a ride that works by breathing (any ride that works by heart rate): the same
+ * test on the breathing targets, with BREATH_STEP of the second breathing threshold, on the standard breathing zone
+ * shape (the population default every rider starts from), in whole percent of the second threshold.
+ */
+export const BREATH_STEP = 3;
+const STANDARD_BREATH: BreathZone[] = BREATH_ZONE_NAMES.map((name, i) => ({ n: i + 1, name, low: i === 0 ? 0 : PROVISIONAL_BREATH_PCTS[i - 1], high: i < 4 ? PROVISIONAL_BREATH_PCTS[i] : Infinity }));
 
 type Span = { lo: number; hi: number; ceilingOnly: boolean };
 
@@ -28,6 +35,12 @@ const powerSpan = (s: WorkoutStep): Span => s.noFloor
 const hrSpan = (s: WorkoutStep): Span => {
   const p = powerSpan(s);
   const f = (x: number) => powerToHrFraction(x, HR_ZONES, POWER_ZONES);
+  return { lo: p.ceilingOnly ? 0 : f(p.lo), hi: f(p.hi), ceilingOnly: p.ceilingOnly };
+};
+
+const breathSpan = (s: WorkoutStep): Span => {
+  const p = powerSpan(s);
+  const f = (x: number) => powerToVe(x, POWER_ZONES, STANDARD_BREATH);
   return { lo: p.ceilingOnly ? 0 : f(p.lo), hi: f(p.hi), ceilingOnly: p.ceilingOnly };
 };
 
@@ -44,7 +57,7 @@ function differs(a: Span, b: Span, step: number): boolean {
   return Math.abs(mid(a) - mid(b)) >= step - 1e-9 && !contains(a, b) && !contains(b, a);
 }
 
-export interface StepProblem { at: number; from: WorkoutStep; to: WorkoutStep; why: 'power' | 'heart rate' }
+export interface StepProblem { at: number; from: WorkoutStep; to: WorkoutStep; why: 'power' | 'heart rate' | 'breathing' }
 
 /** The step changes in a ride that ask for nothing new, in ridden order (repeats unrolled). */
 export function stepProblems(w: Workout): StepProblem[] {
@@ -57,7 +70,8 @@ export function stepProblems(w: Workout): StepProblem[] {
     if ((a.cadence ?? 0) !== (b.cadence ?? 0)) continue;          // a cadence change is something to do
     if (b.cues?.some((c) => c.at >= 0 && c.at <= 15)) continue;    // the new step says what it is for
     if (!differs(powerSpan(a), powerSpan(b), POWER_STEP)) { out.push({ at: i, from: a, to: b, why: 'power' }); continue; }
-    if (hr && !differs(hrSpan(a), hrSpan(b), HR_STEP)) out.push({ at: i, from: a, to: b, why: 'heart rate' });
+    if (hr && !differs(hrSpan(a), hrSpan(b), HR_STEP)) { out.push({ at: i, from: a, to: b, why: 'heart rate' }); continue; }
+    if (hr && !differs(breathSpan(a), breathSpan(b), BREATH_STEP)) out.push({ at: i, from: a, to: b, why: 'breathing' });
   }
   return out;
 }

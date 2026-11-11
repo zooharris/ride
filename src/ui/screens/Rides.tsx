@@ -1,4 +1,5 @@
-import { footHrZones, footLthr, rideHrZones, ridePowerZones } from '../../engine/zones';
+import { BREATH_ZONE_NAMES, breathProvisional, breathZoneOf, breathZones, footHrZones, footLthr, rideHrZones, ridePowerZones } from '../../engine/zones';
+import { zoneTime } from '../../engine/reads';
 import { breathNumbers } from '../../engine/breathNumbers';
 import type { AppData } from '../store';
 import { doneHistory, findWorkout, notify } from '../store';
@@ -28,7 +29,7 @@ import { MonthGrid, monthOf, shiftMonth } from '../MonthGrid';
 import { addDays, today } from '../../engine/load';
 import { Empty, PageHead, Skeleton } from '../PageHead';
 import { LapsTable, PowerDistribution, ZoneBars } from '../RideCharts';
-import { ZONE_VAR } from '../Profile';
+import { breathZoneVar, ZONE_VAR } from '../Profile';
 import { GLOSSARY, ZONE_KEY, ZONE_NAMES } from '../glossary';
 import { KindStack } from '../Glance';
 import { hoursLabel, type WeekSummary } from '../week';
@@ -214,6 +215,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   // Breathing is cut where a strap froze (2E), so nothing frozen is drawn or read.
   const shown = useMemo(() => (streams ? breathingOf(streams) : streams), [streams]);
   const samples = useMemo(() => (shown ? resample(shown, 700) : []), [shown]);
+  // Step 5 (11 Nov 2026): time in each breathing zone, for any ride with breathing, when the rider has breathing zones; the frozen stretch is already cut.
+  const breathSecs = useMemo(() => {
+    const zones = breathZones(profile);
+    if (!zones || !shown?.ve?.length) return undefined;
+    return zoneTime(shown.time, shown.ve.map((v) => (v != null && v > 0 ? v : NaN)), 1, (v) => breathZoneOf(v, zones) ?? 1, 5);
+  }, [shown, profile]);
   const breathStop = shown?.frozenAt != null ? { at: shown.frozenAt, garmin: !data.edits.find((e) => e.id === r.id)?.breathSensor } : undefined;
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
@@ -312,7 +319,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <details class="planned-fold">
             <summary><h2 style="display:inline">What was planned</h2></summary>
             <div class="panel" style="margin-top:10px">
-              {w.kind === 'ride' ? <StepsTable blocks={w.blocks} basis={basis} profile={profile} /> : <PlannedList workout={w} />}
+              {w.kind === 'ride' ? <StepsTable blocks={w.blocks} basis={basis} profile={profile} breath={w.bases.includes('hr')} /> : <PlannedList workout={w} />}
               <p class="faint small" style="margin-top:8px">{w.purpose} <a href={`#/workout/${w.id}?from=rides&ride=${r.id}&date=${p.date}`}>The session in full ›</a></p>
             </div>
           </details>
@@ -352,13 +359,14 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <p class="faint small" style="margin-top:8px">Green: on target. Amber: under. Orange: over. {analysis.aligned === 'laps' ? 'Lined up with the laps your computer recorded.' : 'Laid along the ride’s clock from the start, since the laps didn’t match the plan’s steps; a pause mid-ride shifts the windows.'}</p>
         </section>
       )}
-      {((isRide && r.powerZoneSeconds?.length) || r.hrZoneSeconds?.length) && (
+      {((isRide && r.powerZoneSeconds?.length) || r.hrZoneSeconds?.length || breathSecs) && (
         <section class="section">
           <h2>Time in zone</h2>
           <p class="faint small" style="margin:4px 0 10px">How the {noun}'s time was spread across your {isRide ? 'zones' : 'heart-rate zones'}{isRide && r.powerZoneSeconds?.length && r.hrZoneSeconds?.length ? ', by power and by heart rate. Heart rate lags power, so short efforts show more in the power zones' : ''}.</p>
           <div class="panel zonepair">
             {isRide && r.powerZoneSeconds?.length ? <ZoneBars title="Power zones" seconds={r.powerZoneSeconds} /> : null}
             {r.hrZoneSeconds?.length ? <ZoneBars title="Heart-rate zones" seconds={r.hrZoneSeconds} /> : null}
+            {breathSecs ? <ZoneBars title={`Breathing zones${breathProvisional(profile) ? ' (provisional)' : ''}`} seconds={breathSecs} names={BREATH_ZONE_NAMES} colours={[1, 2, 3, 4, 5].map(breathZoneVar)} /> : null}
           </div>
           {isRide && r.sweetSpotSeconds && r.powerZoneSeconds?.length ? <p class="small" style="margin-top:8px" title="Sweet spot is the band from high tempo into low threshold, as Intervals.icu measures it. This time is already counted in zones 3 and 4 above.">Sweet spot time: <b class="num">{clock(r.sweetSpotSeconds)}</b> <span class="faint">(high tempo to low threshold; already counted in zones 3 and 4)</span></p> : null}
           {[isRide ? coverage(r.powerZoneSeconds, r.seconds, 'power') : null, coverage(r.hrZoneSeconds, r.seconds, 'heart rate')].filter(Boolean).map((t) => <p class="faint small" key={t!} style="margin-top:6px">{t}</p>)}

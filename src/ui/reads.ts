@@ -92,7 +92,7 @@ async function run(input: ReadsInput, only?: string): Promise<number> {
       const p = sessions.get(r.id);
       const w = p ? input.find(p.workoutId) : undefined;
       // Judged by the targets it was ridden to (10 Nov 2026 evening): the player's choice for a trainer ride, else the session's.
-      const session = p && w ? { workout: w, basis: local?.basis ?? p.basis } : undefined;
+      const session = p && w ? { workout: w, basis: local?.basis ?? p.basis, byBreath: local ? !!local.byBreath : !!p.rodeByBreath } : undefined;
       let laps: RideLap[] | undefined;
       if (session && w?.kind === 'ride' && s) { try { laps = full?.intervals ?? (c ? await fetchIntervals(c, r.id) : undefined); } catch { laps = undefined; } }
       const effort = p?.rpe ?? edits.get(r.id)?.rpe;

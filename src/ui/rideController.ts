@@ -12,7 +12,10 @@ import { getSensors, getSlots, commandTrainer, resetTrainerSession, onTrainerCon
 import { pickSources } from '../player/sources';
 import { cleanName } from '../player/devices';
 import { RideEngine, type TrainerMode } from '../player/engine';
-import { buildTimeline, hrZoneOf, rampRef, targetBand, type TimelineStep } from '../player/timeline';
+import { breathBand, buildTimeline, hrZoneOf, rampRef, targetBand, type TimelineStep } from '../player/timeline';
+import { BREATH_OFFSET_FALLBACK_S, BREATH_TABLE, breathAnswer, breathLearn, breathLearns, breathResumed, breathStartWatts, breathStatus, breathStepStart, breathTick, type BreathCtl, type BreathPowerTable, type BreathStep } from '../player/breathControl';
+import { todayOffset, type BreathNormal } from '../engine/breathOffset';
+import { BREATH_NORMAL_KEY } from './powerCurves';
 import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, startWatts, type HrCtl, type HrPowerTable, type HrStep } from '../player/hrControl';
 import { db, getSetting, setSetting } from '../data/db';
 import { putRecording, patchRecording } from '../player/rides';
@@ -38,6 +41,8 @@ export interface RideSetup {
   freeWatts?: number;
   /** The Ramp Test: watts added each minute. */
   rampStep?: number;
+  /** Step 5 (11 Nov 2026): ridden by breathing. `basis` is then 'power' (the trainer's watts are what is recorded and scored). */
+  byBreath?: boolean;
 }
 
 export interface ActiveRide {
@@ -76,6 +81,20 @@ export interface ActiveRide {
   /** A `lost` event is open (written when the stall was seen, closed by `found`). */
   breathLost?: boolean;
   live: { watts?: number; cadence?: number; speedKmh?: number; bpm?: number; ve?: number; br?: number; tv?: number; ie?: number };
+  /** Riding by breathing with the trainer adjusting (Step 5): the loop for the step being ridden, and its line for the screen. */
+  breath?: { step: number; st: BreathCtl; inS: number; status: string };
+  /** The watts that kept breathing in each breathing zone on earlier rides (synced). */
+  breathTable: BreathPowerTable;
+  /** The rider's normal breathing at each effort (for today's strap offset), and today's offset once known. */
+  breathNormal?: BreathNormal;
+  breathOffsetToday?: number;
+  /** Ventilation over 30 seconds, corrected for today's offset: what the targets are judged against. */
+  veNow?: number;
+  /** A smoother ventilation for the marker on the breathing bar. */
+  markerVe?: number;
+  /** Breathing has stopped arriving on a ride by breathing: the trainer is holding its watts and the rider is offered a way on. */
+  breathStopped?: boolean;
+  breathMissingSince?: number;
 }
 
 let active: ActiveRide | undefined;
@@ -128,7 +147,9 @@ export function startRide(setup: RideSetup): void {
     basis: setup.basis, ftp: setup.profile.ftp, lthr: setup.profile.lthr, rampStep: setup.rampStep,
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
-  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {}, hrTable: {} };
+  if (setup.byBreath) rec.byBreath = true;
+  active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {}, hrTable: {}, breathTable: {} };
+  if (setup.byBreath) void Promise.all([getSetting<BreathPowerTable>(BREATH_TABLE, {}), getSetting<BreathNormal | undefined>(BREATH_NORMAL_KEY, undefined)]).then(([t, n]) => { if (active?.rec.id === rec.id) { active.breathTable = t ?? {}; active.breathNormal = n; } });
   if (setup.basis === 'hr') void getSetting<HrPowerTable>(HR_TABLE, {}).then((t) => { if (active?.rec.id === rec.id) active.hrTable = t ?? {}; });
   recent.length = 0;
   recentHr.length = 0;
@@ -197,10 +218,12 @@ function second(now: number) {
   const lastHr = (n: number) => { const xs = recentHr.slice(-n); return xs.length ? Math.round(xs.reduce((x, y) => x + y, 0) / xs.length) : undefined; };
   a.shownBpm = lastHr(a.setup.smoothing);
   const byHr = a.setup.basis === 'hr';
+  const byBreath = !!a.setup.byBreath;
   const step = a.engine.step;
+  if (byBreath) breathSecond(a, now, step);
   // A new step starts its label and cue afresh, so a target change is not met with a stale verdict.
   if (step && step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; a.cueState = { lastTone: a.cueState.lastTone, hist: a.cueState.hist }; a.cue = undefined; }
-  if (!byHr && a.live.watts != null && a.engine.phase === 'riding') {
+  if (!byHr && !byBreath && a.live.watts != null && a.engine.phase === 'riding') {
     a.markerWatts = ewma(a.markerWatts, a.live.watts);
     if (step) {
       const b = targetBand(step, 'power', a.setup.profile, a.engine.scale);
@@ -229,6 +252,7 @@ function second(now: number) {
   const out = a.engine.tick(now, { ...a.live, canMove: canTellMoving() });
   // Pedalling again after an auto-pause carries on as the Resume button does: free to rise again.
   if (wasPaused && a.engine.phase === 'riding' && a.hr) a.hr = { ...a.hr, st: hrResumed(a.hr.st) };
+  if (wasPaused && a.engine.phase === 'riding' && a.breath) a.breath = { ...a.breath, st: breathResumed(a.breath.st) };
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
   if (out.note) toast({ ok: true, text: out.note });
@@ -345,6 +369,128 @@ function learnFrom(a: ActiveRide) {
   void setSetting(HR_TABLE, a.hrTable);
 }
 
+// ── Riding by breathing (Step 5, 11 Nov 2026) ─────────────────────────────
+
+/** Breathing missing this long on a ride by breathing: the trainer holds and the rider is offered a way on. */
+export const BREATH_STOP_S = 30;
+
+/** A step as the breathing loop sees it. */
+function breathStepOf(step: TimelineStep, profile: Profile, scale: number): BreathStep | undefined {
+  const b = breathBand(step, profile, scale);
+  if (!b) return undefined;
+  const hr = targetBand(step, 'hr', profile);
+  return { seconds: step.seconds, noFloor: step.noFloor, zone: b.zone, low: step.noFloor ? 0 : b.low, high: b.high, plannedWatts: targetBand(step, 'power', profile, scale).mid, hrHigh: hr.high || undefined };
+}
+
+/**
+ * Once a second on a ride by breathing: today's strap offset (until known), the corrected ventilation, the
+ * zone pill, the cue when the rider steers, the trainer's loop when it adjusts, and whether breathing has stopped.
+ */
+function breathSecond(a: ActiveRide, now: number, step: TimelineStep | undefined) {
+  const e = a.engine;
+  const profile = a.setup.profile;
+  // Today's offset: worked out every 30 seconds until known; with no earlier rides to compare with, the reading is taken as it is after ten minutes.
+  if (a.breathOffsetToday == null && e.timer > 0 && e.timer % 30 === 0) {
+    const ss = e.samples;
+    const off = todayOffset(ss.map((x) => x.t), ss.map((x) => x.w ?? NaN), ss.map((x) => x.ve ?? NaN), a.breathNormal, profile.ftp);
+    if (off != null) a.breathOffsetToday = off;
+    else if (e.timer >= BREATH_OFFSET_FALLBACK_S && !a.breathNormal) a.breathOffsetToday = 1;
+  }
+  const usable = a.live.ve != null && !a.breathQuiet && !a.breathLost;
+  const raw = usable ? a.shownBreath?.ve : undefined;
+  a.veNow = raw != null ? Math.round((raw / (a.breathOffsetToday ?? 1)) * 10) / 10 : undefined;
+  // Breathing has stopped: missing for 30 seconds, or the strap's watchdog says so.
+  a.breathMissingSince = a.veNow == null ? (a.breathMissingSince ?? now) : undefined;
+  const stopped = e.phase === 'riding' && a.breathMissingSince != null && now - a.breathMissingSince >= BREATH_STOP_S * 1000;
+  if (stopped && !a.breathStopped) e.mark(now, 'breath', 'stopped');
+  a.breathStopped = stopped;
+  if (!step) return;
+  const b = breathBand(step, profile, e.scale);
+  if (!b) return;
+  if (a.veNow != null && e.phase === 'riding') {
+    a.markerVe = ewma(a.markerVe, a.veNow);
+    a.band = settle(a.band, bandOf(a.markerVe, step.noFloor ? 0 : b.low, b.high));
+  }
+  const adjusting = a.timeline.length > 0 && e.mode === 'erg';
+  if (adjusting) steerByBreath(a, now, step);
+  else if (a.veNow != null && e.phase === 'riding') {
+    const c = hrCue(a.cueState, a.veNow, { low: step.noFloor ? 0 : b.low, high: b.high }, step.noFloor, e.wall(now));
+    if (c.cue && c.cue !== a.cue) e.mark(now, 'cue', c.cue);
+    a.cueState = c.state;
+    a.cue = c.cue;
+    if (c.tone && a.setup.sound) beep('count');
+  }
+}
+
+function steerByBreath(a: ActiveRide, now: number, step: TimelineStep) {
+  const e = a.engine;
+  if (e.phase === 'paused' || e.phase === 'finished') return;
+  const bs = breathStepOf(step, a.setup.profile, e.scale);
+  if (!bs) return;
+  const inS = Math.max(0, e.position - step.start);
+  if (!a.breath || a.breath.step !== step.index) {
+    const prev = a.breath?.st.target;
+    if (a.breath) learnBreath(a);
+    a.breath = { step: step.index, st: breathStepStart(breathStartWatts(a.breathTable, bs.zone, bs.plannedWatts), undefined, prev), inS: 0, status: '' };
+  }
+  const offsetKnown = a.breathOffsetToday != null;
+  const r = breathTick(a.breath.st, bs, inS, offsetKnown ? a.veNow : undefined, a.live.bpm != null ? a.shownBpm : undefined);
+  const status = a.breathStopped ? `Breathing has stopped arriving. The trainer is holding ${r.state.target} W.` : breathStatus(r.state, bs, inS, a.veNow, offsetKnown);
+  a.breath = { ...a.breath, st: r.state, inS, status };
+  e.hrWatts = r.state.target;
+  if (r.easedNow) toast({ ok: false, text: 'Heart rate well above the zone: the trainer has eased off.' });
+}
+
+/** A steady step that held its breathing zone teaches the table the watts that did it (the last three minutes' average). */
+function learnBreath(a: ActiveRide) {
+  const h = a.breath;
+  const step = h ? a.timeline[h.step] : undefined;
+  const bs = step ? breathStepOf(step, a.setup.profile, a.engine.scale) : undefined;
+  if (!h || !step || !bs || !breathLearns(h.st, bs, h.inS + 1)) return;
+  const ws = a.engine.samples.filter((s) => s.s === step.index && s.w != null).slice(-180).map((s) => s.w!);
+  if (ws.length < 150) return;
+  a.breathTable = breathLearn(a.breathTable, bs.zone, ws.reduce((x, y) => x + y, 0) / ws.length, today());
+  void setSetting(BREATH_TABLE, a.breathTable);
+}
+
+/** The rider's answer to "Your breathing is staying low today". */
+export function answerBreath(answer: 'harder' | 'keep') {
+  const a = active;
+  if (!a?.breath) return;
+  a.breath = { ...a.breath, st: breathAnswer(a.breath.st, answer) };
+  emit();
+}
+
+/** The rider's + and − on a ride by breathing with the trainer adjusting: 5 W, then held for the rest of the step, as the rider chose. */
+export function nudgeBreath(dir: 1 | -1) {
+  const a = active;
+  if (!a?.breath || a.engine.mode !== 'erg') return;
+  const target = Math.max(40, Math.min(a.breath.st.maxW, a.breath.st.target + 5 * dir));
+  a.breath = { ...a.breath, st: { ...a.breath.st, target, kept: true, asking: false }, status: `Holding ${target} W for the rest of this step, as you chose.` };
+  a.engine.hrWatts = target;
+  push();
+}
+
+/**
+ * Breathing has stopped arriving: carry on by heart rate (the trainer then adjusts to heart rate) or by power
+ * (the trainer holds each step's watts). The ride stays one recording; it is marked as changed at this point.
+ */
+export function carryOnWithout(by: 'hr' | 'power') {
+  const a = active;
+  if (!a) return;
+  if (a.breath && a.engine.mode === 'erg') learnBreath(a);
+  a.setup = { ...a.setup, byBreath: false, basis: by };
+  a.rec = { ...a.rec, byBreath: undefined, basis: by };
+  a.breath = undefined;
+  a.breathStopped = false;
+  a.hr = undefined;
+  a.engine.hrWatts = undefined;
+  a.band = { count: 0 };
+  a.engine.mark(Date.now(), 'breath', by === 'hr' ? 'carried on by heart rate' : 'carried on by power');
+  if (by === 'hr') void getSetting<HrPowerTable>(HR_TABLE, {}).then((t) => { if (active === a) a.hrTable = t ?? {}; });
+  push();
+}
+
 /** The rider's answer to "Your heart rate is staying low today". */
 export function answerHr(answer: 'harder' | 'keep') {
   const a = active;
@@ -388,7 +534,7 @@ function save() { if (active) void putRecording(snapshot(active)); }
 // ── The rider's controls ───────────────────────────────────────────────────
 
 export function pauseRide() { if (active) { active.engine.pause(Date.now()); push(); } }
-export function resumeRide() { if (active) { active.engine.resume(Date.now()); if (active.hr) active.hr = { ...active.hr, st: hrResumed(active.hr.st) }; push(); } }
+export function resumeRide() { if (active) { active.engine.resume(Date.now()); if (active.hr) active.hr = { ...active.hr, st: hrResumed(active.hr.st) }; if (active.breath) active.breath = { ...active.breath, st: breathResumed(active.breath.st) }; push(); } }
 /** The Ramp Test's Stop button: the ramp ends now and the cool-down starts. */
 export function stopTest() {
   const a = active;
@@ -405,6 +551,9 @@ export function setRideMode(mode: TrainerMode) {
   // The rider's own choice wins over the switch made when heart rate went missing; coming back to adjusting starts the step's loop afresh.
   active.hrLost = false;
   if (mode === 'erg' && active.setup.basis === 'hr') active.hr = undefined;
+  if (mode === 'erg' && active.setup.byBreath) active.breath = undefined;
+  // Leaving "adjusts to breathing" gives the trainer back its planned watts.
+  if (mode !== 'erg' && active.setup.byBreath) active.engine.hrWatts = undefined;
   active.engine.setMode(Date.now(), mode);
   push();
 }
@@ -425,6 +574,7 @@ export async function endRide(): Promise<Recording | undefined> {
   const a = active;
   if (!a) return undefined;
   if (a.hr && a.engine.mode === 'erg') learnFrom(a);
+  if (a.breath && a.engine.mode === 'erg') learnBreath(a);
   // Ending the ride while still on the ramp is stopping the test: the result then knows where it ended.
   a.engine.endTest(Date.now(), 'rider');
   const cmd = a.engine.finish(Date.now());
@@ -443,7 +593,7 @@ export async function endRide(): Promise<Recording | undefined> {
   a.rec = rec;
   await putRecording(rec);
   // A ride from the calendar is judged by the targets it was ridden to (10 Nov 2026 evening): the player's choice.
-  if (rec.plannedId) { try { await db.planned.update(rec.plannedId, { basis: a.setup.basis }); } catch { /* the session was removed meanwhile */ } }
+  if (rec.plannedId) { try { await db.planned.update(rec.plannedId, { basis: a.setup.basis, rodeByBreath: a.setup.byBreath ? true : undefined }); } catch { /* the session was removed meanwhile */ } }
   // Diagnostics brief, Part A: the strap's details are saved with the ride now (so closing the tab can't lose them),
   // and again once the strap has answered its stop commands.
   const early = strapRideDetails();

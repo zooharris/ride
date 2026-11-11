@@ -54,6 +54,11 @@ export interface Profile {
   /** Threshold run pace, seconds per kilometre (shown per mile or km by units). Optional: runs are by heart rate; pace is a hint. */
   thresholdPaceSec?: number;
   basis: Basis;         // default basis for new workouts
+  /**
+   * Step 5 (11 Nov 2026): "Ride by" set to Breathing. `basis` is then 'hr' (heart rate is the way on when breathing
+   * can't be used, and how rides go to the Garmin until Step 6). Offered only to a rider with breathing zones.
+   */
+  preferBreath?: boolean;
   masters: boolean;     // masters recovery ratios in the plan builder
   units: 'imperial' | 'metric';
   /** First day of the week on calendars, lists and printouts: 0 = Sunday, 1 = Monday. */
@@ -245,6 +250,8 @@ export interface PlannedWorkout {
    */
   where?: 'outdoor' | 'trainer';
   sentWhere?: 'outdoor' | 'trainer';
+  /** Ridden by breathing in the player (Step 5, 11 Nov 2026); `basis` then says how it was sent or would be judged without breathing. */
+  rodeByBreath?: boolean;
   /** The basis the copy on the Garmin was sent with (10 Nov 2026), so a later switch on the page can offer Send again. */
   sentBasis?: Basis;
 }

@@ -6,7 +6,7 @@ import type { AppData } from '../store';
 import { allWorkouts, findWorkout } from '../store';
 import { hrAlternatives } from '../../player/alternatives';
 import type { Basis, PlannedWorkout, Profile, Workout, WorkoutStep } from '../../engine/types';
-import { clock, flattenSteps, formatDuration, stepTargets, workoutStats } from '../../engine/workout';
+import { clock, flattenSteps, formatDuration, stepBreath, stepTargets, workoutStats } from '../../engine/workout';
 import { powerZone, ridePowerZones } from '../../engine/zones';
 import { today } from '../../engine/load';
 import { fmtDate } from '../derived';
@@ -25,7 +25,8 @@ import { platform } from '../../player/platform';
 import { APP_SHORT_NAME } from '../../appName';
 import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, wakeStrap, WAKE_WORDS, type SensorState, type WakeStep } from '../../player/hub';
 import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
-import { chooseFreeMode, chooseMode } from '../../player/mode';
+import { breathBlocked, chooseBreathMode, chooseFreeMode, chooseMode } from '../../player/mode';
+import { breathZones } from '../../engine/zones';
 import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
 import { toast } from '../Toast';
 
@@ -141,7 +142,16 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const [basis, setBasis] = useState<Basis>(workout.bases.includes(profile.basis) ? profile.basis : workout.bases[0]);
   const { sensors, now } = useSensors();
   const sources = pickSources(sensors, now, getSlots());
-  const choice = chooseMode(basis, sensors, sources, allowsHr);
+  // Step 5 (11 Nov 2026): Breathing, offered when a breathing strap is connected; it can be pressed when the ride
+  // works by heart rate and the rider has breathing zones. A rider whose default is Breathing starts on it once the strap is there.
+  const strapOn = sensors.some((x) => x.kind === 'breath' && x.status === 'connected');
+  const whyNotBreath = breathBlocked(allowsHr, !!breathZones(profile));
+  const [byBreath, setByBreath] = useState(false);
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { if (!touched && profile.preferBreath && strapOn && !whyNotBreath && !workout.test) setByBreath(true); }, [strapOn, touched]);
+  useEffect(() => { if (!strapOn) setByBreath(false); }, [strapOn]);
+  const pick = (b: 'power' | 'hr' | 'breath') => { setTouched(true); setByBreath(b === 'breath'); if (b !== 'breath') setBasis(b); };
+  const choice = byBreath ? chooseBreathMode(sensors, sources) : chooseMode(basis, sensors, sources, allowsHr);
   const ramp = workout.test === 'ramp';
   const [rampStep, setRampStep] = useState(RAMP_STEP_DEFAULT);
   useEffect(() => { if (ramp) getSetting<number>(RAMP_STEP_KEY, RAMP_STEP_DEFAULT).then((v) => setRampStep(RAMP_STEPS.includes(v) ? v : RAMP_STEP_DEFAULT)); }, [ramp]);
@@ -151,7 +161,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const shownProfile: Profile = ramp ? { ...profile, ftp: rampRef(profile.ftp) } : profile;
   const s = workoutStats(shown.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
-  const power = basis === 'power';
+  const power = basis === 'power' && !byBreath;
   // A test measures power, so no other ride stands in for it: no heart-rate alternatives.
   const alternatives = useMemo(() => (allowsHr || workout.test ? [] : hrAlternatives(workout, allWorkouts(mine), 5)), [workout.id, allowsHr, mine]);
   const prefs = usePrefs();
@@ -161,17 +171,18 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
   const [scale, setScale] = useState(1);
   const [level, setLevel] = useState(3);
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
-  const startable = basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
-  const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer';
+  const startable = byBreath ? (choice.mode === 'breath-self' || choice.mode === 'breath-trainer') : basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
+  const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer' || choice.mode === 'breath-trainer';
   const [open, setOpen] = useState<Slot | null>(null);
   // When the ride can't start, the place where Start would be says why, and opens the box that fixes it.
   const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
+    : byBreath ? { head: 'Waiting for breathing', text: choice.says, action: ['Ride by heart rate instead', () => pick('hr')] }
     : choice.needsPower ? { head: 'This workout needs a power meter', text: 'Connect a power meter, or a smart trainer that measures power, to ride it.', action: ['Choose power', () => setOpen('watts')] }
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
   const start = () => startRide({
-    workout, planned, basis, profile, scale, level, rampStep: ramp ? rampStep : undefined,
+    workout, planned, basis: byBreath ? 'power' : basis, byBreath: byBreath || undefined, profile, scale, level, rampStep: ramp ? rampStep : undefined,
     mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   });
@@ -187,22 +198,27 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               <h1>{workout.name}</h1>
               {workout.subtitle && <p class="pl-sub">{workout.subtitle}</p>}
             </div>
-            {allowsHr ? (
+            {allowsHr || (strapOn && !workout.test) ? (
               <div class="seg" role="group" aria-label="Targets by">
-                <button class={power ? 'on' : ''} aria-pressed={power} onClick={() => setBasis('power')}>Power</button>
-                <button class={!power ? 'on' : ''} aria-pressed={!power} onClick={() => setBasis('hr')}>Heart rate</button>
+                <button class={power ? 'on' : ''} aria-pressed={power} onClick={() => pick('power')}>Power</button>
+                {allowsHr && <button class={!power && !byBreath ? 'on' : ''} aria-pressed={!power && !byBreath} onClick={() => pick('hr')}>Heart rate</button>}
+                {strapOn && !workout.test && <button class={byBreath ? 'on' : ''} aria-pressed={byBreath} disabled={!!whyNotBreath} title={whyNotBreath} onClick={() => pick('breath')}>Breathing</button>}
               </div>
             ) : <span class="faint small">Power only</span>}
           </div>
           <div class="pl-figures">
             <div><div class="caption">{ramp ? 'Expected duration' : 'Duration'}</div><div class="pl-fig num">{ramp && <small>about </small>}{clock(s.seconds)}</div></div>
             <div><div class="caption">{ramp ? 'Expected load' : 'Training load'}</div><div class="pl-fig num">{ramp && <small>about </small>}{s.tss}<small> TSS</small></div></div>
-            <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power ? 'FTP' : 'threshold'}</small></div></div>
-            <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>
+            <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power || byBreath ? 'FTP' : 'threshold'}</small></div></div>
+            {byBreath && profile.vt2Ve
+              ? <div><div class="caption">Second breathing threshold</div><div class="pl-fig num">{Math.round(profile.vt2Ve)}<small> L/min</small></div></div>
+              : <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>}
           </div>
+          {strapOn && whyNotBreath && !workout.test && <p class="faint small" style="margin:-4px 0 8px">{whyNotBreath}</p>}
+          {profile.preferBreath && !byBreath && !touched && !workout.test && <p class="faint small" style="margin:-4px 0 8px">{!strapOn ? `Starting on ${power ? 'power' : 'heart rate'}: no breathing strap connected yet.` : whyNotBreath ? `Starting on ${power ? 'power' : 'heart rate'}.` : ''}</p>}
           <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} />
           {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={profile.ftp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
-          <StepList workout={shown} profile={shownProfile} basis={basis} />
+          <StepList workout={shown} profile={shownProfile} basis={basis} byBreath={byBreath} />
         </section>
 
         <aside class={`pl-side${choice.needsPower ? ' needs' : ''}`}>
@@ -220,13 +236,16 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <h2 class="pl-h2">How the ride runs</h2>
             {trainerRuns ? (
               <>
-                {!power && (mode === 'erg'
+                {byBreath && (mode === 'erg'
+                  ? <p class="pl-runs">The trainer adjusts its resistance, a few watts at a time, to keep your breathing in each zone. Steps under two minutes are held at steady watts, and the first few minutes are held while Antogo reads your strap for today.</p>
+                  : <p class="pl-runs">You ride to each breathing zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>)}
+                {!power && !byBreath && (mode === 'erg'
                   ? <p class="pl-runs">The trainer adjusts its resistance, a few watts at a time, to keep your heart rate in each zone. Steps under three minutes are held at steady watts.</p>
                   : <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>)}
                 <div class="pl-runs-row">
                   <span>Trainer</span>
                   <div class="seg" role="group" aria-label="Trainer">
-                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['erg', 'Adjusts to heart rate'], ['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
+                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['erg', byBreath ? 'Adjusts to breathing' : 'Adjusts to heart rate'], ['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
                       <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
                     ))}
                   </div>
@@ -241,7 +260,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
               </>
             ) : (
               <>
-              {startable ? <p class="pl-runs">{choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.says.replace(/^Ready\.\s*/, '')}</p>
+              {startable ? <p class="pl-runs">{choice.mode === 'breath-self' ? <>You ride to each breathing zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.mode === 'hr-self' ? <>You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</> : choice.says.replace(/^Ready\.\s*/, '')}</p>
                 : !choice.needsPower && <p class="pl-runs muted">Choices for the trainer appear here once what the ride needs is connected.</p>}
               {startable && <div class="pl-runs-row"><span>Beeps before each step</span>
                 <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button></div>}
@@ -321,7 +340,7 @@ function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; 
         <span style="bottom:-7px">0</span>
       </div>
       <div class="pl-chart-plot">
-        <WorkoutProfile blocks={workout.blocks} height={150} hero targets={{ profile, basis }} />
+        <WorkoutProfile blocks={workout.blocks} height={150} hero targets={{ profile, basis, breath: workout.bases.includes('hr') }} />
         <div class="pl-chart-x" aria-hidden="true">
           {ticks.map((t, i) => <span key={t} style={i === 0 ? 'left:0' : t >= seconds - 1 ? 'right:0' : `left:${(t / seconds) * 100}%;transform:translateX(-50%)`}>{clock(t)}</span>)}
           {ticks[ticks.length - 1] < seconds - tick / 3 && <span style="right:0">{clock(seconds)}</span>}
@@ -332,7 +351,7 @@ function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; 
 }
 
 /** The steps, compact: a repeated set once under its heading, each step with its length and the one target that matters on this basis. */
-function StepList({ workout, profile, basis }: { workout: Workout; profile: Profile; basis: Basis }) {
+function StepList({ workout, profile, basis, byBreath }: { workout: Workout; profile: Profile; basis: Basis; byBreath?: boolean }) {
   const ladder = ridePowerZones(profile);
   // A step without a name of its own: inside a set, the set's name for the work and "Recovery" for the easy part; elsewhere, its zone.
   const nameOf = (st: WorkoutStep, z: number, set?: string) => st.label ?? (set ? (st.intensity < 0.6 ? 'Recovery' : set) : `Zone ${z}`);
@@ -345,7 +364,7 @@ function StepList({ workout, profile, basis }: { workout: Workout; profile: Prof
         <span class="z" style={`background:${ZONE_VAR[z - 1]}`} />
         <span class="pl-step-name">{nameOf(st, z, set)}{st.cadence ? <span class="faint"> · {st.cadence} rpm</span> : null}</span>
         <span class="num muted">{formatDuration(st.seconds)}</span>
-        <span class="num pl-step-target">{basis === 'power' ? `${t.watts} W` : `${t.bpm} bpm`}</span>
+        <span class="num pl-step-target">{byBreath ? (() => { const b = stepBreath(st, profile); return b ? (b.ceiling ? `up to ${Math.round(b.hi)} L/min` : `${Math.round(b.lo)}–${Math.round(b.hi)} L/min`) : `${t.watts} W`; })() : basis === 'power' ? `${t.watts} W` : `${t.bpm} bpm`}</span>
       </div>
     );
   };

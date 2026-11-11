@@ -79,6 +79,8 @@ export interface PlannedRead {
   name: string;
   /** Part A9: a fitness test, whose drift and fade mean nothing (a ramp rises by design). */
   test?: boolean;
+  /** Ridden by breathing (Step 5, 11 Nov 2026): the steps are not read against power or heart-rate targets. */
+  byBreath?: boolean;
   /** One line per work step ridden: "Hard effort 2 of 3 · target 300 to 320 W · you rode 318 W, in target". */
   steps: string[];
   /** Planned steps reached by the recording, and planned steps in all: a fact, never a verdict. */
@@ -90,7 +92,8 @@ export interface Streams { time: number[]; watts?: number[]; heartrate?: number[
 
 export interface ReadContext {
   profile: Profile;
-  session?: { workout: Workout; basis: Basis };
+  /** `byBreath` (Step 5, 11 Nov 2026): ridden by breathing; its watts and heart rate are not judged against the steps' power or heart-rate targets. */
+  session?: { workout: Workout; basis: Basis; byBreath?: boolean };
   laps?: RideLap[];
   effort?: number;
 }
@@ -260,7 +263,7 @@ export function readActivity(r: Ride, s: Streams | undefined, ctx: ReadContext):
   }
 
   // Layer 2: against the plan, only when matched.
-  if (ctx.session) out.planned = plannedRead(ctx.session.workout, ctx.session.basis, p, time, watts, hr, ctx.laps);
+  if (ctx.session) out.planned = ctx.session.byBreath ? { workoutId: ctx.session.workout.id, name: ctx.session.workout.name, steps: [], byBreath: true } : plannedRead(ctx.session.workout, ctx.session.basis, p, time, watts, hr, ctx.laps);
   return out;
 }
 

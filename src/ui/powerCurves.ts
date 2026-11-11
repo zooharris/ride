@@ -37,7 +37,7 @@ export const BREATH_NORMAL_KEY = 'breathNormal';
 export interface CurveContext {
   profile: Profile;
   /** The planned session a recording was matched to, if any. */
-  sessionOf: (rideId: string) => { workout: Workout; basis: Basis } | undefined;
+  sessionOf: (rideId: string) => { workout: Workout; basis: Basis; byBreath?: boolean } | undefined;
   /** The rider's normal breathing as learned so far, for each ride's offset (2A). */
   breathNormal?: BreathNormal;
 }
@@ -140,7 +140,8 @@ export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: Cu
   const bands = hrAtPower(s.time, s.watts, s.heartrate, p.ftp);
   const steady = steadyAtHr(s.time, s.watts, s.heartrate, p.lthr);
   const session = ctx.sessionOf(r.id);
-  const verdict = session ? judgeSession(session.workout, p, session.basis, s.time, s.watts, s.heartrate, laps) : undefined;
+  // A ride by breathing (Step 5, 11 Nov 2026) is not judged by its watts: the trainer moved them to hold the breathing, so they say nothing about FTP.
+  const verdict = session && !session.byBreath ? judgeSession(session.workout, p, session.basis, s.time, s.watts, s.heartrate, laps) : undefined;
   // Breathing alongside power (2A), with any frozen stretch cut off first.
   const b = s.ve ? breathingOf(s) : undefined;
   const ve = b ? veAtPower(s.time, s.watts, b.ve, p.ftp) : [];
@@ -155,8 +156,8 @@ export function curveRecord(r: Pick<Ride, 'id' | 'date'>, s: StreamsIn, ctx?: Cu
 }
 
 /** What the cache needs from the app's data: the profile, and each recording's planned session. */
-export function curveContext(profile: Profile | null | undefined, planned: Array<{ activityId?: string; workoutId: string; basis: Basis }>, find: (id: string) => Workout | undefined): CurveContext | undefined {
+export function curveContext(profile: Profile | null | undefined, planned: Array<{ activityId?: string; workoutId: string; basis: Basis; rodeByBreath?: boolean }>, find: (id: string) => Workout | undefined): CurveContext | undefined {
   if (!profile) return undefined;
   const byActivity = new Map(planned.filter((p) => p.activityId).map((p) => [p.activityId!, p]));
-  return { profile, sessionOf: (id) => { const p = byActivity.get(id); const w = p ? find(p.workoutId) : undefined; return p && w && w.kind === 'ride' ? { workout: w, basis: p.basis } : undefined; } };
+  return { profile, sessionOf: (id) => { const p = byActivity.get(id); const w = p ? find(p.workoutId) : undefined; return p && w && w.kind === 'ride' ? { workout: w, basis: p.basis, byBreath: p.rodeByBreath } : undefined; } };
 }

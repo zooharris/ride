@@ -1,9 +1,12 @@
 import { useRef, useState } from 'preact/hooks';
 import type { Basis, Profile, WorkoutBlock } from '../engine/types';
-import { flattenSteps, flattenStepsWithSets, stepTip } from '../engine/workout';
-import { powerZone } from '../engine/zones';
+import { flattenSteps, flattenStepsWithSets, stepBreath, stepTip } from '../engine/workout';
+import { breathTargetWords, powerZone } from '../engine/zones';
 
 export const ZONE_VAR = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'var(--z5)', 'var(--z6)', 'var(--z7)'];
+/** Breathing zones 1–5 (Step 5, 11 Nov 2026) in the power ladder's colours for the same kind of effort: easy, endurance, tempo to threshold, VO2max, above. */
+const BREATH_ZONE_COLOUR = [1, 2, 3, 5, 6];
+export const breathZoneVar = (z: number) => ZONE_VAR[BREATH_ZONE_COLOUR[Math.max(1, Math.min(5, z)) - 1] - 1];
 
 /**
  * The zone-coloured silhouette of a workout. Width is time, height is intensity.
@@ -17,7 +20,7 @@ export const ZONE_VAR = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'va
  * `touch`, pressing and sliding does the same on a phone. Without `targets` the
  * diagram is exactly as it always was.
  */
-export function WorkoutProfile({ blocks, height = 72, hero = false, ratio = 6, targets }: { blocks: WorkoutBlock[]; height?: number; hero?: boolean; ratio?: number; targets?: { profile: Profile; basis: Basis; touch?: boolean } }) {
+export function WorkoutProfile({ blocks, height = 72, hero = false, ratio = 6, targets }: { blocks: WorkoutBlock[]; height?: number; hero?: boolean; ratio?: number; targets?: { profile: Profile; basis: Basis; breath?: boolean; touch?: boolean } }) {
   const steps = flattenSteps(blocks);
   const total = steps.reduce((s, st) => s + st.seconds, 0) || 1;
   const H = height;
@@ -68,8 +71,9 @@ export function WorkoutProfile({ blocks, height = 72, hero = false, ratio = 6, t
       <div class="profile-tip" style={style} role="status">
         <div class="pt-title"><span class="z" style={`background:${ZONE_VAR[t.zone - 1]}`} />{t.title}</div>
         <div class="pt-line"><span>{t.time}</span><span>{t.share} of FTP</span></div>
-        {/* Power and heart rate with equal weight (10 Nov 2026 evening); a breathing line can follow when breathing targets exist. */}
+        {/* Power and heart rate with equal weight (10 Nov 2026 evening); breathing beneath when the rider has breathing zones (Step 5, 11 Nov). */}
         <div class="pt-line"><span>{t.watts}</span><span>{t.bpm}</span></div>
+        {(() => { const b = targets.breath ? stepBreath(s.step, targets.profile) : undefined; return b ? <div class="pt-line"><span>Breathing {breathTargetWords(b)}</span></div> : null; })()}
       </div>
     );
   })() : null;

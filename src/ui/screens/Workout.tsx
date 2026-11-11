@@ -1,3 +1,4 @@
+import { breathZones } from '../../engine/zones';
 import { footLthr } from '../../engine/zones';
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
@@ -78,12 +79,12 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row between" style="margin-bottom:6px">
         <span class="row" style="gap:6px"><span class="tag" style={`--c:var(--z${s.dominantZone})`}>{PURPOSE_LABEL[tagsOf(w).purpose]}</span>{w.trainerOnly && <TrainerOnlyTag />}</span>
-        <span class="faint small">{w.bases.length > 1 ? 'Works by power or by heart rate' : w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>
+        <span class="faint small">{w.bases.length > 1 ? (breathZones(profile) ? 'Works by power, heart rate or breathing' : 'Works by power or by heart rate') : w.bases[0] === 'power' ? 'power only' : 'heart rate only'}</span>
       </div>
       <div class="row" style="gap:8px;align-items:center"><h1>{w.name}</h1><Star w={w} /></div>
       {w.subtitle && <p style="margin:2px 0 0;font-size:16px;color:var(--ink-2)">{w.subtitle}</p>}
       <p class="muted small" style="margin:4px 0 14px">{clock(s.seconds)} · {s.tss} TSS · intensity {s.intensityFactor.toFixed(2)}</p>
-      <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, touch: true }} />
+      <WorkoutProfile blocks={w.blocks} height={110} hero targets={{ profile, basis, breath: w.bases.includes('hr'), touch: true }} />
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
       <OutdoorNote w={w} />
@@ -107,8 +108,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <section class="section">
         <h2>Steps</h2>
         {w.test === 'ramp' ? <p class="faint small" style="margin:4px 0 8px">The standard ramp, each step as a share of FTP (yours is {profile.ftp} W). In the ride player you choose the step size, the trainer holds each step, and the steps keep climbing until you stop.</p>
-        : <p class="faint small" style="margin:4px 0 8px">Each step's targets in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables). Your Garmin holds you to whichever you send.</p>}
-        <StepsTable blocks={w.blocks} basis={basis} profile={profile} />
+        : <p class="faint small" style="margin:4px 0 8px">Each step's targets in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables){breathZones(profile) && w.bases.includes('hr') ? <>, and as breathing: a share of your second breathing threshold ({Math.round(profile.vt2Ve!)} L/min) and litres a minute, for riding by breathing in the ride player</> : null}. Your Garmin holds you to whichever you send.</p>}
+        <StepsTable blocks={w.blocks} basis={basis} profile={profile} breath={w.bases.includes('hr')} />
       </section>
 
       {plannedEntry && plannedEntry.status === 'completed' && (

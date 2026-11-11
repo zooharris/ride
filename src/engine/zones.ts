@@ -312,3 +312,72 @@ export function breathZoneOf(ve: number, zones: BreathZone[] | undefined): numbe
   if (!zones) return undefined;
   return zones.find((z) => ve >= z.low && ve < z.high)?.n ?? 5;
 }
+
+// ---- riding by breathing (Step 5, 11 Nov 2026) --------------------------------
+
+/**
+ * The anchor points that carry a share of FTP onto ventilation, from the rider's own two tables: the top of
+ * power zone 1 meets the top of breathing zone 1, the top of power zone 2 (endurance) the top of breathing
+ * zone 2 (the first threshold), FTP the top of breathing zone 3 (the second threshold), the top of power
+ * zone 5 (VO2max) the top of breathing zone 4. Linear between them, so sweet spot sits higher in zone 3
+ * than tempo. No fixed number: every point is one of the rider's own boundaries.
+ */
+function powerToBreathPoints(power: Zone[], breath: BreathZone[]): Array<[number, number]> {
+  const pts: Array<[number, number]> = [[0, 0], [power[0].high, breath[0].high], [power[1].high, breath[1].high], [1, breath[2].high], [power[4].high, breath[3].high]];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i][0] <= pts[i - 1][0]) pts[i][0] = pts[i - 1][0] + 0.001;
+    if (pts[i][1] < pts[i - 1][1]) pts[i][1] = pts[i - 1][1];
+  }
+  return pts;
+}
+
+/** Ventilation (L/min) for a share of FTP. Above the top of power zone 5 it carries on at half the VO2max slope, into breathing zone 5. */
+export function powerToVe(powerFraction: number, power: Zone[], breath: BreathZone[]): number {
+  const pts = powerToBreathPoints(power, breath);
+  for (let i = 1; i < pts.length; i++) {
+    const [p0, v0] = pts[i - 1], [p1, v1] = pts[i];
+    if (powerFraction <= p1) return Math.round((v0 + ((Math.max(0, powerFraction) - p0) / (p1 - p0)) * (v1 - v0)) * 10) / 10;
+  }
+  const [pa, va] = pts[pts.length - 2], [pb, vb] = pts[pts.length - 1];
+  return Math.round((vb + (powerFraction - pb) * ((vb - va) / (pb - pa)) * 0.5) * 10) / 10;
+}
+
+/** The inverse: the share of FTP a ventilation corresponds to (for watts to start a step at, before anything is learned). */
+export function veToPower(ve: number, power: Zone[], breath: BreathZone[]): number {
+  const pts = powerToBreathPoints(power, breath);
+  for (let i = 1; i < pts.length; i++) {
+    const [p0, v0] = pts[i - 1], [p1, v1] = pts[i];
+    if (ve <= v1) return Math.round((p0 + (v1 > v0 ? (ve - v0) / (v1 - v0) : 0) * (p1 - p0)) * 1000) / 1000;
+  }
+  const [pa, va] = pts[pts.length - 2], [pb, vb] = pts[pts.length - 1];
+  return Math.round((pb + ((ve - vb) / ((vb - va) / (pb - pa))) * 2) * 1000) / 1000;
+}
+
+/** The rider's breathing zones are provisional: the first threshold is not yet known and the table is the population default. */
+export function breathProvisional(p: Pick<Profile, 'vt1Ve' | 'vt2Ve' | 'breathZoneMode' | 'breathZonePcts' | 'breathZoneTops'>): boolean {
+  if (!p.vt2Ve) return false;
+  if (p.breathZoneMode === 'abs' && validBreathTops(p.breathZoneTops)) return false;
+  if (p.breathZoneMode !== 'abs' && validBreathTops(p.breathZonePcts)) return false;
+  return !standardBreathPcts(p.vt1Ve ?? 0, p.vt2Ve);
+}
+
+/** A step's breathing target: ventilation low and high (low 0 for a step with no floor), and as whole percent of the second threshold. */
+export interface BreathTarget { lo: number; hi: number; loPct: number; hiPct: number; ceiling: boolean; zone: number }
+
+export function breathTargetOf(lo: number, hi: number, noFloor: boolean, profile: Profile): BreathTarget | undefined {
+  const zones = breathZones(profile);
+  if (!zones || !profile.vt2Ve) return undefined;
+  const power = ridePowerZones(profile);
+  const vLo = noFloor ? 0 : powerToVe(lo, power, zones), vHi = powerToVe(hi, power, zones);
+  const pct = (v: number) => Math.round((v / profile.vt2Ve!) * 100);
+  const mid = noFloor ? vHi * 0.97 : (vLo + vHi) / 2;
+  return { lo: vLo, hi: vHi, loPct: pct(vLo), hiPct: pct(vHi), ceiling: noFloor, zone: breathZoneOf(mid, zones) ?? 1 };
+}
+
+/** The words for a breathing target, share first: "78–92% · 31–37 L/min", "under 70% · 28 L/min", "85% · 34 L/min". */
+export function breathTargetWords(t: BreathTarget): string {
+  const L = (v: number) => Math.round(v);
+  if (t.ceiling) return `under ${t.hiPct}% · ${L(t.hi)} L/min`;
+  if (t.loPct === t.hiPct) return `${t.hiPct}% · ${L(t.hi)} L/min`;
+  return `${t.loPct}–${t.hiPct}% · ${L(t.lo)}–${L(t.hi)} L/min`;
+}

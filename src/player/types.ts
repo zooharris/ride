@@ -26,7 +26,8 @@ export interface Sample {
 
 export interface Lap { start: number; end: number; step?: number; manual?: boolean }
 
-export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue' | 'test';
+export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'intensity' | 'mode' | 'eased' | 'lost' | 'found' | 'done' | 'cue' | 'test' | 'breath';
+/** 'breath' (Step 5, 11 Nov 2026): on a ride by breathing, breathing stopped arriving, or the rider carried on another way. */
 export interface RideEvent { t: number; type: RideEventType; value?: string | number }
 
 export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded' | 'superseded';
@@ -43,6 +44,8 @@ export interface Recording {
   workoutId?: string;
   name: string;
   basis: 'power' | 'hr';
+  /** Ridden by breathing (Step 5, 11 Nov 2026): the trainer, or the rider, followed the breathing targets. `basis` is then 'power'. */
+  byBreath?: boolean;
   ftp: number;
   lthr: number;
   samples: Sample[];

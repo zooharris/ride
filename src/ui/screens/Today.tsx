@@ -248,7 +248,7 @@ export function Today({ data }: { data: AppData }) {
           {workout.subtitle && <div style="color:var(--ink-2);font-size:15px">{workout.subtitle}</div>}
           {!doneRide && <p class="muted small">{durationWords(stats.seconds)} · {stats.tss} TSS · intensity {stats.intensityFactor.toFixed(2)}</p>}
           {doneRide ? <DoneHero ride={doneRide} profile={profile} fallback={<WorkoutProfile blocks={workout.blocks} height={96} />} />
-            : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, touch: true }} /></div>}
+            : <div style="margin:14px 0 12px"><WorkoutProfile blocks={workout.blocks} height={96} hero targets={{ profile, basis: plan.basis, breath: workout.bases.includes('hr'), touch: true }} /></div>}
           {plan.reason && <p style="font-size:14px;margin:0 0 4px">{plan.reason}</p>}
           <p class="muted" style="font-size:14px">{workout.purpose}</p>
           <div class="row wrap" style="margin-top:14px;gap:8px">
@@ -261,7 +261,7 @@ export function Today({ data }: { data: AppData }) {
             {plan.status !== 'completed' && <button class="icon-btn" style="margin-left:auto" onClick={() => setChanging(plan)} title="Move, replace or remove" aria-label="Move, replace or remove"><Icon.more /></button>}
           </div>
           {workout.trainerOnly && plan.status !== 'completed' && !playerOffered() && <p class="faint small" style="margin:10px 0 0">{TRAINER_ONLY_ELSEWHERE}</p>}
-          {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} /></div>}
+          {showSteps && <div style="margin-top:14px"><StepsTable blocks={workout.blocks} basis={plan.basis} profile={profile} breath={workout.bases.includes('hr')} /></div>}
         </section>
       ) : rest.length === 0 && extras.length === 0 ? (
         <Empty title="Nothing planned today." action={<a class="btn primary sm" href="#/library">Choose a workout</a>}>Pick something from the library, build a plan, or take the day.</Empty>

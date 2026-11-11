@@ -207,6 +207,10 @@ export function Settings({ data }: { data: AppData }) {
         <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Targets sent to Garmin</label>
             <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
+          {/* Step 5 (11 Nov 2026): Breathing as the player's starting choice, offered only with breathing zones; the Garmin keeps power or heart rate. */}
+          {breathZones(p) && <div class="field"><label>In the ride player, start on</label>
+            <div class="seg"><button class={!p.preferBreath ? 'on' : ''} onClick={() => upd('preferBreath', undefined)}>{p.basis === 'hr' ? 'Heart rate' : 'Power'}</button><button class={p.preferBreath ? 'on' : ''} onClick={() => upd('preferBreath', true)}>Breathing</button></div>
+            {p.preferBreath && <span class="faint small">When a breathing strap is connected and the ride works by breathing; otherwise {p.basis === 'hr' ? 'heart rate' : 'power'}.</span>}</div>}
           <div class="field"><label>Units</label>
             <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
           <div class="field"><label>Week starts on</label>

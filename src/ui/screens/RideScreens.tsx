@@ -3,15 +3,16 @@ import { brShown } from '../../engine/breathThresholds';
 import type { Profile, Workout, PlannedWorkout } from '../../engine/types';
 import { clock, workoutStats } from '../../engine/workout';
 import { today } from '../../engine/load';
-import { hrZone, powerZone, ridePowerZones, rideHrZones } from '../../engine/zones';
+import { breathZones, hrZone, powerZone, ridePowerZones, rideHrZones } from '../../engine/zones';
 import { Mark } from '../Brand';
-import { ZONE_VAR } from '../Profile';
+import { breathZoneVar, ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
-import { cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
+import { breathBand, cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
+import { breathTrend } from '../../player/breathControl';
 import { CUE_WORDS, hrSlot, zoneWords } from '../../player/hrCue';
 import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
 import { rampResult, testResultKey, twentyMinResult, withActions, type TestResult } from '../../player/tests';
@@ -24,7 +25,7 @@ import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import {
-  answerHr, clearRide, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
+  answerBreath, answerHr, carryOnWithout, clearRide, nudgeBreath, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
 } from '../rideController';
 
 export function useRide(): ActiveRide | undefined {
@@ -58,6 +59,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
   const next = e.next;
   const then = next ? tl[next.index + 1] : undefined;
   const byHr = ride.setup.basis === 'hr';
+  const byBreath = !!ride.setup.byBreath;
   const t = totals(e.samples, profile.ftp, profile.lthr, undefined, ride.setup.basis);
   const testing = ride.setup.workout?.test === 'ramp';
   // An open-ended test has no planned length or load to measure against.
@@ -100,7 +102,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
           <div class="rd-sub">{ride.setup.workout ? (ride.setup.workout.subtitle ?? '') : 'No workout: ride as you like'}</div>
         </div>
         <span style="flex:1" />
-        <div class="rd-pills">{sensors.map((s) => <SensorPill key={s.id} s={s} mode={e.mode} byHr={byHr && ride.timeline.length > 0} />)}</div>
+        <div class="rd-pills">{sensors.map((s) => <SensorPill key={s.id} s={s} mode={e.mode} byHr={byHr && ride.timeline.length > 0} byBreath={byBreath && ride.timeline.length > 0} />)}</div>
         <span class="pl-head-sep" />
         <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>
           {paused ? <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.5v13a.8.8 0 0 0 1.2.7l11-6.5a.8.8 0 0 0 0-1.4l-11-6.5A.8.8 0 0 0 1 1.5z" fill="currentColor" /></svg>
@@ -116,11 +118,11 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
 
       <main class="rd-main">
         <section class="rd-top">
-          {byHr ? <HrHero ride={ride} profile={profile} trainerOk={!!trainer} /> : <Hero ride={ride} profile={profile} trainerOk={!!trainer} />}
+          {byBreath ? <BreathHero ride={ride} profile={profile} trainerOk={!!trainer} /> : byHr ? <HrHero ride={ride} profile={profile} trainerOk={!!trainer} /> : <Hero ride={ride} profile={profile} trainerOk={!!trainer} />}
           {tl.length ? <Dial ride={ride} step={step} next={next} then={then} profile={profile} /> : <FreeCard ride={ride} trainerOk={!!trainer} />}
           <div class="rd-col">
-            {byHr ? <PowerTile watts={ride.shownWatts} sensors={sensors} /> : <HrTile bpm={ride.live.bpm} samples={e.samples} profile={profile} />}
-            {strap ? <BreathTile shown={ride.shownBreath} name={cleanName(strap.name)} /> : <section class="rd-card rd-tile">
+            {byHr || byBreath ? <PowerTile watts={ride.shownWatts} sensors={sensors} by={byBreath ? 'breathing' : 'heart rate'} /> : <HrTile bpm={ride.live.bpm} samples={e.samples} profile={profile} />}
+            {byBreath ? <HrTile bpm={ride.live.bpm} samples={e.samples} profile={profile} /> : strap ? <BreathTile shown={ride.shownBreath} name={cleanName(strap.name)} /> : <section class="rd-card rd-tile">
               <span class="caption">Cadence</span>
               <div class="rd-big2 num">{ride.live.cadence != null ? Math.round(ride.live.cadence) : '—'}<small> rpm</small></div>
               <div class="rd-grow" />
@@ -188,8 +190,8 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
   );
 }
 
-function SensorPill({ s, mode, byHr }: { s: SensorState; mode: TrainerMode; byHr?: boolean }) {
-  const word = s.kind === 'trainer' ? `Trainer · ${!s.controllable ? 'not in control' : byHr && mode === 'erg' ? 'adjusting to heart rate' : MODE_WORD[mode]}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : s.kind === 'breath' ? 'Breathing' : 'Cadence';
+function SensorPill({ s, mode, byHr, byBreath }: { s: SensorState; mode: TrainerMode; byHr?: boolean; byBreath?: boolean }) {
+  const word = s.kind === 'trainer' ? `Trainer · ${!s.controllable ? 'not in control' : byBreath && mode === 'erg' ? 'adjusting to breathing' : byHr && mode === 'erg' ? 'adjusting to heart rate' : MODE_WORD[mode]}` : s.kind === 'power' ? 'Power' : s.kind === 'hr' ? 'Heart rate' : s.kind === 'breath' ? 'Breathing' : 'Cadence';
   return <span class={`rd-pill ${s.status}`}><i />{word}</span>;
 }
 const MODE_WORD: Record<TrainerMode, string> = { erg: 'ERG', resistance: 'Resistance', free: 'Free ride', self: 'your gears' };
@@ -219,6 +221,7 @@ function nudge(r: ActiveRide, dir: 1 | -1) {
   const e = r.engine;
   if (e.mode === 'resistance') setRideLevel(e.level + dir);
   else if (e.mode === 'erg' && !r.timeline.length) setRideFreeWatts(e.freeWatts + 5 * dir);
+  else if (e.mode === 'erg' && r.setup.byBreath) nudgeBreath(dir);
   else if (e.mode === 'erg' && r.setup.basis === 'power') setRideScale(e.scale + 0.01 * dir);
 }
 
@@ -290,6 +293,95 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
   );
 }
 
+
+/**
+ * Riding by breathing (Step 5, 11 Nov 2026): the same layout as by heart rate, with breathing in heart rate's
+ * place. Ventilation (30 seconds, corrected for today's strap) large with breathing rate beside it; the step's
+ * breathing range as the target bar; the one message line beneath. Watts and heart rate are in the tiles beside.
+ */
+function BreathHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
+  const e = ride.engine;
+  const step = e.step;
+  const b = step ? breathBand(step, profile, e.scale) : undefined;
+  const ve = ride.veNow;
+  const mv = ride.markerVe ?? ve;
+  const lowShown = b && step?.noFloor ? 0 : b?.low ?? 0;
+  const state = b && mv != null ? ride.band.state : undefined;
+  const lo = b ? (lowShown || Math.round(b.high * 0.8)) : 0;
+  const span = b ? Math.max(4, (b.high - lo) * 1.1) : 1;
+  const mid = b ? (lo + b.high) / 2 : 0;
+  const pos = (x: number) => Math.max(0, Math.min(100, b ? ((x - (mid - span)) / (2 * span)) * 100 : 50));
+  const adjusting = e.mode === 'erg' && ride.timeline.length > 0;
+  const trend = adjusting && ride.breath ? breathTrend(ride.breath.st) : ride.cueState.closing;
+  const words = b && mv != null ? (mv > b.high ? `Above the zone${trend ? `, ${trend}` : ''}` : step?.noFloor || mv >= lowShown ? `In zone${trend ? `, ${trend}` : ''}` : `Below the zone${trend ? `, ${trend}` : ''}`) : '';
+  return (
+    <section class="rd-card rd-hero">
+      <div class="row between">
+        <span class="caption">Breathing · 30-second average</span>
+        {state && <span class={`rd-state ${state}`}>{state === 'on' ? 'In zone' : state === 'under' ? 'Below the zone' : 'Above the zone'}</span>}
+      </div>
+      <div class="rd-breath-pair rd-big-pair">
+        <div class="rd-big num">{ve != null ? Math.round(ve) : '—'}<small>L/min</small></div>
+        <div class="rd-big num rd-big-b">{ride.shownBreath?.br != null ? brShown(ride.shownBreath.br) : '—'}<small>a minute</small></div>
+      </div>
+      {b && step ? (
+        <>
+          <div class="rd-target"><span class="muted">Target</span><b class="num" style={`color:${breathZoneVar(b.zone)}`}>Zone {b.zone} · {b.text}</b></div>
+          <div class="rd-band" aria-hidden="true">
+            <div class="rd-band-track" />
+            <div class="rd-band-ok" style={`left:${pos(lowShown || lo - span)}%;width:${Math.max(2, pos(b.high) - pos(lowShown || lo - span))}%`} />
+            {mv != null && <div class="rd-band-mark" style={`left:${pos(mv)}%`} />}
+          </div>
+          <div class="rd-band-words"><span>Too easy</span><span>{words}</span><span>Too hard</span></div>
+        </>
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'No target.'}</span></div>}
+      {ride.breathStopped ? (
+        <div class="rd-ask" role="group" aria-label="Breathing has stopped arriving">
+          <span>Breathing has stopped arriving.{adjusting ? ' The trainer is holding these watts.' : ''}</span>
+          {ride.setup.workout?.bases.includes('hr') && ride.live.bpm != null && <button class="btn" onClick={() => carryOnWithout('hr')}>Carry on by heart rate</button>}
+          <button class="btn quiet" onClick={() => carryOnWithout('power')}>Carry on by power</button>
+        </div>
+      ) : (() => {
+        const slot = hrSlot({ adjusting, status: ride.breath?.status, cue: step && b ? ride.cue : undefined });
+        if (slot.kind === 'status') return <div class="rd-signal quiet" aria-live="polite"><span>{slot.text}</span></div>;
+        if (slot.kind === 'signal') {
+          const w = CUE_WORDS[slot.cue];
+          return (
+            <div class="rd-signal on" role="status" aria-live="polite">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{slot.cue === 'under' ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M19 12l-7 7-7-7" />}</svg>
+              <b>{w.head}</b><span class="rd-signal-how">{w.short}</span>
+            </div>
+          );
+        }
+        return <div class="rd-signal" aria-hidden="true" />;
+      })()}
+      {adjusting && ride.breath?.st.asking && !ride.breathStopped && (
+        <div class="rd-ask" role="group" aria-label="Breathing staying low">
+          <span>Your breathing is staying low today.</span>
+          <button class="btn" onClick={() => answerBreath('harder')}>Allow harder</button>
+          <button class="btn quiet" onClick={() => answerBreath('keep')}>Keep it here</button>
+        </div>
+      )}
+      <div class="rd-grow" />
+      {trainerOk && e.mode !== 'self' && (
+        <div class="rd-controls">
+          <div class="seg" role="group" aria-label="Trainer">
+            {(['erg', 'resistance', 'free'] as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'erg' ? 'Adjusts to breathing' : MODE_WORD[m]}</button>)}
+          </div>
+        </div>
+      )}
+      {trainerOk && e.mode !== 'self' && (e.mode === 'erg' || e.mode === 'resistance') && (
+        <div class="rd-controls">
+          <span class="faint small">{e.mode === 'erg' ? 'Set the watts yourself for the rest of this step' : 'Resistance level'}</span>
+          <span style="flex:1" />
+          {e.mode === 'erg' && <Stepper label="Watts" value={`${e.ergTarget() ?? '—'}`} onDown={() => nudgeBreath(-1)} onUp={() => nudgeBreath(1)} />}
+          {e.mode === 'resistance' && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
  * Breathing (Step 3): ventilation over 30 seconds and breaths a minute, large and side by side (Step 2c, Part D,
  * 7 Nov 2026: with a strap that records breath size faintly, breathing rate carries as much as the litres); breath
@@ -310,7 +402,7 @@ function BreathTile({ shown, name }: { shown?: { ve?: number; br?: number; tv?: 
 }
 
 /** On a ride by heart rate: power, for interest, from whichever device supplies it. */
-function PowerTile({ watts, sensors }: { watts?: number; sensors: SensorState[] }) {
+function PowerTile({ watts, sensors, by = 'heart rate' }: { watts?: number; sensors: SensorState[]; by?: string }) {
   const meter = sensors.find((s) => s.kind === 'power' && s.status === 'connected');
   const trainer = sensors.find((s) => s.kind === 'trainer' && s.status === 'connected');
   const from = meter ? 'from your power meter' : trainer ? 'from your trainer' : undefined;
@@ -319,7 +411,7 @@ function PowerTile({ watts, sensors }: { watts?: number; sensors: SensorState[] 
       <span class="caption">Power{from ? ` · ${from}` : ''}</span>
       <div class="rd-big2 num">{watts ?? '—'}<small> W</small></div>
       <div class="rd-grow" />
-      <div class="faint small">{from ? 'Shown for interest, not as a target.' : 'No power source: nothing needed for a ride by heart rate.'}</div>
+      <div class="faint small">{from ? (by === 'breathing' ? 'What the trainer is giving you.' : 'Shown for interest, not as a target.') : `No power source: nothing needed for a ride by ${by}.`}</div>
     </section>
   );
 }
@@ -428,13 +520,14 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
   const done = e.position - step.start;
   const left = step.end - e.position;
   const frac = Math.max(0, Math.min(1, done / step.seconds));
-  const band = (s: TimelineStep) => targetBand(s, ride.setup.basis, profile, e.scale).text;
+  const band = (s: TimelineStep) => (ride.setup.byBreath ? breathBand(s, profile, e.scale)?.text : undefined) ?? targetBand(s, ride.setup.basis, profile, e.scale).text;
+  const zoneColour = (s: TimelineStep) => { const bz = ride.setup.byBreath ? breathBand(s, profile, e.scale)?.zone : undefined; return bz ? breathZoneVar(bz) : ZONE_VAR[(ride.setup.basis === 'hr' ? hrZoneOf(s, profile) : s.zone) - 1]; };
   const index = step.index + 1, of = ride.timeline.length;
   return (
     <section class="rd-card rd-dial">
       <div class="row between" style="align-self:stretch">
         <span class="caption">{step.ramp ? `Ramp step ${step.ramp}` : `Step ${index} of ${of}${step.setNote ? ` · ${step.setNote}` : ''}`}</span>
-        {(() => { const z = ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone; return <span class="rd-zone" style={`--c:${ZONE_VAR[z - 1]}`}>Zone {z}{step.ramp ? '' : ` · ${step.name}`}</span>; })()}
+        {(() => { const bz = ride.setup.byBreath ? breathBand(step, profile, e.scale)?.zone : undefined; const z = bz ?? (ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone); return <span class="rd-zone" style={`--c:${bz ? breathZoneVar(bz) : ZONE_VAR[z - 1]}`}>{bz ? 'Breathing zone' : 'Zone'} {z}{step.ramp ? '' : ` · ${step.name}`}</span>; })()}
       </div>
       <div class="rd-ring">
         <svg viewBox="0 0 260 260" aria-hidden="true">
@@ -458,9 +551,9 @@ function Dial({ ride, step, next, then, profile }: { ride: ActiveRide; step?: Ti
       </div>
       <div class="rd-grow" />
       <div class="rd-next">
-        {next ? <div><span class="caption">Next</span><i style={`background:${ZONE_VAR[(ride.setup.basis === 'hr' ? hrZoneOf(next, profile) : next.zone) - 1]}`} /><b>{next.name}</b><span class="num muted">{mmss(next.seconds)} · {band(next)}</span></div>
+        {next ? <div><span class="caption">Next</span><i style={`background:${zoneColour(next)}`} /><b>{next.name}</b><span class="num muted">{mmss(next.seconds)} · {band(next)}</span></div>
           : <div><span class="caption">Next</span><i style="background:var(--good)" /><b>Workout complete</b><span class="muted">ride on, or end</span></div>}
-        {then && <div><span class="caption">Then</span><i style={`background:${ZONE_VAR[(ride.setup.basis === 'hr' ? hrZoneOf(then, profile) : then.zone) - 1]}`} /><span class="muted">{then.name}</span><span class="num muted">{mmss(then.seconds)} · {band(then)}</span></div>}
+        {then && <div><span class="caption">Then</span><i style={`background:${zoneColour(then)}`} /><span class="muted">{then.name}</span><span class="num muted">{mmss(then.seconds)} · {band(then)}</span></div>}
       </div>
     </section>
   );
@@ -598,12 +691,15 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   };
   // The ride is drawn and judged with the numbers it was ridden at, even after a test result changes the settings.
   const asRidden: Profile = { ...profile, ftp: rec.ftp, lthr: rec.lthr };
-  const bandOf = (s: TimelineStep) => targetBand(s, rec.basis, asRidden);
-  const stats = stepStats(rec.samples, timeline, bandOf, rec.basis);
-  const work = stats.filter((s) => isEffort(s.step, rec.basis) && s.seconds > 0);
+  // Step 5 (11 Nov 2026): a ride by breathing is judged against its breathing targets, with the zones it was ridden with.
+  const byBreath = !!rec.byBreath && !!breathZones(asRidden);
+  const by: 'power' | 'hr' | 'breath' = byBreath ? 'breath' : rec.basis;
+  const bandOf = (s: TimelineStep) => (byBreath ? breathBand(s, asRidden) : undefined) ?? targetBand(s, rec.basis, asRidden);
+  const stats = stepStats(rec.samples, timeline, bandOf, by);
+  const work = stats.filter((s) => isEffort(s.step, by) && s.seconds > 0);
   const doneSteps = stats.filter((s) => s.seconds >= s.step.seconds * 0.9).length;
-  const note = byHr ? observationHr(stats) : observation(stats);
-  const zoneTime = byHr && timeline.length ? timeInZone(rec.samples, timeline, bandOf) : undefined;
+  const note = byBreath ? observationHr(stats, 'breathing') : byHr ? observationHr(stats) : observation(stats);
+  const zoneTime = byBreath && timeline.length ? timeInZone(rec.samples, timeline, (s) => breathBand(s, asRidden), (x) => x.ve) : byHr && timeline.length ? timeInZone(rec.samples, timeline, bandOf) : undefined;
   const [rpe, setRpe] = useState<number | undefined>(rec.rpe);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId || rec.supersededBy ? 'saved' : 'idle');
   const [said, setSaid] = useState<string>(rec.supersededBy ? KEPT_GARMIN : '');
@@ -673,7 +769,16 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               {timeline.length > 0 && testKind !== 'ramp' && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
             </div>
           </div>
-          {byHr ? (
+          {byBreath ? (
+          <div class="rd-card rd-figs" style="grid-template-columns:repeat(6, minmax(0, 1fr))">
+            <div><span class="caption">Duration</span><b class="num">{clock(t.seconds)}</b></div>
+            <div><span class="caption">Training load</span><span><b class="num">{t.tss}</b><small>{plannedStats ? ` TSS · ${plannedStats.tss} planned` : ' TSS'}</small></span></div>
+            <div><span class="caption">Average ventilation</span><span><b class="num">{(() => { const v = rec.samples.map((x) => x.ve).filter((x): x is number => x != null && x > 0); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : '—'; })()}</b><small> L/min</small></span></div>
+            {zoneTime ? <div><span class="caption">Time in breathing zone</span><span><b class="num">{clock(zoneTime.seconds)}</b>{zoneTime.share != null && <small> · {pct(zoneTime.share)}</small>}</span></div> : <div />}
+            <div><span class="caption">Average power</span><span><b class="num">{t.avgPower ?? '—'}</b><small> W</small></span></div>
+            <div><span class="caption">Average heart rate</span><span><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></span></div>
+          </div>
+          ) : byHr ? (
           <div class="rd-card rd-figs" style={`grid-template-columns:repeat(${hasPower ? 6 : 5}, minmax(0, 1fr))`}>
             <div><span class="caption">Duration</span><b class="num">{clock(t.seconds)}</b></div>
             <div><span class="caption">Training load</span><span><b class="num">{t.tss}</b><small>{plannedStats ? ` TSS · ${plannedStats.tss} planned` : ' TSS'}</small></span></div>
@@ -707,7 +812,18 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               <>
                 <h2 class="pl-h2">{work.length === 1 ? 'The effort' : `The ${work.length === 2 ? 'two' : work.length === 3 ? 'three' : work.length} efforts`}</h2>
                 <table class="rd-table">
-                  {byHr ? <>
+                  {byBreath ? <>
+                  <thead><tr><th>Step</th><th>Average ventilation</th><th>Time in breathing zone</th><th>Average power</th><th>Average heart rate</th></tr></thead>
+                  <tbody>{work.map((s) => (
+                    <tr key={s.step.index}>
+                      <td><i style={`background:${breathZoneVar(breathBand(s.step, asRidden)?.zone ?? 1)}`} />{s.step.name}{s.step.setNote ? <span class="faint"> · {s.step.setNote}</span> : null}</td>
+                      <td class="num">{s.avgVe != null ? `${Math.round(s.avgVe)} L/min` : '—'}</td>
+                      <td class={`num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`}>{s.onTarget != null ? pct(s.onTarget) : '—'}</td>
+                      <td class="num">{s.avgPower != null ? `${s.avgPower} W` : '—'}</td>
+                      <td class="num">{s.avgHr != null ? `${s.avgHr} bpm` : '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                  </> : byHr ? <>
                   <thead><tr><th>Step</th><th>Average heart rate</th><th>Time in zone</th><th>Highest heart rate</th>{hasPower && <th>Average power</th>}</tr></thead>
                   <tbody>{work.map((s) => (
                     <tr key={s.step.index}>

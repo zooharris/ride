@@ -7,16 +7,17 @@ import { ZONE_VAR } from './Profile';
 import { ZONE_NAMES } from './glossary';
 
 /** Time in each zone as a row of labelled bars: zone, bar, share and time. */
-export function ZoneBars({ title, seconds }: { title: string; seconds: number[] }) {
+/** `names` and `colours` (Step 5, 11 Nov 2026): a ladder of its own, such as the five breathing zones. */
+export function ZoneBars({ title, seconds, names, colours }: { title: string; seconds: number[]; names?: readonly string[]; colours?: string[] }) {
   const total = seconds.reduce((a, b) => a + b, 0) || 1;
   const max = Math.max(1, ...seconds);
   return (
     <div class="zonebars">
       <div class="small" style="margin-bottom:6px"><b>{title}</b></div>
       {seconds.map((s, i) => (
-        <div class="zb-row" key={i} title={`Zone ${i + 1}, ${ZONE_NAMES[Math.min(i, 6)]}: ${clock(s)}, ${Math.round((s / total) * 100)}% of the time`}>
+        <div class="zb-row" key={i} title={`Zone ${i + 1}, ${(names ?? ZONE_NAMES)[Math.min(i, (names ?? ZONE_NAMES).length - 1)]}: ${clock(s)}, ${Math.round((s / total) * 100)}% of the time`}>
           <span class="zb-z">Z{i + 1}</span>
-          <span class="zb-track"><span class="zb-fill" style={`width:${(s / max) * 100}%;background:${ZONE_VAR[Math.min(i, 6)]}`} /></span>
+          <span class="zb-track"><span class="zb-fill" style={`width:${(s / max) * 100}%;background:${colours?.[i] ?? ZONE_VAR[Math.min(i, 6)]}`} /></span>
           <span class="zb-pct num">{Math.round((s / total) * 100)}%</span>
           <span class="zb-t faint">{s >= 60 ? clock(s) : s > 0 ? `${s}s` : '–'}</span>
         </div>

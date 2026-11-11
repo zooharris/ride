@@ -31,12 +31,16 @@ function captureSends() {
 beforeEach(async () => { await db.delete(); await db.open(); });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('B1: the Power / Heart rate switch is a view', () => {
-  it('flipping it changes nothing stored: the page has no write behind the switch', () => {
-    const top = workoutSrc.slice(workoutSrc.indexOf('<div class="seg">'), workoutSrc.indexOf('</div>', workoutSrc.indexOf('<div class="seg">')));
-    expect(top).toMatch(/onClick=\{\(\) => setBasis\('power'\)\}/);
-    expect(workoutSrc).not.toMatch(/setBasisHere/);
-    expect(workoutSrc).toMatch(/Change it to/);
+describe('One control for power or heart rate (10 Nov 2026)', () => {
+  it('on an entry page the switch is the setting, "Ride by"; elsewhere a view, "Show as"; no second control', () => {
+    expect(workoutSrc).toMatch(/entryPage \? 'Ride by' : 'Show as'/);
+    expect(workoutSrc).not.toMatch(/Change it to/);
+    expect(workoutSrc).not.toMatch(/This entry is set to/);
+    expect(workoutSrc).toMatch(/if \(entryPage\) \{ if \(b !== plannedEntry!\.basis\) void setEntryBasis/);
+  });
+
+  it('an entry page needs a date in its link, so a Library page never changes a calendar entry', () => {
+    expect(workoutSrc).toMatch(/const entryPage = !!plannedEntry && !!params\.get\('date'\)/);
   });
 
   it('the player opened from the page uses the page’s choice, ahead of the entry’s setting', () => {
@@ -45,7 +49,7 @@ describe('B1: the Power / Heart rate switch is a view', () => {
     expect(workoutSrc).toMatch(/#\/play\/planned\/\$\{plannedEntry\.id\}\?basis=\$\{basis\}/);
   });
 
-  it('"Change it to…" changes the entry; on an entry sent before 10 Nov it records what the Garmin holds, so Send again is offered', async () => {
+  it('Ride by changes the entry; on an entry sent before 10 Nov it records what the Garmin holds, so Send again is offered', async () => {
     const { setEntryBasis } = await import('../ui/planService');
     const old: PlannedWorkout = { id: 'e1', date: '2026-11-18', workoutId: oldRag.id, basis: 'power', status: 'sent', icuEventId: 9 };
     await db.planned.put(old);

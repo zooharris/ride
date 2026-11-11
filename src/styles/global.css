@@ -882,7 +882,9 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .zone-ed.mode-pct .zone-pct, .zone-ed.mode-abs .zone-abs { display: none; }
   .zone-ed td { padding: 8px 4px; }
   .zone-ed .zone-top { width: 60px; }
-  .steps .basis-off { display: none; }
+  /* Both target columns on a phone (10 Nov 2026), so no one flips the switch just to read the other; the share of FTP gives way. */
+  .steps .share-col { display: none; }
+  .steps td { padding-left: 4px; padding-right: 4px; }
   .stats.tiles .delta { white-space: normal; }
 }
 @media (max-width: 520px) { .laps tr:first-child td { white-space: normal; } }
@@ -1524,3 +1526,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
   .rd-chart-pw { min-height: 50px; }
   .rd-chart-h { height: 18px; }
 }
+
+/* What the Garmin gets, under Ride by on a calendar entry's page (10 Nov 2026). */
+.garmin-line { margin: 0 0 10px; text-align: right; }
+@media (max-width: 520px) { .garmin-line { text-align: left; } }

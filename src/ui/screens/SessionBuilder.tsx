@@ -90,7 +90,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
         <div class="field"><label>Minutes</label><input type="number" min="5" value={minutes} onInput={(e) => setMinutes(Number((e.target as HTMLInputElement).value) || 30)} /></div>
         {kind === 'walk' && <div class="field"><label>Pack weight (lb, 0 for none)</label><input type="number" min="0" value={packLb} onInput={(e) => setPackLb(Number((e.target as HTMLInputElement).value) || 0)} /></div>}
         {kind === 'strength' && (
-          <div class="field"><label>How hard you plan to go (1–10; sets the training-load estimate)</label>
+          <div class="field wide"><label title="Sets the training-load estimate shown at the top of the page.">Planned effort (1–10)</label>
             <select value={effort} onChange={(e) => setEffort(Number((e.target as HTMLSelectElement).value))}>
               {[[3, '3 · very easy: mobility-like, no strain'], [4, '4 · easy: light weights, long rests'], [5, '5 · light: moderate weights, reps in reserve'], [6, '6 · moderate: working weights, 2 reps in reserve'], [7, '7 · hard: heavy, 1 rep in reserve on the last set'], [8, '8 · very hard: near maximal on main lifts']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select></div>

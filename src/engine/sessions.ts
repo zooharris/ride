@@ -185,9 +185,10 @@ export interface RunIntent { kind: RunKind; minutes: number; where: 'outdoor' | 
 
 const EASY = { band: 'easy' as const };
 const RUN_NAME: Record<RunKind, (m: number) => string> = {
-  easy: (m) => `Reston easy run ${m} min`, long: (m) => `Vienna long run ${m} min`, strides: (m) => `Strides at Herndon ${m} min`,
-  tempo: (m) => `Tempo on the trail ${m} min`, hills: (m) => `Hills at Difficult Run ${m} min`,
-  fartlek: (m) => `Fartlek at Sunset Hills ${m} min`, progression: (m) => `Progression to Vienna ${m} min`, 'run-walk': (m) => `Run-walk at Herndon ${m} min`,
+  // Plain names, like strength and mobility (11 Nov 2026): place names are kept for rides.
+  easy: (m) => `Easy run ${m} min`, long: (m) => `Long run ${m} min`, strides: (m) => `Easy run with strides ${m} min`,
+  tempo: (m) => `Tempo run ${m} min`, hills: (m) => `Hill repeats ${m} min`,
+  fartlek: (m) => `Fartlek run ${m} min`, progression: (m) => `Progression run ${m} min`, 'run-walk': (m) => `Run-walk ${m} min`,
 };
 /** Load per hour by kind, as the brief sets it: easy and long 55, strides 60, tempo 75, hills 80. */
 /** The newer kinds (0) take their load from their steps' bands instead. */

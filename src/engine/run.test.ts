@@ -91,7 +91,7 @@ describe('runs: the planner', () => {
         expect(QUALITY.includes(next?.type ?? '')).toBe(false);
         const before = w.sessions.find((s) => s.kind === 'ride' && s.date === addDays(r.date, -1));
         expect(before?.type).not.toBe('long');
-        expect(r.workout.name).toMatch(/easy run|long run|^Strides|^Run-walk/);   // the planner never places tempo or hills
+        expect(r.workout.name).toMatch(/^Easy run|^Long run|^Run-walk/);   // the planner never places tempo or hills
       }
     }
     expect(seen).toBeGreaterThan(0);

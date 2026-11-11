@@ -28,7 +28,7 @@ export function tolerance(kind: Workout['kind'], minutes: number, tss: number, w
   return { minutes: Math.max(wide ? 15 : 10, minutes * share), tss: Math.max(8, tss * share) };
 }
 
-/** "Mobility: after the long ride (12 min)" → "Mobility: after the long ride"; "Reston easy run 30 min" → "Reston easy run". */
+/** "Mobility: after the long ride (12 min)" → "Mobility: after the long ride"; "Easy run 30 min" → "Easy run". */
 const stem = (name: string) => name.replace(/\s*\(\d+ min\)$/, '').replace(/\s+\d+(:\d\d)?\s*(min)?$/i, '').trim();
 
 /**

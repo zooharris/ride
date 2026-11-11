@@ -1,5 +1,6 @@
 import type { Equipment, Exercise, StrengthDose, StrengthFocus, StrengthQuality, Workout } from '../engine/types';
 import { EXERCISES, firstFirst, lightLoad, type ExerciseDef } from './strength';
+import { STRENGTH_D1 } from './strengthD1';
 
 /**
  * The Library's strength sessions by quality and focus (30 Oct 2026, the plan
@@ -102,6 +103,8 @@ export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
     purpose: 'Single-leg work and hip control in half an hour.' },
   { id: 'stability-upper-short', name: 'Upper body: one side at a time, short', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'dead-bug', 'lateral-lunge'],
     purpose: 'One side at a time, with the trunk holding still, in half an hour.' },
+  // Part D, batch 1 (11 Nov 2026)
+  ...STRENGTH_D1,
 ];
 
 // ---------------------------------------------------------------------------

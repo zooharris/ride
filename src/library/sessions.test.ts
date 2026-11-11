@@ -14,7 +14,7 @@ const kinds = (eq: Equipment[]) => { const l = readyMadeSessions(eq); return { l
 describe('Library, Batch 5c', () => {
   it('with everything ticked: every id unique; mobility, walks and runs as before', () => {
     const { l, n } = kinds(EVERYTHING);
-    expect([n('mobility'), n('walk'), n('run')]).toEqual([17, 21, 10]);
+    expect([n('mobility'), n('walk'), n('run')]).toEqual([30, 33, 16])   // Part D batch 1 (11 Nov 2026): 13 mobility, 12 walks, 6 runs added;
     expect(new Set(l.map((w) => w.id)).size).toBe(l.length);
   });
   it('every new strength session fills every pattern for bodyweight, dumbbells and a bench, and a kettlebell', () => {

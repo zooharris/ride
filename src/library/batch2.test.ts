@@ -11,12 +11,12 @@ const steps = (w: (typeof LIBRARY)[number]) => flattenStepsWithSets(w.blocks).ma
 const byName = (n: string) => BATCH2.find((w) => w.name === n)!;
 
 describe('the Library grows up, Part C, batch 2 (10 Nov 2026)', () => {
-  it('adds 61 rides, every name from the pool used once and every id new', () => {
-    expect(BATCH2).toHaveLength(61);
+  it('adds 61 rides, then 7 more for the gaps after it,, every name from the pool used once and every id new', () => {
+    expect(BATCH2).toHaveLength(68);
     const names = LIBRARY.map((w) => w.name.toLowerCase());
     expect(new Set(names).size).toBe(names.length);
     expect(new Set(LIBRARY.map((w) => w.id)).size).toBe(LIBRARY.length);
-    expect(LIBRARY.filter((w) => w.id.startsWith('b2-'))).toHaveLength(61);
+    expect(LIBRARY.filter((w) => /^b[23]-/.test(w.id))).toHaveLength(68);
   });
 
   it('every subtitle says what the ride is, short enough for a phone row', () => {
@@ -44,7 +44,7 @@ describe('the Library grows up, Part C, batch 2 (10 Nov 2026)', () => {
     const has = (re: RegExp) => BATCH2.filter((w) => re.test(w.subtitle ?? '')).length;
     expect(has(/over-under|criss-cross/i)).toBeGreaterThanOrEqual(4);
     expect(has(/30\/15/)).toBe(1);
-    expect(has(/Durability/)).toBe(4);
+    expect(has(/Durability/)).toBe(5);
     expect(has(/Torque|Big gear|Low-cadence/)).toBeGreaterThanOrEqual(3);
     expect(has(/Standing starts|Flying sprints|Tabata|Micro-bursts|20\/40/)).toBe(5);
     // Sweet spot by heart rate in 45 to 60 minutes, and easy rides of 65 to 80 minutes.
@@ -66,7 +66,7 @@ describe('the Library grows up, Part C, batch 2 (10 Nov 2026)', () => {
   it('the progression families climb in order', () => {
     for (const id of ['over-under', 'threshold-long', 'sweetspot-hr', 'durability']) {
       const rungs = LIBRARY.filter((w) => tagsOf(w).series?.id === id).map((w) => tagsOf(w).series!.rung).sort();
-      expect(rungs, id).toEqual([1, 2, 3, 4]);
+      expect(rungs, id).toEqual(id === 'durability' ? [1, 2, 3, 4, 5] : [1, 2, 3, 4]);
     }
   });
 });

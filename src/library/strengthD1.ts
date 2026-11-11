@@ -1,0 +1,110 @@
+import type { StrengthSessionDef } from './strengthSessions';
+
+/**
+ * Part D, batch 1 (11 Nov 2026): strength sessions for the kinds of day the depth sweep found thin
+ * (docs/library-depth.md). Built only from exercises already in the Library, so no new pictures are
+ * needed; new exercises wait for Todd's approval of the list. Each session differs from its neighbours
+ * in what it asks, not just its name: a different lead lift, pattern or emphasis. Long versions (eight
+ * exercises) fill the 45–60 minute days; the plan sets the level, which sets sets and reps.
+ */
+export const STRENGTH_D1: StrengthSessionDef[] = [
+  // ── Bodyweight ───────────────────────────────────────────────────────────────────────────────────
+  { id: 'd1-heavy-legs-bw-step', name: 'Legs: strength, bodyweight, step and split', quality: 'heavy', focus: 'legs', needs: [], ids: ['step-up', 'split-squat', 'single-leg-rdl', 'lateral-lunge', 'calf-raise', 'dead-bug'],
+    purpose: 'Step-ups and split squats, slow on the way down: with no weights, one leg and a slow lowering are the load.' },
+  { id: 'd1-heavy-legs-bw-long', name: 'Legs: strength, bodyweight, long', quality: 'heavy', focus: 'legs', needs: [], ids: ['split-squat', 'single-leg-rdl', 'step-up', 'reverse-lunge', 'single-leg-bridge', 'wall-sit', 'calf-raise', 'side-plank'],
+    purpose: 'Eight exercises for a full hour of bodyweight leg strength: every single-leg pattern, a long wall sit and the calves.' },
+  { id: 'd1-heavy-upper-bw-long', name: 'Upper body: strength, bodyweight, long', quality: 'heavy', focus: 'upper', needs: [], ids: ['pushup', 'single-leg-rdl', 'single-leg-bridge', 'plank', 'hollow-hold', 'side-plank', 'bird-dog', 'dead-bug'],
+    purpose: 'Slow push-ups, the posterior chain one leg at a time, and every trunk hold: an hour with no equipment.' },
+  { id: 'd1-heavy-upper-bw-hinge', name: 'Upper body: strength, bodyweight, hinge first', quality: 'heavy', focus: 'upper', needs: [], ids: ['single-leg-rdl', 'pushup', 'single-leg-bridge', 'plank', 'dead-bug', 'side-plank'],
+    purpose: 'The back of the body first, then slow push-ups and the trunk: strength for holding the bars low.' },
+  { id: 'd1-power-legs-bw-hips', name: 'Legs: power, bodyweight, hips first', quality: 'power', focus: 'legs', needs: [], ids: ['glute-bridge', 'step-up', 'walking-lunge', 'bw-squat', 'single-leg-bridge', 'plank'], fast: ['glute-bridge', 'step-up', 'bw-squat'],
+    purpose: 'Fast hip drives, then quick step-ups and squats: the hips start a sprint, so they go first.' },
+  { id: 'd1-power-legs-bw-long', name: 'Legs: power, bodyweight, long', quality: 'power', focus: 'legs', needs: [], ids: ['step-up', 'bw-squat', 'reverse-lunge', 'glute-bridge', 'lateral-lunge', 'walking-lunge', 'russian-twist', 'hollow-hold'], fast: ['step-up', 'bw-squat', 'reverse-lunge', 'glute-bridge', 'lateral-lunge'],
+    purpose: 'Five fast leg movements in every direction, then the trunk: a full hour of speed with no equipment.' },
+  { id: 'd1-power-upper-bw-long', name: 'Upper body: power, bodyweight, long', quality: 'power', focus: 'upper', needs: [], ids: ['pushup', 'glute-bridge', 'lateral-lunge', 'single-leg-bridge', 'russian-twist', 'side-plank', 'bird-dog', 'hollow-hold'], fast: ['pushup', 'glute-bridge', 'lateral-lunge'],
+    purpose: 'Fast push-ups and hip drives with the trunk holding it together, over a full hour.' },
+  { id: 'd1-endurance-legs-bw-lunge', name: 'Legs: endurance, bodyweight, lunges', quality: 'endurance', focus: 'legs', needs: [], ids: ['walking-lunge', 'bw-squat', 'single-leg-bridge', 'lateral-lunge', 'calf-raise', 'plank'],
+    purpose: 'Lunges forward and sideways, squats and calves, many reps each: legs that last to the top of the last climb.' },
+  { id: 'd1-endurance-legs-bw-long', name: 'Legs: endurance, bodyweight, long', quality: 'endurance', focus: 'legs', needs: [], ids: ['wall-sit', 'bw-squat', 'walking-lunge', 'reverse-lunge', 'glute-bridge', 'calf-raise', 'side-plank', 'dead-bug'],
+    purpose: 'Long holds and high reps for an hour: the muscular endurance a century asks for in its last hour.' },
+  { id: 'd1-endurance-upper-bw-long', name: 'Upper body and trunk, bodyweight, long', quality: 'endurance', focus: 'upper', needs: [], ids: ['pushup', 'plank', 'single-leg-bridge', 'hollow-hold', 'russian-twist', 'side-plank', 'bird-dog', 'dead-bug'],
+    purpose: 'Push-ups and every trunk hold, for the upper body that holds the position through a long day.' },
+  { id: 'd1-stability-legs-bw-hips', name: 'Legs: balance and hips, bodyweight', quality: 'stability', focus: 'legs', needs: [], ids: ['lateral-lunge', 'single-leg-bridge', 'reverse-lunge', 'side-lying-leg-raise', 'clamshell', 'dead-bug'],
+    purpose: 'The side hip muscles that keep the knee tracking straight, worked one side at a time.' },
+  { id: 'd1-stability-legs-bw-long', name: 'Legs: one leg at a time, long', quality: 'stability', focus: 'legs', needs: [], ids: ['single-leg-rdl', 'step-up', 'split-squat', 'lateral-lunge', 'single-leg-bridge', 'side-lying-leg-raise', 'clamshell', 'bird-dog'],
+    purpose: 'Every single-leg pattern and the side hips, slowly, for a full hour: finds the weaker side and fixes it.' },
+  { id: 'd1-stability-upper-bw-long', name: 'Upper body: one side at a time, long', quality: 'stability', focus: 'upper', needs: [], ids: ['pushup', 'side-plank', 'bird-dog', 'dead-bug', 'single-leg-rdl', 'lateral-lunge', 'hollow-hold', 'single-leg-bridge'],
+    purpose: 'The trunk resisting every twist while the limbs work, one side at a time, over an hour.' },
+
+  // ── Dumbbells and a bench ────────────────────────────────────────────────────────────────────────
+  { id: 'd1-heavy-legs-db-hinge', name: 'Heavy legs, hinge first', quality: 'heavy', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['db-deadlift', 'split-squat', 'goblet-squat', 'single-leg-rdl', 'calf-raise', 'suitcase-carry'],
+    purpose: 'The deadlift leads while the back is fresh, then a split squat and a squat: the posterior chain gets the heaviest work.' },
+  { id: 'd1-heavy-legs-db-single', name: 'Heavy legs, single leg', quality: 'heavy', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['split-squat', 'step-up', 'db-rdl', 'hip-thrust', 'lateral-lunge', 'side-plank'],
+    purpose: 'Heavy work one leg at a time: the strongest single-leg lifts with dumbbells, as the pedal stroke loads them.' },
+  { id: 'd1-power-legs-db-steps', name: 'Legs: power, swings and steps', quality: 'power', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['db-swing', 'step-up', 'reverse-lunge', 'hip-thrust', 'lateral-lunge', 'dead-bug'], fast: ['step-up', 'reverse-lunge', 'hip-thrust'],
+    purpose: 'Swings first, then fast step-ups, lunges and hip thrusts: the push over the top of a short climb.' },
+  { id: 'd1-power-legs-db-squat', name: 'Legs: power, squat and lunge', quality: 'power', focus: 'legs', needs: ['dumbbells'], ids: ['db-swing', 'goblet-squat', 'walking-lunge', 'single-leg-rdl', 'farmer-carry', 'hollow-hold'], fast: ['goblet-squat', 'walking-lunge'],
+    purpose: 'A swing, then fast squats and walking lunges with a light dumbbell: speed through the whole leg.' },
+  { id: 'd1-endurance-legs-db', name: 'Legs: endurance, dumbbells', quality: 'endurance', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['goblet-squat', 'walking-lunge', 'db-rdl', 'step-up', 'calf-raise', 'farmer-carry'],
+    purpose: 'Light dumbbells, many reps, short rests: the burn of the last climb, trained on purpose.' },
+  { id: 'd1-endurance-legs-db-front', name: 'Legs: endurance, front squat and hips', quality: 'endurance', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['db-front-squat', 'reverse-lunge', 'hip-thrust', 'wall-sit', 'suitcase-carry', 'plank'],
+    purpose: 'Front squats and hip thrusts for many reps, a long wall sit and a carry: quads and glutes that keep going.' },
+  { id: 'd1-heavy-upper-db-rows', name: 'Heavy upper body, rows first', quality: 'heavy', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['one-arm-row', 'db-overhead', 'floor-press', 'db-rdl', 'suitcase-carry', 'dead-bug'],
+    purpose: 'Pulling before pushing, for the upper back the bars round forward: a heavy row leads.' },
+  { id: 'd1-power-upper-db', name: 'Upper body: power, press and row', quality: 'power', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['db-swing', 'db-overhead', 'one-arm-row', 'pushup', 'russian-twist', 'farmer-carry'], fast: ['db-overhead', 'one-arm-row', 'pushup'],
+    purpose: 'Fast presses, rows and push-ups after a swing: the arms and back that pull on the bars in a sprint.' },
+  { id: 'd1-endurance-upper-db', name: 'Upper body: endurance, rows and carries', quality: 'endurance', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['bent-row', 'floor-press', 'reverse-fly', 'db-pullover', 'farmer-carry', 'side-plank'],
+    purpose: 'High-rep rows, presses and rear shoulders, then a long carry: posture that lasts the whole ride.' },
+  { id: 'd1-stability-legs-db', name: 'Legs: one leg at a time, dumbbells', quality: 'stability', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['split-squat', 'single-leg-rdl', 'lateral-lunge', 'step-up', 'suitcase-carry', 'clamshell'],
+    purpose: 'Single-leg lifts with a light dumbbell, slowly: balance first, then weight.' },
+  { id: 'd1-stability-upper-db', name: 'Upper body: one side at a time, dumbbells', quality: 'stability', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['one-arm-row', 'suitcase-carry', 'overhead-carry', 'single-leg-rdl', 'dead-bug', 'bird-dog'],
+    purpose: 'One-arm rows and one-sided carries: the trunk refuses to twist while one side works.' },
+
+  // ── Kettlebell ───────────────────────────────────────────────────────────────────────────────────
+  { id: 'd1-heavy-legs-kb-mixed', name: 'Heavy legs, kettlebell and split squat', quality: 'heavy', focus: 'legs', needs: ['kettlebell'], ids: ['kb-goblet-squat', 'split-squat', 'kb-deadlift', 'single-leg-bridge', 'kb-suitcase-carry', 'dead-bug'],
+    purpose: 'A heavy bell for the squat and deadlift, the split squat to load one leg at a time.' },
+  { id: 'd1-power-legs-kb-steps', name: 'Legs: power, swings and lunges', quality: 'power', focus: 'legs', needs: ['kettlebell'], ids: ['kb-swing', 'kb-rack-lunge', 'step-up', 'kb-sl-rdl', 'kb-halo', 'hollow-hold'], fast: ['kb-rack-lunge', 'step-up'],
+    purpose: 'Swings, then fast racked lunges and step-ups: hip power and a quick push from one leg.' },
+  { id: 'd1-endurance-legs-kb', name: 'Legs: endurance, kettlebell', quality: 'endurance', focus: 'legs', needs: ['kettlebell'], ids: ['kb-goblet-squat', 'walking-lunge', 'kb-deadlift', 'calf-raise', 'kb-rack-carry', 'plank'],
+    purpose: 'A moderate bell for many reps: squats, lunges and deadlifts with short rests, then a long carry.' },
+  { id: 'd1-power-upper-kb', name: 'Upper body: power, kettlebell', quality: 'power', focus: 'upper', needs: ['kettlebell'], ids: ['kb-swing', 'kb-press', 'kb-row', 'pushup', 'kb-halo', 'kb-rack-carry'], fast: ['kb-press', 'kb-row', 'pushup'],
+    purpose: 'Swings, fast presses and rows: the upper body that drives a standing sprint.' },
+  { id: 'd1-endurance-upper-kb', name: 'Upper body: endurance, kettlebell', quality: 'endurance', focus: 'upper', needs: ['kettlebell'], ids: ['kb-row', 'kb-press', 'pushup', 'kb-halo', 'kb-suitcase-carry', 'plank'],
+    purpose: 'Rows, presses and push-ups for many reps with one bell, then a carry on each side.' },
+  { id: 'd1-stability-legs-kb', name: 'Legs: one leg at a time, kettlebell', quality: 'stability', focus: 'legs', needs: ['kettlebell'], ids: ['kb-sl-rdl', 'kb-rack-lunge', 'lateral-lunge', 'kb-get-up', 'kb-suitcase-carry', 'clamshell'],
+    purpose: 'The single-leg deadlift, a racked lunge and the get-up: control from the foot to the shoulder.' },
+  { id: 'd1-stability-upper-kb', name: 'Upper body: one side at a time, kettlebell', quality: 'stability', focus: 'upper', needs: ['kettlebell'], ids: ['kb-get-up', 'kb-row', 'kb-press', 'kb-suitcase-carry', 'bird-dog', 'side-plank'],
+    purpose: 'The get-up, then one-arm rows and presses and a one-sided carry: a steady shoulder and trunk.' },
+
+  // ── Bands ────────────────────────────────────────────────────────────────────────────────────────
+  { id: 'd1-power-legs-bands', name: 'Legs: power, bands', quality: 'power', focus: 'legs', needs: ['band'], ids: ['band-good-morning', 'step-up', 'bw-squat', 'monster-walk', 'band-woodchop', 'pallof'], fast: ['step-up', 'bw-squat', 'band-woodchop'],
+    purpose: 'Fast step-ups and squats, a band woodchop for rotation, and the hips under band tension.' },
+  { id: 'd1-endurance-legs-bands-hold', name: 'Legs: endurance, bands and holds', quality: 'endurance', focus: 'legs', needs: ['band'], ids: ['band-good-morning', 'walking-lunge', 'wall-sit', 'monster-walk', 'single-leg-bridge', 'pallof'],
+    purpose: 'Band good mornings, lunges and a long wall sit: the posterior chain and quads for a long climb.' },
+  { id: 'd1-stability-legs-bands', name: 'Legs: hips and balance, bands', quality: 'stability', focus: 'legs', needs: ['band'], ids: ['monster-walk', 'clamshell', 'single-leg-rdl', 'lateral-lunge', 'pallof', 'bird-dog'],
+    purpose: 'The side hips under band tension and single-leg balance: knees that track straight for hours.' },
+  { id: 'd1-stability-upper-bands', name: 'Upper body: shoulders and trunk, bands', quality: 'stability', focus: 'upper', needs: ['band'], ids: ['band-face-pull', 'band-row', 'pallof', 'pushup', 'side-plank', 'band-pull-apart'],
+    purpose: 'The rear shoulders and a trunk that resists the band pulling it round: posture for the drops.' },
+  { id: 'd1-power-upper-bands', name: 'Upper body: power, bands', quality: 'power', focus: 'upper', needs: ['band'], ids: ['band-row', 'pushup', 'band-woodchop', 'band-lat-pulldown', 'band-face-pull', 'plank'], fast: ['band-row', 'pushup', 'band-woodchop'],
+    purpose: 'Fast rows, push-ups and woodchops against a band: quick pulling and twisting strength.' },
+
+  // ── Barbell and gym ──────────────────────────────────────────────────────────────────────────────
+  { id: 'd1-heavy-legs-gym-dl', name: 'Heavy legs, deadlift day', quality: 'heavy', focus: 'legs', needs: ['barbell', 'dumbbells', 'bench'], ids: ['bb-deadlift', 'db-front-squat', 'split-squat', 'hip-thrust', 'calf-raise', 'farmer-carry'],
+    purpose: 'The barbell deadlift leads, then a front squat and split squat: the heaviest posterior-chain day.' },
+  { id: 'd1-power-legs-gym', name: 'Legs: power, barbell', quality: 'power', focus: 'legs', needs: ['barbell', 'dumbbells', 'bench'], ids: ['db-swing', 'back-squat', 'step-up', 'walking-lunge', 'hip-thrust', 'hollow-hold'], fast: ['back-squat', 'step-up', 'hip-thrust'],
+    purpose: 'A swing, then a moderate back squat moved fast: the gym version of the jump over a rise.' },
+  { id: 'd1-endurance-legs-gym', name: 'Legs: endurance, barbell', quality: 'endurance', focus: 'legs', needs: ['barbell', 'dumbbells', 'bench'], ids: ['back-squat', 'walking-lunge', 'bb-good-morning', 'step-up', 'calf-raise', 'farmer-carry'],
+    purpose: 'A lighter bar for many reps, lunges and step-ups: the long climb in the gym.' },
+  { id: 'd1-heavy-upper-gym-bb', name: 'Heavy upper body, barbell row', quality: 'heavy', focus: 'upper', needs: ['barbell', 'dumbbells', 'bench', 'pullup-bar'], ids: ['bb-row', 'db-bench', 'pull-up', 'bb-good-morning', 'db-overhead', 'farmer-carry'],
+    purpose: 'The barbell row and pull-ups for the back, a bench press and press for balance, a good morning for the hinge.' },
+  { id: 'd1-power-upper-gym', name: 'Upper body: power, gym', quality: 'power', focus: 'upper', needs: ['pullup-bar', 'dip-bars', 'barbell', 'dumbbells', 'band'], ids: ['db-swing', 'pull-up', 'dip', 'bb-row', 'band-woodchop', 'suitcase-carry'], fast: ['bb-row', 'band-woodchop'],
+    purpose: 'Crisp pull-ups and dips, a fast barbell row and a woodchop: upper-body power with everything to hand.' },
+  { id: 'd1-endurance-upper-gym', name: 'Upper body: endurance, gym', quality: 'endurance', focus: 'upper', needs: ['pullup-bar', 'dip-bars', 'band', 'dumbbells'], ids: ['pull-up', 'dip', 'band-row', 'reverse-fly', 'overhead-carry', 'hollow-hold'],
+    purpose: 'Pull-ups and dips for as many clean reps as there are, then rows, the rear shoulders and a carry.' },
+
+  // ── Whole body, for a short maintenance day ──────────────────────────────────────────────────────
+  { id: 'd1-full-bw', name: 'Whole body: maintenance, bodyweight', quality: 'endurance', focus: 'full', needs: [], ids: ['bw-squat', 'pushup', 'single-leg-rdl', 'reverse-lunge', 'side-plank', 'bird-dog'],
+    purpose: 'One of everything with no equipment: keeps what the off-season built, in half an hour.' },
+  { id: 'd1-full-db', name: 'Whole body: maintenance, dumbbells', quality: 'heavy', focus: 'full', needs: ['dumbbells', 'bench'], ids: ['goblet-squat', 'one-arm-row', 'db-rdl', 'db-bench', 'split-squat', 'farmer-carry'],
+    purpose: 'Squat, row, hinge, press, a split squat and a carry: the whole body, kept strong in season.' },
+];

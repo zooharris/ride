@@ -22,7 +22,8 @@ const RETIRED_THEMED = new Set(['heavy-legs', 'power', 'kb-legs', 'balance']);
  * the themed sessions below them are hand-designed. Built for the rider's
  * equipment on request, with stable ids.
  */
-const NAMED_BY_MINUTES = new Set(['before-long-ride', 'after-trainer', 'feet-ankles', 'sunday-30', 'aero-neck', 'reset-5']);
+/** Routines whose name gives their length: the length their holds add up to (all of them since 11 Nov 2026, when five older names were found to overstate it). */
+const NAMED_BY_MINUTES = new Set(['hams-calves', 'desk', 'deep-hips', 'low-back', 'pre-ride', 'before-long-ride', 'after-trainer', 'feet-ankles', 'sunday-30', 'aero-neck', 'reset-5', 'hips-5', 'hips-25', 'low-back-5', 'low-back-20', 'shoulders-neck-15', 'upper-back-6', 'post-ride-15', 'post-ride-25', 'wake-up-10', 'evening-12', 'legs-back-12', 'legs-front-8', 'travel-10']);
 
 export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   const eq = equipment.length ? equipment : ['bodyweight' as Equipment];
@@ -102,6 +103,20 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
     { id: 'sunday-30', name: 'Sunday full body (30 min)', purpose: 'The week’s stiffness, taken out slowly on a rest day: every area cycling tightens, a minute and a half each.', ids: ['cat-cow', 'child-pose', 'couch-stretch', 'pigeon', 'frog', 'hamstring-strap', 'quad-stretch', 'calf-wall', 'thoracic-extension', 'lat-stretch', 'doorway-pec', 'neck-stretch', 'seated-twist'], hold: 90 },
     { id: 'aero-neck', name: 'Neck and shoulders after the aero bars (8 min)', purpose: 'The neck that holds the head up in a low position, and the upper back that rounds to get there.', ids: ['shoulder-rolls', 'neck-stretch', 'wall-angel', 'thoracic-rotation', 'doorway-pec', 'lat-stretch'] },
     { id: 'reset-5', name: 'Five-minute reset (5 min)', purpose: 'Between meetings: no mat, no change of clothes.', ids: ['shoulder-rolls', 'cat-cow', 'half-kneel-hip', 'standing-hamstring'], holdMax: 30 },
+    // Part D, batch 1 (11 Nov 2026): targeted sets from the stretches already in the Library, at several lengths.
+    { id: 'hips-5', name: 'Hips, quick (5 min)', purpose: 'The hip flexors and rotators in five minutes, for any day.', ids: ['half-kneel-hip', 'ninety-ninety', 'figure-four', 'frog'], holdMax: 45 },
+    { id: 'hips-25', name: 'Hips, long holds (25 min)', purpose: 'Every hip stretch in the Library with long holds: a rest-day session for hips that feel locked after a big week.', ids: ['couch-stretch', 'half-kneel-hip', 'pigeon', 'figure-four', 'ninety-ninety', 'frog', 'lying-it-band', 'quad-stretch', 'knee-to-chest'], hold: 90 },
+    { id: 'low-back-5', name: 'Low back, quick (5 min)', purpose: 'Five minutes of gentle spinal movement for a back that is stiff after the car or the desk.', ids: ['cat-cow', 'child-pose', 'knee-to-chest', 'seated-twist'], holdMax: 40 },
+    { id: 'low-back-20', name: 'Low back and hips (20 min)', purpose: 'The low back is often tight because the hips are: spinal movement, then the hip flexors and hamstrings that pull on it.', ids: ['cat-cow', 'child-pose', 'knee-to-chest', 'seated-twist', 'couch-stretch', 'half-kneel-hip', 'hamstring-strap', 'figure-four'], hold: 75 },
+    { id: 'shoulders-neck-15', name: 'Shoulders and neck (15 min)', purpose: 'The chest, upper back, lats and neck that hours on the hoods hold in one place.', ids: ['shoulder-rolls', 'neck-stretch', 'doorway-pec', 'wall-angel', 'lat-stretch', 'thoracic-extension', 'thoracic-rotation'], hold: 75 },
+    { id: 'upper-back-6', name: 'Upper back, quick (6 min)', purpose: 'Reverse the rounded upper back in six minutes: before a long ride in the drops, or after a day at a screen.', ids: ['thoracic-extension', 'thoracic-rotation', 'wall-angel', 'doorway-pec'], holdMax: 45 },
+    { id: 'post-ride-15', name: 'After the ride, full body (15 min)', purpose: 'Straight off the bike, while everything is warm: hips, hamstrings, calves, back and chest in one pass.', ids: ['couch-stretch', 'pigeon', 'standing-hamstring', 'calf-wall', 'cat-cow', 'child-pose', 'doorway-pec', 'neck-stretch'] },
+    { id: 'post-ride-25', name: 'After the long ride, long holds (25 min)', purpose: 'After four hours in the saddle: long, easy holds for everything the position kept short.', ids: ['cat-cow', 'couch-stretch', 'pigeon', 'hamstring-strap', 'quad-stretch', 'calf-wall', 'child-pose', 'thoracic-extension', 'doorway-pec', 'neck-stretch'], hold: 90 },
+    { id: 'wake-up-10', name: 'Morning wake-up (10 min)', purpose: 'Ten minutes of moving stretches to start the day: spine, hips, ankles and shoulders.', ids: ['cat-cow', 'downward-dog', 'half-kneel-hip', 'ninety-ninety', 'ankle-rocks', 'thoracic-rotation', 'shoulder-rolls'], holdMax: 50 },
+    { id: 'evening-12', name: 'Evening wind-down (12 min)', purpose: 'Slow, lying-down holds before bed: nothing that wakes you up.', ids: ['child-pose', 'knee-to-chest', 'figure-four', 'lying-it-band', 'hamstring-strap', 'seated-twist'], hold: 75 },
+    { id: 'legs-back-12', name: 'Back of the legs (12 min)', purpose: 'Hamstrings, calves and glutes: for the rider who feels the saddle height in the back of the knee.', ids: ['hamstring-strap', 'standing-hamstring', 'downward-dog', 'calf-wall', 'pigeon', 'figure-four'], hold: 70 },
+    { id: 'legs-front-8', name: 'Front of the legs (8 min)', purpose: 'Quads and hip flexors, which do the most pedalling and get the least stretching.', ids: ['couch-stretch', 'quad-stretch', 'half-kneel-hip', 'frog'], hold: 60 },
+    { id: 'travel-10', name: 'Travel day (10 min)', purpose: 'After a flight or a long drive: hips, back and neck, all standing or on a hotel floor.', ids: ['standing-hamstring', 'quad-stretch', 'half-kneel-hip', 'cat-cow', 'seated-twist', 'neck-stretch', 'shoulder-rolls'], hold: 50 },
   ];
   for (const r of routines) {
     const exercises: Exercise[] = r.ids.map((id) => MOBILITY.find((m) => m.id === id)).filter((m): m is NonNullable<typeof m> => !!m).map((m) => ({ name: m.name, holdSeconds: r.hold ?? (r.id === 'pre-ride' ? Math.min(m.holdSeconds ?? 30, 30) : r.holdMax ? Math.min(m.holdSeconds ?? 30, r.holdMax) : m.holdSeconds), reps: m.perSide ? 'each side' : undefined, cue: m.cue, why: m.why, equipment: m.equipment }));
@@ -138,6 +153,20 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   if (where === 'treadmill') walk('lib-walk-incline-45', generateWalk({ minutes: 45, where, band: zone2, reason: 'Forty-five minutes on a steady 8–12% grade: the grade, not a heavier pack, is what brings the heart rate into zone 2. Walk without holding on.' }), { name: 'Incline treadmill 45 min' });
   if (where === 'treadmill') walk('lib-walk-incline-60', generateWalk({ minutes: 60, where, band: zone2, reason: 'An hour on a steady 8–12% grade: a long climb on foot, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 60 min' });
   walk('lib-walk-45-brisk', generateWalk({ minutes: 45, where, band: { zoneLow: 2.5, zoneHigh: 3 }, reason: 'Forty-five minutes at the top of zone 2: the pace of someone late for something.' }), { name: 'Brisk walk 45 min' });
+  // Part D, batch 1 (11 Nov 2026): more easy walks at the lengths plans ask for most, flat, rolling and with a pack, and two long ones.
+  const easyBand = { zoneLow: 0, zoneHigh: 2 };
+  walk('lib-walk-15-recovery', generateWalk({ minutes: 15, where, band: easyBand, reason: 'Fifteen minutes out the door and back: enough to loosen the legs on a rest day, too little to tire them.' }), { name: 'Recovery stroll 15 min' });
+  walk('lib-walk-30-recovery', generateWalk({ minutes: 30, where, band: easyBand, reason: 'Half an hour at a stroll the day after a hard ride or a long one: the legs moving, the heart rate low.' }), { name: 'Recovery walk 30 min' });
+  walk('lib-walk-25', generateWalk({ minutes: 25, where, reason: 'Twenty-five easy minutes: a lunchtime walk that still counts as aerobic work.' }));
+  walk('lib-walk-25-pack', generateWalk({ minutes: 25, packKg: 6.8, where, reason: 'A short walk under a 15 lb pack: the trunk and legs work a little harder while the heart stays easy.' }));
+  walk('lib-walk-30-rolling', generateWalk({ minutes: 30, where: 'outdoor', reason: 'Half an hour on a rolling route. Slow down on the rises so the heart rate stays easy; the hills are for the legs, not the lungs.' }), { name: 'Rolling walk 30 min' });
+  walk('lib-walk-35', generateWalk({ minutes: 35, where, reason: 'Thirty-five easy minutes on foot: aerobic work for a day the bike stays in the garage.' }));
+  walk('lib-walk-35-pack', generateWalk({ minutes: 35, packKg: 9, where, reason: 'Thirty-five minutes under a 20 lb pack: posture and trunk work that riding never gives, at an easy heart rate.' }));
+  walk('lib-walk-40', generateWalk({ minutes: 40, where, reason: 'Forty easy minutes: long enough for the heart rate to settle, short enough for a weekday.' }));
+  walk('lib-walk-40-rolling', generateWalk({ minutes: 40, where: 'outdoor', reason: 'Forty minutes over rolling ground, easing off on every rise to keep the heart rate easy.' }), { name: 'Rolling walk 40 min' });
+  walk('lib-walk-40-pack', generateWalk({ minutes: 40, packKg: 6.8, where, reason: 'Forty minutes with a 15 lb pack: more work for the legs and back, and some loading for the bones.' }));
+  walk('lib-walk-150', generateWalk({ minutes: 150, where: 'outdoor', reason: 'Two and a half hours on foot: a long-ride day for a week off the bike. Bring water and something to eat, as on a ride.' }), { name: 'Long walk 2:30' });
+  walk('lib-walk-180', generateWalk({ minutes: 180, where: 'outdoor', reason: 'A three-hour hike at an easy pace: as much aerobic time as a long ride, with no saddle. Take food and water, and rest when you want to.' }), { name: 'Long hike 3:00' });
 
   // Runs: always built (so a run on the calendar is always found); the Library and the picker
   // show them only when the rider's week has runs on.
@@ -154,5 +183,12 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   run('lib-run-fartlek-35', generateRun({ kind: 'fartlek', minutes: 35, where: runWhere, reason: 'Speed play by feel: eight one-minute pickups with two easy minutes after each; the watch holds the band, you pick the stretches of trail.' }));
   run('lib-run-progression-40', generateRun({ kind: 'progression', minutes: 40, where: runWhere, reason: 'A run that finishes faster than it starts, the way a race does: easy, steady, then ten strong minutes.' }));
   run('lib-run-walk-30', generateRun({ kind: 'run-walk', minutes: 30, where: runWhere, reason: 'For a cyclist starting to run: ten two-minute runs with a minute of walking after each; the tendons and feet get the impact in doses.' }));
+  // Part D, batch 1 (11 Nov 2026): easy runs at more lengths, and two long runs (a run-walk is always thirty minutes).
+  run('lib-run-easy-20', generateRun({ kind: 'easy', minutes: 20, where: runWhere, reason: 'Twenty easy minutes: a short run for a busy day, at a heart rate you could hold all morning.' }));
+  run('lib-run-easy-25', generateRun({ kind: 'easy', minutes: 25, where: runWhere, reason: 'Twenty-five easy minutes: enough to count, little enough to ride hard tomorrow.' }));
+  run('lib-run-easy-35', generateRun({ kind: 'easy', minutes: 35, where: runWhere, reason: 'Thirty-five easy minutes at a conversational heart rate: aerobic work with the impact cycling lacks.' }));
+  run('lib-run-easy-40', generateRun({ kind: 'easy', minutes: 40, where: runWhere, reason: 'Forty easy minutes: walk any hill that pushes the heart rate over the band.' }));
+  run('lib-run-long-75', generateRun({ kind: 'long', minutes: 75, where: runWhere, reason: 'An hour and a quarter at an easy heart rate, well away from the long ride: time on feet for a runner who has built up to it.' }));
+  run('lib-run-long-90', generateRun({ kind: 'long', minutes: 90, where: runWhere, reason: 'Ninety easy minutes: the longest run in the Library, for riders who also run. Walk a minute every so often if that keeps it easy.' }));
   return out.map((w) => withTags(w));
 }

@@ -47,9 +47,9 @@ describe('Batch 6 A: walks are easy by default', () => {
   it('the Library: easy, recovery, zone 2, brisk, hill and incline walks, unique ids', () => {
     const withTreadmill = readyMadeSessions(['bodyweight', 'treadmill']).filter((w) => w.kind === 'walk');
     const without = readyMadeSessions(['bodyweight']).filter((w) => w.kind === 'walk');
-    expect(withTreadmill).toHaveLength(21);
-    expect(without).toHaveLength(17);
-    expect(new Set(withTreadmill.map((w) => w.id)).size).toBe(21);
+    expect(withTreadmill).toHaveLength(33);
+    expect(without).toHaveLength(29);
+    expect(new Set(withTreadmill.map((w) => w.id)).size).toBe(33);
     const byId = (id: string) => withTreadmill.find((w) => w.id === id)!;
     expect(byId('lib-walk-30').walk).toMatchObject({ zoneLow: 0, zoneHigh: 3 });
     expect(byId('lib-walk-30').name).toBe('Easy walk 30 min');

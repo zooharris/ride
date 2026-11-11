@@ -10,7 +10,7 @@ const KIND_VAR: Record<SessionKind, string> = { ride: 'var(--ride)', strength: '
 const KIND_WORD: Record<SessionKind, string> = { ride: 'ride', strength: 'strength', mobility: 'mobility', walk: 'walk', run: 'run', other: 'other' };
 
 /** Whether the window is at most `px` wide (the phone layout), kept up to date as it resizes. */
-function useNarrow(px: number): boolean {
+export function useNarrow(px: number): boolean {
   const q = `(max-width: ${px}px)`;
   const [n, setN] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
   useEffect(() => {

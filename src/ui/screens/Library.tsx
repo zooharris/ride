@@ -14,7 +14,9 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
-import { applyFilters, FilterBar, NothingMatches, useFilters } from '../LibraryFilters';
+import { applyFilters, FilterBar, narrowed, NothingMatches, useFilters } from '../LibraryFilters';
+import { useNarrow } from '../Glance';
+import type { Purpose } from '../../library/tags';
 import { useMine } from '../favorites';
 import { Star } from '../Star';
 import { playerOffered } from '../../player/platform';
@@ -36,6 +38,9 @@ export function Library({ data }: { data: AppData }) {
   const list = applyFilters(allWorkouts(data.mine).filter((w) => w.kind === tab && w.source !== 'generated'), f, tab, mineSets);
   const mine = list.filter((w) => w.source === 'mine');
   const ready = list.filter((w) => w.source === 'library');
+  // On a phone, rides are compact rows under folding headings (10 Nov 2026); a laptop keeps the cards.
+  const phone = useNarrow(520);
+  const rows = phone && tab === 'ride';
   return (
     <div>
       <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library" help="library">
@@ -47,6 +52,7 @@ export function Library({ data }: { data: AppData }) {
         </div>
       </div>
       <FilterBar kind={tab} f={f} set={setF} />
+      {rows ? <RideRows mine={mine} ready={ready} flat={narrowed(f)} empty={<NothingMatches f={f} />} /> : <>
       {mine.length > 0 && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
@@ -75,6 +81,7 @@ export function Library({ data }: { data: AppData }) {
         </>
       )}
 
+      </>}
       {adding && <AddToDate w={adding} basis={data.profile?.basis ?? 'power'} onClose={() => setAdding(null)} />}
     </div>
   );
@@ -165,3 +172,70 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
   );
 }
 
+
+/** The folding headings on a phone, in order, and the purposes each gathers (10 Nov 2026). */
+const HEADINGS: Array<{ id: string; label: string; purposes: Purpose[] }> = [
+  { id: 'recovery', label: 'Recovery', purposes: ['recovery'] },
+  { id: 'endurance', label: 'Endurance', purposes: ['endurance'] },
+  { id: 'tempo', label: 'Tempo and sweet spot', purposes: ['tempo', 'sweetspot'] },
+  { id: 'threshold', label: 'Threshold and VO2max', purposes: ['threshold', 'vo2'] },
+  { id: 'anaerobic', label: 'Anaerobic and sprints', purposes: ['anaerobic'] },
+  { id: 'mixed', label: 'Race and group rides', purposes: ['mixed'] },
+  { id: 'test', label: 'Tests', purposes: ['test'] },
+];
+
+/** Which headings are open; kept for the session and across visits, so Back from a ride finds them as left. */
+const OPEN_KEY = 'library-open';
+let openNow: Set<string> | undefined;
+function readOpen(): Set<string> {
+  if (openNow) return openNow;
+  try { openNow = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]); } catch { openNow = new Set(); }
+  return openNow;
+}
+function writeOpen(s: Set<string>) { openNow = s; try { localStorage.setItem(OPEN_KEY, JSON.stringify([...s])); } catch { /* private window: kept for this visit only */ } }
+
+/**
+ * Rides on a phone (10 Nov 2026): a compact row each, under headings that fold, all closed at first so the whole
+ * Library fits on a screen. When anything narrows the list, one flat list of rows in the list's own order.
+ */
+function RideRows({ mine, ready, flat, empty }: { mine: Workout[]; ready: Workout[]; flat: boolean; empty: preact.ComponentChildren }) {
+  const [open, setOpen] = useState<Set<string>>(readOpen);
+  const toggle = (id: string) => { const n = new Set(open); if (n.has(id)) n.delete(id); else n.add(id); writeOpen(n); setOpen(n); };
+  if (!mine.length && !ready.length) return <>{empty}</>;
+  if (flat) return <div class="ride-rows">{[...mine, ...ready].map((w) => <RideRow key={w.id} w={w} />)}</div>;
+  const groups = [
+    ...(mine.length ? [{ id: 'mine', label: 'My rides', list: mine }] : []),
+    ...HEADINGS.map((h) => ({ id: h.id, label: h.label, list: ready.filter((w) => h.purposes.includes(tagsOf(w).purpose)) })),
+  ].filter((g) => g.list.length);
+  return (
+    <div class="ride-rows">
+      {groups.map((g) => (
+        <section key={g.id}>
+          <button class={`ride-head${open.has(g.id) ? ' open' : ''}`} aria-expanded={open.has(g.id)} onClick={() => toggle(g.id)}>
+            <span>{g.label} <span class="faint">· {g.list.length}</span></span><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span>
+          </button>
+          {open.has(g.id) && g.list.map((w) => <RideRow key={w.id} w={w} />)}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** One ride as a row: its shape, name, one line of what it is, and the star. Tapping it opens the ride. */
+function RideRow({ w }: { w: Workout }) {
+  const s = workoutStats(w.blocks);
+  const oneWay = w.trainerOnly ? 'trainer only' : w.bases.length > 1 ? '' : w.bases[0] === 'hr' ? 'heart rate only' : 'power only';
+  // Length first and the one-way note next, so a long description is what gets cut short, never those.
+  const mins = Math.round(s.seconds / 60);
+  const length = mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : `${mins} min`;
+  const line = [length, oneWay, w.subtitle ?? PURPOSE_LABEL[tagsOf(w).purpose]].filter(Boolean).join(' · ');
+  return (
+    <div class="ride-row">
+      <a href={`#/workout/${w.id}?from=library`} class="ride-row-main">
+        <span class="ride-row-shape"><WorkoutProfile blocks={w.blocks} height={30} ratio={2.2} /></span>
+        <span class="ride-row-t"><b>{w.name}</b><span>{line}</span></span>
+      </a>
+      <Star w={w} />
+    </div>
+  );
+}

@@ -1562,3 +1562,19 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 /* How a sent ride went: in the pill on a laptop, under the name only where the pill is hidden (10 Nov 2026). */
 .cal-item .t .row-sent { display: none; }
 @media (max-width: 520px) { .cal-item .t .row-sent { display: block; } }
+
+/* ---- the Library on a phone: compact rows under folding headings (10 Nov 2026) ---- */
+.ride-rows { display: flex; flex-direction: column; }
+.ride-head { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 48px; padding: 0 4px; border: 0; border-bottom: 1px solid var(--line-2); background: transparent; color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
+.ride-head.open { color: var(--sel-ink); }
+.ride-head .faint { font-weight: 500; }
+.ride-row { display: flex; align-items: center; gap: 8px; min-height: 60px; border-bottom: 1px solid var(--line); }
+.ride-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 0 8px 4px; color: inherit; text-decoration: none; }
+.ride-row-shape { flex: 0 0 66px; width: 66px; }
+.ride-row-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ride-row-t b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ride-row-t span { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ride-row .star-btn { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
+/* A ride card's top line (purpose, trainer-only, power or HR, star) wraps inside a narrow card rather than spilling past it. */
+.wcard.ride .wcard-main > .row.between { flex-wrap: wrap; gap: 4px 8px; }
+.wcard.ride .wcard-main > .row.between > .row:last-child { margin-left: auto; }

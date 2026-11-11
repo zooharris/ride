@@ -138,3 +138,18 @@ describe('the week’s send, tidied (10 Nov 2026)', () => {
     expect(src).toMatch(/\{only\.w\.name\} by \{BASIS_WORD\[b\]\}/);
   });
 });
+
+describe('the Library on a phone (10 Nov 2026)', () => {
+  it('rides show as rows under the seven folding headings, flat when anything narrows the list', async () => {
+    const src = (await import('../ui/screens/Library.tsx?raw')).default;
+    for (const h of ['Recovery', 'Endurance', 'Tempo and sweet spot', 'Threshold and VO2max', 'Anaerobic and sprints', 'Race and group rides', 'Tests']) expect(src).toContain(`label: '${h}'`);
+    expect(src).toMatch(/flat=\{narrowed\(f\)\}/);
+    expect(src).toMatch(/useNarrow\(520\)/);
+  });
+  it('every Library ride falls under one of the headings', async () => {
+    const { LIBRARY } = await import('../library/workouts');
+    const { tagsOf } = await import('../library/tags');
+    const all = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2', 'anaerobic', 'mixed', 'test'];
+    for (const w of LIBRARY.filter((x) => x.kind === 'ride')) expect(all, w.id).toContain(tagsOf(w).purpose);
+  });
+});

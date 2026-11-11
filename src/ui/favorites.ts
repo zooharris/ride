@@ -59,8 +59,8 @@ export function useFavorites(refresh?: unknown): Set<string> {
 }
 
 /** When each Library workout was last done, from the calendar's completed sessions in the last 90 days. */
-export function recentlyDone(planned: PlannedWorkout[], find: (id: string) => Workout | undefined, now = today()): Map<string, string> {
-  const since = addDays(now, -RECENT_DAYS);
+export function recentlyDone(planned: PlannedWorkout[], find: (id: string) => Workout | undefined, now = today(), days = RECENT_DAYS): Map<string, string> {
+  const since = addDays(now, -days);
   const out = new Map<string, string>();
   for (const p of planned) {
     if (p.status !== 'completed' || p.date < since || p.date > now) continue;
@@ -75,7 +75,9 @@ export function recentlyDone(planned: PlannedWorkout[], find: (id: string) => Wo
 export function useMine(planned: PlannedWorkout[], find: (id: string) => Workout | undefined, refresh?: unknown) {
   const fav = useFavorites(refresh);
   const recent = useMemo(() => recentlyDone(planned, find), [planned]); // eslint-disable-line react-hooks/exhaustive-deps
-  return { favorites: fav, recent };
+  // When each was last done at any time, for the Last done sort (10 Nov 2026).
+  const last = useMemo(() => recentlyDone(planned, find, today(), 365 * 50), [planned]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { favorites: fav, recent, last };
 }
 
 /** The star itself: on any workout card or page. */

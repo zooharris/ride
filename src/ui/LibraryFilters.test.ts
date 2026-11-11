@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, filtersFromQuery, filtersToQuery, minutesOf, NO_FILTERS, type Filters } from './LibraryFilters';
+import { applyFilters, filtersFromQuery, filtersToQuery, lastDoneWords, minutesOf, NO_FILTERS, sortsFor, type Filters } from './LibraryFilters';
+import { workoutStats } from '../engine/workout';
 import { recentlyDone } from './favorites';
 import { LIBRARY, libraryById } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
@@ -17,9 +18,9 @@ describe('the shared filters', () => {
     expect(out.length).toBeLessThan(rides.length);
   });
   it('shortest first orders by minutes, longest first the other way', () => {
-    const short = applyFilters(rides, { ...NO_FILTERS, sort: 'short' }, 'ride').map(minutesOf);
+    const short = applyFilters(rides, { ...NO_FILTERS, sort: 'length' }, 'ride').map(minutesOf);
     expect(short).toEqual([...short].sort((a, b) => a - b));
-    const long = applyFilters(rides, { ...NO_FILTERS, sort: 'long' }, 'ride').map(minutesOf);
+    const long = applyFilters(rides, { ...NO_FILTERS, sort: 'length', desc: true }, 'ride').map(minutesOf);
     expect(long).toEqual([...long].sort((a, b) => b - a));
   });
   it('search matches the name, and the purpose', () => {
@@ -81,7 +82,7 @@ const asQuery = (f: Filters) => { const q = new URLSearchParams(); for (const [k
 
 describe('the Library keeps its filters in its address (8 Nov 2026)', () => {
   it('filters survive the round trip through the address', () => {
-    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, hrOnly: true, focus: 'all', show: 'favorites', duration: '90-120', sort: 'short' };
+    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, hrOnly: true, focus: 'all', show: 'favorites', duration: '90-120', sort: 'tss', desc: true };
     expect(filtersFromQuery(asQuery(f))).toEqual(f);
     const s: Filters = { ...NO_FILTERS, focus: 'upper', show: 'recent' };
     expect(filtersFromQuery(asQuery(s))).toEqual(s);
@@ -95,5 +96,50 @@ describe('the Library keeps its filters in its address (8 Nov 2026)', () => {
   });
   it('an address saved before 9 Nov, with a ride type, opens on the matching purpose', () => {
     expect(filtersFromQuery(new URLSearchParams('t=vo2max')).purpose).toBe('vo2');
+  });
+});
+
+describe('sorting the Library (10 Nov 2026)', () => {
+  const name = (w: { name: string }) => w.name.toLocaleLowerCase();
+  it('name A to Z, and the arrow flips it', () => {
+    const az = applyFilters(rides, { ...NO_FILTERS, sort: 'name' }, 'ride').map(name);
+    expect(az).toEqual([...az].sort((a, b) => a.localeCompare(b)));
+    expect(applyFilters(rides, { ...NO_FILTERS, sort: 'name', desc: true }, 'ride').map(name)).toEqual([...az].reverse());
+  });
+  it('training load and intensity follow the figures on the card', () => {
+    const tss = applyFilters(rides, { ...NO_FILTERS, sort: 'tss' }, 'ride').map((w) => workoutStats(w.blocks).tss);
+    expect(tss).toEqual([...tss].sort((a, b) => a - b));
+    const ifs = applyFilters(rides, { ...NO_FILTERS, sort: 'intensity', desc: true }, 'ride').map((w) => workoutStats(w.blocks).intensityFactor);
+    expect(ifs).toEqual([...ifs].sort((a, b) => b - a));
+  });
+  it('last done: never done first, then longest ago', () => {
+    const last = new Map([['lib-spin-30', '2026-11-01'], ['lib-sprints', '2026-06-01']]);
+    const out = applyFilters(rides, { ...NO_FILTERS, sort: 'last' }, 'ride', { favorites: new Set(), recent: new Map(), last }).map((w) => w.id);
+    expect(out.indexOf('lib-sprints')).toBe(out.length - 2);
+    expect(out[out.length - 1]).toBe('lib-spin-30');
+  });
+  it('ties keep the suggested order, so a sort never looks shuffled', () => {
+    const same = rides.filter((w) => minutesOf(w) === 60);
+    const out = applyFilters(same, { ...NO_FILTERS, sort: 'length' }, 'ride');
+    expect(out).toEqual(same);
+  });
+  it('a kind without the current sort falls back to suggested', () => {
+    expect(sortsFor('mobility')).not.toContain('intensity');
+    const mob = readyMadeSessions(['bodyweight']).filter((w) => w.kind === 'mobility');
+    expect(applyFilters(mob, { ...NO_FILTERS, sort: 'intensity' }, 'mobility')).toEqual(mob);
+  });
+  it('strength sorts by number of exercises', () => {
+    const n = applyFilters(strength, { ...NO_FILTERS, sort: 'exercises' }, 'strength').map((w) => w.exercises?.length ?? 0);
+    expect(n).toEqual([...n].sort((a, b) => a - b));
+  });
+  it('an address saved with the old order opens as Length, the same way round', () => {
+    expect(filtersFromQuery(new URLSearchParams('sort=short'))).toMatchObject({ sort: 'length', desc: false });
+    expect(filtersFromQuery(new URLSearchParams('sort=long'))).toMatchObject({ sort: 'length', desc: true });
+  });
+  it('last done in words', () => {
+    const now = new Date('2026-11-10T12:00:00');
+    expect(lastDoneWords(undefined, now)).toBe('not yet');
+    expect(lastDoneWords('2026-11-09', now)).toBe('yesterday');
+    expect(lastDoneWords('2026-10-20', now)).toBe('3 weeks ago');
   });
 });

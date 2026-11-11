@@ -1582,3 +1582,17 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .filters-folded { flex-wrap: nowrap; }
 .filters-folded input { flex: 1; min-width: 0; }
 .btn.on-wash { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+/* ---- the count and the sort, one line below the filters (10 Nov 2026) ---- */
+.sort-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; margin: 2px 0 10px; }
+.sort-ctl { display: inline-flex; align-items: center; }
+.sort-link { border: 0; background: transparent; color: var(--sel-ink); font: inherit; font-size: 14px; font-weight: 600; padding: 6px 4px; cursor: pointer; white-space: nowrap; }
+.sort-link.sort-dir { min-width: 32px; font-size: 15px; font-weight: 700; }
+.sort-list { left: auto; right: 0; min-width: 260px; }
+.sort-list .sort-way { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.sort-list button.on .sort-way { color: inherit; }
+.sort-list button { gap: 16px; }
+@media (max-width: 520px) { .sort-link { min-height: 44px; } .menu-list.sort-list { left: 0; right: 0; min-width: 0; } }
+.sorted-by { color: var(--sel-ink) !important; font-weight: 700; }
+.ride-row-t .ride-row-lead { color: var(--ink); font-weight: 600; font-size: inherit; }
+.sorted-line { color: var(--sel-ink) !important; }

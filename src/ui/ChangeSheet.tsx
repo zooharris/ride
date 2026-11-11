@@ -11,7 +11,7 @@ import type { PlannedWorkout, Workout } from '../engine/types';
 import { KIND_LABEL, KindDot } from './screens/Plan';
 import { movePlanned, removePlanned, replacePlanned } from './planService';
 import { toast } from './Toast';
-import { applyFilters, FilterBar, useFilters } from './LibraryFilters';
+import { applyFilters, FilterBar, SortLine, useFilters } from './LibraryFilters';
 import { useMine } from './favorites';
 
 /**
@@ -117,7 +117,8 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
           {kinds.map((k) => <button key={k} class={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k === 'ride' ? 'Rides' : k === 'walk' ? 'Walks' : k === 'run' ? 'Runs' : KIND_LABEL[k]}</button>)}
         </div>
         <FilterBar kind={kind} f={f} set={setF} />
-        <p class="faint small" style="margin:0 0 10px">{list.length === 0 ? (f.show === 'favorites' ? 'No favorites of this kind yet. ' : f.show === 'recent' ? 'Nothing of this kind done in the last 90 days. ' : 'Nothing matches: widen the length or effort, or clear the search. ') : ''}Or <a href="#/build">make a new workout</a>.</p>
+        <SortLine kind={kind} f={f} set={setF} count={list.length} noun={kind === 'ride' ? ['ride', 'rides'] : ['session', 'sessions']} />
+        <p class="faint small" style="margin:0 0 10px">{list.length === 0 ? (f.show === 'favorites' ? 'No favorites of this kind yet. ' : f.show === 'recent' ? 'Nothing of this kind done in the last 90 days. ' : 'Nothing matches: widen the length or clear the search. ') : ''}Or <a href="#/build">make a new workout</a>.</p>
         <div class="stack">
           {list.map((w) => {
             const s = workoutStats(w.blocks);

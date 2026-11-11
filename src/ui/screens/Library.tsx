@@ -14,7 +14,8 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
-import { applyFilters, FilterBar, NothingMatches, useFilters } from '../LibraryFilters';
+import { applyFilters, FilterBar, lastDoneWords, NothingMatches, SortLine, useFilters, type Filters, type Mine } from '../LibraryFilters';
+import { libraryKey } from '../favorites';
 import { useNarrow } from '../Glance';
 import { useMine } from '../favorites';
 import { Star } from '../Star';
@@ -42,7 +43,7 @@ export function Library({ data }: { data: AppData }) {
   const rows = phone && tab === 'ride';
   return (
     <div>
-      <PageHead eyebrow={`${list.length} ${tab === 'ride' ? 'rides' : 'sessions'}`} title="Library" help="library">
+      <PageHead title="Library" help="library">
         {tab === 'ride' && playerOffered() && <a class="btn sm" href="#/play/free">Free ride on the trainer</a>}<a class="btn sm" href="#/plan">Plan my training</a><a class="btn sm primary" href="#/build">New workout</a>
       </PageHead>
       <div class="row wrap" style="gap:10px;margin-bottom:12px">
@@ -51,12 +52,13 @@ export function Library({ data }: { data: AppData }) {
         </div>
       </div>
       <FilterBar kind={tab} f={f} set={setF} />
-      {rows ? <RideRows mine={mine} ready={ready} empty={<NothingMatches f={f} />} /> : <>
+      {tab !== 'strength' && <SortLine kind={tab} f={f} set={setF} count={list.length} noun={tab === 'ride' ? ['ride', 'rides'] : ['session', 'sessions']} />}
+      {rows ? <RideRows mine={mine} ready={ready} empty={<NothingMatches f={f} />} f={f} have={mineSets} /> : <>
       {mine.length > 0 && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
           <div class="grid">
-            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} /> : <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}
+            {mine.map((w) => tab === 'ride' ? <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} f={f} have={mineSets} /> : <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} f={f} have={mineSets} />)}
           </div>
         </section>
       )}
@@ -64,10 +66,10 @@ export function Library({ data }: { data: AppData }) {
       {tab === 'ride' ? (
         <>
           {ready.length === 0 && mine.length === 0 && <NothingMatches f={f} />}
-          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} />)}</div>
+          <div class="grid">{ready.map((w) => <Card key={w.id} w={w} basis={data.profile?.basis ?? 'power'} profile={data.profile ?? undefined} onPick={() => setAdding(w)} f={f} have={mineSets} />)}</div>
         </>
       ) : tab === 'strength' ? (
-        <StrengthLibrary f={f} mine={mineSets} onAdd={setAdding} />
+        <StrengthLibrary f={f} mine={mineSets} onAdd={setAdding} sortLine={(n: number) => <SortLine kind="strength" f={f} set={setF} count={n} noun={['session', 'sessions']} />} />
       ) : (
         <>
           <p class="muted small" style="margin:0 0 14px;max-width:62ch">
@@ -76,7 +78,7 @@ export function Library({ data }: { data: AppData }) {
             {tab === 'run' && 'Runs by heart rate, sent to your Garmin as running workouts: easy, long, strides, tempo and hills. Add one to any date, whether or not your plan schedules runs; the plan itself only ever places the easy ones. With a threshold pace in Settings, each run also shows the pace its bands imply, as a guide.'}
           </p>
           {ready.length === 0 && mine.length === 0 && <NothingMatches f={f} />}
-          <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} />)}</div>
+          <div class="grid">{ready.map((w) => <SessionCard key={w.id} w={w} onAdd={() => setAdding(w)} profile={data.profile ?? undefined} f={f} have={mineSets} />)}</div>
         </>
       )}
 
@@ -92,7 +94,8 @@ export function Library({ data }: { data: AppData }) {
  * row of its own: Schedule (today, tomorrow, a date) and Ride now. On a
  * phone, tapping the card opens the workout's page, which has them all.
  */
-function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void }) {
+function Card({ w, basis, profile, onPick, f, have }: { w: Workout; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void; f: Filters; have: Mine }) {
+  const hi = (k: Filters['sort']) => (f.sort === k ? ' sorted-by' : '');
   const s = workoutStats(w.blocks);
   const t = tagsOf(w);
   const [menu, setMenu] = useState(false);
@@ -111,7 +114,7 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
         <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} targets={profile ? { profile, basis } : undefined} /></div>
         <h3>{w.name}</h3>
         <p class="wc-sub small">{w.subtitle ?? '\u00a0'}</p>
-        <p class="wc-stats"><span><b class="num">{clock(s.seconds)}</b> time</span><span><b class="num">{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class="num">{s.intensityFactor.toFixed(2)}</b> intensity</span>{t.outdoor === 'indoor' && !w.trainerOnly ? <span>indoors only</span> : w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
+        <p class="wc-stats"><span><b class={`num${hi('length')}`}>{clock(s.seconds)}</b> time</span><span><b class={`num${hi('tss')}`}>{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class={`num${hi('intensity')}`}>{s.intensityFactor.toFixed(2)}</b> intensity</span>{f.sort === 'last' && <span class="sorted-by">done {lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}</span>}{t.outdoor === 'indoor' && !w.trainerOnly ? <span>indoors only</span> : w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
         <div class="menu">
@@ -131,7 +134,7 @@ function Card({ w, basis, profile, onPick }: { w: Workout; basis: 'power' | 'hr'
   );
 }
 
-function SessionCard({ w, onAdd, profile }: { w: Workout; onAdd: () => void; profile?: Profile }) {
+function SessionCard({ w, onAdd, profile, f, have }: { w: Workout; onAdd: () => void; profile?: Profile; f?: Filters; have?: Mine }) {
   const n = w.exercises?.length ?? 0;
   const detail = w.kind === 'walk'
     ? `${w.walk?.minutes ?? w.minutes} min · ${w.walk?.packKg ? `${Math.round(w.walk.packKg * 2.2)} lb pack` : 'no pack'} · ${w.setting === 'indoor' ? 'treadmill' : 'outdoors'}`
@@ -141,7 +144,9 @@ function SessionCard({ w, onAdd, profile }: { w: Workout; onAdd: () => void; pro
     <div class="wcard" style="display:flex;flex-direction:column;gap:8px">
       <div class="row between"><span class="row" style="gap:8px"><KindDot kind={w.kind as SessionKind} big /><span class="faint small">{KIND_LABEL[w.kind]}</span></span><span class="row" style="gap:8px"><span class="faint small" title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does.">{w.estimatedTss ? `≈ ${w.estimatedTss} TSS, estimated` : ''}</span><Star w={w} /></span></div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
-      <p class="muted small" style="margin:0">{detail}</p>
+      <p class={`muted small${f?.sort === 'length' ? ' sorted-line' : ''}`} style="margin:0">{detail}</p>
+      {f?.sort === 'tss' && <p class="small sorted-by" style="margin:0">≈ {w.estimatedTss ?? 0} TSS</p>}
+      {f?.sort === 'last' && have && <p class="small sorted-by" style="margin:0">Done {lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}</p>}
       {w.exercises && (w.kind === 'strength' || w.kind === 'mobility') && picturedCount(w.exercises) >= 2 ? <PictureStrip exercises={w.exercises} max={4} fill /> : w.exercises && <p class="faint small" style="margin:0;line-height:1.4">{w.exercises.slice(0, 4).map((e) => e.name).join(' · ')}{n > 4 ? ` · +${n - 4}` : ''}</p>}
       <div class="row" style="gap:6px;margin-top:auto"><button class="btn sm" onClick={onAdd}>Add to a date</button><a class="btn sm quiet" href={`#/workout/${w.id}?from=library`}>View</a></div>
     </div>
@@ -176,24 +181,28 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
  * Rides on a phone (10 Nov 2026): a compact row each, in one list (your own first), in the list's own order. The
  * filters, folded behind one button, narrow it.
  */
-function RideRows({ mine, ready, empty }: { mine: Workout[]; ready: Workout[]; empty: preact.ComponentChildren }) {
+function RideRows({ mine, ready, empty, f, have }: { mine: Workout[]; ready: Workout[]; empty: preact.ComponentChildren; f: Filters; have: Mine }) {
   if (!mine.length && !ready.length) return <>{empty}</>;
-  return <div class="ride-rows">{[...mine, ...ready].map((w) => <RideRow key={w.id} w={w} />)}</div>;
+  // Your own first under Suggested; under any other sort, one list in that order.
+  const list = f.sort === 'suggested' ? [...mine, ...ready] : applyFilters([...mine, ...ready], { ...f, query: '', purpose: 'all', outdoor: false, hrOnly: false, duration: 'all', show: 'all' }, 'ride', have);
+  return <div class="ride-rows">{list.map((w) => <RideRow key={w.id} w={w} f={f} have={have} />)}</div>;
 }
 
 /** One ride as a row: its shape, name, one line of what it is, and the star. Tapping it opens the ride. */
-function RideRow({ w }: { w: Workout }) {
+function RideRow({ w, f, have }: { w: Workout; f: Filters; have: Mine }) {
   const s = workoutStats(w.blocks);
   const oneWay = w.trainerOnly ? 'trainer only' : w.bases.length > 1 ? '' : w.bases[0] === 'hr' ? 'heart rate only' : 'power only';
   // Length first and the one-way note next, so a long description is what gets cut short, never those.
   const mins = Math.round(s.seconds / 60);
   const length = mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : `${mins} min`;
-  const line = [length, oneWay, w.subtitle ?? PURPOSE_LABEL[tagsOf(w).purpose]].filter(Boolean).join(' · ');
+  // It leads with what the list is sorted by, in brighter text (10 Nov 2026); the length follows when it isn't the lead.
+  const lead = f.sort === 'tss' ? `${s.tss} TSS` : f.sort === 'intensity' ? `${s.intensityFactor.toFixed(2)} intensity` : f.sort === 'last' ? `done ${lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}` : length;
+  const rest = [lead === length ? '' : length, oneWay, w.subtitle ?? PURPOSE_LABEL[tagsOf(w).purpose]].filter(Boolean).join(' · ');
   return (
     <div class="ride-row">
       <a href={`#/workout/${w.id}?from=library`} class="ride-row-main">
         <span class="ride-row-shape"><WorkoutProfile blocks={w.blocks} height={30} ratio={2.2} /></span>
-        <span class="ride-row-t"><b>{w.name}</b><span>{line}</span></span>
+        <span class="ride-row-t"><b>{w.name}</b><span><span class="ride-row-lead">{lead}</span>{rest ? ` · ${rest}` : ''}</span></span>
       </a>
       <Star w={w} />
     </div>

@@ -6,7 +6,8 @@ import { DOSE_WORDS, EQUIPMENT_WORDS, FOCUS_WORDS, hasNeeds, redose } from '../l
 import { strengthTss } from '../library/sessions';
 import { QUALITY_LABEL } from '../library/strength';
 import { PictureStrip, picturedCount } from './ExercisePictures';
-import { applyFilters, NothingMatches, type Filters, type Mine } from './LibraryFilters';
+import { applyFilters, lastDoneWords, NothingMatches, type Filters, type Mine } from './LibraryFilters';
+import { libraryKey } from './favorites';
 import { Star } from './Star';
 
 /**
@@ -40,7 +41,7 @@ export function useStrengthPrefs(): [Prefs, (p: Partial<Prefs>) => void] {
   return [p, (next) => setP((prev) => { const v = { ...prev, ...next }; void setSetting(PREFS_KEY, v).catch(() => {}); return v; })];
 }
 
-export function StrengthLibrary({ f, mine: mineSets, onAdd }: { f: Filters; mine: Mine; onAdd: (w: Workout) => void }) {
+export function StrengthLibrary({ f, mine: mineSets, onAdd, sortLine }: { f: Filters; mine: Mine; onAdd: (w: Workout) => void; sortLine?: (count: number) => preact.ComponentChildren }) {
   const [prefs, setPrefs] = useStrengthPrefs();
   const mine = getCurrentEquipment();
   const pool = readyMade(prefs.show === 'all' ? ALL_EQUIPMENT : mine).filter((w) => w.kind === 'strength' && w.source === 'library');
@@ -65,15 +66,18 @@ export function StrengthLibrary({ f, mine: mineSets, onAdd }: { f: Filters; mine
         </div>
       </div>
       <p class="muted small" style="margin:0 0 16px;max-width:66ch">{LEVEL_NOTE[prefs.level]} {prefs.show === 'mine' ? 'Showing what your equipment allows (as ticked in your plan’s week); switch to Everything to see the gym sessions too.' : 'Showing every session; those that need equipment you have not ticked say what they need.'}</p>
+      {sortLine?.(list.length)}
       {list.length === 0 && <NothingMatches f={f} />}
-      {QUALITIES.map((q) => byQuality(q).length > 0 && (
+      {/* Under any sort but Suggested, one flat list in that order (10 Nov 2026). */}
+      {f.sort !== 'suggested' && list.length > 0 && <div class="grid">{list.map((w) => <StrengthCard key={w.id} w={w} have={mine} onAdd={() => onAdd(w)} f={f} done={mineSets} />)}</div>}
+      {f.sort === 'suggested' && QUALITIES.map((q) => byQuality(q).length > 0 && (
         <section key={q} class="str-group">
           <h2>{QUALITY_LABEL[q]}</h2>
           <p class="muted small str-lead">{LEAD[q]}</p>
           <div class="grid">{byQuality(q).map((w) => <StrengthCard key={w.id} w={w} have={mine} onAdd={() => onAdd(w)} />)}</div>
         </section>
       ))}
-      {purpose.length > 0 && (
+      {f.sort === 'suggested' && purpose.length > 0 && (
         <section class="str-group">
           <h2>For a purpose</h2>
           <p class="muted small str-lead">Sessions with one job each, for a particular day: a hotel room, a short trunk session, the aero position. Their sets and reps are their own; plans don’t schedule these, so add one when the day calls for it.</p>
@@ -84,7 +88,7 @@ export function StrengthLibrary({ f, mine: mineSets, onAdd }: { f: Filters; mine
   );
 }
 
-function StrengthCard({ w, have, onAdd }: { w: Workout; have: Equipment[]; onAdd: () => void }) {
+function StrengthCard({ w, have, onAdd, f, done }: { w: Workout; have: Equipment[]; onAdd: () => void; f?: Filters; done?: Mine }) {
   const missing = w.strength ? w.strength.needs.filter((q) => !have.includes(q)) : [];
   const ex = w.exercises ?? [];
   return (
@@ -94,7 +98,7 @@ function StrengthCard({ w, have, onAdd }: { w: Workout; have: Equipment[]; onAdd
         <span class="row" style="gap:8px">{missing.length > 0 && !hasNeeds(w.strength!.needs, have) && <span class="tag" style="--c:var(--z5)">Needs {missing.map((q) => EQUIPMENT_WORDS[q] ?? q).join(', ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</span>}<Star w={w} /></span>
       </div>
       <a href={`#/workout/${w.id}?from=library`} style="color:inherit;text-decoration:none"><h3 style="margin:0">{w.name}</h3></a>
-      <p class="muted small" style="margin:0">{w.subtitle ? `${w.subtitle} · ` : ''}about {w.minutes} min · {ex.length} exercises</p>
+      <p class="muted small" style="margin:0">{w.subtitle ? `${w.subtitle} · ` : ''}<span class={f?.sort === 'length' ? 'sorted-by' : ''}>about {w.minutes} min</span> · <span class={f?.sort === 'exercises' ? 'sorted-by' : ''}>{ex.length} exercises</span>{f?.sort === 'tss' ? <> · <span class="sorted-by">≈ {w.estimatedTss ?? 0} TSS</span></> : null}{f?.sort === 'last' && done ? <> · <span class="sorted-by">done {lastDoneWords((done.last ?? done.recent).get(libraryKey(w)))}</span></> : null}</p>
       {picturedCount(ex) >= 2 && <PictureStrip exercises={ex} max={6} fill />}
       <p class="faint small" style="margin:0;line-height:1.4">{ex.map((e) => e.name).join(' · ')}</p>
       <div class="row" style="gap:6px;margin-top:auto"><button class="btn sm" onClick={onAdd}>Add to a date</button><a class="btn sm quiet" href={`#/workout/${w.id}?from=library`}>View</a></div>

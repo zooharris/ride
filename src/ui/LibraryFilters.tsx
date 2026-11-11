@@ -25,7 +25,25 @@ export type Duration = 'all' | 'u60' | '60-90' | '90-120' | '120-180' | '180-240
 export const DURATIONS: Array<[Duration, string, [number, number]]> = [
   ['all', 'Any length', [0, 1e9]], ['u60', 'Under 1 h', [0, 60]], ['60-90', '1–1½ h', [60, 90]], ['90-120', '1½–2 h', [90, 120]], ['120-180', '2–3 h', [120, 180]], ['180-240', '3–4 h', [180, 240]], ['240+', '4 h and up', [240, 1e9]],
 ];
-export type SortKey = 'family' | 'short' | 'long';
+/**
+ * How the list is sorted (10 Nov 2026, "sorting the Library"). Each kind offers only the sorts its cards show a number
+ * for; `desc` flips the direction from the one each sort starts in.
+ */
+export type SortKey = 'suggested' | 'name' | 'length' | 'tss' | 'intensity' | 'exercises' | 'last';
+export const SORTS: Record<string, SortKey[]> = {
+  ride: ['suggested', 'name', 'length', 'tss', 'intensity', 'last'],
+  strength: ['suggested', 'name', 'length', 'tss', 'exercises', 'last'],
+  mobility: ['suggested', 'name', 'length', 'last'],
+  walk: ['suggested', 'name', 'length', 'tss', 'last'],
+  run: ['suggested', 'name', 'length', 'tss', 'last'],
+};
+export const SORT_LABEL: Record<SortKey, string> = { suggested: 'Suggested', name: 'Name', length: 'Length', tss: 'Training load (TSS)', intensity: 'Intensity', exercises: 'Number of exercises', last: 'Last done' };
+/** Each sort's two directions, in words: [as it starts, flipped]. */
+export const SORT_WAYS: Record<SortKey, [string, string]> = {
+  suggested: ['by purpose', 'by purpose'], name: ['A to Z', 'Z to A'], length: ['shortest first', 'longest first'], tss: ['lowest first', 'highest first'],
+  intensity: ['easiest first', 'hardest first'], exercises: ['fewest first', 'most first'], last: ['longest ago first', 'most recent first'],
+};
+export const sortsFor = (kind: string): SortKey[] => SORTS[kind] ?? SORTS.ride;
 export type Show = 'all' | 'favorites' | 'recent';
 export interface Filters {
   query: string;
@@ -40,12 +58,28 @@ export interface Filters {
   show: Show;
   duration: Duration;
   sort: SortKey;
+  /** The sort's direction flipped (the arrow). */
+  desc: boolean;
 }
-export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'family' };
+export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'suggested', desc: false };
 
 /** What the rider has starred, and when each workout was last done (Library id → YYYY-MM-DD). */
-export interface Mine { favorites: Set<string>; recent: Map<string, string> }
+/** `last`: when each workout was last done, at any time (for the Last done sort); `recent` is the last 90 days. */
+export interface Mine { favorites: Set<string>; recent: Map<string, string>; last?: Map<string, string> }
 const NOBODY: Mine = { favorites: new Set(), recent: new Map() };
+
+/** The value a sort orders by. Rides take load and intensity from their steps; other kinds from their estimate. */
+export function sortValue(w: Workout, key: SortKey, mine: Mine = NOBODY): string | number {
+  switch (key) {
+    case 'name': return w.name.toLocaleLowerCase();
+    case 'length': return minutesOf(w);
+    case 'tss': return w.kind === 'ride' ? workoutStats(w.blocks).tss : (w.estimatedTss ?? 0);
+    case 'intensity': return w.kind === 'ride' ? workoutStats(w.blocks).intensityFactor : 0;
+    case 'exercises': return w.exercises?.length ?? 0;
+    case 'last': return (mine.last ?? mine.recent).get(libraryKey(w)) ?? '';   // never done: '' sorts first
+    default: return 0;
+  }
+}
 
 /** A workout's length in minutes: a ride from its steps, anything else from its stated minutes. */
 export const minutesOf = (w: Workout): number => (w.kind === 'ride' ? workoutStats(w.blocks).seconds / 60 : (w.minutes ?? 0));
@@ -73,7 +107,12 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
     if (kind === 'strength' && f.focus !== 'all' && w.strength?.focus !== f.focus) return false;
     return !q || `${w.name} ${w.subtitle ?? ''} ${PURPOSE_LABEL[t.purpose]} ${w.purpose}`.toLowerCase().includes(q);
   });
-  if (f.sort !== 'family') return [...kept].sort((a, b) => (f.sort === 'short' ? minutesOf(a) - minutesOf(b) : minutesOf(b) - minutesOf(a)));
+  // A sort the kind doesn't offer falls back to Suggested; ties keep the Suggested order (the sort is stable).
+  if (f.sort !== 'suggested' && sortsFor(kind).includes(f.sort)) {
+    const v = new Map(kept.map((w) => [w, sortValue(w, f.sort, mine)]));
+    const dir = f.desc ? -1 : 1;
+    return [...kept].sort((a, b) => { const x = v.get(a)!, y = v.get(b)!; return dir * (typeof x === 'number' ? x - (y as number) : (x as string).localeCompare(y as string)); });
+  }
   if (f.show === 'recent') return [...kept].sort((a, b) => (mine.recent.get(libraryKey(b)) ?? '').localeCompare(mine.recent.get(libraryKey(a)) ?? ''));
   return kept;
 }
@@ -92,7 +131,8 @@ export function filtersToQuery(f: Filters): Record<string, string | undefined> {
     focus: f.focus !== 'all' ? f.focus : undefined,
     show: f.show !== 'all' ? f.show : undefined,
     len: f.duration !== 'all' ? f.duration : undefined,
-    sort: f.sort !== 'family' ? f.sort : undefined,
+    sort: f.sort !== 'suggested' ? f.sort : undefined,
+    dir: f.desc ? 'd' : undefined,
   };
 }
 
@@ -111,7 +151,9 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
     focus: FOCI.find((x) => x === q.get('focus')) ?? 'all',
     show: (['favorites', 'recent'] as Show[]).find((x) => x === q.get('show')) ?? 'all',
     duration: DURATIONS.find((d) => d[0] === q.get('len'))?.[0] ?? 'all',
-    sort: (['family', 'short', 'long'] as SortKey[]).find((x) => x === q.get('sort')) ?? 'family',
+    // An address saved with the old order (Shortest first, Longest first) opens as Length, the same way round.
+    ...(q.get('sort') === 'short' ? { sort: 'length' as SortKey, desc: false } : q.get('sort') === 'long' ? { sort: 'length' as SortKey, desc: true }
+      : { sort: (Object.keys(SORT_LABEL) as SortKey[]).find((x) => x === q.get('sort')) ?? 'suggested', desc: q.get('dir') === 'd' }),
   };
 }
 
@@ -135,12 +177,13 @@ const SHOW_LABEL: Record<Show, string> = { all: 'All workouts', favorites: 'Favo
  * favourites, recently done), the order, and for rides the outdoor switch.
  */
 export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (next: Partial<Filters>) => void }) {
-  const [menu, setMenu] = useState<'length' | 'intensity' | 'focus' | 'show' | 'sort' | null>(null);
+  const [menu, setMenu] = useState<'length' | 'intensity' | 'focus' | 'show' | null>(null);
   // A sheet that switches kind keeps only what applies to the new one.
   useEffect(() => {
     const clear: Partial<Filters> = {};
     if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor || f.hrOnly)) Object.assign(clear, { purpose: 'all', outdoor: false, hrOnly: false });
     if (kind !== 'strength' && f.focus !== 'all') clear.focus = 'all';
+    if (!sortsFor(kind).includes(f.sort)) Object.assign(clear, { sort: 'suggested', desc: false });
     if (Object.keys(clear).length) set(clear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
@@ -151,7 +194,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
   const [shown, setShown] = useState(false);
   const active = activeCount(f);
   const search = <input value={f.query} placeholder="Search by name" onInput={(e) => set({ query: (e.target as HTMLInputElement).value })} aria-label="Search the library" />;
-  const clear = narrowed(f) && <button class="btn sm quiet" onClick={() => set({ ...NO_FILTERS, sort: f.sort })}>Clear</button>;
+  const clear = narrowed(f) && <button class="btn sm quiet" onClick={() => set({ ...NO_FILTERS, sort: f.sort, desc: f.desc })}>Clear</button>;
   if (phone && !shown) return (
     <div class="filters">
       <div class="filterbar filters-folded">
@@ -184,8 +227,6 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
           options={(Object.keys(SHOW_LABEL) as Show[]).map((x) => [x, SHOW_LABEL[x]] as [string, string])} value={f.show} onPick={(v) => set({ show: v as Show })} />
         {kind === 'ride' && <button class={`chip${f.outdoor ? ' on' : ''}`} aria-pressed={f.outdoor} onClick={() => set({ outdoor: !f.outdoor })}>Rides well outdoors</button>}
         {kind === 'ride' && <button class={`chip${f.hrOnly ? ' on' : ''}`} aria-pressed={f.hrOnly} onClick={() => set({ hrOnly: !f.hrOnly })}>Works by heart rate</button>}
-        <Menu label={f.sort === 'family' ? (f.show === 'recent' ? 'Most recent first' : 'Library order') : f.sort === 'short' ? 'Shortest first' : 'Longest first'} active={false} open={menu === 'sort'} onOpen={open('sort')} onClose={close} title="Order"
-          options={[['family', f.show === 'recent' ? 'Most recent first' : 'Library order'], ['short', 'Shortest first'], ['long', 'Longest first']]} value={f.sort} onPick={(v) => set({ sort: v as SortKey })} />
         {clear}
       </div>
     </div>
@@ -220,4 +261,49 @@ function Menu({ label, active, open, onOpen, onClose, title, options, value, onP
       )}
     </div>
   );
+}
+
+/**
+ * The count and the sort, on one line below the filters (10 Nov 2026): "148 rides" on the left, "Sort: Length ↑" on
+ * the right as plain text. The words open the list of sorts; the arrow flips the direction.
+ */
+export function SortLine({ kind, f, set, count, noun }: { kind: string; f: Filters; set: (next: Partial<Filters>) => void; count: number; noun: [string, string] }) {
+  const [open, setOpen] = useState(false);
+  const sorts = sortsFor(kind);
+  const key = sorts.includes(f.sort) ? f.sort : 'suggested';
+  const way = SORT_WAYS[key][f.desc ? 1 : 0];
+  return (
+    <div class="sort-line">
+      <span class="small muted">{count} {count === 1 ? noun[0] : noun[1]}</span>
+      <span class="sort-ctl menu">
+        <button class="sort-link" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>Sort: {SORT_LABEL[key]}</button>
+        {key !== 'suggested' && <button class="sort-link sort-dir" aria-label={`${cap(way)}. Tap for ${SORT_WAYS[key][f.desc ? 0 : 1]}.`} onClick={() => set({ desc: !f.desc })}>{f.desc ? '↓' : '↑'}</button>}
+        {open && (
+          <>
+            <div class="menu-bg" onClick={() => setOpen(false)} />
+            <div class="menu-list sort-list" role="listbox" aria-label={`Sort ${noun[1]} by`}>
+              <div class="menu-title">Sort {noun[1]} by</div>
+              {sorts.map((k) => (
+                <button key={k} role="option" aria-selected={k === key} class={k === key ? 'on' : ''} onClick={() => { set({ sort: k, desc: k === key ? f.desc : false }); setOpen(false); }}>
+                  <span>{SORT_LABEL[k]}</span><span class="sort-way">{k === 'suggested' && f.show === 'recent' ? 'most recent first' : SORT_WAYS[k][k === key && f.desc ? 1 : 0]}{k === key ? ' ✓' : ''}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** When a workout was last done, in words: "today", "3 days ago", "3 weeks ago", "not yet". */
+export function lastDoneWords(date: string | undefined, now = new Date()): string {
+  if (!date) return 'not yet';
+  const days = Math.round((now.getTime() - new Date(date + 'T12:00:00').getTime()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  if (days < 730) return `${Math.round(days / 30)} months ago`;
+  return `${Math.round(days / 365)} years ago`;
 }

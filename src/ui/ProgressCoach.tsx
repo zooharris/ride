@@ -213,10 +213,10 @@ export function ProgressCoach({ coach }: { coach: ProgressCoachState }) {
 }
 
 /** "Ask the coach" in a card's heading: only with an AI connected. */
-export function CardAsk({ coach, id }: { coach: ProgressCoachState; id: string }) {
+export function CardAsk({ coach, id, short }: { coach: ProgressCoachState; id: string; short?: boolean }) {
   if (!coach.on) return null;
   const open = coach.asking === id;
-  return <button class={`pc-ask${open ? ' on' : ''}`} aria-expanded={open} aria-label={`Ask the coach about ${CARD_TITLE[id]?.toLowerCase() ?? 'this card'}`} onClick={() => coach.setAsking(open ? null : id)}>Ask the coach</button>;
+  return <button class={`pc-ask${open ? ' on' : ''}`} aria-expanded={open} aria-label={`Ask the coach about ${CARD_TITLE[id]?.toLowerCase() ?? 'this card'}`} onClick={() => coach.setAsking(open ? null : id)}>{short ? 'Ask' : 'Ask the coach'}</button>;
 }
 
 /** The foot of a card: the coach's line, or the open question box with the last answer. Nothing at all when there is neither. */
@@ -243,6 +243,7 @@ export function CardCoachLine({ coach, id, asking }: { coach: ProgressCoachState
   }
   if (asking) return null;
   const line = coach.status === 'idle' ? coach.written?.lines[id] : undefined;
-  if (!line) return null;
-  return <p class="coach-line small"><b class="coach-mark">Coach</b> {line}</p>;
+  // "Ask the coach" sits at the foot, with the coach's line when there is one, so a card's heading never wraps.
+  if (!line) return <div class="coach-foot"><CardAsk coach={coach} id={id} /></div>;
+  return <p class="coach-line small"><b class="coach-mark">Coach</b> {line} <CardAsk coach={coach} id={id} short /></p>;
 }

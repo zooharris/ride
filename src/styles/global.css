@@ -1720,8 +1720,8 @@ body {
 @media (max-width: 599px) { .progress .ticker { grid-template-columns: repeat(2, 1fr); } }
 
 .pgrid3 { display: grid; gap: 14px; grid-template-columns: 1fr; }
-.pgrid3.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 340px; }
-.pgrid3.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 340px; }
+.pgrid3.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pgrid3.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pg-cell { min-width: 0; min-height: 0; display: flex; }
 .pc { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; scroll-margin-top: 16px; }
 .pc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; min-height: 28px; position: relative; }
@@ -1745,14 +1745,16 @@ body {
 .pr-item { white-space: nowrap; display: inline-block; margin-right: 12px; }
 .pr-item.faint { color: var(--ink-3); }
 .pc-ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-.pfill { min-width: 0; }
-.cols-2 .pfill, .cols-3 .pfill { flex: 1 1 0; min-height: 0; overflow: auto; overflow-x: hidden; }
+/* A chart's box: as tall as its standard height asks (set on it), taller when the row is; the chart inside is laid over it so its own height never feeds back into the row. */
+.pfill { min-width: 0; position: relative; flex: 1 1 auto; overflow: hidden; }
+.pfill-in { position: absolute; top: 0; left: 0; right: 0; }
 .coach-line { margin: 8px 0 0; padding: 7px 10px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 7%, var(--panel)); border-left: 3px solid var(--accent); color: var(--ink-2); line-height: 1.45; }
 .coach-mark { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--sel-ink); margin-right: 4px; }
 .card-ask { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .card-ask input, .pcoach-box input { font-size: 14px; }
 
-.kn { display: flex; flex-direction: column; font-size: 13px; overflow: auto; flex: 1; min-height: 0; }
+.kn { display: flex; flex-direction: column; font-size: 13px; flex: 1; }
+.kn > .kn-r { flex: 1 1 auto; min-height: 30px; }
 .kn-h, .kn-r { display: grid; grid-template-columns: minmax(84px, 1.4fr) 1fr 1fr .9fr 60px; gap: 8px; align-items: center; }
 .kn-h { font-size: 11px; color: var(--ink-3); padding: 0 0 5px; border-bottom: 1px solid var(--line); }
 .kn-h span:not(:first-child), .kn-r span:not(:first-child) { text-align: right; }
@@ -1791,7 +1793,7 @@ body {
 .sbox .l { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sbox .v { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.tests-scroll { margin-top: 6px; max-height: 120px; overflow: auto; flex: none; }
+.tests-scroll { margin-top: 6px; max-height: 132px; overflow: auto; flex: none; }
 .cols-1 .tests-scroll { max-height: none; }
 .tests-table { width: 100%; font-size: 12.5px; }
 
@@ -1815,11 +1817,29 @@ body {
 .pcoach-box { display: flex; gap: 6px; flex: 1 1 260px; min-width: 0; }
 .pcoach-box input { flex: 1; min-width: 0; }
 @media (max-width: 599px) { .pcoach-ask .chip { white-space: normal; text-align: left; } }
-.prest { min-width: 0; }
-.cols-2 .prest, .cols-3 .prest { flex: 1 1 0; min-height: 0; overflow: auto; }
+.prest { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; }
+.prest > table { height: 100%; flex: 1; }
 .kn-h.second { display: none; }
 .cols-2 .kn { display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--kn-rows), auto); grid-template-columns: 1fr 1fr; column-gap: 28px; align-content: start; }
 .cols-2 .kn-h.second { display: grid; }
 .cols-2 .kn-r:last-child, .cols-2 .kn-r:nth-last-child(n) { border-bottom: 1px solid var(--line); }
-.cols-2 .kn-r { padding: 9px 0; }
-.pgrid3.coach-on.cols-2, .pgrid3.coach-on.cols-3 { grid-auto-rows: 410px; }
+
+/* Several small charts in one card: stacked two by two, or across when the card has two columns to itself. */
+.pmulti { display: grid; gap: 10px 20px; }
+.pmulti > * { min-width: 0; }
+.pmulti.two { grid-template-columns: 1fr 1fr; }
+.pmulti.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pmulti.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.coach-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+.coach-line .pc-ask { margin-left: 6px; }
+
+/* The title bar's rule (11 Nov 2026): a drafting double line under every page's heading, so the heading reads as a title block and the content starts clearly beneath it. */
+.page-head { border-bottom: 3px double var(--line-2); padding-bottom: 12px; margin-bottom: 18px; }
+/* On a laptop the bar runs the full width of the content area on every page, from the sidebar to the window's edge, whatever the page's own width; the title stays in line with the content. */
+@media (min-width: 900px) {
+  .shell { overflow-x: clip; }
+  .page-head { border-bottom: 0; padding-bottom: 14px; margin-bottom: 20px; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .page-head::before { content: ''; position: absolute; top: 0; bottom: 0; left: -100vw; right: -100vw; z-index: -1; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 3px double var(--line-2); }
+}
+@media print { .page-head { border-bottom: 0; } }
+.kn-r span { white-space: nowrap; }

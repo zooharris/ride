@@ -38,7 +38,7 @@ import { LIBRARY } from '../../library/workouts';
 import { EXERCISES } from '../../library/strength';
 import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { go } from '../router';
-import { ProgressCoach, CardCoachLine, CardAsk, useProgressCoach, type ProgressCoachState } from '../ProgressCoach';
+import { ProgressCoach, CardCoachLine, useProgressCoach, type ProgressCoachState } from '../ProgressCoach';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -120,23 +120,23 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   }
 
   const cards: GridItem[] = [
-    { id: 'fitness', w: 2, h: 2, el: <FitnessCard key="fitness" data={data} series={series} projection={projection} events={events} range={range} on={on} available={available} overlayData={overlayData} pickOn={pickOn} from={from} to={t} coach={coach} /> },
-    { id: 'key', w: 1, h: 2, el: <KeyCard key="key" rows={facts.key} coach={coach} /> },
-    { id: 'load', w: 1, h: 1, el: <WeeklyLoadCard key="load" data={data} from={from} to={t} readout={facts.readouts.load} coach={coach} /> },
-    { id: 'zones', w: 1, h: 1, el: <ZonesCard key="zones" rides={data.rides} from={from} to={t} readout={facts.readouts.zones} coach={coach} /> },
-    { id: 'power', w: 1, h: 1, el: <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
-    { id: 'records', w: 1, h: 1, el: <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
-    { id: 'durability', w: 1, h: 1, el: <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
-    { id: 'aerobic', w: 1, h: 1, el: <AerobicCard key="aerobic" data={data} rides={inRange} readout={facts.readouts.aerobic} coach={coach} /> },
-    { id: 'wellness', w: 1, h: 1, el: <WellnessCard key="wellness" data={data} from={from} to={t} readout={facts.readouts.wellness} coach={coach} /> },
-    { id: 'morning', w: 1, h: 1, el: <MorningAfterCard key="morning" data={data} from={from} to={t} readout={facts.readouts.morning} coach={coach} /> },
-    { id: 'consistency', w: 1, h: 1, el: <ConsistencyCard key="consistency" rides={data.rides} from={from} to={t} readout={facts.readouts.consistency} coach={coach} /> },
-    { id: 'totals', w: 1, h: 1, el: <TotalsCard key="totals" rides={data.rides} imperial={imperial} readout={facts.readouts.totals} coach={coach} /> },
+    { id: 'fitness', el: (wide) => <FitnessCard key="fitness" data={data} series={series} projection={projection} events={events} range={range} on={on} available={available} overlayData={overlayData} pickOn={pickOn} from={from} to={t} coach={coach} /> },
+    { id: 'key', el: (wide) => <KeyCard key="key" rows={facts.key} coach={coach} /> },
+    { id: 'load', el: (wide) => <WeeklyLoadCard key="load" data={data} from={from} to={t} readout={facts.readouts.load} coach={coach} /> },
+    { id: 'zones', el: (wide) => <ZonesCard key="zones" rides={data.rides} from={from} to={t} readout={facts.readouts.zones} coach={coach} /> },
+    { id: 'power', el: (wide) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
+    { id: 'records', el: (wide) => <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
+    { id: 'durability', el: (wide) => <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
+    { id: 'aerobic', el: (wide) => <AerobicCard key="aerobic" data={data} rides={inRange} readout={facts.readouts.aerobic} coach={coach} /> },
+    { id: 'wellness', el: (wide) => <WellnessCard key="wellness" wide={wide} data={data} from={from} to={t} readout={facts.readouts.wellness} coach={coach} /> },
+    { id: 'morning', el: (wide) => <MorningAfterCard key="morning" data={data} from={from} to={t} readout={facts.readouts.morning} coach={coach} /> },
+    { id: 'consistency', el: (wide) => <ConsistencyCard key="consistency" rides={data.rides} from={from} to={t} readout={facts.readouts.consistency} coach={coach} /> },
+    { id: 'totals', el: (wide) => <TotalsCard key="totals" wide={wide} rides={data.rides} imperial={imperial} readout={facts.readouts.totals} coach={coach} /> },
   ];
-  if (facts.hasWeight) cards.push({ id: 'weight', w: 1, h: 1, el: <WeightCard key="weight" data={data} from={from} to={t} imperial={imperial} readout={facts.readouts.weight} coach={coach} /> });
-  cards.push({ id: 'tests', w: 1, h: 1, el: <TestsCard key="tests" data={data} tests={tests} from={from} to={t} plan={active} series={series} readout={facts.readouts.tests} coach={coach} /> });
-  if (facts.hasBody) cards.push({ id: 'body', w: 1, h: 1, el: <BodyCard key="body" data={data} from={from} to={t} readout={facts.readouts.body} coach={coach} /> });
-  if (facts.hasBreathing) cards.push({ id: 'breathing', w: 2, h: 1, el: <BreathingCard key="breathing" data={data} curves={curvesState.curves} tests={tests} from={from} to={t} readout={facts.readouts.breathing} coach={coach} /> });
+  if (facts.hasWeight) cards.push({ id: 'weight', el: (wide) => <WeightCard key="weight" data={data} from={from} to={t} imperial={imperial} readout={facts.readouts.weight} coach={coach} /> });
+  cards.push({ id: 'tests', el: (wide) => <TestsCard key="tests" data={data} tests={tests} from={from} to={t} plan={active} series={series} readout={facts.readouts.tests} coach={coach} /> });
+  if (facts.hasBody) cards.push({ id: 'body', el: (wide) => <BodyCard key="body" data={data} from={from} to={t} readout={facts.readouts.body} coach={coach} /> });
+  if (facts.hasBreathing) cards.push({ id: 'breathing', el: (wide) => <BreathingCard key="breathing" data={data} curves={curvesState.curves} tests={tests} from={from} to={t} readout={facts.readouts.breathing} coach={coach} /> });
   const placed = layout(cards, cols);
 
   return (
@@ -153,8 +153,8 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
         <Ticker cells={facts.ticker} />
         <ProgressCoach coach={coach} />
 
-        <div class={`pgrid3 cols-${cols}${coach.on ? " coach-on" : ""}`} ref={grid}>
-          {placed.map((p) => <div key={p.id} class="pg-cell" style={cols > 1 ? `grid-column:span ${p.w};grid-row:span ${p.h}` : undefined}>{p.el}</div>)}
+        <div class={`pgrid3 cols-${cols}`} ref={grid}>
+          {placed.map((p) => <div key={p.id} class="pg-cell" style={cols > 1 && p.w > 1 ? `grid-column:span ${p.w}` : undefined}>{p.el(p.w > 1)}</div>)}
         </div>
       </div>
     </InfoCtx.Provider>
@@ -163,27 +163,62 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
 
 // ---------- layout ----------
 
-interface GridItem { id: string; w: number; h: number; el: preact.JSX.Element }
+interface GridItem { id: string; el: (wide: boolean) => preact.JSX.Element }
+
+/** Cards that are tables or grids: they sit together in a row, so a short row holds short cards. */
+const TABLE_CARDS = ['records', 'morning', 'consistency'];
+/** Cards with several small charts: when a row has room to spare, it goes to these, in this order. */
+const ROOMY_CARDS = ['totals', 'wellness'];
 
 /**
- * Spans for the grid so no row ends short: two-row cards sit at the top and fill their rows; after them
- * a card that would leave a gap at the end of a row is widened to close it, and the last card fills its row.
+ * The order and width of the cards (11 Nov 2026, second pass). Rows are as tall as their cards need, so the
+ * job here is only that no row ends short and like sits with like: the fitness chart beside Key numbers; the
+ * load, zone and power charts; the three table cards together; then the rest in threes, with any spare column
+ * given to a card that has several small charts (Totals, then Wellness) rather than to whichever comes last.
  */
-export function layout<T extends { id: string; w: number; h: number }>(items: T[], cols: number): T[] {
-  if (cols === 1) return items.map((x) => ({ ...x, w: 1, h: 1 }));
-  const out = items.map((x) => ({ ...x, w: Math.min(x.w, cols) }));
-  // The top block: the fitness card across two columns and two rows, Key numbers beside it on three columns;
-  // on two columns the fitness card takes the full width and Key numbers drops to one row of its own at full width.
-  if (cols === 2) { const k = out.find((x) => x.id === 'key'); if (k) { k.w = 2; k.h = 1; } }
-  let col = 0, prev: (T & { w: number }) | null = null;
-  for (const x of out) {
-    if (x.h > 1 && col === 0) { col = (col + x.w) % cols; prev = x; continue; }
-    if (x.h > 1) { col = (col + x.w) % cols; prev = x; continue; }
-    if (col + x.w > cols && prev) { prev.w += cols - col; col = 0; }
-    col = (col + x.w) % cols;
-    prev = x;
+export function layout<T extends { id: string }>(items: T[], cols: number): Array<T & { w: number }> {
+  const by = new Map(items.map((x) => [x.id, x]));
+  const take = (ids: string[]) => ids.map((id) => by.get(id)).filter((x): x is T => !!x);
+  if (cols === 1) return items.map((x) => ({ ...x, w: 1 }));
+  const out: Array<T & { w: number }> = [];
+  const put = (x: T, w = 1) => out.push({ ...x, w });
+  const top = take(['fitness', 'key']);
+  const used = new Set<string>(['fitness', 'key']);
+  if (cols === 2) {
+    top.forEach((x) => put(x, 2));
+    // Pairs of like height: the heatmap sits beside a single chart, the two tables together.
+    const order = ['load', 'zones', 'power', 'consistency', 'records', 'morning', 'durability', 'aerobic', 'wellness', 'weight', 'tests', 'body', 'totals'];
+    const singles = [...take(order), ...items.filter((x) => !order.includes(x.id) && !used.has(x.id) && x.id !== 'breathing')];
+    const odd = singles.length % 2 === 1;
+    for (const x of singles) put(x, odd && x.id === 'totals' ? 2 : 1);
+    // An odd count with no Totals card to widen: the last card takes the row.
+    if (odd && !by.has('totals') && out.length) out[out.length - 1].w = 2;
+    take(['breathing']).forEach((x) => put(x, 2));
+    return out;
   }
-  if (col !== 0 && prev) prev.w += cols - col;
+  if (top.length === 2) { put(top[0], 2); put(top[1], 1); } else top.forEach((x) => put(x, 3));
+  const first = take(['load', 'zones', 'power']);
+  const tables = take(TABLE_CARDS);
+  [...first, ...tables].forEach((x) => used.add(x.id));
+  const fixedWide = take(['breathing']);
+  const roomy = take(ROOMY_CARDS);
+  fixedWide.forEach((x) => used.add(x.id)); roomy.forEach((x) => used.add(x.id));
+  const rest = items.filter((x) => !used.has(x.id));
+  // The first rows as they are when whole; anything left over joins the rest.
+  const pool: T[] = [];
+  if (first.length === 3) first.forEach((x) => put(x)); else pool.push(...first);
+  if (tables.length === 3) tables.forEach((x) => put(x)); else pool.push(...tables);
+  pool.push(...rest);
+  // Units to fill: singles count one, wide cards two. Widen roomy cards until the total is a whole number of rows.
+  const units = pool.length + roomy.length + 2 * fixedWide.length;
+  let spare = (3 - (units % 3)) % 3;
+  const wide: T[] = [...fixedWide], single: T[] = [...pool];
+  for (const x of roomy) { if (spare > 0) { wide.push(x); spare--; } else single.push(x); }
+  // Each wide card shares its row with one single; the other singles go in threes. A single short of a partner is widened.
+  const partners = single.splice(Math.max(0, single.length - wide.length));
+  while (single.length >= 3) single.splice(0, 3).forEach((x) => put(x));
+  if (single.length === 2) { put(single[0], 2); put(single[1], 1); } else if (single.length === 1) put(single[0], 3);
+  wide.forEach((x, i) => { const partner = partners[i]; if (partner) { if (i % 2) { put(partner, 1); put(x, 2); } else { put(x, 2); put(partner, 1); } } else put(x, 3); });
   return out;
 }
 
@@ -212,7 +247,6 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
         <h2>{title}</h2>
         {explain && <button ref={btn} class="pc-i" aria-label={`What ${title.toLowerCase()} shows`} aria-expanded={open} aria-controls={`${id}-explain`} onClick={() => info.set(open ? null : id)}>i</button>}
         {aside && <div class="pc-aside">{aside}</div>}
-        {coach && <CardAsk coach={coach} id={id} />}
       </div>
       {open && explain && <div class="pc-pop small" id={`${id}-explain`} role="note" ref={pop}>{explain}</div>}
       <div class="panel pc-body">
@@ -226,29 +260,28 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
 }
 
 /**
- * Gives a chart the room its card has: on a laptop or tablet every card in a row is the same height and the
- * chart grows to fill it; on a phone the card is as tall as its content and the chart keeps `initial`.
+ * A chart that fills what its card has. A card is as tall as its row, and a row as tall as its tallest card
+ * needs with every chart at its standard height (`initial`). When a neighbour makes the row taller, the chart
+ * grows to take the difference, so no card has empty space under it. The chart never makes its own card
+ * taller: what the card asks of the row is always its standard height.
  */
-function Fill({ initial = 170, min = 64, children }: { initial?: number; min?: number; children: (h: number) => preact.ComponentChildren }) {
+function Fill({ initial = 170, children }: { initial?: number; min?: number; children: (h: number) => preact.ComponentChildren }) {
   const outer = useRef<HTMLDivElement>(null), inner = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(initial);
   const hRef = useRef(h);
   hRef.current = h;
-  // What the last step did: a chart whose height does not follow h (a table, say) stops the steps, so nothing loops.
-  const last = useRef<{ h: number; c: number; size: string } | null>(null);
+  const tries = useRef(0), lastSize = useRef('');
   const adjust = () => {
     const o = outer.current, i = inner.current;
     if (!o || !i) return;
-    if (getComputedStyle(o).flexGrow === '0') { if (hRef.current !== initial) setH(initial); return; }
-    const size = `${o.clientWidth}x${o.clientHeight}`, c = i.offsetHeight, cur = hRef.current;
-    const p = last.current;
-    if (p && p.size === size && p.h !== cur && Math.abs(p.c - c) < 1) return;
-    const d = o.clientHeight - c;
-    if (Math.abs(d) <= 2) return;
-    const next = Math.max(min, Math.round(cur + d));
-    if (next === cur) return;
-    last.current = { h: cur, c, size };
-    setH(next);
+    const cur = hRef.current;
+    // Everything in the chart that is not the plot itself (its legend, a panel's title).
+    const extra = Math.max(0, i.offsetHeight - cur);
+    o.style.minHeight = `${initial + extra}px`;
+    const size = `${o.clientWidth}x${o.clientHeight}x${initial}`;
+    if (size !== lastSize.current) { lastSize.current = size; tries.current = 0; }
+    const want = Math.max(initial, Math.round(o.clientHeight - extra));
+    if (Math.abs(want - cur) > 2 && tries.current < 6) { tries.current++; setH(want); }
   };
   useLayoutEffect(adjust);
   useEffect(() => {
@@ -258,10 +291,10 @@ function Fill({ initial = 170, min = 64, children }: { initial?: number; min?: n
     ro.observe(o);
     return () => ro.disconnect();
   }, []);
-  return <div class="pfill" ref={outer}><div ref={inner}>{children(h)}</div></div>;
+  return <div class="pfill" ref={outer}><div class="pfill-in" ref={inner}>{children(h)}</div></div>;
 }
 
-/** The rest of a card's height for content that does not stretch (a table, the heatmap): scrolls inside the card when it must. */
+/** A table or grid in a card: it takes the card's remaining height, and a table spreads its rows over it. */
 function Rest({ children }: { children: preact.ComponentChildren }) {
   return <div class="prest">{children}</div>;
 }
@@ -564,7 +597,7 @@ function FitnessCard({ data, series, projection, events, range, on, available, o
         {shown.map((k) => { const v = val(k); return v == null ? null : <span key={k} class="pr-item"><span class="sw-dot" style={`background:${label(k).color}`} />{label(k).label} <b>{v}</b></span>; })}
         {lo != null && hi != null && <span class="pr-item faint">fitness low <b>{Math.round(lo)}</b> · high <b>{Math.round(hi)}</b>{first && lastF ? <> · <b class={lastF.ctl - first.ctl >= 1 ? 'good-t' : ''}>{sg(lastF.ctl - first.ctl)}</b> over the range</> : null}</span>}
       </>}>
-      <Fill initial={210} min={150}>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill>
+      <Fill initial={260}>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill>
       <OverlayChips on={on} available={available} onChange={pickOn} />
       <ChartCoach on={shown} range={range} from={from} to={to} series={series} data={data} coachState={coach} />
     </PCard>
@@ -772,7 +805,7 @@ function AerobicCard({ data, rides, readout, coach }: { data: AppData; rides: Ri
   const idOf = (i: number) => rides.find((r) => r.date === pts[i].date && r.name === pts[i].name)?.id;
   return (
     <PCard id="aerobic" title="Aerobic fitness" coach={coach} readout={readout} explain={explain}>
-      <Fill initial={260} min={150}>{(h) => {
+      <Fill initial={230}>{(h) => {
         const each = Math.max(64, Math.round((h - 44) / 2));
         return (<>
           <div class="small" style="margin-bottom:2px"><b>Efficiency factor</b> <span class="faint">(watts per beat; higher is better)</span></div>
@@ -790,14 +823,14 @@ function AerobicCard({ data, rides, readout, coach }: { data: AppData; rides: Ri
 }
 
 /** HRV, resting heart rate and sleep: three panels on one time axis, each with its 7-day average. */
-function WellnessCard({ data, from, to, readout, coach }: { data: AppData; from: string; to: string; readout: string; coach: ProgressCoachState }) {
+function WellnessCard({ data, from, to, readout, coach, wide }: { data: AppData; from: string; to: string; readout: string; coach: ProgressCoachState; wide?: boolean }) {
   const days = wellnessDays(data.wellness, from, to);
   if (!days.some((d) => d.w)) return <PCard id="wellness" title="Wellness" coach={coach}><div class="empty small">HRV, resting heart rate and sleep draw here once Intervals.icu has wellness data from whatever records it.</div></PCard>;
   const dates = days.map((d) => d.date);
   const tick = (d: string, i: number) => (i === 0 || i === days.length - 1 || i % Math.ceil(days.length / 4) === 0) ? short(d) : null;
   const flagged = data.dayNotes.filter((n) => n.badWellness && n.date >= from && n.date <= to).length;
   const panel = (name: string, unit: string, color: string, vals: Array<number | null>, fmt: (v: number) => string, height: number) => (
-    <div style="margin-bottom:4px">
+    <div style="margin-bottom:4px;min-width:0">
       <div class="small" style="margin-bottom:1px"><b>{name}</b> <span class="faint">({unit})</span></div>
       <LineChart series={[{ name: 'day', color, values: vals, dots: true, hideInLegend: true }, { name: '7-day average', color, values: rollingDays(dates, vals, 7), width: 2, hideInLegend: true }]}
         xLabels={dates} xTick={tick} yTitle={unit} height={height} yMin={Math.min(...vals.filter((v): v is number => v != null)) * 0.9}
@@ -807,13 +840,14 @@ function WellnessCard({ data, from, to, readout, coach }: { data: AppData; from:
   return (
     <PCard id="wellness" title="Wellness" coach={coach} readout={readout || undefined}
       explain={`Morning readings: dots are single mornings, the line is the 7-day average. Higher HRV and lower resting heart rate than your normal mean recovered.${flagged ? ` ${flagged} day${flagged > 1 ? 's' : ''} you marked as not real measurements ${flagged > 1 ? 'are' : 'is'} left out.` : ''}`}>
-      <Fill initial={330} min={130}>{(h) => {
-        const each = Math.max(46, Math.round((h - 54) / 3));
-        return (<>
+      <Fill initial={wide ? 150 : 264}>{(h) => {
+        // Side by side when the card has two columns to itself; stacked otherwise.
+        const each = wide ? Math.max(90, h - 24) : Math.max(60, Math.round((h - 72) / 3));
+        return (<div class={wide ? 'pmulti three' : undefined}>
           {panel('Heart-rate variability', 'ms', 'var(--aqua)', days.map((d) => d.w?.hrv ?? null), (v) => `${Math.round(v)} ms`, each)}
           {panel('Resting heart rate', 'bpm', 'var(--z5)', days.map((d) => d.w?.restingHr ?? null), (v) => `${Math.round(v)} bpm`, each)}
           {panel('Sleep', 'hours', 'var(--info)', days.map((d) => (d.w?.sleepSeconds ? Math.round((d.w.sleepSeconds / 3600) * 10) / 10 : null)), (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, each)}
-        </>);
+        </div>);
       }}</Fill>
     </PCard>
   );
@@ -888,7 +922,7 @@ function ConsistencyCard({ rides, from, to, readout, coach }: { rides: Ride[]; f
 }
 
 /** The last twelve months: hours, distance, climbing and sessions as four small bar charts, with last year's beside when asked. */
-function TotalsCard({ rides, imperial, readout, coach }: { rides: Ride[]; imperial: boolean; readout: string; coach: ProgressCoachState }) {
+function TotalsCard({ rides, imperial, readout, coach, wide }: { rides: Ride[]; imperial: boolean; readout: string; coach: ProgressCoachState; wide?: boolean }) {
   const [vsLast, setVsLast] = useState(false);
   coach.setExtra('totals', vsLast ? 'the same months a year before outlined' : 'the last twelve months');
   const m24 = monthlyTotals(rides, today(), 24);
@@ -912,10 +946,11 @@ function TotalsCard({ rides, imperial, readout, coach }: { rides: Ride[]; imperi
     <PCard id="totals" title="Totals by month" coach={coach} readout={readout}
       explain={`Every activity, month by month over the last year; the current month is hatched because it is not over yet.${hasPrev ? ' "vs last year" outlines the same month a year before behind each bar.' : ''}`}
       aside={hasPrev ? <button class={`chip sm${vsLast ? ' on' : ''}`} aria-pressed={vsLast} onClick={() => setVsLast(!vsLast)}>vs last year</button> : undefined}>
-      <Fill initial={260} min={120}>{(h) => {
-        const each = Math.max(50, Math.round((h - 52) / 2));
+      <Fill initial={wide ? 150 : 250}>{(h) => {
+        // Four across when the card has two columns to itself; two by two otherwise.
+        const each = wide ? Math.max(90, h - 22) : Math.max(70, Math.round((h - 60) / 2));
         return (
-          <div class="pgrid tight two">
+          <div class={wide ? 'pmulti four' : 'pmulti two'}>
             {small('Hours', 'hours', (x) => Math.round(x.hours * 10) / 10, (v) => `${v} h`, each)}
             {small('Distance', imperial ? 'miles' : 'km', (x) => Math.round(imperial ? x.distanceM / 1609.344 : x.distanceM / 1000), (v) => `${v.toLocaleString()} ${imperial ? 'mi' : 'km'}`, each)}
             {small('Climbing', imperial ? 'feet' : 'metres', (x) => Math.round(imperial ? x.climbingM * 3.28084 : x.climbingM), (v) => `${v.toLocaleString()} ${imperial ? 'ft' : 'm'}`, each)}
@@ -949,7 +984,7 @@ function WeightCard({ data, from, to, imperial, readout, coach }: { data: AppDat
   return (
     <PCard id="weight" title="Weight and power to weight" coach={coach} readout={readout}
       explain="Body weight from your wellness data, and FTP divided by it. FTP is the value on record each day (it changes when you or Intervals.icu update it). Weight changes are never marked good or bad.">
-      <Fill initial={250} min={150}>{(h) => {
+      <Fill initial={230}>{(h) => {
         const each = Math.max(60, Math.round((h - 44) / 2));
         return (<>
           <div class="small" style="margin-bottom:1px"><b>Weight</b> <span class="faint">({unit})</span></div>

@@ -1578,3 +1578,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 /* A ride card's top line (purpose, trainer-only, power or HR, star) wraps inside a narrow card rather than spilling past it. */
 .wcard.ride .wcard-main > .row.between { flex-wrap: wrap; gap: 4px 8px; }
 .wcard.ride .wcard-main > .row.between > .row:last-child { margin-left: auto; }
+/* The folded filters on a phone: the search, and one Filters button, washed when filters are on (10 Nov 2026). */
+.filters-folded { flex-wrap: nowrap; }
+.filters-folded input { flex: 1; min-width: 0; }
+.btn.on-wash { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }

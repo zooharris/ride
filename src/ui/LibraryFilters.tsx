@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
+import { useNarrow } from './Glance';
 import { workoutStats } from '../engine/workout';
 import type { StrengthFocus, Workout } from '../engine/types';
-import { INTENSITY_LABEL, PURPOSE_LABEL, tagsOf, type Intensity, type Purpose } from '../library/tags';
+import { PURPOSE_LABEL, tagsOf, type Intensity, type Purpose } from '../library/tags';
 import { FOCUS_WORDS } from '../library/strengthSessions';
 import { readQuery, useUrlSync } from './router';
 import { libraryKey } from './favorites';
@@ -120,7 +121,8 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
  * open as sheets over another page), it lives only as long as the sheet and never touches the address.
  */
 export function useFilters(opts: { url?: boolean } = {}): [Filters, (next: Partial<Filters>) => void] {
-  const [f, setF] = useState<Filters>(() => (opts.url ? filtersFromQuery(readQuery()) : NO_FILTERS));
+  // "How hard" was taken out of the bar on 10 Nov 2026; an address saved with one opens without it.
+  const [f, setF] = useState<Filters>(() => (opts.url ? { ...filtersFromQuery(readQuery()), intensity: 'all' } : NO_FILTERS));
   useUrlSync(opts.url ? filtersToQuery(f) : {}, opts.url ? ['t'] : []);
   return [f, (next) => setF((prev) => ({ ...prev, ...next }))];
 }
@@ -129,7 +131,7 @@ const SHOW_LABEL: Record<Show, string> = { all: 'All workouts', favorites: 'Favo
 
 /**
  * The bar. For rides it opens with "What do you want to work on?": one chip per purpose. Below
- * it, the search and the menus: length, how hard, body focus (strength), which ones (all,
+ * it, the search and the menus: length, body focus (strength), which ones (all,
  * favourites, recently done), the order, and for rides the outdoor switch.
  */
 export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (next: Partial<Filters>) => void }) {
@@ -144,8 +146,25 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
   }, [kind]);
   const open = (m: typeof menu) => () => setMenu(menu === m ? null : m);
   const close = () => setMenu(null);
+  // On a phone the filters fold behind one button, so the list starts on the first screen (10 Nov 2026).
+  const phone = useNarrow(520);
+  const [shown, setShown] = useState(false);
+  const active = activeCount(f);
+  const search = <input value={f.query} placeholder="Search by name" onInput={(e) => set({ query: (e.target as HTMLInputElement).value })} aria-label="Search the library" />;
+  const clear = narrowed(f) && <button class="btn sm quiet" onClick={() => set({ ...NO_FILTERS, sort: f.sort })}>Clear</button>;
+  if (phone && !shown) return (
+    <div class="filters">
+      <div class="filterbar filters-folded">
+        {search}
+        <button class={`btn sm${active ? ' on-wash' : ''}`} aria-expanded={false} onClick={() => setShown(true)}>Filters{active ? ` · ${active}` : ''} <span aria-hidden="true">▾</span></button>
+        {clear}
+      </div>
+    </div>
+  );
   return (
     <div class="filters">
+      {phone && <div class="row between" style="margin-bottom:6px"><span class="small muted">Filters</span><button class="btn sm quiet" aria-expanded={true} onClick={() => setShown(false)}>Done</button></div>}
+      {phone && <div class="filterbar filters-folded" style="margin-bottom:10px">{search}</div>}
       {kind === 'ride' && (
         <div class="purpose-row">
           <span class="small muted purpose-ask">What do you want to work on?</span>
@@ -156,11 +175,9 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
         </div>
       )}
       <div class="filterbar">
-        <input value={f.query} placeholder="Search by name" onInput={(e) => set({ query: (e.target as HTMLInputElement).value })} aria-label="Search the library" />
+        {!phone && search}
         <Menu label={DURATIONS.find((d) => d[0] === f.duration)![1]} active={f.duration !== 'all'} open={menu === 'length'} onOpen={open('length')} onClose={close} title="Length"
           options={DURATIONS.map(([d, l]) => [d, l] as [string, string])} value={f.duration} onPick={(v) => set({ duration: v as Duration })} />
-        <Menu label={f.intensity === 'all' ? 'Any effort' : INTENSITY_LABEL[f.intensity]} active={f.intensity !== 'all'} open={menu === 'intensity'} onOpen={open('intensity')} onClose={close} title="How hard"
-          options={[['all', 'Any effort'], ...INTENSITIES.map((x) => [x, INTENSITY_LABEL[x]] as [string, string])]} value={f.intensity} onPick={(v) => set({ intensity: v as Intensity | 'all' })} />
         {kind === 'strength' && <Menu label={f.focus === 'all' ? 'Whole body or part' : cap(FOCUS_WORDS[f.focus])} active={f.focus !== 'all'} open={menu === 'focus'} onOpen={open('focus')} onClose={close} title="Body focus"
           options={[['all', 'Any focus'], ...FOCI.map((x) => [x, cap(FOCUS_WORDS[x])] as [string, string])]} value={f.focus} onPick={(v) => set({ focus: v as StrengthFocus | 'all' })} />}
         <Menu label={SHOW_LABEL[f.show]} active={f.show !== 'all'} open={menu === 'show'} onOpen={open('show')} onClose={close} title="Show"
@@ -169,17 +186,20 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
         {kind === 'ride' && <button class={`chip${f.hrOnly ? ' on' : ''}`} aria-pressed={f.hrOnly} onClick={() => set({ hrOnly: !f.hrOnly })}>Works by heart rate</button>}
         <Menu label={f.sort === 'family' ? (f.show === 'recent' ? 'Most recent first' : 'Library order') : f.sort === 'short' ? 'Shortest first' : 'Longest first'} active={false} open={menu === 'sort'} onOpen={open('sort')} onClose={close} title="Order"
           options={[['family', f.show === 'recent' ? 'Most recent first' : 'Library order'], ['short', 'Shortest first'], ['long', 'Longest first']]} value={f.sort} onPick={(v) => set({ sort: v as SortKey })} />
-        {narrowed(f) && <button class="btn sm quiet" onClick={() => set({ ...NO_FILTERS, sort: f.sort })}>Clear</button>}
+        {clear}
       </div>
     </div>
   );
 }
 
+/** How many filters narrow the list, besides the search (which shows on its own), for the folded button's count. */
+const activeCount = (f: Filters) => [f.purpose !== 'all', f.duration !== 'all', f.focus !== 'all', f.show !== 'all', f.outdoor, f.hrOnly].filter(Boolean).length;
+
 /** The empty list, saying why in words that fit the filter that emptied it. */
 export function NothingMatches({ f }: { f: Filters }) {
   if (f.show === 'favorites') return <div class="empty small"><b>No favorites here yet.</b><span class="small muted">Tap the star on any workout to keep it in Favorites.</span></div>;
   if (f.show === 'recent') return <div class="empty small"><b>Nothing done here in the last 90 days.</b><span class="small muted">Workouts you complete from the calendar show up here.</span></div>;
-  return <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length or effort, choose another purpose, or clear the search.</span></div>;
+  return <div class="empty small"><b>Nothing matches.</b><span class="small muted">Widen the length, choose another purpose, or clear the search.</span></div>;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

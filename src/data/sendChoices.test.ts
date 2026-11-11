@@ -140,13 +140,15 @@ describe('the week’s send, tidied (10 Nov 2026)', () => {
 });
 
 describe('the Library on a phone (10 Nov 2026)', () => {
-  it('rides show as rows under the seven folding headings, flat when anything narrows the list', async () => {
-    const src = (await import('../ui/screens/Library.tsx?raw')).default;
-    for (const h of ['Recovery', 'Endurance', 'Tempo and sweet spot', 'Threshold and VO2max', 'Anaerobic and sprints', 'Race and group rides', 'Tests']) expect(src).toContain(`label: '${h}'`);
-    expect(src).toMatch(/flat=\{narrowed\(f\)\}/);
-    expect(src).toMatch(/useNarrow\(520\)/);
+  it('rides show as one list of rows on a phone; the filters fold behind one button; no "How hard"', async () => {
+    const lib = (await import('../ui/screens/Library.tsx?raw')).default;
+    const bar = (await import('../ui/LibraryFilters.tsx?raw')).default;
+    expect(lib).not.toMatch(/HEADINGS|ride-head/);
+    expect(lib).toMatch(/useNarrow\(520\)/);
+    expect(bar).toMatch(/Filters\{active \? ` · \$\{active\}` : ''\}/);
+    expect(bar).not.toMatch(/title="How hard"/);
   });
-  it('every Library ride falls under one of the headings', async () => {
+  it('every Library ride has a ride purpose', async () => {
     const { LIBRARY } = await import('../library/workouts');
     const { tagsOf } = await import('../library/tags');
     const all = ['recovery', 'endurance', 'tempo', 'sweetspot', 'threshold', 'vo2', 'anaerobic', 'mixed', 'test'];

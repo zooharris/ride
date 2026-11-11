@@ -14,9 +14,8 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
-import { applyFilters, FilterBar, narrowed, NothingMatches, useFilters } from '../LibraryFilters';
+import { applyFilters, FilterBar, NothingMatches, useFilters } from '../LibraryFilters';
 import { useNarrow } from '../Glance';
-import type { Purpose } from '../../library/tags';
 import { useMine } from '../favorites';
 import { Star } from '../Star';
 import { playerOffered } from '../../player/platform';
@@ -52,7 +51,7 @@ export function Library({ data }: { data: AppData }) {
         </div>
       </div>
       <FilterBar kind={tab} f={f} set={setF} />
-      {rows ? <RideRows mine={mine} ready={ready} flat={narrowed(f)} empty={<NothingMatches f={f} />} /> : <>
+      {rows ? <RideRows mine={mine} ready={ready} empty={<NothingMatches f={f} />} /> : <>
       {mine.length > 0 && (
         <section style="margin-bottom:22px">
           <h2 style="margin-bottom:10px">My {tab === 'ride' ? 'workouts' : KIND_LABEL[tab].toLowerCase() + ' sessions'}</h2>
@@ -173,52 +172,13 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
 }
 
 
-/** The folding headings on a phone, in order, and the purposes each gathers (10 Nov 2026). */
-const HEADINGS: Array<{ id: string; label: string; purposes: Purpose[] }> = [
-  { id: 'recovery', label: 'Recovery', purposes: ['recovery'] },
-  { id: 'endurance', label: 'Endurance', purposes: ['endurance'] },
-  { id: 'tempo', label: 'Tempo and sweet spot', purposes: ['tempo', 'sweetspot'] },
-  { id: 'threshold', label: 'Threshold and VO2max', purposes: ['threshold', 'vo2'] },
-  { id: 'anaerobic', label: 'Anaerobic and sprints', purposes: ['anaerobic'] },
-  { id: 'mixed', label: 'Race and group rides', purposes: ['mixed'] },
-  { id: 'test', label: 'Tests', purposes: ['test'] },
-];
-
-/** Which headings are open; kept for the session and across visits, so Back from a ride finds them as left. */
-const OPEN_KEY = 'library-open';
-let openNow: Set<string> | undefined;
-function readOpen(): Set<string> {
-  if (openNow) return openNow;
-  try { openNow = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]); } catch { openNow = new Set(); }
-  return openNow;
-}
-function writeOpen(s: Set<string>) { openNow = s; try { localStorage.setItem(OPEN_KEY, JSON.stringify([...s])); } catch { /* private window: kept for this visit only */ } }
-
 /**
- * Rides on a phone (10 Nov 2026): a compact row each, under headings that fold, all closed at first so the whole
- * Library fits on a screen. When anything narrows the list, one flat list of rows in the list's own order.
+ * Rides on a phone (10 Nov 2026): a compact row each, in one list (your own first), in the list's own order. The
+ * filters, folded behind one button, narrow it.
  */
-function RideRows({ mine, ready, flat, empty }: { mine: Workout[]; ready: Workout[]; flat: boolean; empty: preact.ComponentChildren }) {
-  const [open, setOpen] = useState<Set<string>>(readOpen);
-  const toggle = (id: string) => { const n = new Set(open); if (n.has(id)) n.delete(id); else n.add(id); writeOpen(n); setOpen(n); };
+function RideRows({ mine, ready, empty }: { mine: Workout[]; ready: Workout[]; empty: preact.ComponentChildren }) {
   if (!mine.length && !ready.length) return <>{empty}</>;
-  if (flat) return <div class="ride-rows">{[...mine, ...ready].map((w) => <RideRow key={w.id} w={w} />)}</div>;
-  const groups = [
-    ...(mine.length ? [{ id: 'mine', label: 'My rides', list: mine }] : []),
-    ...HEADINGS.map((h) => ({ id: h.id, label: h.label, list: ready.filter((w) => h.purposes.includes(tagsOf(w).purpose)) })),
-  ].filter((g) => g.list.length);
-  return (
-    <div class="ride-rows">
-      {groups.map((g) => (
-        <section key={g.id}>
-          <button class={`ride-head${open.has(g.id) ? ' open' : ''}`} aria-expanded={open.has(g.id)} onClick={() => toggle(g.id)}>
-            <span>{g.label} <span class="faint">· {g.list.length}</span></span><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span>
-          </button>
-          {open.has(g.id) && g.list.map((w) => <RideRow key={w.id} w={w} />)}
-        </section>
-      ))}
-    </div>
-  );
+  return <div class="ride-rows">{[...mine, ...ready].map((w) => <RideRow key={w.id} w={w} />)}</div>;
 }
 
 /** One ride as a row: its shape, name, one line of what it is, and the star. Tapping it opens the ride. */

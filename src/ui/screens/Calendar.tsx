@@ -172,7 +172,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88}  /> : <PlanPicture w={w} />}
-                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{rowWord && <span class="t2 narrow-only">{rowWord}</span>}{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
+                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{rowWord && <span class="t2 row-sent">{rowWord}</span>}{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
                             <StatusPill status={st} word={rowWord} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Move, replace or remove" onClick={() => setChanging(p)}>⋯</button>}

@@ -124,3 +124,17 @@ describe('the calendar row says how a ride went', () => {
     expect(sentRowWord(e, { ...overUnder, kind: 'strength' }, [plan])).toBeUndefined();
   });
 });
+
+describe('the week’s send, tidied (10 Nov 2026)', () => {
+  it('the line under a sent ride’s name is the phone-only kind, not a plain second line', async () => {
+    const src = (await import('../ui/screens/Calendar.tsx?raw')).default;
+    expect(src).toMatch(/class="t2 row-sent"/);
+  });
+  it('the sheet lists only rides with a choice; one such ride gets its own choices; none gets a note', async () => {
+    const src = (await import('../ui/SendButton.tsx?raw')).default;
+    expect(src).toMatch(/choosers\.map\(/);
+    expect(src).toMatch(/Plus \{rest\} other/);
+    expect(src).toMatch(/nothing to choose this week/);
+    expect(src).toMatch(/\{only\.w\.name\} by \{BASIS_WORD\[b\]\}/);
+  });
+});

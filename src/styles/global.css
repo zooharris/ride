@@ -1559,3 +1559,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .send-wrap, .split { max-width: 100%; }
 .split .split-main { white-space: normal; min-width: 0; text-align: left; flex: 0 1 auto; }
 .split .split-arrow { flex: 0 0 auto; }
+/* How a sent ride went: in the pill on a laptop, under the name only where the pill is hidden (10 Nov 2026). */
+.cal-item .t .row-sent { display: none; }
+@media (max-width: 520px) { .cal-item .t .row-sent { display: block; } }

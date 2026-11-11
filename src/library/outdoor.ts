@@ -195,7 +195,7 @@ export const OUTDOOR: Workout[] = [
   group({ id: 'trail-group-150', name: 'Group Ride 2:30', total: 150 }),
 
   // Test
-  trail({ id: 'trail-20min-test', name: '20-Minute FTP Retest', family: 'test', phases: ['any'], bases: BOTH, total: 75,
+  trail({ id: 'trail-20min-test', name: 'FTP Retest, 20 minutes', family: 'test', phases: ['any'], bases: BOTH, total: 75,
     set: { reps: 1, work: 20, lo: 1.0, hi: 1.05, rest: 0, label: 'Test: 20 minutes all-out, steady' },
     purpose: 'After the full warm-up, twenty minutes as hard as you can hold evenly on the longest uninterrupted stretch. New FTP is ninety-five percent of the average power. Pick a still day.',
     physiology: 'FTP estimate.' }),

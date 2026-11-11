@@ -148,7 +148,7 @@ describe('the shopper: a week filled from the Library', () => {
 describe('the sweep (developers only)', () => {
   it('reports what the Library cannot supply: with no VO2max rides, a week that wants VO2 says so', () => {
     const lib = shopLibrary('power', EQ, []);
-    const r = shopWeek(needs({ minutes: { ...zeroMinutes(), easy: 200, vo2: 20 }, hardSessions: 1 }), slots(HOURS, { outdoor: [0, 6] }), ctx({ library: { ...lib, rides: lib.rides.filter((w) => w.family !== 'vo2max') } }));
+    const r = shopWeek(needs({ minutes: { ...zeroMinutes(), easy: 200, vo2: 20 }, hardSessions: 1 }), slots(HOURS, { outdoor: [0, 6] }), ctx({ library: { ...lib, rides: lib.rides.filter((w) => w.family !== 'vo2max' && contribution(w).at.vo2 < 5) /* over-unders and sprint sets give VO2max minutes too (10 Nov) */ } }));
     expect(r.unmet.some((u) => u.kind === 'ride' && u.want === 'vo2')).toBe(true);
   });
   it('runs on a small grid, and the Library meets the thresholds: 97% of weeks with dumbbells and a bench or more, 90% bodyweight only', async () => {

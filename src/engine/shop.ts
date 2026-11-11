@@ -204,6 +204,8 @@ export function shopWeek(needs: WeekNeeds, slotsIn: Slot[], ctx: ShopContext, fi
     const longShaped = (w: Workout) => {
       const c = contribution(w);
       if (c.minutes > s.minutes + 2 || c.minutes < 85 || c.at.easy < c.minutes * 0.55) return false;   // long-shaped: mostly easy
+      // A long ride is not where VO2max or sprint work is placed (10 Nov 2026: durability rides with VO2max late are quality days, chosen as such).
+      if (c.at.vo2 + c.at.anaerobic >= 5) return false;
       return !((needs.label === 'recovery' || needs.label === 'taper') && c.work > 5);
     };
     const all = rides.filter((w) => okBasis(w) && fitsSetting(w, s) && !isOpeners(w) && w.family !== 'test' && !w.trainerOnly && longShaped(w));

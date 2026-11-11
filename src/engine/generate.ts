@@ -95,7 +95,7 @@ export function generateSession(intent: SessionIntent): Workout {
     case 'test': {
       main = [step(5, 1.05, { label: 'Blow out' }), step(10, 0.5, { label: 'Easy' }), step(20, 1.0, { intensityHigh: 1.05, label: 'Test, 20 minutes all-out and even' })];
       mainMinutes = 35;
-      name = '20-Minute FTP Test'; family = 'test';
+      name = 'FTP Test, 20 minutes'; family = 'test';
       break;
     }
     case 'recovery': {

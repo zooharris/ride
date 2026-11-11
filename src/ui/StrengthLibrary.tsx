@@ -6,7 +6,7 @@ import { DOSE_WORDS, EQUIPMENT_WORDS, FOCUS_WORDS, hasNeeds, redose } from '../l
 import { strengthTss } from '../library/sessions';
 import { QUALITY_LABEL } from '../library/strength';
 import { PictureStrip, picturedCount } from './ExercisePictures';
-import { applyFilters, lastDoneWords, NothingMatches, type Filters, type Mine } from './LibraryFilters';
+import { applyFilters, lastDoneWords, NothingMatches, sortIn, type Filters, type Mine } from './LibraryFilters';
 import { libraryKey } from './favorites';
 import { Star } from './Star';
 
@@ -69,15 +69,15 @@ export function StrengthLibrary({ f, mine: mineSets, onAdd, sortLine }: { f: Fil
       {sortLine?.(list.length)}
       {list.length === 0 && <NothingMatches f={f} />}
       {/* Under any sort but Suggested, one flat list in that order (10 Nov 2026). */}
-      {f.sort !== 'suggested' && list.length > 0 && <div class="grid">{list.map((w) => <StrengthCard key={w.id} w={w} have={mine} onAdd={() => onAdd(w)} f={f} done={mineSets} />)}</div>}
-      {f.sort === 'suggested' && QUALITIES.map((q) => byQuality(q).length > 0 && (
+      {sortIn(f, 'strength') !== 'suggested' && list.length > 0 && <div class="grid">{list.map((w) => <StrengthCard key={w.id} w={w} have={mine} onAdd={() => onAdd(w)} f={f} done={mineSets} />)}</div>}
+      {sortIn(f, 'strength') === 'suggested' && QUALITIES.map((q) => byQuality(q).length > 0 && (
         <section key={q} class="str-group">
           <h2>{QUALITY_LABEL[q]}</h2>
           <p class="muted small str-lead">{LEAD[q]}</p>
           <div class="grid">{byQuality(q).map((w) => <StrengthCard key={w.id} w={w} have={mine} onAdd={() => onAdd(w)} />)}</div>
         </section>
       ))}
-      {f.sort === 'suggested' && purpose.length > 0 && (
+      {sortIn(f, 'strength') === 'suggested' && purpose.length > 0 && (
         <section class="str-group">
           <h2>For a purpose</h2>
           <p class="muted small str-lead">Sessions with one job each, for a particular day: a hotel room, a short trunk session, the aero position. Their sets and reps are their own; plans don’t schedule these, so add one when the day calls for it.</p>

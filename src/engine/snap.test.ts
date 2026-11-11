@@ -94,8 +94,8 @@ const req = (over: Partial<PlanRequest> = {}): PlanRequest => ({
 });
 
 describe('Batch 6 B: plans built from the Library', () => {
-  it('the Library has 148 rides (three short hard ones added 30 Oct 2026, Breathing Steps 7 Nov, 52 more 9 Nov), ids and names unique, and every family has a ride that works by heart rate', () => {
-    expect(LIBRARY.filter((w) => w.kind === 'ride')).toHaveLength(148);
+  it('the Library has 209 rides (three short hard ones added 30 Oct 2026, Breathing Steps 7 Nov, 52 more 9 Nov, 61 more 10 Nov), ids and names unique, and every family has a ride that works by heart rate', () => {
+    expect(LIBRARY.filter((w) => w.kind === 'ride')).toHaveLength(209);
     expect(new Set(LIBRARY.map((w) => w.id)).size).toBe(LIBRARY.length);
     expect(new Set(LIBRARY.map((w) => w.name)).size).toBe(LIBRARY.length);
     for (const f of ['endurance', 'recovery', 'tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test']) expect(LIBRARY.some((w) => w.family === f && w.bases.includes('hr')), f).toBe(true);

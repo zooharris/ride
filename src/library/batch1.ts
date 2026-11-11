@@ -12,29 +12,29 @@ import { withTags, type WorkoutTags } from './tags';
  * signature rides. Intensities are shares of FTP, as everywhere in the Library.
  */
 
-type Cue = { at: number; text: string; rep?: number | 'last' };
-type Opts = { label?: string; cadence?: number; cues?: Cue[] };
-const m = (minutes: number) => Math.round(minutes * 60);
-const st = (minutes: number, lo: number, hi?: number, o: Opts = {}): WorkoutStep =>
+export type Cue = { at: number; text: string; rep?: number | 'last' };
+export type Opts = { label?: string; cadence?: number; cues?: Cue[] };
+export const m = (minutes: number) => Math.round(minutes * 60);
+export const st = (minutes: number, lo: number, hi?: number, o: Opts = {}): WorkoutStep =>
   ({ kind: 'step', seconds: m(minutes), intensity: lo, ...(hi != null ? { intensityHigh: hi } : {}), ...o });
-const z2 = (minutes: number, o: Opts = {}) => st(minutes, 0.6, 0.72, { label: 'Zone 2', ...o });
-const easy = (minutes: number, o: Opts = {}) => st(minutes, 0.5, undefined, { label: 'Easy', ...o });
-const warm = (minutes: number, cues?: Cue[]) => st(minutes, 0.5, 0.65, { label: 'Warm up', cues: cues ?? [{ at: 0, text: 'Ease in. Let the legs find their rhythm before anything is asked of them.' }] });
-const cool = (minutes: number, text = 'The work is done. Spin it out easy.') => st(minutes, 0.5, undefined, { label: 'Cool down', cues: [{ at: 0, text }] });
-const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
+export const z2 = (minutes: number, o: Opts = {}) => st(minutes, 0.6, 0.72, { label: 'Zone 2', ...o });
+export const easy = (minutes: number, o: Opts = {}) => st(minutes, 0.5, undefined, { label: 'Easy', ...o });
+export const warm = (minutes: number, cues?: Cue[]) => st(minutes, 0.5, 0.65, { label: 'Warm up', cues: cues ?? [{ at: 0, text: 'Ease in. Let the legs find their rhythm before anything is asked of them.' }] });
+export const cool = (minutes: number, text = 'The work is done. Spin it out easy.') => st(minutes, 0.5, undefined, { label: 'Cool down', cues: [{ at: 0, text }] });
+export const rep = (times: number, label: string, ...steps: WorkoutStep[]): WorkoutBlock => ({ kind: 'repeat', times, label, steps });
 /** A line for the last minute of a step, and one for the last repetition of a set. */
-const lastMinute = (text: string): Cue => ({ at: -60, text });
-const lastRep = (text: string, at = 0): Cue => ({ at, text, rep: 'last' });
+export const lastMinute = (text: string): Cue => ({ at: -60, text });
+export const lastRep = (text: string, at = 0): Cue => ({ at, text, rep: 'last' });
 
-const BOTH: Basis[] = ['power', 'hr'];
-const POWER: Basis[] = ['power'];
+export const BOTH: Basis[] = ['power', 'hr'];
+export const POWER: Basis[] = ['power'];
 
 interface Def {
   id: string; name: string; subtitle: string; family: Family; bases: Basis[];
   setting?: Workout['setting']; purpose: string; physiology: string; blocks: WorkoutBlock[];
   tag?: Partial<WorkoutTags>;
 }
-const ride = (d: Def): Workout => {
+export const ride = (d: Def): Workout => {
   const w: Workout = { id: d.id, name: d.name, subtitle: d.subtitle, family: d.family, bases: d.bases, setting: d.setting ?? 'any', purpose: d.purpose, physiology: d.physiology, blocks: d.blocks, phases: ['any'], source: 'library', kind: 'ride' };
   return withTags(relaxFloors(w), d.tag ?? {});
 };

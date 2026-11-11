@@ -44,6 +44,11 @@ export const SORT_WAYS: Record<SortKey, [string, string]> = {
   intensity: ['easiest first', 'hardest first'], exercises: ['fewest first', 'most first'], last: ['longest ago first', 'most recent first'],
 };
 export const sortsFor = (kind: string): SortKey[] => SORTS[kind] ?? SORTS.ride;
+/** The sort a list opens on when the rider hasn't chosen one (10 Nov 2026): rides A to Z, everything else Suggested; Recently done, most recent first. */
+export const defaultSort = (kind: string): SortKey => (kind === 'ride' ? 'name' : 'suggested');
+/** The sort actually in force: the rider's choice when this kind offers it, else the kind's default. */
+export const sortIn = (f: Pick<Filters, 'sort'> & Partial<Pick<Filters, 'show'>>, kind: string): SortKey =>
+  f.sort !== 'default' && sortsFor(kind).includes(f.sort) ? f.sort : f.show === 'recent' ? 'suggested' : defaultSort(kind);   // Recently done opens most recent first
 export type Show = 'all' | 'favorites' | 'recent';
 export interface Filters {
   query: string;
@@ -57,11 +62,12 @@ export interface Filters {
   focus: StrengthFocus | 'all';
   show: Show;
   duration: Duration;
-  sort: SortKey;
+  /** 'default': the kind's own default (rides A to Z). */
+  sort: SortKey | 'default';
   /** The sort's direction flipped (the arrow). */
   desc: boolean;
 }
-export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'suggested', desc: false };
+export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', show: 'all', duration: 'all', sort: 'default', desc: false };
 
 /** What the rider has starred, and when each workout was last done (Library id → YYYY-MM-DD). */
 /** `last`: when each workout was last done, at any time (for the Last done sort); `recent` is the last 90 days. */
@@ -108,8 +114,9 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
     return !q || `${w.name} ${w.subtitle ?? ''} ${PURPOSE_LABEL[t.purpose]} ${w.purpose}`.toLowerCase().includes(q);
   });
   // A sort the kind doesn't offer falls back to Suggested; ties keep the Suggested order (the sort is stable).
-  if (f.sort !== 'suggested' && sortsFor(kind).includes(f.sort)) {
-    const v = new Map(kept.map((w) => [w, sortValue(w, f.sort, mine)]));
+  const key = sortIn(f, kind);
+  if (key !== 'suggested') {
+    const v = new Map(kept.map((w) => [w, sortValue(w, key, mine)]));
     const dir = f.desc ? -1 : 1;
     return [...kept].sort((a, b) => { const x = v.get(a)!, y = v.get(b)!; return dir * (typeof x === 'number' ? x - (y as number) : (x as string).localeCompare(y as string)); });
   }
@@ -131,7 +138,7 @@ export function filtersToQuery(f: Filters): Record<string, string | undefined> {
     focus: f.focus !== 'all' ? f.focus : undefined,
     show: f.show !== 'all' ? f.show : undefined,
     len: f.duration !== 'all' ? f.duration : undefined,
-    sort: f.sort !== 'suggested' ? f.sort : undefined,
+    sort: f.sort !== 'default' ? f.sort : undefined,
     dir: f.desc ? 'd' : undefined,
   };
 }
@@ -153,7 +160,7 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
     duration: DURATIONS.find((d) => d[0] === q.get('len'))?.[0] ?? 'all',
     // An address saved with the old order (Shortest first, Longest first) opens as Length, the same way round.
     ...(q.get('sort') === 'short' ? { sort: 'length' as SortKey, desc: false } : q.get('sort') === 'long' ? { sort: 'length' as SortKey, desc: true }
-      : { sort: (Object.keys(SORT_LABEL) as SortKey[]).find((x) => x === q.get('sort')) ?? 'suggested', desc: q.get('dir') === 'd' }),
+      : { sort: (Object.keys(SORT_LABEL) as SortKey[]).find((x) => x === q.get('sort')) ?? 'default', desc: q.get('dir') === 'd' }),
   };
 }
 
@@ -183,7 +190,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
     const clear: Partial<Filters> = {};
     if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor || f.hrOnly)) Object.assign(clear, { purpose: 'all', outdoor: false, hrOnly: false });
     if (kind !== 'strength' && f.focus !== 'all') clear.focus = 'all';
-    if (!sortsFor(kind).includes(f.sort)) Object.assign(clear, { sort: 'suggested', desc: false });
+    if (f.sort !== 'default' && !sortsFor(kind).includes(f.sort)) Object.assign(clear, { sort: 'default', desc: false });
     if (Object.keys(clear).length) set(clear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
@@ -270,7 +277,7 @@ function Menu({ label, active, open, onOpen, onClose, title, options, value, onP
 export function SortLine({ kind, f, set, count, noun }: { kind: string; f: Filters; set: (next: Partial<Filters>) => void; count: number; noun: [string, string] }) {
   const [open, setOpen] = useState(false);
   const sorts = sortsFor(kind);
-  const key = sorts.includes(f.sort) ? f.sort : 'suggested';
+  const key = sortIn(f, kind);
   const way = SORT_WAYS[key][f.desc ? 1 : 0];
   return (
     <div class="sort-line">

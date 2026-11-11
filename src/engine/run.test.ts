@@ -91,7 +91,7 @@ describe('runs: the planner', () => {
         expect(QUALITY.includes(next?.type ?? '')).toBe(false);
         const before = w.sessions.find((s) => s.kind === 'ride' && s.date === addDays(r.date, -1));
         expect(before?.type).not.toBe('long');
-        expect(r.workout.name).toMatch(/easy run|long run|^Strides/);   // the planner never places tempo or hills
+        expect(r.workout.name).toMatch(/easy run|long run|^Strides|^Run-walk/);   // the planner never places tempo or hills
       }
     }
     expect(seen).toBeGreaterThan(0);
@@ -109,7 +109,9 @@ describe('runs: the planner', () => {
     const off = sessions(week({ may: { strength: true, walk: true, run: false, mobility: true } }));
     const on = sessions(week({ may: { strength: true, walk: true, run: true, mobility: true } }));
     const runDates = new Set(on.flatMap((w) => w.sessions).filter((s) => s.kind === 'run').map((s) => s.date));
-    const rest = (ws: typeof on) => ws.flatMap((w) => w.sessions).filter((s) => !runDates.has(s.date) && s.kind !== 'ride').map((s) => `${s.date}|${s.kind}|${s.workout.name}`).join(';');
+    const rest = (ws: typeof on) => ws.flatMap((w) => w.sessions).filter((s) => !runDates.has(s.date) && s.kind !== 'ride')
+      // Which walk a day gets can shift (variety counts the walks the runs replaced); the day and its kind do not.
+      .map((s) => `${s.date}|${s.kind}|${s.kind === 'walk' ? '' : s.workout.name}`).join(';');
     expect(rest(on)).toBe(rest(off));
   });
   it('strength off: none in any week; never strength on Saturday: none on Saturday, the count kept elsewhere', () => {

@@ -5,6 +5,8 @@ import { INDOOR } from './indoor';
 import { RIDE_NAMES } from './names';
 import { withTags } from './tags';
 import { BATCH1 } from './batch1';
+import { BATCH2 } from './batch2';
+import { withAutoCues } from './autoCues';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -157,11 +159,11 @@ const CORE: Workout[] = [
     purpose: 'Nine steady steps of five minutes, each a little harder, from easy to just under threshold, with a breathing strap on. Antogo gathers your breathing at each effort to find your first breathing threshold, which a ramp often can’t show. Ride it twice on different days and Settings will show what it found. If the last two steps are too much on the day, end the ride after the seventh.',
     physiology: 'Breathing at nine steady efforts for the first breathing threshold (VT1); an easy aerobic ride in itself.',
     blocks: [step(10, 0.5, { label: 'Warm up' }), step(5, 0.53, { label: 'Step 1' }), step(5, 0.58, { label: 'Step 2' }), step(5, 0.63, { label: 'Step 3' }), step(5, 0.68, { label: 'Step 4' }), step(5, 0.73, { label: 'Step 5' }), step(5, 0.78, { label: 'Step 6' }), step(5, 0.83, { label: 'Step 7' }), step(5, 0.88, { label: 'Step 8' }), step(5, 0.93, { label: 'Step 9' }), cool(5)] }),
-  lib({ id: 'lib-20min', name: '20-Minute FTP Test', family: 'test', phases: ['any'], bases: ['power', 'hr'], test: '20min',
+  lib({ id: 'lib-20min', name: 'FTP Test, 20 minutes', family: 'test', phases: ['any'], bases: ['power', 'hr'], test: '20min',
     purpose: 'A thorough warm-up, then twenty minutes as hard as you can hold evenly. FTP is ninety-five percent of the result; on heart rate, your average over the last fifteen minutes is a good LTHR. Harder than the ramp test, closer to the truth for steady-state riders.',
     physiology: 'FTP and LTHR estimate.',
     blocks: [warm(15), step(5, 1.05, { label: 'Blow out' }), step(10, 0.5), step(20, 1.0, { label: 'Test' }), cool(10)] }),
-  lib({ id: 'lib-lthr-30', name: '30-Minute LTHR Test', family: 'test', phases: ['any'], bases: ['hr'],
+  lib({ id: 'lib-lthr-30', name: 'LTHR Test, 30 minutes', family: 'test', phases: ['any'], bases: ['hr'],
     purpose: 'Thirty minutes at the hardest pace you can hold evenly, alone. Press lap at ten minutes: the average heart rate of the final twenty minutes is your lactate threshold heart rate. The test to run when you are training by heart rate.',
     physiology: 'LTHR estimate (Friel protocol).',
     blocks: [warm(15), step(30, 1.0, { label: 'Test, lap at 10 min' }), cool(10)] }),
@@ -212,11 +214,11 @@ const CORE: Workout[] = [
     blocks: [warm(10), rep(5, 'Anaerobic', step(2, 1.2, { intensityHigh: 1.3 }), step(3, 0.5, { label: 'Easy' })), cool(10)] }),
 ];
 
-/** The whole library: core sessions, trail-shaped outdoor rides, and indoor short forms. */
+/** The whole library: core sessions, trail-shaped outdoor rides, indoor short forms (every step given a cue), and the two batches of 9–10 Nov. */
 export const LIBRARY: Workout[] = [...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
-  return withTags(place ? { ...w, name: place, subtitle: w.name } : w);
-}), ...BATCH1];
+  return withAutoCues(withTags(place ? { ...w, name: place, subtitle: w.name } : w));
+}), ...BATCH1, ...BATCH2];
 
 export function libraryById(id: string): Workout | undefined {
   return LIBRARY.find((w) => w.id === id);

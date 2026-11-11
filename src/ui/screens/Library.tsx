@@ -14,7 +14,7 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { GLOSSARY } from '../glossary';
 import { PictureStrip, picturedCount } from '../ExercisePictures';
-import { applyFilters, FilterBar, lastDoneWords, NothingMatches, SortLine, useFilters, type Filters, type Mine } from '../LibraryFilters';
+import { applyFilters, FilterBar, lastDoneWords, NothingMatches, SortLine, sortIn, useFilters, type Filters, type Mine } from '../LibraryFilters';
 import { libraryKey } from '../favorites';
 import { useNarrow } from '../Glance';
 import { useMine } from '../favorites';
@@ -95,7 +95,7 @@ export function Library({ data }: { data: AppData }) {
  * phone, tapping the card opens the workout's page, which has them all.
  */
 function Card({ w, basis, profile, onPick, f, have }: { w: Workout; basis: 'power' | 'hr'; profile?: Profile; onPick: () => void; f: Filters; have: Mine }) {
-  const hi = (k: Filters['sort']) => (f.sort === k ? ' sorted-by' : '');
+  const hi = (k: Filters['sort']) => (sortIn(f, 'ride') === k ? ' sorted-by' : '');
   const s = workoutStats(w.blocks);
   const t = tagsOf(w);
   const [menu, setMenu] = useState(false);
@@ -114,7 +114,7 @@ function Card({ w, basis, profile, onPick, f, have }: { w: Workout; basis: 'powe
         <div class="profile"><WorkoutProfile blocks={w.blocks} height={56} targets={profile ? { profile, basis } : undefined} /></div>
         <h3>{w.name}</h3>
         <p class="wc-sub small">{w.subtitle ?? '\u00a0'}</p>
-        <p class="wc-stats"><span><b class={`num${hi('length')}`}>{clock(s.seconds)}</b> time</span><span><b class={`num${hi('tss')}`}>{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class={`num${hi('intensity')}`}>{s.intensityFactor.toFixed(2)}</b> intensity</span>{f.sort === 'last' && <span class="sorted-by">done {lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}</span>}{t.outdoor === 'indoor' && !w.trainerOnly ? <span>indoors only</span> : w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
+        <p class="wc-stats"><span><b class={`num${hi('length')}`}>{clock(s.seconds)}</b> time</span><span><b class={`num${hi('tss')}`}>{s.tss}</b> TSS</span><span title={`Intensity: ${GLOSSARY.intensity.short}`}><b class={`num${hi('intensity')}`}>{s.intensityFactor.toFixed(2)}</b> intensity</span>{sortIn(f, 'ride') === 'last' && <span class="sorted-by">done {lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}</span>}{t.outdoor === 'indoor' && !w.trainerOnly ? <span>indoors only</span> : w.setting !== 'any' && <span>{w.setting === 'outdoor' ? 'outdoors' : 'indoor'}</span>}</p>
       </a>
       <div class="wcard-actions">
         <div class="menu">
@@ -184,7 +184,7 @@ export function AddToDate({ w, basis, onClose }: { w: Workout; basis: 'power' | 
 function RideRows({ mine, ready, empty, f, have }: { mine: Workout[]; ready: Workout[]; empty: preact.ComponentChildren; f: Filters; have: Mine }) {
   if (!mine.length && !ready.length) return <>{empty}</>;
   // Your own first under Suggested; under any other sort, one list in that order.
-  const list = f.sort === 'suggested' ? [...mine, ...ready] : applyFilters([...mine, ...ready], { ...f, query: '', purpose: 'all', outdoor: false, hrOnly: false, duration: 'all', show: 'all' }, 'ride', have);
+  const list = sortIn(f, 'ride') === 'suggested' ? [...mine, ...ready] : applyFilters([...mine, ...ready], { ...f, query: '', purpose: 'all', outdoor: false, hrOnly: false, duration: 'all', show: 'all' }, 'ride', have);
   return <div class="ride-rows">{list.map((w) => <RideRow key={w.id} w={w} f={f} have={have} />)}</div>;
 }
 
@@ -196,7 +196,8 @@ function RideRow({ w, f, have }: { w: Workout; f: Filters; have: Mine }) {
   const mins = Math.round(s.seconds / 60);
   const length = mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : `${mins} min`;
   // It leads with what the list is sorted by, in brighter text (10 Nov 2026); the length follows when it isn't the lead.
-  const lead = f.sort === 'tss' ? `${s.tss} TSS` : f.sort === 'intensity' ? `${s.intensityFactor.toFixed(2)} intensity` : f.sort === 'last' ? `done ${lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}` : length;
+  const by = sortIn(f, 'ride');
+  const lead = by === 'tss' ? `${s.tss} TSS` : by === 'intensity' ? `${s.intensityFactor.toFixed(2)} intensity` : by === 'last' ? `done ${lastDoneWords((have.last ?? have.recent).get(libraryKey(w)))}` : length;
   const rest = [lead === length ? '' : length, oneWay, w.subtitle ?? PURPOSE_LABEL[tagsOf(w).purpose]].filter(Boolean).join(' · ');
   return (
     <div class="ride-row">

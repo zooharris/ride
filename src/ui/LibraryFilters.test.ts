@@ -28,7 +28,12 @@ describe('the shared filters', () => {
     expect(applyFilters(rides, { ...NO_FILTERS, query: 'threshold' }, 'ride').length).toBeGreaterThan(0);
   });
   it('no filters: everything, in the given order', () => {
-    expect(applyFilters(rides, NO_FILTERS, 'ride')).toEqual(rides);
+    expect(applyFilters(rides, { ...NO_FILTERS, sort: 'suggested' }, 'ride')).toEqual(rides);
+  });
+  it('rides open A to Z, and the tests are not first (10 Nov 2026)', () => {
+    const out = applyFilters(rides, NO_FILTERS, 'ride');
+    expect(out.map((w) => w.name.toLocaleLowerCase())).toEqual(rides.map((w) => w.name.toLocaleLowerCase()).sort((a, b) => a.localeCompare(b)));
+    expect(out.slice(0, 5).some((w) => tagsOf(w).purpose === 'test')).toBe(false);
   });
 });
 

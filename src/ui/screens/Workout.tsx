@@ -1,3 +1,4 @@
+import { canSendByBreath, shapedForSend } from '../../library/breathSend';
 import { breathZones } from '../../engine/zones';
 import { footLthr } from '../../engine/zones';
 import { useEffect, useState } from 'preact/hooks';
@@ -26,7 +27,7 @@ import { Empty } from '../PageHead';
 import { Star } from '../Star';
 import { outdoorVersion, PURPOSE_LABEL, tagsOf } from '../../library/tags';
 import { basisFor, hasTwoVersions, onGarmin, sendDefault, sendWords, versionFor, type PlanDays } from '../../library/sendWhere';
-import { SendButton } from '../SendButton';
+import { SendButton, useBreathTable } from '../SendButton';
 import { LIBRARY } from '../../library/workouts';
 import { StepsTable } from '../StepsTable';
 import { lastDone, setsText, weightText } from '../../engine/record';
@@ -52,6 +53,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
   // The plans' outdoor weekdays, for where a ride with an outdoor version will be ridden (10 Nov 2026).
   const [plans, setPlans] = useState<PlanDays[]>([]);
+  const breathTable = useBreathTable();
   useEffect(() => { void getPlans().then(setPlans).catch(() => {}); }, [data.planned]);
   if (!w) return <Empty title="That workout is not in the library." action={<a class="btn sm" href="#/library">Open the library</a>}>It may have been deleted from My Workouts on this or another device.</Empty>;
   const from = params.get('from') ?? 'library';
@@ -128,7 +130,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
-        {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it is on your Garmin' : 'As Send to Garmin sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{renderIntervalsText(versionFor(w, c.where ?? 'trainer').workout, c.basis)}</pre></>; })()}
+        {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans, !!profile.preferBreath && canSendByBreath(w, profile, breathTable)); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it is on your Garmin' : 'As Send to Garmin sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{(() => { const x = shapedForSend(w, c.basis, profile, breathTable); return renderIntervalsText(versionFor(x.workout, c.where ?? 'trainer').workout, x.targets); })()}</pre></>; })()}
       </section>}
       {changeSheet}
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}

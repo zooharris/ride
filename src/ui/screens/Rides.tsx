@@ -1,3 +1,5 @@
+import { breathPowerVersion } from '../../library/breathSend';
+import { useBreathTable } from '../SendButton';
 import { BREATH_ZONE_NAMES, breathProvisional, breathZoneOf, breathZones, footHrZones, footLthr, rideHrZones, ridePowerZones } from '../../engine/zones';
 import { zoneTime } from '../../engine/reads';
 import { breathNumbers } from '../../engine/breathNumbers';
@@ -39,7 +41,7 @@ import { LIBRARY } from '../../library/workouts';
 import { patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
 import { bestAverage, breathFields, rampBreathingFromStreams, rampResult, resultFromStreams, testResultKey, TEST_RESULT_VERSION, withActions, type RampContext, type TestResult } from '../../player/tests';
-import { buildTimeline } from '../../player/timeline';
+import { breathBand, buildTimeline } from '../../player/timeline';
 import { rampContextFor } from '../maxHrSeen';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
@@ -204,7 +206,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const testKind = w?.test ?? (r.sport === 'ride' ? LIBRARY.find((x) => x.test && x.name === r.name)?.test : undefined);
   // The steps take their laps when the laps line up with them (31 Oct); otherwise the clock from the start.
   const laps: RideLap[] | undefined = playerLaps ?? streams?.intervals;
-  const analysis: Analysis | undefined = streams && w && w.kind === 'ride' ? analyseRide(w, profile, basis, streams.time, streams.watts, streams.heartrate, laps) : undefined;
+  // Step 6 (11 Nov 2026): a ride sent "by breathing" went to the Garmin as power from the learned watts; without breathing
+  // in the recording it is judged against what the Garmin had. With breathing, the breathing table below judges it.
+  const breathTable = useBreathTable();
+  const sentBreath = !!p?.sentBreath && !!w && breathZones(profile) != null;
+  const judgedAs = w && sentBreath ? breathPowerVersion(w, profile, breathTable) : w;
+  const analysis: Analysis | undefined = streams && judgedAs && judgedAs.kind === 'ride' ? analyseRide(judgedAs, profile, basis, streams.time, streams.watts, streams.heartrate, laps) : undefined;
   // Planned targets for both charts: the ride's own basis as analysed, the other converted (watts to the matching heart rate, and back).
   const targets = streams && w && w.kind === 'ride' ? {
     watts: streams.watts?.length ? (basis === 'power' ? analysis : analyseRide(w, profile, 'power', streams.time, streams.watts, streams.heartrate, laps)) : undefined,
@@ -221,6 +228,20 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     if (!zones || !shown?.ve?.length) return undefined;
     return zoneTime(shown.time, shown.ve.map((v) => (v != null && v > 0 ? v : NaN)), 1, (v) => breathZoneOf(v, zones) ?? 1, 5);
   }, [shown, profile]);
+  // Step 5/6 (11 Nov 2026): a ride ridden or sent by breathing, with breathing in its recording, is judged by its breathing.
+  const byBreathSteps = useMemo(() => {
+    if (!(p?.rodeByBreath || p?.sentBreath) || !w || w.kind !== 'ride' || !analysis || !shown?.ve?.length || !breathZones(profile)) return undefined;
+    const tl = buildTimeline(w, profile);
+    const rows = analysis.steps.filter((s) => s.work).map((s) => {
+      const b = tl[s.index] ? breathBand(tl[s.index], profile) : undefined;
+      const vs: number[] = [];
+      for (let i = 0; i < shown.time.length; i++) { const t = shown.time[i]; const v = shown.ve![i]; if (t >= s.startSec && t < s.endSec && v != null && v > 0) vs.push(v); }
+      const ridden = vs.length ? vs.reduce((x, y) => x + y, 0) / vs.length : undefined;
+      const low = tl[s.index]?.noFloor ? 0 : b?.low ?? 0, high = b?.high ?? 0;
+      return { index: s.index, label: s.label, seconds: s.endSec - s.startSec, watts: s.actual, text: b?.text ?? '', low, ridden, hit: ridden != null && ridden >= low && ridden <= high };
+    }).filter((x) => x.text);
+    return rows.length ? rows : undefined;
+  }, [p?.rodeByBreath, p?.sentBreath, w, analysis, shown, profile]);
   const breathStop = shown?.frozenAt != null ? { at: shown.frozenAt, garmin: !data.edits.find((e) => e.id === r.id)?.breathSensor } : undefined;
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
@@ -342,7 +363,24 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       )}
 
       {/* Part A9: a test's steps are an open-ended ramp or a single effort, not targets to meet; its results card says what it showed. */}
-      {analysis && !testKind && analysis.steps.some((s) => s.work) && (
+      {byBreathSteps && (
+        <section class="section">
+          <h2>Intervals against plan, by breathing</h2>
+          <table class="steps" style="margin-top:8px">
+            <tr><td colSpan={2} class="faint small">Step</td><td class="r faint small">Target</td><td class="r faint small">Ridden</td></tr>
+            {byBreathSteps.map((s) => (
+              <tr key={s.index}>
+                <td><span class="z" style={`background:${s.hit ? 'var(--good)' : s.ridden != null && s.ridden < s.low ? 'var(--warn)' : 'var(--z5)'}`} /></td>
+                <td>{s.label}<div class="faint small">{clock(s.seconds)}{s.watts ? ` · ${s.watts} W` : ''}</div></td>
+                <td class="r num">{s.text}</td>
+                <td class="r num" style={`color:${s.hit ? 'var(--good)' : 'var(--ink)'}`}>{s.ridden != null ? `${Math.round(s.ridden)} L/min` : '–'}</td>
+              </tr>
+            ))}
+          </table>
+          <p class="faint small" style="margin-top:8px">Average ventilation through each effort against its breathing range{breathProvisional(profile) ? ' (provisional zones)' : ''}. Green: in range. Amber: under. Orange: over.{p?.rodeByBreath ? ' Ridden by breathing in the ride player.' : ' Sent to your Garmin by breathing.'}</p>
+        </section>
+      )}
+      {analysis && !testKind && !byBreathSteps && analysis.steps.some((s) => s.work) && (
         <section class="section">
           <h2>Intervals against plan</h2>
           <table class="steps" style="margin-top:8px">

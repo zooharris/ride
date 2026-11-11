@@ -1,3 +1,5 @@
+import { BREATH_TABLE, type BreathPowerTable } from '../player/breathControl';
+import { breathPowerVersion, canSendByBreath, withBreathText } from '../library/breathSend';
 import { basisFor, defaultWhere, hasTwoVersions, onGarmin, sendDefault, type SendChoice } from '../library/sendWhere';
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
@@ -446,17 +448,27 @@ export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w:
   // What goes (10 Nov 2026 evening): chosen when sent. Without a choice, a sent entry goes again as the Garmin has it
   // (a re-send after new numbers); an unsent one with the rider's default targets and the plan's version for that day.
   const plans = await getPlans();
-  const preferred = (await db.profile.get('me'))?.basis ?? p.basis;
-  const base = p.status === 'sent' ? onGarmin(p, w, plans) : sendDefault(p, w, preferred, plans);
+  const me = await db.profile.get('me');
+  const preferred = me?.basis ?? p.basis;
+  // Step 6 (11 Nov 2026): "by breathing" goes only where the learned watts cover the ride; otherwise the usual way.
+  const full = (profile && 'ftp' in profile && profile.ftp ? profile : me) as Profile | undefined;
+  const table = await getSetting<BreathPowerTable>(BREATH_TABLE, {});
+  const breathOk = canSendByBreath(w, full, table);
+  const base = p.status === 'sent' ? onGarmin(p, w, plans) : sendDefault(p, w, preferred, plans, !!me?.preferBreath && breathOk);
   const two = hasTwoVersions(w);
+  const asked = choice?.basis ?? base.basis;
   const sent: SendChoice = {
-    basis: choice?.basis && w.bases.includes(choice.basis) ? choice.basis : basisFor(w, base.basis),
+    basis: asked === 'breath' ? (breathOk ? 'breath' : basisFor(w, preferred)) : w.bases.includes(asked) ? asked : basisFor(w, asked),
     where: two ? (choice?.where ?? base.where ?? defaultWhere(p, w, plans)) : undefined,
   };
   if (p.icuEventId) { try { await deleteEvent(c, p.icuEventId); } catch { /* already gone: harmless */ } }
-  const id = await sendWorkout(c, w, p.date, sent.basis, profile, sent.where);
+  const byBreath = sent.basis === 'breath';
+  const targets: Basis = byBreath ? 'power' : (sent.basis as Basis);
+  // Every step carries its breathing target in its text for a rider with breathing zones (Step 6), whichever way it goes.
+  const shaped = withBreathText(byBreath && full ? breathPowerVersion(w, full, table) : w, full);
+  const id = await sendWorkout(c, shaped, p.date, targets, profile ?? full, sent.where);
   // The one record kept: how it went. The entry's own setting follows it, so a ride from the Garmin is judged by its targets.
-  await db.planned.update(p.id, { status: 'sent', icuEventId: id, basis: sent.basis, sentBasis: sent.basis, where: sent.where, sentWhere: sent.where });
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id, basis: targets, sentBasis: targets, sentBreath: byBreath || undefined, where: sent.where, sentWhere: sent.where });
   return { id, version: two ? (sent.where === 'outdoor' ? 'outdoor' : 'as written') : undefined, sent };
 }
 

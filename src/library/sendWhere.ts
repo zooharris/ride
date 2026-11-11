@@ -47,14 +47,20 @@ export function versionFor(w: Workout, where: Where): { workout: Workout; note?:
  * How a ride goes to the Garmin is chosen when it is sent (10 Nov 2026 evening brief): targets (power or heart rate)
  * and, for a ride with two versions, the outdoor version or as written. Nothing about it is set on the calendar.
  */
-export interface SendChoice { basis: Basis; where?: Where }
+export interface SendChoice { basis: SendBasis; where?: Where }
+
+/**
+ * Step 6 (11 Nov 2026): a ride can also go "by breathing": power targets from the watts the rider's breathing zones
+ * match (learned riding by breathing on the trainer). The Garmin itself gets power.
+ */
+export type SendBasis = Basis | 'breath';
 
 /** The targets a ride can take, given the rider's preference: theirs when the ride works that way, else the one it has. */
 export const basisFor = (w: Pick<Workout, 'bases'>, preferred: Basis): Basis => (w.bases.includes(preferred) ? preferred : w.bases[0]);
 
 /** What the main Send button sends: the rider's default targets, and the plan's version for that day. */
-export function sendDefault(entry: Pick<PlannedWorkout, 'date' | 'planId'>, w: Workout, preferred: Basis, plans: PlanDays[]): SendChoice {
-  return { basis: basisFor(w, preferred), where: hasTwoVersions(w) ? defaultWhere(entry, w, plans) : undefined };
+export function sendDefault(entry: Pick<PlannedWorkout, 'date' | 'planId'>, w: Workout, preferred: Basis, plans: PlanDays[], byBreath = false): SendChoice {
+  return { basis: byBreath ? 'breath' : basisFor(w, preferred), where: hasTwoVersions(w) ? defaultWhere(entry, w, plans) : undefined };
 }
 
 /**
@@ -62,11 +68,11 @@ export function sendDefault(entry: Pick<PlannedWorkout, 'date' | 'planId'>, w: W
  * to what its page would then have shown.
  */
 export function onGarmin(entry: PlannedWorkout, w: Workout, plans: PlanDays[]): SendChoice {
-  return { basis: entry.sentBasis ?? entry.basis, where: hasTwoVersions(w) ? (entry.sentWhere ?? whereFor(entry, w, plans)) : undefined };
+  return { basis: entry.sentBreath ? 'breath' : entry.sentBasis ?? entry.basis, where: hasTwoVersions(w) ? (entry.sentWhere ?? whereFor(entry, w, plans)) : undefined };
 }
 
 /** "by power", "by heart rate, outdoor version", "by power, as written": the words every send uses. */
 export function sendWords(c: SendChoice): string {
-  const by = c.basis === 'hr' ? 'by heart rate' : 'by power';
+  const by = c.basis === 'breath' ? 'by breathing' : c.basis === 'hr' ? 'by heart rate' : 'by power';
   return c.where ? `${by}, ${c.where === 'outdoor' ? 'outdoor version' : 'as written'}` : by;
 }

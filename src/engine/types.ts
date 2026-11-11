@@ -250,6 +250,8 @@ export interface PlannedWorkout {
    */
   where?: 'outdoor' | 'trainer';
   sentWhere?: 'outdoor' | 'trainer';
+  /** Sent to the Garmin "by breathing" (Step 6, 11 Nov 2026): power targets from the watts the rider's breathing zones match. `sentBasis` is then 'power'. */
+  sentBreath?: boolean;
   /** Ridden by breathing in the player (Step 5, 11 Nov 2026); `basis` then says how it was sent or would be judged without breathing. */
   rodeByBreath?: boolean;
   /** The basis the copy on the Garmin was sent with (10 Nov 2026), so a later switch on the page can offer Send again. */

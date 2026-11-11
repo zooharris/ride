@@ -1,6 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
-import { basisFor, hasTwoVersions, onGarmin, sendDefault, sendWords, type PlanDays, type SendChoice, type Where } from '../library/sendWhere';
+import { basisFor, hasTwoVersions, onGarmin, sendDefault, sendWords, type PlanDays, type SendBasis, type SendChoice, type Where } from '../library/sendWhere';
+import { BREATH_SEND_NEEDS, canSendByBreath, worksByBreath } from '../library/breathSend';
+import { BREATH_TABLE, type BreathPowerTable } from '../player/breathControl';
+import { getSetting } from '../data/db';
 import { sendPlanned } from './planService';
 import { credentials } from '../sync/syncService';
 import { notify } from './store';
@@ -13,7 +16,27 @@ import { toast } from './Toast';
  * Nothing is chosen anywhere else, and nothing is sent unless the rider presses a Send.
  */
 
-const BASIS_WORD: Record<Basis, string> = { power: 'power', hr: 'heart rate' };
+const BASIS_WORD: Record<SendBasis, string> = { power: 'power', hr: 'heart rate', breath: 'breathing' };
+const SEG_WORD: Record<SendBasis, string> = { power: 'Power', hr: 'Heart rate', breath: 'Breathing' };
+
+/**
+ * Step 6 (11 Nov 2026): the watts the rider's breathing zones match, learned on the trainer, for "by breathing".
+ * Read once per screen; a send works it out again itself, so nothing goes on a stale table.
+ */
+export function useBreathTable(): BreathPowerTable {
+  const [t, setT] = useState<BreathPowerTable>({});
+  useEffect(() => { void getSetting<BreathPowerTable>(BREATH_TABLE, {}).then((x) => setT(x ?? {})).catch(() => {}); }, []);
+  return t;
+}
+
+/** The ways a ride can be sent for this rider: power and heart rate as the ride allows, and breathing when it works by breathing. */
+export function sendWays(w: Workout, profile: Profile): SendBasis[] {
+  if (w.kind !== 'ride') return [];
+  return [...(['power', 'hr'] as Basis[]).filter((b) => w.bases.includes(b)), ...(worksByBreath(w, profile) ? ['breath' as const] : [])];
+}
+
+/** The choice a ride can actually take: breathing only where the learned watts cover it, else the rider's usual way. */
+const fit = (w: Workout, b: SendBasis, ok: boolean, profile: Profile): SendBasis => (b === 'breath' ? (ok ? 'breath' : basisFor(w, profile.basis)) : basisFor(w, b));
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** Where the version's starting choice comes from, in a line for the panel. */
@@ -45,9 +68,12 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
   const sent = entry.status === 'sent';
   const ride = w.kind === 'ride';
   const two = ride && hasTwoVersions(w);
-  const twoWay = ride && w.bases.length > 1;
+  const table = useBreathTable();
+  const ways = sendWays(w, profile);
+  const breathOk = canSendByBreath(w, profile, table);
+  const twoWay = ride && ways.length > 1;
   const now = sent ? onGarmin(entry, w, plans) : undefined;
-  const def = sendDefault(entry, w, profile.basis, plans);
+  const def = sendDefault(entry, w, profile.basis, plans, !!profile.preferBreath && breathOk);
   const main = now ?? def;
   const [pick, setPick] = useState<SendChoice>(main);
   const go = async (choice: SendChoice) => { setBusy(true); setOpen(false); await doSend(entry, w, profile, choice); setBusy(false); };
@@ -56,7 +82,7 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
   const size = `${large ? '' : ' sm'}${primary ? ' primary' : ''}`;
   return (
     <span class="send-wrap">
-      {sent && ride && <span class="send-has">On your Garmin, {sendWords(now!)}.</span>}
+      {sent && ride && <span class="send-has">On your Garmin, {sendWords(now!)}{now!.basis === 'breath' ? ' (as power)' : ''}.</span>}
       <span class="split">
         <button class={`btn${size} split-main${arrow ? '' : ' alone'}`} disabled={busy} onClick={() => void go(main)}>{label}</button>
         {arrow && <button class={`btn${size} split-arrow${open ? ' open' : ''}`} disabled={busy} aria-label={two ? 'Choose how to send' : 'Choose power or heart rate'} aria-expanded={open} onClick={() => { setPick(main); setOpen(!open); }}>▾</button>}
@@ -65,19 +91,21 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
         <>
           <button class="send-pop-bg" aria-label="Close" onClick={() => setOpen(false)} />
           <div class="send-pop" role="dialog" aria-label="How to send">
-            {!two ? (['power', 'hr'] as Basis[]).map((b) => (
-              <button key={b} class={`send-item${b === main.basis ? ' on' : ''}`} onClick={() => void go({ basis: b })}>
+            {!two ? ways.map((b) => (
+              <button key={b} class={`send-item${b === main.basis ? ' on' : ''}`} disabled={b === 'breath' && !breathOk} onClick={() => void go({ basis: b })}>
                 <span>{sent ? 'Send again' : 'Send'} by {BASIS_WORD[b]}</span>
-                {b === main.basis && <span class="send-note">{sent ? 'on your Garmin now' : 'your default'}</span>}
+                {b === main.basis ? <span class="send-note">{sent ? 'on your Garmin now' : 'your default'}</span>
+                  : b === 'breath' && !breathOk ? <span class="send-note">{BREATH_SEND_NEEDS}</span> : b === 'breath' ? <span class="send-note">as power, from the watts your breathing zones match</span> : null}
               </button>
             )) : (
               <div class="send-panel">
                 {twoWay && <div class="send-row"><span class="small muted">Targets</span>
-                  <div class="seg" role="group" aria-label="Targets">{(['power', 'hr'] as Basis[]).map((b) => <button key={b} class={pick.basis === b ? 'on' : ''} aria-pressed={pick.basis === b} onClick={() => setPick({ ...pick, basis: b })}>{b === 'hr' ? 'Heart rate' : 'Power'}</button>)}</div></div>}
+                  <div class="seg" role="group" aria-label="Targets">{ways.map((b) => <button key={b} class={pick.basis === b ? 'on' : ''} aria-pressed={pick.basis === b} disabled={b === 'breath' && !breathOk} title={b === 'breath' && !breathOk ? BREATH_SEND_NEEDS : undefined} onClick={() => setPick({ ...pick, basis: b })}>{SEG_WORD[b]}</button>)}</div></div>}
+                {twoWay && ways.includes('breath') && !breathOk && <p class="faint small" style="margin:0">{BREATH_SEND_NEEDS}</p>}
                 <div class="send-row"><span class="small muted">Version</span>
                   <div class="seg" role="group" aria-label="Version">{(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={pick.where === x ? 'on' : ''} aria-pressed={pick.where === x} onClick={() => setPick({ ...pick, where: x })}>{x === 'outdoor' ? 'Outdoor' : 'As written'}</button>)}</div></div>
                 <p class="faint small" style="margin:0">{sent ? `On your Garmin now: ${sendWords(now!)}.` : versionSource(entry, w, plans, def.where ?? 'trainer')}</p>
-                <button class="btn sm" style="align-self:flex-end" onClick={() => void go({ basis: basisFor(w, pick.basis), where: pick.where })}>{sent ? 'Send again' : 'Send'}</button>
+                <button class="btn sm" style="align-self:flex-end" onClick={() => void go({ basis: fit(w, pick.basis, breathOk, profile), where: pick.where })}>{sent ? 'Send again' : 'Send'}</button>
               </div>
             )}
           </div>
@@ -91,7 +119,7 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
 export function sentRowWord(entry: PlannedWorkout, w: Workout | undefined, plans: PlanDays[]): string | undefined {
   if (entry.status !== 'sent' || !w || w.kind !== 'ride') return undefined;
   const g = onGarmin(entry, w, plans);
-  return `On Garmin, ${g.basis === 'hr' ? 'by heart rate' : 'by power'}${g.where === 'outdoor' ? ', outdoor' : ''}`;
+  return `On Garmin, ${g.basis === 'breath' ? 'by breathing' : g.basis === 'hr' ? 'by heart rate' : 'by power'}${g.where === 'outdoor' ? ', outdoor' : ''}`;
 }
 
 /** Whether a session has anything to choose when sent: two kinds of target, or two versions. */
@@ -112,6 +140,10 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
   const only = choosers.length === 1 ? choosers[0] : undefined;
   const anyTwoWay = choosers.some(({ w }) => w.bases.length > 1);
   const other: Basis = profile.basis === 'hr' ? 'power' : 'hr';
+  // Step 6 (11 Nov 2026): "All by breathing" only when some ride this week can go that way; one that can't goes by the rider's default.
+  const table = useBreathTable();
+  const okFor = (w: Workout) => canSendByBreath(w, profile, table);
+  const anyBreath = choosers.some(({ w }) => okFor(w));
   async function send(pickFor: (p: PlannedWorkout, w: Workout) => SendChoice | undefined) {
     setOpen(false); setSheet(null);
     const c = await credentials();
@@ -124,7 +156,7 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
     } catch (e) { toast({ ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` }); }
     finally { setBusy(false); notify(); }
   }
-  const allBy = (b: Basis) => (p: PlannedWorkout, w: Workout) => (w.kind === 'ride' ? { ...sendDefault(p, w, profile.basis, plans), basis: basisFor(w, b) } : undefined);
+  const allBy = (b: SendBasis) => (p: PlannedWorkout, w: Workout) => (w.kind === 'ride' ? { ...sendDefault(p, w, profile.basis, plans), basis: fit(w, b, okFor(w), profile) } : undefined);
   /** The whole week, with one ride as chosen and everything else on its defaults. */
   const withOnly = (c: SendChoice) => (p: PlannedWorkout) => (only && p.id === only.p.id ? c : undefined);
   const openSheet = () => { setOpen(false); setSheet(Object.fromEntries(choosers.map(({ p, w }) => [p.id, sendDefault(p, w, profile.basis, plans)]))); };
@@ -142,24 +174,25 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
         <>
           <button class="send-pop-bg" aria-label="Close" onClick={() => setOpen(false)} />
           <div class="send-pop right" role="dialog" aria-label={only ? `How to send ${only.w.name}` : 'How to send the week'}>
-            {only && !hasTwoVersions(only.w) ? (['power', 'hr'] as Basis[]).map((b) => (
-              <button key={b} class={`send-item${b === profile.basis ? ' on' : ''}`} onClick={() => void send(withOnly({ basis: b }))}>
+            {only && !hasTwoVersions(only.w) ? sendWays(only.w, profile).map((b) => (
+              <button key={b} class={`send-item${b === profile.basis ? ' on' : ''}`} disabled={b === 'breath' && !okFor(only.w)} title={b === 'breath' && !okFor(only.w) ? BREATH_SEND_NEEDS : undefined} onClick={() => void send(withOnly({ basis: b }))}>
                 <span>{only.w.name} by {BASIS_WORD[b]}</span>{b === profile.basis && <span class="send-note">your default</span>}
               </button>
             )) : only && pick ? (
               <div class="send-panel">
                 <b>{only.w.name}</b>
                 {only.w.bases.length > 1 && <div class="send-row"><span class="small muted">Targets</span>
-                  <div class="seg" role="group" aria-label="Targets">{(['power', 'hr'] as Basis[]).map((b) => <button key={b} class={pick.basis === b ? 'on' : ''} aria-pressed={pick.basis === b} onClick={() => setPick({ ...pick, basis: b })}>{b === 'hr' ? 'Heart rate' : 'Power'}</button>)}</div></div>}
+                  <div class="seg" role="group" aria-label="Targets">{sendWays(only.w, profile).map((b) => <button key={b} class={pick.basis === b ? 'on' : ''} aria-pressed={pick.basis === b} disabled={b === 'breath' && !okFor(only.w)} title={b === 'breath' && !okFor(only.w) ? BREATH_SEND_NEEDS : undefined} onClick={() => setPick({ ...pick, basis: b })}>{SEG_WORD[b]}</button>)}</div></div>}
                 <div class="send-row"><span class="small muted">Version</span>
                   <div class="seg" role="group" aria-label="Version">{(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={pick.where === x ? 'on' : ''} aria-pressed={pick.where === x} onClick={() => setPick({ ...pick, where: x })}>{x === 'outdoor' ? 'Outdoor' : 'As written'}</button>)}</div></div>
                 <p class="faint small" style="margin:0">{versionSource(only.p, only.w, plans, sendDefault(only.p, only.w, profile.basis, plans).where ?? 'trainer')}{rest > 0 ? ` The other ${rest} ${rest === 1 ? 'session goes' : 'sessions go'} as ${rest === 1 ? 'it is' : 'they are'}.` : ''}</p>
-                <button class="btn sm" style="align-self:flex-end" onClick={() => void send(withOnly({ basis: basisFor(only.w, pick.basis), where: pick.where }))}>Send {n}</button>
+                <button class="btn sm" style="align-self:flex-end" onClick={() => void send(withOnly({ basis: fit(only.w, pick.basis, okFor(only.w), profile), where: pick.where }))}>Send {n}</button>
               </div>
             ) : (
               <>
                 {anyTwoWay && <button class="send-item on" onClick={() => void send(allBy(profile.basis))}><span>All by {BASIS_WORD[profile.basis]}</span><span class="send-note">your default</span></button>}
                 {anyTwoWay && <button class="send-item" onClick={() => void send(allBy(other))}><span>All by {BASIS_WORD[other]}</span></button>}
+                {anyBreath && <button class="send-item" onClick={() => void send(allBy('breath'))}><span>All by breathing</span><span class="send-note">rides that can't go by breathing go by {BASIS_WORD[profile.basis]}</span></button>}
                 <button class={`send-item${anyTwoWay ? ' sep' : ''}`} onClick={openSheet}><span>Choose for each ride…</span></button>
               </>
             )}
@@ -180,7 +213,7 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
                     <span class="faint small" style="width:34px">{WEEKDAY[new Date(p.date + 'T00:00:00').getDay()].slice(0, 3)}</span>
                     <b style="flex:1;min-width:0">{w.name}</b>
                     <span class="send-sheet-picks">
-                      {w.bases.length > 1 ? <span class="seg" role="group" aria-label={`${w.name}: targets`}>{(['power', 'hr'] as Basis[]).map((b) => <button key={b} class={c.basis === b ? 'on' : ''} aria-pressed={c.basis === b} onClick={() => set({ basis: b })}>{b === 'hr' ? 'Heart rate' : 'Power'}</button>)}</span>
+                      {w.bases.length > 1 ? <span class="seg" role="group" aria-label={`${w.name}: targets`}>{sendWays(w, profile).map((b) => <button key={b} class={c.basis === b ? 'on' : ''} aria-pressed={c.basis === b} disabled={b === 'breath' && !okFor(w)} title={b === 'breath' && !okFor(w) ? BREATH_SEND_NEEDS : undefined} onClick={() => set({ basis: b })}>{SEG_WORD[b]}</button>)}</span>
                         : <span class="faint small">{w.bases[0] === 'hr' ? 'heart rate only' : 'power only'}</span>}
                       {hasTwoVersions(w) && <span class="seg" role="group" aria-label={`${w.name}: version`}>{(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={c.where === x ? 'on' : ''} aria-pressed={c.where === x} onClick={() => set({ where: x })}>{x === 'outdoor' ? 'Outdoor' : 'As written'}</button>)}</span>}
                     </span>

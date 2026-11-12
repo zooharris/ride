@@ -29,6 +29,15 @@ export function PageHead({ title, eyebrow, back, help, children }: {
     addEventListener('resize', set);
     return () => { ro.disconnect(); removeEventListener('resize', set); };
   }, []);
+  // The title sits straight on the page until the page scrolls under it; only then does it become a bar.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mark = () => el.classList.toggle('stuck', window.scrollY > 6);
+    mark();
+    addEventListener('scroll', mark, { passive: true });
+    return () => removeEventListener('scroll', mark);
+  }, []);
   return (
     <header class="page-head" ref={ref}>
       <div class="ph-title">

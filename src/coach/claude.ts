@@ -196,21 +196,25 @@ export type CoachKey = CoachConfig | string;
 const cfgOf = (k: CoachKey): CoachConfig => (typeof k === 'string' ? { provider: 'anthropic', key: k } : k);
 
 /** A plain text request (note, question, chart), through whichever provider the rider uses. */
-async function callCoach(key: CoachKey, req: CompleteRequest): Promise<string> {
-  return readText(await complete(cfgOf(key), req));
+async function callCoach(key: CoachKey, req: CompleteRequest, again = ASK_AGAIN): Promise<string> {
+  return readText(await complete(cfgOf(key), req), again);
 }
 
+/** What to do when no usable reply came: named for where the rider is, so it never points at a button that is not on the page. */
+const ASK_AGAIN = 'Ask again.';
+const FRESH_NOTE = 'Press Fresh note to try again.';
+
 /** The reply's text, or an error, never half a sentence: a reply cut off at the limit is not shown. */
-export function readText(data: { content?: Array<{ type: string; text?: string }>; stop_reason?: string }): string {
+export function readText(data: { content?: Array<{ type: string; text?: string }>; stop_reason?: string }, again = FRESH_NOTE): string {
   const text = (data.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
-  if (data.stop_reason === 'max_tokens') throw new Error('The coach\'s reply was cut off before it finished. Press Fresh note to try again.');
-  if (!text) throw new Error(`The coach sent no reply (${data.stop_reason ?? 'unknown reason'}). Press Fresh note to try again.`);
+  if (data.stop_reason === 'max_tokens') throw new Error(`The coach's reply was cut off before it finished. ${again}`);
+  if (!text) throw new Error(`The coach sent no reply (${data.stop_reason ?? 'unknown reason'}). ${again}`);
   return text;
 }
 
 
 export async function dailyNote(apiKey: CoachKey, ctx: CoachContext): Promise<string> {
-  return callCoach(apiKey, { maxTokens: 1500, messages: [{ role: 'user', content: notePrompt(ctx) }] });
+  return callCoach(apiKey, { maxTokens: 4000, messages: [{ role: 'user', content: notePrompt(ctx) }] }, FRESH_NOTE);
 }
 
 /** `error`: a question that got no answer; shown as an error, never saved, never sent back as history. */
@@ -222,7 +226,7 @@ export interface ChatTurn { role: 'rider' | 'coach'; text: string; at?: string; 
  * plan changes through the suggested-changes review, never from here.
  */
 export async function askCoach(apiKey: CoachKey, ctx: CoachContext, turns: ChatTurn[], question: string, earlier: string[] = [], packet?: string): Promise<string> {
-  return callCoach(apiKey, { maxTokens: 2000, system: questionSystem(ctx, earlier, packet), messages: [...chatHistory(turns), { role: 'user', content: question }] });
+  return callCoach(apiKey, { maxTokens: 5000, system: questionSystem(ctx, earlier, packet), messages: [...chatHistory(turns), { role: 'user', content: question }] });
 }
 
 /** Earlier turns sent back as history: a question that got no answer goes with its error, so the two roles alternate. */
@@ -257,7 +261,7 @@ ${ctx.sessions.length ? ctx.sessions.map((l) => '- ' + l).join('\n') : '- none'}
 }
 
 export async function askAboutChart(apiKey: CoachKey, ctx: ChartContext, question: string): Promise<string> {
-  return callCoach(apiKey, { maxTokens: 1500, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
+  return callCoach(apiKey, { maxTokens: 5000, system: chartSystem(ctx), messages: [{ role: 'user', content: question }] });
 }
 
 /**
@@ -446,8 +450,8 @@ export const PROGRESS_ASK = 'Write two things. "headline": two or three sentence
 
 /** One request: the headline and every card's line. */
 export async function writeProgress(key: CoachKey, f: PageFacts): Promise<{ headline: string; cards: Record<string, string> }> {
-  const r = await complete(cfgOf(key), { system: progressSystem(f), messages: [{ role: 'user', content: PROGRESS_ASK }], schema: PROGRESS_SCHEMA as unknown as Record<string, unknown>, maxTokens: 4000 });
-  const text = readText(r);
+  const r = await complete(cfgOf(key), { system: progressSystem(f), messages: [{ role: 'user', content: PROGRESS_ASK }], schema: PROGRESS_SCHEMA as unknown as Record<string, unknown>, maxTokens: 10000 });
+  const text = readText(r, 'Press Try again.');
   let v: { headline?: unknown; cards?: unknown };
   try { v = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Error('The coach\'s reply was not in the form the page needs. Try again.'); }
   if (typeof v.headline !== 'string' || !v.headline.trim()) throw new Error('The coach sent no summary. Try again.');
@@ -461,7 +465,7 @@ export async function writeProgress(key: CoachKey, f: PageFacts): Promise<{ head
 
 /** A question about the whole page. */
 export async function askProgress(key: CoachKey, f: PageFacts, question: string): Promise<string> {
-  return coachWords(await callCoach(key, { maxTokens: 1500, system: `${progressSystem(f)}\n\n${ANSWER_RULES}`, messages: [{ role: 'user', content: question }] }), f.profile);
+  return coachWords(await callCoach(key, { maxTokens: 5000, system: `${progressSystem(f)}\n\n${ANSWER_RULES}`, messages: [{ role: 'user', content: question }] }), f.profile);
 }
 
 /** A question about one card: that card's numbers, what is switched on in it, and the range. */
@@ -471,7 +475,7 @@ export async function askProgressCard(key: CoachKey, f: PageFacts, card: { title
 The rider is looking at the "${card.title}" card on their Progress page, for ${f.from} to ${f.to}.
 ${f.context.map((l) => '- ' + l).join('\n')}
 - What the card shows: ${card.readout || 'little yet'}${card.extra ? `\n- Switched on in it: ${card.extra}` : ''}`;
-  return coachWords(await callCoach(key, { maxTokens: 1500, system, messages: [{ role: 'user', content: question }] }), f.profile);
+  return coachWords(await callCoach(key, { maxTokens: 5000, system, messages: [{ role: 'user', content: question }] }), f.profile);
 }
 
 /** Ordinary words that can begin a name ("And" for Andrew): never taken for a shortened name. */

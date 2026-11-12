@@ -10,7 +10,7 @@ import { getActivePlan, type ActivePlan } from './planService';
 import { Icon } from './icons';
 
 /**
- * The sidebar's blocks under the navigation (Blueprint, 11 Nov 2026). Each shows a live fact the page in
+ * The sidebar's blocks under the navigation (11 Nov 2026). Each shows a live fact the page in
  * front of the rider does not already show: a block is left out on every page that shows its information,
  * and at most three show, the first three in this order that are allowed and have something true to say.
  * On a short window the ones that do not fit are dropped from the end; the sidebar never scrolls.

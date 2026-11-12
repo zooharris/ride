@@ -1,31 +1,34 @@
 :root {
-  /* Blueprint (11 Nov 2026): ground and ink are deep brand navy at night, never pure black */
-  --bg: #06122B;
-  --bg-2: #0C1E42;
-  --bg-3: #132B59;
-  --sub: #10254E;            /* an inset surface inside a panel */
-  --stile: #132B59;          /* small stat boxes */
-  --soft: #19325F;           /* soft fill: empty heat-map cells, sleep bars */
-  --line: #1D386A;
-  --line-2: #2B4A82;
-  --ink: #F3F6FB;
-  --ink-2: #B7C5DF;
-  --ink-3: #8A9CBC;
-  --tile: #D7DEE8; /* the light tile every exercise picture sits on: the figures' dark outlines vanish on navy */
-  --sel-ink: #A9CEFF; /* text of a selected toggle (blue wash) */
+  /* Obsidian (12 Nov 2026): graphite surfaces all year, never pure black at night. The seasonal colours
+     (background tint, accent, data colours, today, the logo) are set on the page root by ui/theme.ts from
+     ui/season.ts; the values here are autumn's, so the page is coherent before that runs. */
+  --bg: #141414;
+  --bg-2: #141922;           /* panel */
+  --bg-3: #1C222E;
+  --sub: #181E29;            /* an inset surface inside a panel */
+  --stile: #1C222E;          /* small stat boxes */
+  --soft: #242B38;           /* soft fill: empty heat-map cells, sleep bars */
+  --line: #262D3A;
+  --line-2: #364050;
+  --ink: #EEF1F6;
+  --ink-2: #B5BCCA;
+  --ink-3: #8B94A6;
+  --tile: #D7DEE8; /* the light tile every exercise picture sits on: the figures' dark outlines vanish on graphite */
+  --sel-ink: #F8BB54; /* text of a selected toggle (accent wash) */
 
-  /* brand blue: the primary action, active nav, links, focus; orange: today and attention */
-  --accent: #5BA4FF;
-  --accent-ink: #06122B;
-  --today: #FF9636;
-  --info: #3B8FFF;
-  --aqua: #19C6E8;
+  /* the season's lead colour: the primary action, active nav, links, focus; its third: today and attention */
+  --accent: #F59E0B;
+  --accent-ink: #0B0E14;
+  --today: #E85D9E;
+  --info: #F59E0B;           /* primary data line */
+  --fat: #F4745E;            /* second data colour */
+  --aqua: #E85D9E;           /* third data colour */
 
-  /* the drafting grid on the page, the hairlines in panels, and the navy chrome (sidebar, phone bars) */
-  --grid-a: rgba(130, 178, 255, .07);
-  --grid-b: rgba(130, 178, 255, .16);
-  --hair: rgba(255, 255, 255, .014);
-  --chrome: #0A1F4A;
+  /* textures: faint rules on the page and a carbon weave on panels at night; a dot grid and a brushed finish by day */
+  --tex-page: repeating-linear-gradient(0deg, rgba(255, 255, 255, .014) 0 1px, transparent 1px 7px);
+  --tex-page-size: auto;
+  --tex-panel: repeating-linear-gradient(45deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 5px), repeating-linear-gradient(-45deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 5px);
+  --pop: #242B38;            /* the raised surface of an explanation pop-up */
 
   /* the seven zones, used identically everywhere */
   --z1: #6F7F98;
@@ -40,20 +43,20 @@
   --warn: #F2C94C;
   --bad: #F0506E;
 
-  /* session kinds */
-  /* validated as a categorical set for colour-blind readers; stack in this order: ride, strength, walk, mobility */
+  /* session kinds, fixed in every season; validated as a categorical set for colour-blind readers */
   --ride: #3987E5;
   --strength: #D55181;
   --walk: #C98500; --run: var(--z7);
   --mobility: #199E70;
 
-  --shadow: 0 10px 30px rgba(0, 4, 16, .5);
-  --on-color: #06122B;      /* ink on a filled status colour (a done tick) */
-  --map-tint: rgba(2, 8, 24, .25);
+  --shadow: 0 10px 30px rgba(0, 0, 0, .55);
+  --on-color: #0B0E14;      /* ink on a filled status colour (a done tick) */
+  --map-tint: rgba(0, 0, 0, .25);
 
-  /* the Antogo logo, on dark: near-white "anto", brightened blue and teal so they hold on navy */
-  --brand-blue: #3D9BFF;
-  --logo-teal: #19C6E8; --logo-blue: #3B8FFF; --logo-orange: #FF9636; --logo-anto: #F3F6FB; --logo-go: #3B8FFF; --logo-tag: #9AA8BF;
+  /* the Antogo logo takes the season: rear wheel the second colour, rider and front wheel the lead, head dot the third */
+  --brand-blue: #F59E0B;
+  --logo-teal: #F4745E; --logo-blue: #F59E0B; --logo-orange: #E85D9E; --logo-anto: #EEF1F6; --logo-go: #F59E0B; --logo-tag: #8B94A6;
+  --rt-line: #F59E0B; --rt-halo: rgba(5, 8, 12, .75);
 
   /* chart gridlines: quieter than borders, so the data reads first */
   --grid: color-mix(in srgb, var(--line-2) 70%, transparent);
@@ -69,30 +72,36 @@
 
 /* light: chosen in Settings, or following the device when set to System */
 :root[data-theme="light"] {
-  --bg: #F2F6FC; --bg-2: #FFFFFF; --bg-3: #EAF1FB; --sub: #F5F8FD; --stile: #EAF1FB; --soft: #E3EBF7; --line: #D7E1F0; --line-2: #BFCDE3;
-  --ink: #0A2552; --ink-2: #3E5378; --ink-3: #566A8A;
-  --tile: #EEF2F7; --accent: #0468DC; --accent-ink: #FFFFFF; --sel-ink: #0450B0; --today: #AD540D; --info: #0575F6; --aqua: #0096B8;
-  --grid-a: rgba(10, 37, 82, .055); --grid-b: rgba(10, 37, 82, .13); --hair: rgba(10, 37, 82, .018); --chrome: #0A2552;
+  --bg: #ECEAE6; --bg-2: #FAFBFC; --bg-3: #ECEFF3; --sub: #F2F4F7; --stile: #ECEFF3; --soft: #E2E6EB; --line: #D7DBE2; --line-2: #BFC6D0;
+  --ink: #14181F; --ink-2: #454D5A; --ink-3: #5F6775;
+  --tile: #EEF2F7; --accent: #845506; --accent-ink: #FFFFFF; --sel-ink: #714905; --today: #87365C; --info: #B67609; --aqua: #BA4A7E; --fat: #CD614F;
+  --tex-page: radial-gradient(circle at 1px 1px, rgba(20, 24, 31, .08) 1px, transparent 1.5px); --tex-page-size: 14px 14px;
+  --tex-panel: repeating-linear-gradient(90deg, rgba(20, 24, 31, .016) 0 1px, transparent 1px 3px);
+  --pop: #FFFFFF;
   --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
   --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
   --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
-  --shadow: 0 10px 30px rgba(10, 37, 82, .12); --on-color: #FFFFFF; --map-tint: rgba(10, 37, 82, .12);
-  --brand-blue: #0A74F5;
-  --logo-teal: #00B5DB; --logo-blue: #0575F6; --logo-orange: #FD8C23; --logo-anto: #0A2552; --logo-go: #0575F6; --logo-tag: #5A6A85;
+  --shadow: 0 10px 30px rgba(20, 24, 31, .12); --on-color: #FFFFFF; --map-tint: rgba(20, 24, 31, .12);
+  --brand-blue: #B67609;
+  --logo-teal: #D26451; --logo-blue: #D38809; --logo-orange: #C85088; --logo-anto: #14181F; --logo-go: #A26807; --logo-tag: #677080;
+  --rt-line: #B67609; --rt-halo: rgba(255, 255, 255, .9);
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #F2F6FC; --bg-2: #FFFFFF; --bg-3: #EAF1FB; --sub: #F5F8FD; --stile: #EAF1FB; --soft: #E3EBF7; --line: #D7E1F0; --line-2: #BFCDE3;
-    --ink: #0A2552; --ink-2: #3E5378; --ink-3: #566A8A;
-    --tile: #EEF2F7; --accent: #0468DC; --accent-ink: #FFFFFF; --sel-ink: #0450B0; --today: #AD540D; --info: #0575F6; --aqua: #0096B8;
-    --grid-a: rgba(10, 37, 82, .055); --grid-b: rgba(10, 37, 82, .13); --hair: rgba(10, 37, 82, .018); --chrome: #0A2552;
+    --bg: #ECEAE6; --bg-2: #FAFBFC; --bg-3: #ECEFF3; --sub: #F2F4F7; --stile: #ECEFF3; --soft: #E2E6EB; --line: #D7DBE2; --line-2: #BFC6D0;
+    --ink: #14181F; --ink-2: #454D5A; --ink-3: #5F6775;
+    --tile: #EEF2F7; --accent: #845506; --accent-ink: #FFFFFF; --sel-ink: #714905; --today: #87365C; --info: #B67609; --aqua: #BA4A7E; --fat: #CD614F;
+    --tex-page: radial-gradient(circle at 1px 1px, rgba(20, 24, 31, .08) 1px, transparent 1.5px); --tex-page-size: 14px 14px;
+    --tex-panel: repeating-linear-gradient(90deg, rgba(20, 24, 31, .016) 0 1px, transparent 1px 3px);
+    --pop: #FFFFFF;
     --z1: #8A96A8; --z2: #1F6FE0; --z3: #1F9D5C; --z4: #C9931A; --z5: #E6730A; --z6: #D63A57; --z7: #8E5BE0;
     --good: #1A8A52; --warn: #8F6A0E; --bad: #C4314F;
     --ride: #2A78D6; --strength: #E87BA4; --mobility: #1BAF7A; --walk: #EDA100; --run: var(--z7);
-    --shadow: 0 10px 30px rgba(10, 37, 82, .12); --on-color: #FFFFFF; --map-tint: rgba(10, 37, 82, .12);
-    --brand-blue: #0A74F5;
-  --logo-teal: #00B5DB; --logo-blue: #0575F6; --logo-orange: #FD8C23; --logo-anto: #0A2552; --logo-go: #0575F6; --logo-tag: #5A6A85;
+    --shadow: 0 10px 30px rgba(20, 24, 31, .12); --on-color: #FFFFFF; --map-tint: rgba(20, 24, 31, .12);
+    --brand-blue: #B67609;
+    --logo-teal: #D26451; --logo-blue: #D38809; --logo-orange: #C85088; --logo-anto: #14181F; --logo-go: #A26807; --logo-tag: #677080;
+    --rt-line: #B67609; --rt-halo: rgba(255, 255, 255, .9);
     color-scheme: light;
   }
 }
@@ -316,7 +325,7 @@ p { margin: 0; }
 .chart svg { display: block; width: 100%; height: auto; }
 
 /* modal */
-.modal-bg { position: fixed; inset: 0; background: rgba(3,8,20,.55); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
 .modal { background: var(--bg-2); border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; width: 100%; max-width: 720px; max-height: 86dvh; overflow: auto; padding: 18px 16px calc(18px + var(--safe-b)); }
 @media (min-width: 900px) { .modal-bg { align-items: center; } .modal { border-radius: 14px; border: 1px solid var(--line); } }
 
@@ -450,7 +459,7 @@ p { margin: 0; }
 .menu-bg { position: fixed; inset: 0; z-index: 25; }
 @media (max-width: 599px) {
   .menu { position: static; }
-  .menu-bg { background: rgba(3,8,20,.5); }
+  .menu-bg { background: rgba(0,0,0,.5); }
   .menu-list { position: fixed; left: 0; right: 0; bottom: 0; top: auto; border-radius: 16px 16px 0 0; padding: 12px 12px calc(12px + var(--safe-b)); max-height: 70dvh; overflow: auto; }
   .menu-list button { padding: 13px 12px; font-size: 16px; }
 }
@@ -1393,9 +1402,6 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .steps tr.in-set td:first-child { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ink-3) 55%, transparent); padding-left: 10px; }
 
 /* ---------- activity pictures: the calendar, its list and Activities (Oct 2026) ---------- */
-:root { --rt-line: #4FA3FF; --rt-halo: rgba(5, 12, 24, .75); }
-:root[data-theme="light"] { --rt-line: #1F6FE0; --rt-halo: rgba(255, 255, 255, .9); }
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --rt-line: #1F6FE0; --rt-halo: rgba(255, 255, 255, .9); } }
 .route-thumb { position: relative; overflow: hidden; border-radius: 6px; background: var(--bg-3); width: 100%; }
 .route-thumb .rt-tiles { position: absolute; inset: 0; filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.85) saturate(.4); }
 :root[data-theme="light"] .route-thumb .rt-tiles { filter: saturate(.45) contrast(.88) brightness(1.04); }
@@ -1622,44 +1628,35 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 .ride-row-t .ride-row-lead { color: var(--ink); font-weight: 600; font-size: inherit; }
 .sorted-line { color: var(--sel-ink) !important; }
 
-/* ---- Blueprint (11 Nov 2026): the drafting grid, panel hairlines, the navy chrome, the sidebar's blocks ---- */
-/* The page: a fine square grid every 24px with a heavier line every fifth (120px). Drawn by the page, no image. */
+/* ---- Obsidian (12 Nov 2026): the textures, and the sidebar and phone bars as graphite panels ---- */
+/* The page: a fine dot grid by day, faint horizontal rules at night. Drawn by the page, no image. */
 body {
   background-color: var(--bg);
-  background-image:
-    linear-gradient(var(--grid-b) 1px, transparent 1px), linear-gradient(90deg, var(--grid-b) 1px, transparent 1px),
-    linear-gradient(var(--grid-a) 1px, transparent 1px), linear-gradient(90deg, var(--grid-a) 1px, transparent 1px);
-  background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+  background-image: var(--tex-page);
+  background-size: var(--tex-page-size);
 }
-/* Panels: hairlines every 4px, too faint to notice behind a chart. */
-.panel, .empty { background-image: repeating-linear-gradient(0deg, var(--hair) 0 1px, transparent 1px 4px); }
+/* Panels: a brushed finish by day, a carbon weave at night; too faint to notice behind a chart. */
+.panel, .empty, .pl-card, .side-card { background-image: var(--tex-panel); }
 
-/* The navy chrome: the sidebar on a laptop, the top bar and bottom navigation on a phone. Navy by day and by night,
-   with the same grid in light lines; the logo takes its designed dark colours here. */
+/* The sidebar on a laptop, the top bar and bottom navigation on a phone: panels like any other,
+   in the page's own colours; the logo takes the season here as everywhere. */
 .nav, .topbar {
-  --ink: #F3F6FB; --ink-2: #C2D0E8; --ink-3: #93A6C6;
-  --line: rgba(255, 255, 255, .16); --line-2: rgba(255, 255, 255, .26);
-  --bg-2: rgba(255, 255, 255, .07); --bg-3: rgba(255, 255, 255, .12);
-  --accent: #5BA4FF; --accent-ink: #06122B; --sel-ink: #D6E7FF; --good: #4BD694; --bad: #FF7A93; --today: #FF9636; --info: #3B8FFF;
-  --logo-teal: #19C6E8; --logo-blue: #3B8FFF; --logo-orange: #FF9636; --logo-anto: #F3F6FB; --logo-go: #3B8FFF; --logo-tag: #9AA8BF;
-  --cg: rgba(150, 190, 255, .10);
   color: var(--ink);
-  background-color: var(--chrome);
-  background-image: linear-gradient(var(--cg) 1px, transparent 1px), linear-gradient(90deg, var(--cg) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-color: var(--bg-2);
+  background-image: var(--tex-panel);
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-.nav { border-color: rgba(255, 255, 255, .14); }
+.nav { border-color: var(--line); }
+.topbar { border-bottom: 1px solid var(--line); }
 .nav a { color: var(--ink-2); }
 .nav a svg { color: var(--ink-3); }
 .nav a:hover { color: var(--ink); }
-.nav a.active { color: var(--ink); }
+.nav a.active { color: var(--sel-ink); font-weight: 600; }
 .nav a.active svg { color: var(--accent); }
 .topbar { padding-bottom: 10px; }
 .topbar .help-link { color: var(--ink-2); }
 @media (min-width: 900px) {
-  .nav { border-right: 0; }
-  .nav a.active { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--sel-ink); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .nav a.active { background: color-mix(in srgb, var(--accent) 15%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent); }
   .nav a.active svg { color: var(--sel-ink); }
 }
 
@@ -1673,7 +1670,7 @@ body {
 .nav .side a { flex-direction: initial; justify-content: initial; align-items: initial; gap: 0; font-size: inherit; font-weight: inherit; border-radius: 10px; }
 .nav .side a.side-main, .nav .side a.side-start { padding: 0; border-radius: 0; }
 .nav .side a.side-start { padding: 5px 11px; border-radius: var(--radius-s); display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; }
-.nav .side .side-card, .side-card { display: block; flex: none; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; text-decoration: none; color: var(--ink); transition: border-color .12s ease; }
+.nav .side .side-card, .side-card { display: block; flex: none; background-color: var(--sub); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; text-decoration: none; color: var(--ink); transition: border-color .12s ease; }
 .side-card:hover { border-color: var(--line-2); }
 .nav .side .side-row { display: flex; align-items: center; gap: 8px; }
 .nav .side .side-main { display: block; flex: 1; min-width: 0; text-decoration: none; color: inherit; }
@@ -1683,7 +1680,7 @@ body {
 .side-sub { font-size: 12px; line-height: 16px; color: var(--ink-2); }
 .side-split { display: flex; justify-content: space-between; gap: 8px; }
 .side-done { display: inline-flex; vertical-align: -2px; margin-right: 5px; color: var(--good); }
-.side-meter { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .12); margin: 6px 0 4px; overflow: hidden; }
+.side-meter { height: 6px; border-radius: 3px; background: var(--soft); margin: 6px 0 4px; overflow: hidden; }
 .side-meter span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .side-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 6px; }
 .side-day { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
@@ -1700,7 +1697,7 @@ body {
 .side-ln.dim { color: var(--ink-3); }
 .side-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
 
-/* Printing: no grid, no navy chrome. */
+/* Printing: no texture, no sidebar or phone bars. */
 @media print {
   body { background-image: none; background-color: #fff; }
   .nav, .topbar { display: none; }
@@ -1734,8 +1731,10 @@ body {
 .pc-head > .pc-ask:not(.pc-aside + .pc-ask) { margin-left: auto; }
 .pc-ask:hover, .pc-ask.on { text-decoration: underline; }
 .pc-ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
-/* An explanation stands off the page: a tinted fill lighter than the card it opens over, an accent edge and a deep shadow. */
-.pc-pop { position: relative; z-index: 8; margin: 0 0 8px; padding: 12px 14px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 16%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 14px 34px rgba(3, 10, 26, .45), 0 2px 6px rgba(3, 10, 26, .3); color: var(--ink); }
+/* An explanation stands off the page: a raised surface (white by day, a lighter graphite at night), a strong edge and a deep shadow. */
+.pc-pop { position: relative; z-index: 8; margin: 0 0 8px; padding: 12px 14px; border-radius: 8px; background: var(--pop); background-image: none; border: 1px solid var(--line-2); box-shadow: 0 14px 34px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3); color: var(--ink); }
+:root[data-theme="light"] .pc-pop { box-shadow: 0 12px 30px rgba(20, 24, 31, .18), 0 2px 6px rgba(20, 24, 31, .12); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .pc-pop { box-shadow: 0 12px 30px rgba(20, 24, 31, .18), 0 2px 6px rgba(20, 24, 31, .12); } }
 .cols-2 .pc-pop, .cols-3 .pc-pop { position: absolute; left: 0; right: 0; top: 34px; max-height: 280px; overflow: auto; }
 .pc { position: relative; }
 .pc-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 14px; }

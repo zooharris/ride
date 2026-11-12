@@ -20,7 +20,8 @@ import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
-import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
+import { getHemisphere, getSeasonChoice, getThemeChoice, setHemisphere, setSeasonChoice, setThemeChoice, type Hemisphere, type SeasonChoice, type ThemeChoice } from '../theme';
+import { activeSeason, SEASON_NAME } from '../season';
 import { breathHistory, type BreathHistory } from '../../engine/breathHistory';
 import { applyNumbers } from '../testService';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
@@ -480,20 +481,48 @@ function NoteLock({ devices, onChange, busy, setBusy, setMsg }: { devices: Devic
   );
 }
 
-/** Light, dark, or whatever the device is set to. Applies at once; no Save needed. */
+/**
+ * Light, dark, or whatever the device is set to; and the season's colours. Both apply at once; no Save needed.
+ * The hemisphere is preset from the device's time zone and shown only when the season follows the date.
+ */
 function Appearance() {
   const [t, setT] = useState<ThemeChoice>(getThemeChoice());
+  const [s, setS] = useState<SeasonChoice>(getSeasonChoice());
+  const [h, setH] = useState<Hemisphere>(getHemisphere());
   const pick = (c: ThemeChoice) => { setT(c); setThemeChoice(c); };
+  const pickSeason = (c: SeasonChoice) => { setS(c); setSeasonChoice(c); };
+  const pickHemisphere = (c: Hemisphere) => { setH(c); setHemisphere(c); };
+  const now = SEASON_NAME[activeSeason(s, h)];
   return (
     <section class="section" style="margin-top:0">
       <h2>Appearance</h2>
-      <div class="panel row between wrap" style="gap:12px">
-        <p class="muted small" style="max-width:46ch">Dark, light, or follow the setting on this device. Takes effect at once.</p>
-        <div class="seg theme" role="radiogroup" aria-label="Theme">
-          {([['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as Array<[ThemeChoice, string]>).map(([c, l]) => (
-            <button key={c} role="radio" aria-checked={t === c} class={t === c ? 'on' : ''} onClick={() => pick(c)}>{l}</button>
-          ))}
+      <div class="panel stack" style="gap:14px">
+        <div class="row between wrap" style="gap:12px">
+          <p class="muted small" style="max-width:46ch">Dark, light, or follow the setting on this device. Takes effect at once.</p>
+          <div class="seg theme" role="radiogroup" aria-label="Theme">
+            {([['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as Array<[ThemeChoice, string]>).map(([c, l]) => (
+              <button key={c} role="radio" aria-checked={t === c} class={t === c ? 'on' : ''} onClick={() => pick(c)}>{l}</button>
+            ))}
+          </div>
         </div>
+        <div class="row between wrap" style="gap:12px">
+          <p class="muted small" style="max-width:46ch">Season colours. The app's colours change with the seasons{s === 'auto' ? `; it is ${now.toLowerCase()} now` : ''}. Choose one season to keep it all year.</p>
+          <div class="seg theme wrap" role="radiogroup" aria-label="Season colours">
+            {([['auto', 'Automatic'], ['spring', 'Spring'], ['summer', 'Summer'], ['autumn', 'Autumn'], ['winter', 'Winter']] as Array<[SeasonChoice, string]>).map(([c, l]) => (
+              <button key={c} role="radio" aria-checked={s === c} class={s === c ? 'on' : ''} onClick={() => pickSeason(c)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {s === 'auto' && (
+          <div class="row between wrap" style="gap:12px">
+            <p class="muted small" style="max-width:46ch">Hemisphere, for the seasons. Set from this device's time zone; change it if it is wrong.</p>
+            <div class="seg theme" role="radiogroup" aria-label="Hemisphere">
+              {([['north', 'Northern'], ['south', 'Southern']] as Array<[Hemisphere, string]>).map(([c, l]) => (
+                <button key={c} role="radio" aria-checked={h === c} class={h === c ? 'on' : ''} onClick={() => pickHemisphere(c)}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

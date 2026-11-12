@@ -442,7 +442,7 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
   return (
     <div class="stats tiles" style="margin-bottom:12px">
       {tile('Fitness', now?.ctl, ago?.ctl, 'var(--info)', `Fitness: the ${GLOSSARY.fitness.short}.`)}
-      {tile('Fatigue', now?.atl, ago?.atl, 'var(--z5)', `Fatigue: the ${GLOSSARY.fatigue.short}.`)}
+      {tile('Fatigue', now?.atl, ago?.atl, 'var(--fat)', `Fatigue: the ${GLOSSARY.fatigue.short}.`)}
       {tile('Form', now?.tsb, ago?.tsb, 'var(--ink)', `Form, today: ${GLOSSARY.form.short}.`, true)}
     </div>
   );

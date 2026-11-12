@@ -317,7 +317,7 @@ function Projection({ series, required, taperStart, goalDate }: { series: Fitnes
       <LineChart
         series={[
           { name: 'fitness', color: 'var(--info)', values: series.map((f) => Math.round(f.ctl)), width: 2.2, explain: '42-day weighted average of daily training load' },
-          { name: 'fatigue', color: 'var(--z5)', values: series.map((f) => Math.round(f.atl)), width: 1.3, explain: '7-day weighted average of daily training load' },
+          { name: 'fatigue', color: 'var(--fat)', values: series.map((f) => Math.round(f.atl)), width: 1.3, explain: '7-day weighted average of daily training load' },
           { name: 'form', color: 'var(--ink-3)', values: series.map((f) => Math.round(f.tsb)), dash: '2 3', width: 1.2, explain: 'fitness minus fatigue; positive means fresh' },
         ]}
         xLabels={series.map((f) => f.date)}

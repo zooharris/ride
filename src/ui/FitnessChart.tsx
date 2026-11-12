@@ -38,7 +38,7 @@ export const CHART_CAPTION = 'Fitness, fatigue and form share the left axis. Eac
 export type OverlayKey = 'fitness' | 'fatigue' | 'form' | 'load' | 'readiness' | 'hrv' | 'sleep' | 'restinghr' | 'weight' | 'efficiency' | 'drift';
 export const OVERLAYS: Array<{ key: OverlayKey; label: string; color: string; bars?: boolean; dotted?: boolean }> = [
   { key: 'fitness', label: 'Fitness', color: 'var(--info)' },
-  { key: 'fatigue', label: 'Fatigue', color: 'var(--z5)' },
+  { key: 'fatigue', label: 'Fatigue', color: 'var(--fat)' },
   { key: 'form', label: 'Form', color: 'var(--ink-3)' },
   { key: 'load', label: 'Daily load', color: 'var(--ride)', bars: true },
   { key: 'readiness', label: 'Readiness', color: 'var(--accent)' },
@@ -106,11 +106,11 @@ export function FitnessChart({ series, projection = [], range = '3m', events = [
 
   const lines: ChartSeries[] = [];
   if (has('fitness')) lines.push({ name: 'fitness', group: 'fitness', color: 'var(--info)', values: histOnly((f) => f.ctl), width: 2.2, explain: GLOSSARY.fitness.short });
-  if (has('fatigue')) lines.push({ name: 'fatigue', group: 'fatigue', color: 'var(--z5)', values: histOnly((f) => f.atl), width: 1.3, explain: GLOSSARY.fatigue.short });
+  if (has('fatigue')) lines.push({ name: 'fatigue', group: 'fatigue', color: 'var(--fat)', values: histOnly((f) => f.atl), width: 1.3, explain: GLOSSARY.fatigue.short });
   if (has('form')) lines.push({ name: 'form', group: 'form', color: 'var(--ink-3)', values: histOnly((f) => f.tsb), width: 1.2, explain: GLOSSARY.form.short, format: signed });
   if (proj.length) {
     if (has('fitness')) lines.push({ name: 'fitness, as planned', group: 'fitness', color: 'var(--info)', values: projOnly((f) => f.ctl), dash: '6 4', width: 1.8, explain: 'fitness if every session on the calendar is done as planned' });
-    if (has('fatigue')) lines.push({ name: 'fatigue, as planned', group: 'fatigue', color: 'var(--z5)', values: projOnly((f) => f.atl), dash: '6 4', width: 1.1, explain: 'fatigue if every session on the calendar is done as planned; form mirrors it' });
+    if (has('fatigue')) lines.push({ name: 'fatigue, as planned', group: 'fatigue', color: 'var(--fat)', values: projOnly((f) => f.atl), dash: '6 4', width: 1.1, explain: 'fatigue if every session on the calendar is done as planned; form mirrors it' });
     if (has('form')) lines.push({ name: 'form, as planned', group: 'form', color: 'var(--ink-3)', values: projOnly((f) => f.tsb), dash: '3 3', width: 1.4, explain: 'form if every session on the calendar is done as planned', format: signed });
   }
 

@@ -30,10 +30,10 @@ describe('the Progress grid', () => {
     expect(r[0]).toEqual(['fitness', 'key']);
     expect(r).toContainEqual(['records', 'morning', 'consistency']);
   });
-  it('gives a spare column to Totals, then Wellness, never to whichever card is last', () => {
+  it('gives a spare column to a card with several small charts, never to whichever card is last', () => {
     const placed = layout(cards([...base, 'tests', 'body']), 3);
     const wide = placed.filter((x) => x.w === 2 && x.id !== 'fitness').map((x) => x.id);
-    expect(wide.every((id) => ['totals', 'wellness', 'breathing'].includes(id))).toBe(true);
+    expect(wide.every((id) => ['totals', 'aerobic', 'weight', 'wellness', 'breathing'].includes(id))).toBe(true);
     expect(placed.find((x) => x.id === 'body')!.w).toBe(1);
   });
   it('one column is a plain list', () => {

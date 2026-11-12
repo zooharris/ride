@@ -127,13 +127,13 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     { id: 'power', el: (wide) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
     { id: 'records', el: (wide) => <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
     { id: 'durability', el: (wide) => <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
-    { id: 'aerobic', el: (wide) => <AerobicCard key="aerobic" data={data} rides={inRange} readout={facts.readouts.aerobic} coach={coach} /> },
+    { id: 'aerobic', el: (wide) => <AerobicCard key="aerobic" wide={wide} data={data} rides={inRange} readout={facts.readouts.aerobic} coach={coach} /> },
     { id: 'wellness', el: (wide) => <WellnessCard key="wellness" wide={wide} data={data} from={from} to={t} readout={facts.readouts.wellness} coach={coach} /> },
     { id: 'morning', el: (wide) => <MorningAfterCard key="morning" data={data} from={from} to={t} readout={facts.readouts.morning} coach={coach} /> },
     { id: 'consistency', el: (wide) => <ConsistencyCard key="consistency" rides={data.rides} from={from} to={t} readout={facts.readouts.consistency} coach={coach} /> },
     { id: 'totals', el: (wide) => <TotalsCard key="totals" wide={wide} rides={data.rides} imperial={imperial} readout={facts.readouts.totals} coach={coach} /> },
   ];
-  if (facts.hasWeight) cards.push({ id: 'weight', el: (wide) => <WeightCard key="weight" data={data} from={from} to={t} imperial={imperial} readout={facts.readouts.weight} coach={coach} /> });
+  if (facts.hasWeight) cards.push({ id: 'weight', el: (wide) => <WeightCard key="weight" wide={wide} data={data} from={from} to={t} imperial={imperial} readout={facts.readouts.weight} coach={coach} /> });
   cards.push({ id: 'tests', el: (wide) => <TestsCard key="tests" data={data} tests={tests} from={from} to={t} plan={active} series={series} readout={facts.readouts.tests} coach={coach} /> });
   if (facts.hasBody) cards.push({ id: 'body', el: (wide) => <BodyCard key="body" data={data} from={from} to={t} readout={facts.readouts.body} coach={coach} /> });
   if (facts.hasBreathing) cards.push({ id: 'breathing', el: (wide) => <BreathingCard key="breathing" data={data} curves={curvesState.curves} tests={tests} from={from} to={t} readout={facts.readouts.breathing} coach={coach} /> });
@@ -168,13 +168,16 @@ interface GridItem { id: string; el: (wide: boolean) => preact.JSX.Element }
 /** Cards that are tables or grids: they sit together in a row, so a short row holds short cards. */
 const TABLE_CARDS = ['records', 'morning', 'consistency'];
 /** Cards with several small charts: when a row has room to spare, it goes to these, in this order. */
-const ROOMY_CARDS = ['totals', 'wellness'];
+const ROOMY_CARDS = ['totals', 'aerobic', 'weight'];
+/** Always across two columns when there are three: its three panels side by side make a short card, like its neighbours. */
+const ALWAYS_WIDE = ['breathing', 'wellness'];
 
 /**
  * The order and width of the cards (11 Nov 2026, second pass). Rows are as tall as their cards need, so the
  * job here is only that no row ends short and like sits with like: the fitness chart beside Key numbers; the
  * load, zone and power charts; the three table cards together; then the rest in threes, with any spare column
- * given to a card that has several small charts (Totals, then Wellness) rather than to whichever comes last.
+ * given to a card that has several small charts (Totals, then Aerobic fitness, then Weight), whose charts then sit
+ * side by side, rather than to whichever comes last. Wellness and Breathing always take two columns.
  */
 export function layout<T extends { id: string }>(items: T[], cols: number): Array<T & { w: number }> {
   const by = new Map(items.map((x) => [x.id, x]));
@@ -200,7 +203,7 @@ export function layout<T extends { id: string }>(items: T[], cols: number): Arra
   const first = take(['load', 'zones', 'power']);
   const tables = take(TABLE_CARDS);
   [...first, ...tables].forEach((x) => used.add(x.id));
-  const fixedWide = take(['breathing']);
+  const fixedWide = take(ALWAYS_WIDE);
   const roomy = take(ROOMY_CARDS);
   fixedWide.forEach((x) => used.add(x.id)); roomy.forEach((x) => used.add(x.id));
   const rest = items.filter((x) => !used.has(x.id));
@@ -213,7 +216,10 @@ export function layout<T extends { id: string }>(items: T[], cols: number): Arra
   const units = pool.length + roomy.length + 2 * fixedWide.length;
   let spare = (3 - (units % 3)) % 3;
   const wide: T[] = [...fixedWide], single: T[] = [...pool];
-  for (const x of roomy) { if (spare > 0) { wide.push(x); spare--; } else single.push(x); }
+  // A roomy card left at one column is a tall one (its charts stacked): it goes first, into a row of three, so the
+  // shorter cards are the ones that sit beside the wide cards.
+  for (const x of [...roomy].reverse()) { if (spare > 0 && roomy.indexOf(x) < spare) wide.push(x); else single.unshift(x); }
+  spare = 0;
   // Each wide card shares its row with one single; the other singles go in threes. A single short of a partner is widened.
   const partners = single.splice(Math.max(0, single.length - wide.length));
   while (single.length >= 3) single.splice(0, 3).forEach((x) => put(x));
@@ -268,27 +274,30 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
 function Fill({ initial = 170, children }: { initial?: number; min?: number; children: (h: number) => preact.ComponentChildren }) {
   const outer = useRef<HTMLDivElement>(null), inner = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(initial);
-  const hRef = useRef(h);
-  hRef.current = h;
+  // Read through refs, so the resize watcher (set up once) never works from an earlier render's numbers:
+  // a card's standard height changes when it goes from one column to two.
+  const now = useRef({ h, initial });
+  now.current = { h, initial };
   const tries = useRef(0), lastSize = useRef('');
-  const adjust = () => {
+  const adjust = useRef(() => {});
+  adjust.current = () => {
     const o = outer.current, i = inner.current;
     if (!o || !i) return;
-    const cur = hRef.current;
+    const { h: cur, initial: std } = now.current;
     // Everything in the chart that is not the plot itself (its legend, a panel's title).
     const extra = Math.max(0, i.offsetHeight - cur);
-    o.style.minHeight = `${initial + extra}px`;
-    const size = `${o.clientWidth}x${o.clientHeight}x${initial}`;
+    o.style.minHeight = `${std + extra}px`;
+    const size = `${o.clientWidth}x${o.clientHeight}x${std}`;
     if (size !== lastSize.current) { lastSize.current = size; tries.current = 0; }
-    const want = Math.max(initial, Math.round(o.clientHeight - extra));
-    if (Math.abs(want - cur) > 2 && tries.current < 6) { tries.current++; setH(want); }
+    const want = Math.max(std, Math.round(o.clientHeight - extra));
+    if (Math.abs(want - cur) > 2 && tries.current < 8) { tries.current++; setH(want); }
   };
-  useLayoutEffect(adjust);
+  useLayoutEffect(() => adjust.current());
   useEffect(() => {
-    const o = outer.current;
-    if (!o) return;
-    const ro = new ResizeObserver(() => adjust());
-    ro.observe(o);
+    const o = outer.current, i = inner.current;
+    if (!o || !i) return;
+    const ro = new ResizeObserver(() => adjust.current());
+    ro.observe(o); ro.observe(i);
     return () => ro.disconnect();
   }, []);
   return <div class="pfill" ref={outer}><div class="pfill-in" ref={inner}>{children(h)}</div></div>;
@@ -378,7 +387,7 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
     return { date: p.date, status: p.status, plannedTss: w ? plannedTss(w) : 0, doneTss: rec?.tss };
   });
   const pd = planDone(entries, from, to);
-  if (pd.share != null) ticker.push({ label: 'Plan done', value: `${pd.share}%`, change: 'of planned', card: 'load' });
+  if (pd.share != null) ticker.push({ label: 'Plan done', value: `${pd.share}%`, card: 'load' });
 
   // weekly load readout
   const weeks = weeklyLoad(data.rides, from, to, (d) => weekStart(d));
@@ -793,7 +802,7 @@ function DurabilityCard({ curves, from, to, range, ftp, building, coach }: { cur
 }
 
 /** Efficiency factor and heart-rate drift on steady rides of an hour or more, as two panels on one time axis. */
-function AerobicCard({ data, rides, readout, coach }: { data: AppData; rides: Ride[]; readout: string; coach: ProgressCoachState }) {
+function AerobicCard({ data, rides, readout, coach, wide }: { data: AppData; rides: Ride[]; readout: string; coach: ProgressCoachState; wide?: boolean }) {
   const isEndurance = (r: Ride) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; };
   const pts = aerobicPoints(rides, isEndurance, data.profile?.lthr, hrNumbers(data.profile).ladders?.hr);
   const explain = 'On steady rides of an hour or more: efficiency factor (normalized power per heartbeat) rising and heart-rate drift falling on the same kind of ride means the aerobic base is improving. Dots are single rides; the line is the average of the last five. Tap a ride to open it.';
@@ -805,18 +814,19 @@ function AerobicCard({ data, rides, readout, coach }: { data: AppData; rides: Ri
   const idOf = (i: number) => rides.find((r) => r.date === pts[i].date && r.name === pts[i].name)?.id;
   return (
     <PCard id="aerobic" title="Aerobic fitness" coach={coach} readout={readout} explain={explain}>
-      <Fill initial={230}>{(h) => {
-        const each = Math.max(64, Math.round((h - 44) / 2));
-        return (<>
+      <Fill initial={wide ? 170 : 230}>{(h) => {
+        const each = wide ? Math.max(90, h - 50) : Math.max(64, Math.round((h - 44) / 2));
+        return (<div class={wide ? 'pmulti two' : undefined}><div>
           <div class="small" style="margin-bottom:2px"><b>Efficiency factor</b> <span class="faint">(watts per beat; higher is better)</span></div>
           <LineChart series={[{ name: 'ride', color: 'var(--info)', values: pts.map((p) => p.ef ?? null), dots: true }, { name: '5-ride average', color: 'var(--info)', values: rollingMean(pts.map((p) => p.ef), 5), width: 2 }]}
             xLabels={labels} xTick={tick} yTitle="watts per beat" height={each} yMin={Math.min(...pts.map((p) => p.ef ?? 99)) * 0.95}
             readout={(i) => `${short(pts[i].date)} · ${pts[i].name} · efficiency ${pts[i].ef?.toFixed(2) ?? '–'}`} onPick={(i) => { const id = idOf(i); if (id) go(`rides/${id}`); }} pickLabel={(i) => (idOf(i) ? 'open the ride' : null)} />
-          <div class="small" style="margin:6px 0 2px"><b>Heart-rate drift</b> <span class="faint">(% rise for the same power in the second half; under 5% is a solid base)</span></div>
+          </div><div>
+          <div class="small" style={wide ? 'margin-bottom:2px' : 'margin:6px 0 2px'}><b>Heart-rate drift</b> <span class="faint">(% rise for the same power in the second half; under 5% is a solid base)</span></div>
           <LineChart series={[{ name: 'ride', color: 'var(--z5)', values: pts.map((p) => p.drift ?? null), dots: true }, { name: '5-ride average', color: 'var(--z5)', values: rollingMean(pts.map((p) => p.drift), 5), width: 2 }]}
             xLabels={labels} xTick={tick} yTitle="drift %" height={each} refLines={[{ value: 5, label: '5%', color: 'var(--ink-3)' }]}
             readout={(i) => `${short(pts[i].date)} · ${pts[i].name} · drift ${pts[i].drift?.toFixed(1) ?? '–'}%`} onPick={(i) => { const id = idOf(i); if (id) go(`rides/${id}`); }} pickLabel={(i) => (idOf(i) ? 'open the ride' : null)} />
-        </>);
+        </div></div>);
       }}</Fill>
     </PCard>
   );
@@ -890,8 +900,7 @@ function ConsistencyCard({ rides, from, to, readout, coach }: { rides: Ride[]; f
         <div class="sbox"><div class="l">Biggest week</div><div class="v">{big ? Math.round(big.total) : '–'}</div></div>
       </div>
       <Rest>
-        <div>
-          <div ref={box} style="position:relative" onMouseLeave={() => setHover(null)}>
+          <div ref={box} style="position:relative;margin:auto 0" onMouseLeave={() => setHover(null)}>
             <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;cursor:pointer" role="img" aria-label="Training load by day over the last year">
               {months.map((m) => <text key={m.i} x={30 + m.i * (C + G)} y={10} font-size="9" fill="var(--ink-3)">{m.label}</text>)}
               {[1, 3, 5].map((r) => <text key={r} x={0} y={16 + r * (C + G) + 9} font-size="9" fill="var(--ink-3)">{dowLabel(r)}</text>)}
@@ -915,7 +924,6 @@ function ConsistencyCard({ rides, from, to, readout, coach }: { rides: Ride[]; f
             )}
           </div>
           <div class="row faint small" style="gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">Less {[0, 1, 2, 3, 4, 5].map((l) => <span key={l} style={`display:inline-block;width:11px;height:11px;border-radius:2px;background:${l ? 'var(--accent)' : 'var(--soft)'};opacity:${l ? 0.2 + l * 0.16 : 1}`} />)} More <span style="margin-left:auto">{activeDays} active days so far this year</span></div>
-        </div>
       </Rest>
     </PCard>
   );
@@ -970,7 +978,7 @@ function TotalsCard({ rides, imperial, readout, coach, wide }: { rides: Ride[]; 
 }
 
 /** Body weight (7-day average) and FTP per kilo, as two panels on one time axis. */
-function WeightCard({ data, from, to, imperial, readout, coach }: { data: AppData; from: string; to: string; imperial: boolean; readout?: string; coach: ProgressCoachState }) {
+function WeightCard({ data, from, to, imperial, readout, coach, wide }: { data: AppData; from: string; to: string; imperial: boolean; readout?: string; coach: ProgressCoachState; wide?: boolean }) {
   const days = wellnessDays(data.wellness, from, to);
   if (!days.some((d) => d.w?.weightKg)) return null;
   const dates = days.map((d) => d.date);
@@ -984,18 +992,19 @@ function WeightCard({ data, from, to, imperial, readout, coach }: { data: AppDat
   return (
     <PCard id="weight" title="Weight and power to weight" coach={coach} readout={readout}
       explain="Body weight from your wellness data, and FTP divided by it. FTP is the value on record each day (it changes when you or Intervals.icu update it). Weight changes are never marked good or bad.">
-      <Fill initial={230}>{(h) => {
-        const each = Math.max(60, Math.round((h - 44) / 2));
-        return (<>
+      <Fill initial={wide ? 170 : 230}>{(h) => {
+        const each = wide ? Math.max(90, h - 50) : Math.max(60, Math.round((h - 44) / 2));
+        return (<div class={wide ? 'pmulti two' : undefined}><div>
           <div class="small" style="margin-bottom:1px"><b>Weight</b> <span class="faint">({unit})</span></div>
           <LineChart series={[{ name: 'day', color: 'var(--aqua)', values: kg.map((v) => (v ? Math.round(show(v) * 10) / 10 : null)), dots: true }, { name: '7-day average', color: 'var(--aqua)', values: avg.map((v) => (v ? Math.round(show(v) * 10) / 10 : null)), width: 2 }]}
             xLabels={dates} xTick={tick} yTitle={unit} height={each} yMin={Math.min(...kg.filter((v): v is number => !!v).map(show)) - 2}
             readout={(i) => `${short(dates[i])} · ${kg[i] ? `${(Math.round(show(kg[i]!) * 10) / 10)} ${unit}` : 'no reading'}${avg[i] ? ` · 7-day ${Math.round(show(avg[i]!) * 10) / 10} ${unit}` : ''}`} />
-          <div class="small" style="margin:6px 0 1px"><b>FTP per kilogram</b> <span class="faint">(W/kg)</span></div>
+          </div><div>
+          <div class="small" style={wide ? 'margin-bottom:1px' : 'margin:6px 0 1px'}><b>FTP per kilogram</b> <span class="faint">(W/kg)</span></div>
           <LineChart series={[{ name: 'W/kg', color: 'var(--accent)', values: wkg, width: 2 }]}
             xLabels={dates} xTick={tick} yTitle="W/kg" height={each} yMin={Math.min(...wkg.filter((v): v is number => v != null)) - 0.2}
             readout={(i) => `${short(dates[i])} · FTP ${ftp[i].ftp} W · ${wkg[i] ?? '–'} W/kg`} />
-        </>);
+        </div></div>);
       }}</Fill>
     </PCard>
   );

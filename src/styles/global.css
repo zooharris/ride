@@ -1755,10 +1755,12 @@ body {
 
 .kn { display: flex; flex-direction: column; font-size: 13px; flex: 1; }
 .kn > .kn-r { flex: 1 1 auto; min-height: 30px; }
-.kn-h, .kn-r { display: grid; grid-template-columns: minmax(84px, 1.4fr) 1fr 1fr .9fr 60px; gap: 8px; align-items: center; }
+.kn-h, .kn-r { display: grid; grid-template-columns: minmax(72px, 1fr) 56px 46px 48px 38px; gap: 4px; align-items: center; }
+.kn-h span { white-space: nowrap; }
+.kn-t svg { width: 38px; }
 .kn-h { font-size: 11px; color: var(--ink-3); padding: 0 0 5px; border-bottom: 1px solid var(--line); }
 .kn-h span:not(:first-child), .kn-r span:not(:first-child) { text-align: right; }
-.kn-r { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(84px, 1.4fr) 1fr 1fr .9fr 60px; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; font-variant-numeric: tabular-nums; }
+.kn-r { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(72px, 1fr) 56px 46px 48px 38px; gap: 4px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; font-variant-numeric: tabular-nums; }
 .kn-r:last-child { border-bottom: 0; }
 .kn-r:hover { background: var(--sub); }
 .kn-r:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -1843,3 +1845,6 @@ body {
 }
 @media print { .page-head { border-bottom: 0; } }
 .kn-r span { white-space: nowrap; }
+
+/* Every page starts at the same place beside the sidebar (11 Nov 2026): content is no longer centred in whatever width is left, so titles line up from page to page. */
+@media (min-width: 900px) { .main { margin-left: 0; margin-right: auto; } .main.onboard { margin: 0 auto; } }

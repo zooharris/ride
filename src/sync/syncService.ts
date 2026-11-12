@@ -1,6 +1,6 @@
 import { db, getSetting, saveProfile, setSetting } from '../data/db';
 import { addDays, estimatedRideTss, hrTss, looksLikeADrive, rideTss, today } from '../engine/load';
-import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Workout } from '../engine/types';
+import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { buildDoneRecord, mayWriteDescription, recordText, recordTss } from '../engine/record';
 import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
@@ -148,7 +148,7 @@ async function pullAll(): Promise<SyncResult> {
   await db.wellness.bulkPut(wellness);
   // Once, after the update that added sleeping heart rate and breathing rate: fetch them for the older
   // mornings already on this device, so readiness over time has them too. Runs in the background.
-  if (!first) void backfillWellnessFields(c);
+  if (!first) void backfillWellnessFields(c).then(() => backfillMoreFields(c));
   if (first) await noteLoadedFrom(oldest);
 
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined, lastErrorAt: undefined });
@@ -395,6 +395,41 @@ async function backfillWellnessFields(c: IntervalsCredentials): Promise<void> {
       from = addDays(to, 1);
     }
     await setSetting('wellnessFieldsV2', true);
+  } catch { /* tried again on the next sync */ } finally { backfilling = false; }
+}
+
+/**
+ * More data (11 Nov 2026): history synced before the app read the extra activity and daily numbers gets them once,
+ * in the background, 60 days at a time. Only the new numbers are written; nothing the rider edited is touched.
+ */
+const RIDE_EXTRA: Array<keyof Ride> = ['calories', 'workKj', 'workAboveFtpKj', 'variabilityIndex', 'maxSpeedMs', 'coastingSeconds', 'elevationLossM', 'rpe', 'carbsUsedG', 'reserveUsedKj', 'weatherTempC', 'feelsLikeC', 'windMs', 'headwindPct', 'device'];
+const WELL_EXTRA: Array<keyof Wellness> = ['spO2', 'steps', 'vo2max', 'deviceReadiness', 'hrvSdnn', 'bodyFatPct'];
+async function backfillMoreFields(c: IntervalsCredentials): Promise<void> {
+  if (backfilling || (await getSetting<boolean>('moreFieldsV1', false))) return;
+  backfilling = true;
+  try {
+    const firstR = await db.rides.orderBy('date').first();
+    const firstW = await db.wellness.orderBy('date').first();
+    const end = today();
+    let from = [firstR?.date, firstW?.date].filter((d): d is string => !!d).sort()[0] ?? addDays(end, -120);
+    while (from <= end) {
+      const to = addDays(from, 59) < end ? addDays(from, 59) : end;
+      const [rides, well] = await Promise.all([fetchRides(c, from, to), fetchWellness(c, from, to)]);
+      await db.transaction('rw', db.rides, db.wellness, async () => {
+        for (const r of rides) {
+          const patch: Record<string, unknown> = {};
+          for (const k of RIDE_EXTRA) if (r[k] !== undefined) patch[k] = r[k];
+          if (Object.keys(patch).length) await db.rides.update(r.id, patch as Partial<Ride>);
+        }
+        for (const w of well) {
+          const patch: Record<string, unknown> = {};
+          for (const k of WELL_EXTRA) if (w[k] !== undefined) patch[k] = w[k];
+          if (Object.keys(patch).length) await db.wellness.update(w.date, patch as Partial<Wellness>);
+        }
+      });
+      from = addDays(to, 1);
+    }
+    await setSetting('moreFieldsV1', true);
   } catch { /* tried again on the next sync */ } finally { backfilling = false; }
 }
 

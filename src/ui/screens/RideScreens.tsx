@@ -157,7 +157,11 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
         <section class="rd-card rd-chartcard">
           <div class="rd-chart-head">
             <span class="caption">{tl.length ? 'Workout' : 'Your ride'}</span>
-            {byHr ? <>
+            {byBreath && breathZones(profile) ? <>
+              <span class="rd-key"><i class="ln br" />Your breathing, 30-second average</span>
+              {tl.length > 0 && <span class="rd-key"><i class="bx" />Breathing target</span>}
+              {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+            </> : byHr ? <>
               <span class="rd-key"><i class="ln hr" />Your heart rate</span>
               {tl.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}
               {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
@@ -169,7 +173,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
             <span style="flex:1" />
             {step && !step.ramp && <button class="btn sm quiet" onClick={skipStep}>Skip this step ›</button>}
           </div>
-          <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={ride.setup.basis} />
+          <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={byBreath ? 'breath' : ride.setup.basis} />
         </section>
       </main>
 
@@ -582,32 +586,41 @@ function HrTile({ bpm, samples, profile }: { bpm?: number; samples: Sample[]; pr
  * targets, heart rate beneath. By heart rate: heart rate over the zone bands,
  * power beneath (when there is any).
  */
-export function RideChart({ timeline, samples, profile, position, live, by = 'power' }: { timeline: TimelineStep[]; samples: Sample[]; profile: Profile; position?: number; live?: boolean; by?: 'power' | 'hr' }) {
+export function RideChart({ timeline, samples, profile, position, live, by = 'power' }: { timeline: TimelineStep[]; samples: Sample[]; profile: Profile; position?: number; live?: boolean; by?: 'power' | 'hr' | 'breath' }) {
   // A free ride's chart starts ten minutes wide and grows with the ride.
   const total = Math.max(totalSeconds(timeline), samples.length ? (samples[samples.length - 1].p ?? samples.length) + 1 : 0, timeline.length ? 60 : 600);
   const W = 1000, H = 200, HH = 56;
   const x = (sec: number) => (sec / total) * W;
-  const byHr = by === 'hr';
+  // By breathing (11 Nov 2026): the main plot is ventilation over each step's breathing target, with power beneath,
+  // just as a ride by heart rate draws heart rate over its zones. Without the rider's breathing zones it falls back.
+  const byBreath = by === 'breath' && !!breathZones(profile);
+  const byHr = by === 'hr' || (by === 'breath' && !byBreath);
+  const alt = byHr || byBreath;
   const ws = samples.map((s) => s.w ?? 0);
+  const ves = byBreath ? samples.map((s) => s.ve).filter((v): v is number => v != null && v > 0) : [];
+  const bBands = byBreath ? timeline.map((s) => breathBand(s, profile)) : [];
   const hrs = samples.map((s) => s.hr).filter((h): h is number => h != null && h > 0);
   const hasPower = samples.some((s) => s.w != null);
   // The main plot's scale: watts from 0, or bpm across the useful range.
   const bands = byHr ? timeline.map((s) => targetBand(s, 'hr', profile)) : [];
-  const top = byHr ? Math.max(profile.maxHr, ...hrs, ...bands.map((b) => b.high + 5)) : Math.max(profile.ftp * 1.25, ...timeline.map((s) => s.high * profile.ftp * 1.1), ...(ws.length ? [Math.max(...ws) * 1.05] : []));
-  const bottom = byHr ? Math.min(Math.round(profile.lthr * 0.55), ...hrs.map((h) => h - 5)) : 0;
+  const top = byBreath ? Math.max((profile.vt2Ve ?? 60) * 1.25, ...ves.map((v) => v * 1.05), ...bBands.map((b) => (b ? b.high * 1.1 : 0))) : byHr ? Math.max(profile.maxHr, ...hrs, ...bands.map((b) => b.high + 5)) : Math.max(profile.ftp * 1.25, ...timeline.map((s) => s.high * profile.ftp * 1.1), ...(ws.length ? [Math.max(...ws) * 1.05] : []));
+  // Breathing's scale starts a little under the lowest target or reading, not at zero, so the bands have room to be read.
+  const bLows = bBands.map((b) => (b ? b.low || b.high * 0.8 : 0)).filter((v) => v > 0);
+  const bottom = byBreath ? Math.max(0, Math.floor(Math.min(...ves, ...bLows, (profile.vt2Ve ?? 60) * 0.5) * 0.75)) : byHr ? Math.min(Math.round(profile.lthr * 0.55), ...hrs.map((h) => h - 5)) : 0;
   const y = (v: number) => H - ((v - bottom) / Math.max(1, top - bottom)) * H;
   // The strip beneath: heart rate (by power) or power (by heart rate).
-  const stripVals = byHr ? ws : hrs;
-  const slo = byHr ? 0 : Math.min(80, ...hrs), shi = byHr ? Math.max(100, ...ws) * 1.05 : Math.max(profile.maxHr, ...hrs);
+  const stripVals = alt ? ws : hrs;
+  const slo = alt ? 0 : Math.min(80, ...hrs), shi = alt ? Math.max(100, ...ws) * 1.05 : Math.max(profile.maxHr, ...hrs);
   const sy = (v: number) => HH - ((v - slo) / Math.max(1, shi - slo)) * (HH - 4) - 2;
-  // The main line, smoothed over 5 s so it reads at a glance.
-  const val = (s: Sample) => (byHr ? s.hr : s.w);
+  // The main line, smoothed over 5 s so it reads at a glance (breathing over 30 s, as the big number is).
+  const val = (s: Sample) => (byBreath ? s.ve : byHr ? s.hr : s.w);
+  const span = byBreath ? 29 : 4;
   const line = samples.map((s, i) => {
-    const from = Math.max(0, i - 4);
+    const from = Math.max(0, i - span);
     let sum = 0, n = 0; for (let k = from; k <= i; k++) { const v = val(samples[k]); if (v != null && v > 0) { sum += v; n++; } }
     return n ? `${x(s.p ?? i).toFixed(1)},${y(sum / n).toFixed(1)}` : '';
   }).filter(Boolean).join(' ');
-  const strip = byHr
+  const strip = alt
     ? (hasPower ? samples.map((s, i) => `${x(s.p ?? i).toFixed(1)},${sy(s.w ?? 0).toFixed(1)}`).join(' ') : '')
     : samples.filter((s) => s.hr).map((s, i) => `${x(s.p ?? i).toFixed(1)},${sy(s.hr!).toFixed(1)}`).join(' ');
   const tick = total <= 12 * 60 ? 120 : total <= 35 * 60 ? 300 : total <= 90 * 60 ? 600 : total <= 150 * 60 ? 900 : total <= 240 * 60 ? 1800 : 3600;
@@ -615,14 +628,20 @@ export function RideChart({ timeline, samples, profile, position, live, by = 'po
   for (let t = 0; t <= total; t += tick) ticks.push(t);
   const nowX = position != null ? x(position) : undefined;
   const ladder = ridePowerZones(profile);
-  const threshold = byHr ? profile.lthr : profile.ftp;
+  const threshold = byBreath ? (profile.vt2Ve ?? 0) : byHr ? profile.lthr : profile.ftp;
   return (
     <div class="rd-chart">
       <div class="rd-chart-pw">
-        <svg class="rd-chart-p" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={byHr ? "Heart rate over the workout's zones" : "Power over the workout's targets"}>
+        <svg class="rd-chart-p" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={byBreath ? "Breathing over the workout's breathing targets" : byHr ? "Heart rate over the workout's zones" : "Power over the workout's targets"}>
           {timeline.map((s, i) => {
             const done = position != null && s.start < position;
             const op = done || !live ? 0.42 : 0.2;
+            if (byBreath) {
+              const b = bBands[i];
+              if (!b) return null;
+              const y1 = y(b.high), y0 = b.low ? y(b.low) : H;
+              return <rect key={s.index} x={x(s.start)} y={y1} width={Math.max(0.5, x(s.end) - x(s.start) - 0.6)} height={Math.max(1, y0 - y1)} fill={breathZoneVar(b.zone)} opacity={op} />;
+            }
             if (byHr) {
               const b = bands[i];
               const y1 = y(b.high), y0 = b.low ? y(b.low) : H;
@@ -631,16 +650,16 @@ export function RideChart({ timeline, samples, profile, position, live, by = 'po
             const t = y(((s.low + s.high) / 2) * profile.ftp);
             return <rect key={s.index} x={x(s.start)} y={t} width={Math.max(0.5, x(s.end) - x(s.start) - 0.6)} height={H - t} fill={ZONE_VAR[powerZone((s.low + s.high) / 2, ladder) - 1]} opacity={op} />;
           })}
-          <line x1="0" x2={W} y1={y(threshold)} y2={y(threshold)} stroke="var(--ink-3)" stroke-dasharray="4 5" vector-effect="non-scaling-stroke" />
-          {line && <polyline points={line} fill="none" stroke={byHr ? 'var(--z6)' : 'var(--ink)'} stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
+          {threshold > 0 && <line x1="0" x2={W} y1={y(threshold)} y2={y(threshold)} stroke="var(--ink-3)" stroke-dasharray="4 5" vector-effect="non-scaling-stroke" />}
+          {line && <polyline points={line} fill="none" stroke={byBreath ? 'var(--aqua)' : byHr ? 'var(--z6)' : 'var(--ink)'} stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
           {nowX != null && live && <line x1={nowX} x2={nowX} y1="0" y2={H} stroke="var(--today)" stroke-width="2" vector-effect="non-scaling-stroke" />}
         </svg>
-        <span class="rd-ftp" style={`top:calc(${(y(threshold) / H) * 100}% - 15px)`}>{byHr ? `Threshold ${profile.lthr} bpm` : `FTP ${profile.ftp} W`}</span>
+        {threshold > 0 && <span class="rd-ftp" style={`top:calc(${(y(threshold) / H) * 100}% - 15px)`}>{byBreath ? `Second threshold ${Math.round(threshold)} L/min` : byHr ? `Threshold ${profile.lthr} bpm` : `FTP ${profile.ftp} W`}</span>}
       </div>
-      {(!byHr || hasPower) && (
-        <svg class="rd-chart-h" viewBox={`0 0 ${W} ${HH}`} preserveAspectRatio="none" role="img" aria-label={byHr ? 'Power' : 'Heart rate'}>
+      {(!alt || hasPower) && (
+        <svg class="rd-chart-h" viewBox={`0 0 ${W} ${HH}`} preserveAspectRatio="none" role="img" aria-label={alt ? 'Power' : 'Heart rate'}>
           <rect x="0" y="0" width={W} height={HH} fill="var(--bg)" />
-          {strip && stripVals.length > 0 && <polyline points={strip} fill="none" stroke={byHr ? 'var(--ink-2)' : 'var(--z6)'} stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
+          {strip && stripVals.length > 0 && <polyline points={strip} fill="none" stroke={alt ? 'var(--ink-2)' : 'var(--z6)'} stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
           {nowX != null && live && <line x1={nowX} x2={nowX} y1="0" y2={HH} stroke="var(--today)" stroke-width="2" vector-effect="non-scaling-stroke" />}
         </svg>
       )}
@@ -735,12 +754,14 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const done = () => { clearRide(); go('today'); };
   const rideChart = (
         <section class="rd-card rd-chartcard">
-          <div class="rd-chart-head"><span class="caption">The ride</span>{byHr ? <>
+          <div class="rd-chart-head"><span class="caption">The ride</span>{byBreath ? <>
+            <span class="rd-key"><i class="ln br" />Your breathing, 30-second average</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Breathing target</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+          </> : byHr ? <>
             <span class="rd-key"><i class="ln hr" />Your heart rate</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
           </> : <>
             <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target, coloured by zone</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
           </>}</div>
-          <RideChart timeline={timeline} samples={rec.samples} profile={asRidden} by={rec.basis} />
+          <RideChart timeline={timeline} samples={rec.samples} profile={asRidden} by={by} />
         </section>
   );
   const discard = async () => {

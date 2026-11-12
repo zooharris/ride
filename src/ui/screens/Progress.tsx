@@ -544,6 +544,13 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
   row('sleep', 'Sleep', 'wellness', slN, slp(ago), (v) => hm(v), (v) => `${sg(v * 60)} min`, slp, 60);
   const wt = (d: string) => wm(d, (w) => w.weightKg);
   row('weight', 'Weight', 'weight', wNow, wt(ago), (v) => `${kgShow(v).toFixed(1)} ${kgUnit}`, (v) => sg(kgShow(v), 1), wt);
+  // More daily data (11 Nov 2026): only when the watch or ring sends it. Never coloured: the app makes no claim about them.
+  const spo = (d: string) => wm(d, (w) => w.spO2), stp = (d: string) => wm(d, (w) => w.steps), bf = (d: string) => wm(d, (w) => w.bodyFatPct);
+  const vo = (d: string) => valueOn(data.wellness, d, (w) => w.vo2max);
+  row('spo2', 'Blood oxygen', 'wellness', spo(to), spo(ago), (v) => `${Math.round(v)}%`, (v) => sg(v), spo);
+  row('steps', 'Steps a day', 'wellness', stp(to), stp(ago), (v) => Math.round(v).toLocaleString(), (v) => sg(v), stp);
+  row('vo2watch', "VO2max, your device's", 'tests', vo(to), vo(ago), (v) => v.toFixed(1), (v) => sg(v, 1), vo);
+  row('bodyfat', 'Body fat', 'weight', bf(to), bf(ago), (v) => `${v.toFixed(1)}%`, (v) => sg(v, 1), bf);
   row('ef', 'Efficiency', 'aerobic', efNow, avgTo(ago, (p) => p.ef), (v) => v.toFixed(2), (v) => sg(v, 2), (d) => avgTo(d, (p) => p.ef), 100);
   row('drift', 'HR drift', 'aerobic', drNow, avgTo(ago, (p) => p.drift), (v) => `${v.toFixed(1)}%`, (v) => sg(v, 1), (d) => avgTo(d, (p) => p.drift), 10);
 

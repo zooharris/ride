@@ -487,6 +487,10 @@ function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: s
     ...(has('Sleeping HR') ? [{ name: 'Sleeping HR', get: (d: string) => w(d)?.avgSleepingHr ?? null, fmt: (v: number) => `${Math.round(v)}`, unit: 'bpm', help: READINESS_HELP['Sleeping HR'] }] : []),
     ...(has('Breathing rate') ? [{ name: 'Breathing rate', get: (d: string) => w(d)?.respiration ?? null, fmt: (v: number) => v.toFixed(1), unit: '/min', help: READINESS_HELP['Breathing rate'] }] : []),
     { name: 'Form', get: (d) => series.find((f) => f.date === d)?.tsb ?? null, fmt: (v) => { const n = Math.round(v); return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`; }, unit: '', help: READINESS_HELP.Form, signed: true },
+    // More each day (11 Nov 2026): shown when your watch or ring sent them in the last two weeks. They are for
+    // your information; the readiness score does not use them, so their change is never coloured.
+    ...(days.some((d) => w(d)?.spO2) ? [{ name: 'Blood oxygen', get: (d: string) => w(d)?.spO2 ?? null, fmt: (v: number) => `${Math.round(v)}`, unit: '%', help: 'Blood oxygen overnight, from your watch or ring. Shown for your information; the readiness score does not use it.' }] : []),
+    ...(days.some((d) => w(d)?.deviceReadiness) ? [{ name: 'Device readiness', get: (d: string) => w(d)?.deviceReadiness ?? null, fmt: (v: number) => `${Math.round(v)}`, unit: '', help: "Your watch's or ring's own readiness score, beside the app's. The app's score does not use it." }] : []),
   ];
   const ramp = drivers.find((d) => d.name === 'Load climbing fast');
   return (

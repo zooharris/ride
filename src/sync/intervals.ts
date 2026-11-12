@@ -224,7 +224,7 @@ export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: num
   }
 }
 
-interface IcuActivity {
+export interface IcuActivity {
   id: string;
   start_date_local: string;
   name?: string;
@@ -250,6 +250,38 @@ interface IcuActivity {
   icu_eftp?: number;
   paired_event_id?: number;
   description?: string;
+  calories?: number;
+  icu_joules?: number;
+  icu_joules_above_ftp?: number;
+  icu_variability_index?: number;
+  max_speed?: number;
+  coasting_time?: number;
+  total_elevation_loss?: number;
+  icu_rpe?: number;
+  carbs_used?: number;
+  icu_max_wbal_depletion?: number;
+  average_weather_temp?: number;
+  average_feels_like?: number;
+  average_wind_speed?: number;
+  headwind_percent?: number;
+  device_name?: string;
+}
+
+/** A number the service sent, when it is a real, positive one; nothing otherwise (it sends 0 and null for "not known"). */
+const pos = (v: unknown, scale = 1): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v * scale : undefined);
+const anyNum = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** The extra per-activity numbers (11 Nov 2026): only those present, so an activity without them carries nothing new. */
+export function rideExtras(a: IcuActivity): Partial<Ride> {
+  const out: Partial<Ride> = {
+    calories: pos(a.calories), workKj: pos(a.icu_joules, 1 / 1000), workAboveFtpKj: pos(a.icu_joules_above_ftp, 1 / 1000),
+    variabilityIndex: pos(a.icu_variability_index), maxSpeedMs: pos(a.max_speed), coastingSeconds: pos(a.coasting_time),
+    elevationLossM: pos(a.total_elevation_loss), rpe: pos(a.icu_rpe), carbsUsedG: pos(a.carbs_used),
+    reserveUsedKj: pos(a.icu_max_wbal_depletion, 1 / 1000), weatherTempC: anyNum(a.average_weather_temp), feelsLikeC: anyNum(a.average_feels_like),
+    windMs: pos(a.average_wind_speed), headwindPct: anyNum(a.headwind_percent), device: a.device_name?.trim() || undefined,
+  };
+  for (const k of Object.keys(out) as Array<keyof Ride>) if (out[k] === undefined) delete out[k];
+  return out;
 }
 
 /**
@@ -317,6 +349,7 @@ function toRide(a: IcuActivity): Ride {
     eftp: a.icu_eftp,
     pairedEventId: a.paired_event_id,
     description: a.description ?? undefined,
+    ...rideExtras(a),
   };
 }
 
@@ -381,7 +414,7 @@ export async function fetchPowerCurve(c: IntervalsCredentials, oldest: string, n
   return out.sort((a, b) => a.seconds - b.seconds);
 }
 
-interface IcuWellness {
+export interface IcuWellness {
   id: string;
   hrv?: number;
   restingHR?: number;
@@ -390,6 +423,19 @@ interface IcuWellness {
   avgSleepingHR?: number;
   respiration?: number;
   weight?: number;
+  spO2?: number;
+  steps?: number;
+  vo2max?: number;
+  readiness?: number;
+  hrvSDNN?: number;
+  bodyFat?: number;
+}
+
+/** The extra daily numbers (11 Nov 2026): only those present. */
+export function wellnessExtras(w: IcuWellness): Partial<Wellness> {
+  const out: Partial<Wellness> = { spO2: pos(w.spO2), steps: pos(w.steps), vo2max: pos(w.vo2max), deviceReadiness: pos(w.readiness), hrvSdnn: pos(w.hrvSDNN), bodyFatPct: pos(w.bodyFat) };
+  for (const k of Object.keys(out) as Array<keyof Wellness>) if (out[k] === undefined) delete out[k];
+  return out;
 }
 
 export async function fetchWellness(c: IntervalsCredentials, oldest: string, newest: string): Promise<Wellness[]> {
@@ -403,6 +449,7 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
     avgSleepingHr: w.avgSleepingHR || undefined,
     respiration: w.respiration || undefined,
     weightKg: w.weight,
+    ...wellnessExtras(w),
   }));
 }
 

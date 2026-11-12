@@ -356,6 +356,32 @@ export interface Ride {
   uncountedTss?: number;
   /** The activity's description in Intervals.icu (the app writes its record there when it is empty). */
   description?: string;
+  // More per activity (11 Nov 2026), each only when the data service carries it for this activity.
+  /** Energy burned, kcal, as the device or Intervals.icu worked it out. */
+  calories?: number;
+  /** Mechanical work done at the pedals, kJ. */
+  workKj?: number;
+  /** Work done above FTP, kJ. */
+  workAboveFtpKj?: number;
+  /** Normalized power over average power: how uneven the effort was (1.00 is perfectly steady). */
+  variabilityIndex?: number;
+  maxSpeedMs?: number;
+  /** Time spent not pedalling. */
+  coastingSeconds?: number;
+  elevationLossM?: number;
+  /** The effort the rider rated in Intervals.icu, 1 to 10. */
+  rpe?: number;
+  /** Carbohydrate used, grams, as Intervals.icu estimates it. */
+  carbsUsedG?: number;
+  /** The deepest the reserve above FTP (W') was drawn down, kJ. */
+  reserveUsedKj?: number;
+  /** Weather on the ride, from Intervals.icu: air temperature, how it felt, wind speed (m/s), share of the ride into a headwind (%). */
+  weatherTempC?: number;
+  feelsLikeC?: number;
+  windMs?: number;
+  headwindPct?: number;
+  /** What recorded it. */
+  device?: string;
 }
 
 export interface Wellness {
@@ -369,6 +395,17 @@ export interface Wellness {
   /** Breathing rate overnight (breaths per minute), when the watch sends it. */
   respiration?: number;
   weightKg?: number;
+  // More each day (11 Nov 2026), each only when the data service carries it.
+  /** Blood oxygen overnight, %. */
+  spO2?: number;
+  steps?: number;
+  /** The watch's or ring's own VO2max estimate, ml/kg/min. */
+  vo2max?: number;
+  /** The watch's or ring's own readiness score, 0 to 100. Shown beside the app's; never used in it. */
+  deviceReadiness?: number;
+  /** HRV as SDNN (ms), beside the usual rMSSD, when sent. */
+  hrvSdnn?: number;
+  bodyFatPct?: number;
 }
 
 /**

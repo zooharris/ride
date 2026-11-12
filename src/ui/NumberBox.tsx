@@ -33,7 +33,7 @@ export function showNumber(v: number | undefined, decimals: boolean): string {
   return decimals ? String(Math.round(v * 100) / 100) : String(Math.round(v));
 }
 
-export function NumberBox({ value, onValue, decimals = false, placeholder, title, ariaLabel, style }: {
+export function NumberBox({ value, onValue, decimals = false, placeholder, title, ariaLabel, style, class: cls }: {
   value: number | undefined;
   onValue: (v: number | undefined) => void;
   decimals?: boolean;
@@ -41,6 +41,7 @@ export function NumberBox({ value, onValue, decimals = false, placeholder, title
   title?: string;
   ariaLabel?: string;
   style?: string;
+  class?: string;
 }) {
   const [text, setText] = useState<string | null>(null); // null: not being edited, show the owner's value
   const settle = () => { if (text != null) { onValue(parseNumberText(text)); setText(null); } };
@@ -54,6 +55,7 @@ export function NumberBox({ value, onValue, decimals = false, placeholder, title
       title={title}
       aria-label={ariaLabel}
       style={style}
+      class={cls}
       onFocus={() => setText(showNumber(value, decimals))}
       onInput={(e) => {
         const el = e.target as HTMLInputElement;

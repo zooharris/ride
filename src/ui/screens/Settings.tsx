@@ -1,4 +1,5 @@
 import { PlayerSettings } from '../PlayerSettings';
+import { NumberBox } from '../NumberBox';
 import { Fold } from '../Fold';
 import { useHasKey } from '../thresholdService';
 import { CoachFtp, CoachZones } from '../ThresholdAdvice';
@@ -97,7 +98,7 @@ export function Settings({ data }: { data: AppData }) {
     if (!confirm('Discard the changes on this page?')) return;
     setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setProvider(savedProvider); setModel(savedModel); setMsg(null);
   }
-  const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
+  const num = (k: keyof Profile) => (v: number | undefined) => { if (v != null) upd(k, v as never); };
 
   async function save() {
     setFirstDay(p.weekStartsOn === 0 ? 0 : 1);
@@ -198,11 +199,11 @@ export function Settings({ data }: { data: AppData }) {
         <h2>You</h2>
         <div class="form">
           <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
-          <div class="field"><label>Resting heart rate</label><input type="number" value={p.restingHr} onInput={num('restingHr')} /></div>
+          <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} /></div>
           <div class="field"><label>Weight ({p.units === 'imperial' ? 'lb' : 'kg'})</label>
-            <input type="number" value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
-          <div class="field"><label>Hours per week</label><input type="number" step="0.5" value={p.hoursPerWeek} onInput={num('hoursPerWeek')} /></div>
-          <div class="field"><label>Birth year</label><input type="number" value={p.birthYear ?? ''} onInput={(e) => upd('birthYear', Number((e.target as HTMLInputElement).value) || undefined)} /></div>
+            <NumberBox value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
+          <div class="field"><label>Hours per week</label><NumberBox decimals value={p.hoursPerWeek} onValue={num('hoursPerWeek')} /></div>
+          <div class="field"><label>Birth year</label><NumberBox value={p.birthYear} onValue={(v) => upd('birthYear', v || undefined)} /></div>
         </div>
         <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Targets sent to Garmin</label>
@@ -234,7 +235,7 @@ export function Settings({ data }: { data: AppData }) {
 
         <div class="panel" style={pane('power')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} /></div>
+            <div class="field"><label>FTP (watts)</label><NumberBox value={p.ftp} onValue={num('ftp')} /></div>
           </div>
           {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
           <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
@@ -245,8 +246,8 @@ export function Settings({ data }: { data: AppData }) {
 
         <div class="panel" style={pane('hr')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
-            <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} />
+            <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={p.lthr} onValue={num('lthr')} /></div>
+            <div class="field"><label>Max heart rate</label><NumberBox value={p.maxHr} onValue={num('maxHr')} />
               {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
             </div>
           </div>
@@ -258,7 +259,7 @@ export function Settings({ data }: { data: AppData }) {
             <b class="small">On foot</b>
             <p class="muted small" style="margin:4px 0 10px">Runs and walks have their own numbers: threshold heart rate on foot is usually a few beats above the bike's.</p>
             <div class="form">
-              <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={footThreshold(p)} onInput={(e) => upd('footLthr', Number((e.target as HTMLInputElement).value) || undefined)} />
+              <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={footThreshold(p)} onValue={(v) => upd('footLthr', v || undefined)} />
                 {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
               <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
             </div>
@@ -272,8 +273,8 @@ export function Settings({ data }: { data: AppData }) {
         <div class="panel" style={pane('breath')} role="tabpanel">
           <p class="muted small" style="margin:0 0 10px">Your two breathing thresholds, in litres of air a minute, from a breathing strap. A Ramp Test ridden with the strap sets the second; your easy and steady rides with the strap find the first; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
           <div class="form">
-            <div class="field"><label>First threshold, VT1 (L/min)</label><input type="number" step="0.1" value={p.vt1Ve ?? ''} onInput={(e) => setP({ ...p, vt1Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} /></div>
-            <div class="field"><label>Second threshold, VT2 (L/min)</label><input type="number" step="0.1" value={p.vt2Ve ?? ''} onInput={(e) => setP({ ...p, vt2Ve: Number((e.target as HTMLInputElement).value) || undefined, breathSetOn: today() })} />
+            <div class="field"><label>First threshold, VT1 (L/min)</label><NumberBox decimals value={p.vt1Ve} onValue={(v) => setP({ ...p, vt1Ve: v || undefined, breathSetOn: today() })} /></div>
+            <div class="field"><label>Second threshold, VT2 (L/min)</label><NumberBox decimals value={p.vt2Ve} onValue={(v) => setP({ ...p, vt2Ve: v || undefined, breathSetOn: today() })} />
               {p.breathSetOn && <span class="faint small">Set {fmtDate(p.breathSetOn, { month: 'long', day: 'numeric' })}.</span>}</div>
           </div>
           <BreathFromRides p={p} setP={setP} data={data} />
@@ -617,7 +618,7 @@ function ZoneEditor({ title, unit, threshold, max, zones, mode, custom, onMode, 
               <td>Z{i + 1} {name}</td>
               <td class="r num muted zone-pct">{pctText}</td>
               <td class="r num zone-abs">{absText}</td>
-              <td class="r">{i < 6 ? <input type="number" class="num zone-top" style="text-align:right" value={mode === 'pct' ? pcts[i] : tops[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">{unit === 'bpm' ? 'max' : 'open'}</span>}</td>
+              <td class="r">{i < 6 ? <NumberBox class="num zone-top" style="text-align:right" value={mode === 'pct' ? pcts[i] : tops[i]} onValue={(v) => { if (v != null) set(i, v); }} /> : <span class="faint small">{unit === 'bpm' ? 'max' : 'open'}</span>}</td>
             </tr>
           );
         })}
@@ -723,7 +724,7 @@ function BreathEditor({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
             <td>Z{i + 1} {z.name}</td>
             <td class="r num muted zone-pct">{i < 4 ? `${i === 0 ? 'up to ' : `${pcts[i - 1]}–`}${pcts[i]}%` : `${pcts[3]}%+`}</td>
             <td class="r num zone-abs">{i < 4 ? `${i === 0 ? 'up to ' : `${one(z.low)}–`}${one(z.high)}` : `${one(z.low)}+`}</td>
-            <td class="r">{i < 4 ? <input type="number" step={mode === 'pct' ? '1' : '0.1'} class="num zone-top" style="text-align:right" value={entered[i]} onInput={(e) => set(i, Number((e.target as HTMLInputElement).value))} /> : <span class="faint small">open</span>}</td>
+            <td class="r">{i < 4 ? <NumberBox decimals={mode !== 'pct'} class="num zone-top" style="text-align:right" value={entered[i]} onValue={(v) => { if (v != null) set(i, v); }} /> : <span class="faint small">open</span>}</td>
           </tr>
         ))}
       </table>

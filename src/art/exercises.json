@@ -14,7 +14,15 @@
   "a",
   "b"
  ],
+ "band-kickback": [
+  "a",
+  "b"
+ ],
  "band-lat-pulldown": [
+  "a",
+  "b"
+ ],
+ "band-march": [
   "a",
   "b"
  ],
@@ -38,9 +46,16 @@
   "a",
   "b"
  ],
+ "bb-hip-thrust": [
+  "a",
+  "b"
+ ],
  "bb-row": [
   "a",
   "b"
+ ],
+ "bear-crawl": [
+  "a"
  ],
  "bench-dip": [
   "a",
@@ -52,6 +67,10 @@
  ],
  "bird-dog": [
   "a"
+ ],
+ "box-jump": [
+  "a",
+  "b"
  ],
  "bw-squat": [
   "a",
@@ -70,7 +89,14 @@
  "child-pose": [
   "a"
  ],
+ "chin-up": [
+  "a",
+  "b"
+ ],
  "clamshell": [
+  "a"
+ ],
+ "copenhagen-plank": [
   "a"
  ],
  "couch-stretch": [
@@ -88,6 +114,10 @@
   "a",
   "b"
  ],
+ "db-hang-clean": [
+  "a",
+  "b"
+ ],
  "db-overhead": [
   "a",
   "b"
@@ -100,6 +130,10 @@
   "a",
   "b"
  ],
+ "db-suitcase-deadlift": [
+  "a",
+  "b"
+ ],
  "db-swing": [
   "a",
   "b"
@@ -107,6 +141,9 @@
  "dead-bug": [
   "a",
   "b"
+ ],
+ "dead-hang": [
+  "a"
  ],
  "dip": [
   "a",
@@ -152,6 +189,10 @@
  "hollow-hold": [
   "a"
  ],
+ "kb-clean": [
+  "a",
+  "b"
+ ],
  "kb-deadlift": [
   "a",
   "b"
@@ -186,6 +227,10 @@
  "kb-sl-rdl": [
   "a"
  ],
+ "kb-snatch": [
+  "a",
+  "b"
+ ],
  "kb-suitcase-carry": [
   "a"
  ],
@@ -215,6 +260,10 @@
  "ninety-ninety": [
   "a"
  ],
+ "nordic-lower": [
+  "a",
+  "b"
+ ],
  "one-arm-row": [
   "a",
   "b"
@@ -229,7 +278,14 @@
  "pigeon": [
   "a"
  ],
+ "pike-pushup": [
+  "a",
+  "b"
+ ],
  "plank": [
+  "a"
+ ],
+ "pogo-hops": [
   "a"
  ],
  "pull-up": [
@@ -275,7 +331,23 @@
   "a",
   "b"
  ],
+ "skater-hop": [
+  "a",
+  "b"
+ ],
+ "sl-box-squat": [
+  "a",
+  "b"
+ ],
+ "split-jump": [
+  "a",
+  "b"
+ ],
  "split-squat": [
+  "a",
+  "b"
+ ],
+ "squat-jump": [
   "a",
   "b"
  ],
@@ -289,11 +361,23 @@
  "suitcase-carry": [
   "a"
  ],
+ "table-row": [
+  "a",
+  "b"
+ ],
  "thoracic-extension": [
   "a"
  ],
  "thoracic-rotation": [
   "a"
+ ],
+ "tibialis-raise": [
+  "a",
+  "b"
+ ],
+ "towel-row": [
+  "a",
+  "b"
  ],
  "walking-lunge": [
   "a"

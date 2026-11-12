@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Equipment } from '../engine/types';
-import { EXERCISES, EXERCISES_AWAITING_PICTURES, exercisesFor } from './strength';
+import { EXERCISES, EXERCISES_ADDED_11_NOV, exercisesFor } from './strength';
 import { STRENGTH_SESSIONS } from './strengthSessions';
 import { STRENGTH_D2 } from './strengthD2';
 import { readyMadeSessions } from './sessions';
@@ -13,9 +13,9 @@ const SETS: Equipment[][] = [['bodyweight'], ['bodyweight', 'dumbbells', 'bench'
 
 describe('the 22 approved exercises', () => {
   it('are all in the Library with instructions, and each is in at least one session', () => {
-    expect(EXERCISES_AWAITING_PICTURES).toHaveLength(22);
+    expect(EXERCISES_ADDED_11_NOV).toHaveLength(22);
     const used = new Set(STRENGTH_SESSIONS.flatMap((s) => s.ids));
-    for (const id of EXERCISES_AWAITING_PICTURES) {
+    for (const id of EXERCISES_ADDED_11_NOV) {
       const e = EXERCISES.find((x) => x.id === id)!;
       expect(e, id).toBeTruthy();
       expect(e.cue.length, id).toBeGreaterThan(30);

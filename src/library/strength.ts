@@ -166,8 +166,8 @@ export const EXERCISES: ExerciseDef[] = [
   E('band-march', 'hip', 'Band hip flexor march', ['band'], 'Band round the feet, lying on your back or standing tall; lift one knee up against the band and lower slowly, then the other.', 'The hip flexors that pull the pedal up over the top of the stroke, and that cramp late in long rides.', false, true, '10–15 each side'),
 ];
 
-/** The 22 exercises approved on 11 Nov 2026 (Part D batch 2): they show without a picture until Todd supplies them. */
-export const EXERCISES_AWAITING_PICTURES = ['squat-jump', 'skater-hop', 'pogo-hops', 'box-jump', 'split-jump', 'sl-box-squat', 'nordic-lower', 'copenhagen-plank', 'tibialis-raise', 'bear-crawl', 'towel-row', 'table-row', 'pike-pushup', 'chin-up', 'dead-hang', 'kb-clean', 'kb-snatch', 'db-hang-clean', 'db-suitcase-deadlift', 'bb-hip-thrust', 'band-kickback', 'band-march'];
+/** The 22 exercises approved on 11 Nov 2026 (Part D batch 2); their pictures arrived 12 Nov. */
+export const EXERCISES_ADDED_11_NOV = ['squat-jump', 'skater-hop', 'pogo-hops', 'box-jump', 'split-jump', 'sl-box-squat', 'nordic-lower', 'copenhagen-plank', 'tibialis-raise', 'bear-crawl', 'towel-row', 'table-row', 'pike-pushup', 'chin-up', 'dead-hang', 'kb-clean', 'kb-snatch', 'db-hang-clean', 'db-suitcase-deadlift', 'bb-hip-thrust', 'band-kickback', 'band-march'];
 
 /** Carries and rotation borrow a trunk exercise when the rider has nothing for them (e.g. bodyweight only). */
 const GYM: Equipment[] = ['barbell', 'pullup-bar', 'dip-bars'];

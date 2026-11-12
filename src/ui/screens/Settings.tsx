@@ -98,6 +98,10 @@ export function Settings({ data }: { data: AppData }) {
     if (!confirm('Discard the changes on this page?')) return;
     setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setProvider(savedProvider); setModel(savedModel); setMsg(null);
   }
+  // Sense checks for the single-number boxes (12 Nov): wide human ranges, never one rider's numbers.
+  const within = (lo: number, hi: number, what: string) => (v: number) => v < lo || v > hi ? `${what} is usually between ${lo} and ${hi}.` : undefined;
+  const firstOf = (...cs: Array<(v: number) => string | undefined>) => (v: number) => { for (const c of cs) { const m = c(v); if (m) return m; } return undefined; };
+  const thisYear = new Date().getFullYear();
   const num = (k: keyof Profile) => (v: number | undefined) => { if (v != null) upd(k, v as never); };
 
   async function save() {
@@ -199,11 +203,11 @@ export function Settings({ data }: { data: AppData }) {
         <h2>You</h2>
         <div class="form">
           <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
-          <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} /></div>
+          <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} check={firstOf(within(25, 120, 'Resting heart rate'), (v) => p.lthr && v >= p.lthr ? `It must be below your threshold heart rate (${p.lthr}).` : undefined)} /></div>
           <div class="field"><label>Weight ({p.units === 'imperial' ? 'lb' : 'kg'})</label>
-            <NumberBox value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
-          <div class="field"><label>Hours per week</label><NumberBox decimals value={p.hoursPerWeek} onValue={num('hoursPerWeek')} /></div>
-          <div class="field"><label>Birth year</label><NumberBox value={p.birthYear} onValue={(v) => upd('birthYear', v || undefined)} /></div>
+            <NumberBox value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} check={p.units === 'imperial' ? within(66, 550, 'Weight in pounds') : within(30, 250, 'Weight in kilograms')} /></div>
+          <div class="field"><label>Hours per week</label><NumberBox decimals value={p.hoursPerWeek} onValue={num('hoursPerWeek')} check={within(0.5, 40, 'Hours per week')} /></div>
+          <div class="field"><label>Birth year</label><NumberBox value={p.birthYear} onValue={(v) => upd('birthYear', v || undefined)} check={within(1920, thisYear - 10, 'Birth year')} /></div>
         </div>
         <div class="row wrap" style="margin-top:14px;gap:18px">
           <div class="field"><label>Targets sent to Garmin</label>
@@ -235,7 +239,7 @@ export function Settings({ data }: { data: AppData }) {
 
         <div class="panel" style={pane('power')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>FTP (watts)</label><NumberBox value={p.ftp} onValue={num('ftp')} /></div>
+            <div class="field"><label>FTP (watts)</label><NumberBox value={p.ftp} onValue={num('ftp')} check={within(50, 600, 'FTP')} /></div>
           </div>
           {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
           <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
@@ -246,8 +250,8 @@ export function Settings({ data }: { data: AppData }) {
 
         <div class="panel" style={pane('hr')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={p.lthr} onValue={num('lthr')} /></div>
-            <div class="field"><label>Max heart rate</label><NumberBox value={p.maxHr} onValue={num('maxHr')} />
+            <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={p.lthr} onValue={num('lthr')} check={firstOf(within(80, 220, 'Threshold heart rate'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined, (v) => p.restingHr && v <= p.restingHr ? `It must be above your resting heart rate (${p.restingHr}).` : undefined)} /></div>
+            <div class="field"><label>Max heart rate</label><NumberBox value={p.maxHr} onValue={num('maxHr')} check={firstOf(within(100, 230, 'Max heart rate'), (v) => p.lthr && v <= p.lthr ? `It must be above your threshold heart rate (${p.lthr}).` : undefined, (v) => p.footLthr && v <= p.footLthr ? `It must be above your threshold heart rate on foot (${p.footLthr}).` : undefined)} />
               {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
             </div>
           </div>
@@ -259,7 +263,7 @@ export function Settings({ data }: { data: AppData }) {
             <b class="small">On foot</b>
             <p class="muted small" style="margin:4px 0 10px">Runs and walks have their own numbers: threshold heart rate on foot is usually a few beats above the bike's.</p>
             <div class="form">
-              <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={footThreshold(p)} onValue={(v) => upd('footLthr', v || undefined)} />
+              <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={footThreshold(p)} onValue={(v) => upd('footLthr', v || undefined)} check={firstOf(within(80, 220, 'Threshold heart rate on foot'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined)} />
                 {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
               <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
             </div>
@@ -273,8 +277,8 @@ export function Settings({ data }: { data: AppData }) {
         <div class="panel" style={pane('breath')} role="tabpanel">
           <p class="muted small" style="margin:0 0 10px">Your two breathing thresholds, in litres of air a minute, from a breathing strap. A Ramp Test ridden with the strap sets the second; your easy and steady rides with the strap find the first; you can also type them in. They stand in for your lactate thresholds: the first (VT1) is the top of all-day endurance riding, the second (VT2) the most you can sustain for long. Kept on your devices; Intervals.icu has no breathing zones.</p>
           <div class="form">
-            <div class="field"><label>First threshold, VT1 (L/min)</label><NumberBox decimals value={p.vt1Ve} onValue={(v) => setP({ ...p, vt1Ve: v || undefined, breathSetOn: today() })} /></div>
-            <div class="field"><label>Second threshold, VT2 (L/min)</label><NumberBox decimals value={p.vt2Ve} onValue={(v) => setP({ ...p, vt2Ve: v || undefined, breathSetOn: today() })} />
+            <div class="field"><label>First threshold, VT1 (L/min)</label><NumberBox decimals value={p.vt1Ve} onValue={(v) => setP({ ...p, vt1Ve: v || undefined, breathSetOn: today() })} check={firstOf(within(5, 250, 'The first threshold'), (v) => p.vt2Ve && v >= p.vt2Ve ? `It must be below your second threshold (${p.vt2Ve} L/min).` : undefined)} /></div>
+            <div class="field"><label>Second threshold, VT2 (L/min)</label><NumberBox decimals value={p.vt2Ve} onValue={(v) => setP({ ...p, vt2Ve: v || undefined, breathSetOn: today() })} check={firstOf(within(10, 300, 'The second threshold'), (v) => p.vt1Ve && v <= p.vt1Ve ? `It must be above your first threshold (${p.vt1Ve} L/min).` : undefined)} />
               {p.breathSetOn && <span class="faint small">Set {fmtDate(p.breathSetOn, { month: 'long', day: 'numeric' })}.</span>}</div>
           </div>
           <BreathFromRides p={p} setP={setP} data={data} />

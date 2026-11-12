@@ -33,7 +33,15 @@ export function showNumber(v: number | undefined, decimals: boolean): string {
   return decimals ? String(Math.round(v * 100) / 100) : String(Math.round(v));
 }
 
-export function NumberBox({ value, onValue, decimals = false, placeholder, title, ariaLabel, style, class: cls }: {
+/**
+ * `check` (Todd, 12 Nov): says what is wrong with a number, in plain words, or
+ * nothing when it is fine. A number that fails is held back: it is never
+ * handed to the owner, the box keeps showing what was typed with the reason
+ * beneath it in red, and leaving the box does not throw it away, so the rider
+ * can see and correct it. An empty box is not checked; the owner decides what
+ * empty means.
+ */
+export function NumberBox({ value, onValue, decimals = false, placeholder, title, ariaLabel, style, class: cls, check }: {
   value: number | undefined;
   onValue: (v: number | undefined) => void;
   decimals?: boolean;
@@ -42,10 +50,22 @@ export function NumberBox({ value, onValue, decimals = false, placeholder, title
   ariaLabel?: string;
   style?: string;
   class?: string;
+  check?: (v: number) => string | undefined;
 }) {
   const [text, setText] = useState<string | null>(null); // null: not being edited, show the owner's value
-  const settle = () => { if (text != null) { onValue(parseNumberText(text)); setText(null); } };
-  return (
+  const problem = (t: string | null): string | undefined => {
+    if (t == null || !check) return undefined;
+    const n = parseNumberText(t);
+    return n == null ? undefined : check(n);
+  };
+  const [told, setTold] = useState(false); // the reason shows once the rider leaves the box, not mid-number ("2" on the way to 238)
+  const wrong = told ? problem(text) : undefined;
+  const settle = () => {
+    if (text == null) return;
+    if (problem(text)) { setTold(true); return; }
+    onValue(parseNumberText(text)); setText(null); setTold(false);
+  };
+  const box = (
     <input
       type="text"
       inputMode={decimals ? 'decimal' : 'numeric'}
@@ -56,17 +76,21 @@ export function NumberBox({ value, onValue, decimals = false, placeholder, title
       aria-label={ariaLabel}
       style={style}
       class={cls}
-      onFocus={() => setText(showNumber(value, decimals))}
+      aria-invalid={wrong ? true : undefined}
+      onFocus={() => setText((t) => t ?? showNumber(value, decimals))}
       onInput={(e) => {
         const el = e.target as HTMLInputElement;
         const t = cleanNumberText(el.value, decimals);
         if (t !== el.value) el.value = t;
         setText(t);
+        if (told && !problem(t)) setTold(false);
         // A complete number goes up as it is typed; "7." waits for its next digit or for leaving the box.
-        if (!t.endsWith('.')) onValue(parseNumberText(t));
+        if (!t.endsWith('.') && !problem(t)) onValue(parseNumberText(t));
       }}
       onBlur={settle}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
     />
   );
+  if (!check) return box;
+  return <>{box}{wrong && <span class="small" style="color:var(--bad)">{wrong} Not used until it's corrected.</span>}</>;
 }

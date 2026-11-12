@@ -1,42 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { layout } from './screens/Progress';
+import { columnsFor } from './screens/Progress';
 
-const cards = (ids: string[]) => ids.map((id) => ({ id }));
-/** Every row adds up to the full width, in order, with nothing left over. */
-const rows = (items: Array<{ id: string; w: number }>, cols: number) => {
-  const out: string[][] = [];
-  let row: string[] = [], used = 0;
-  for (const x of items) {
-    if (used + x.w > cols) return null;
-    row.push(x.id); used += x.w;
-    if (used === cols) { out.push(row); row = []; used = 0; }
-  }
-  return used === 0 ? out : null;
-};
+const ids = ['load', 'zones', 'power', 'records', 'durability', 'aerobic', 'wellness', 'morning', 'consistency', 'totals', 'weight', 'tests', 'body', 'breathing'];
 
-describe('the Progress grid', () => {
-  const base = ['fitness', 'key', 'load', 'zones', 'power', 'records', 'durability', 'aerobic', 'wellness', 'morning', 'consistency', 'totals'];
-  for (const extra of [[], ['weight'], ['tests'], ['weight', 'tests'], ['weight', 'tests', 'body'], ['tests', 'body', 'breathing'], ['weight', 'tests', 'body', 'breathing'], ['tests', 'breathing']]) {
-    for (const cols of [2, 3]) {
-      it(`leaves no row short: ${cols} columns with ${extra.join(', ') || 'the base cards'}`, () => {
-        const placed = layout(cards([...base, ...extra]), cols);
-        expect(rows(placed, cols)).not.toBeNull();
-        expect(placed.map((x) => x.id).sort()).toEqual([...base, ...extra].sort());
-      });
+describe('the Progress columns', () => {
+  it('place every card exactly once, whatever the number of columns', () => {
+    for (const cols of [1, 2, 3]) {
+      const out = columnsFor(ids, cols);
+      expect(out).toHaveLength(cols);
+      expect(out.flat().sort()).toEqual([...ids].sort());
     }
-  }
-  it('puts the fitness chart beside Key numbers and the three table cards in one row', () => {
-    const r = rows(layout(cards([...base, 'weight', 'tests', 'body']), 3), 3)!;
-    expect(r[0]).toEqual(['fitness', 'key']);
-    expect(r).toContainEqual(['records', 'morning', 'consistency']);
   });
-  it('gives a spare column to a card with several small charts, never to whichever card is last', () => {
-    const placed = layout(cards([...base, 'tests', 'body']), 3);
-    const wide = placed.filter((x) => x.w === 2 && x.id !== 'fitness').map((x) => x.id);
-    expect(wide.every((id) => ['totals', 'aerobic', 'weight', 'wellness', 'breathing'].includes(id))).toBe(true);
-    expect(placed.find((x) => x.id === 'body')!.w).toBe(1);
+  it('end about level: no column is taller than another by more than one card', () => {
+    const heights: Record<string, number> = { load: 320, zones: 300, power: 360, records: 290, durability: 310, aerobic: 470, wellness: 430, morning: 250, consistency: 300, totals: 440, weight: 480, tests: 520, body: 400, breathing: 380 };
+    for (const cols of [2, 3]) {
+      const tall = columnsFor(ids, cols, heights).map((c) => c.reduce((a, id) => a + heights[id] + 14, 0));
+      expect(Math.max(...tall) - Math.min(...tall)).toBeLessThanOrEqual(Math.max(...Object.values(heights)) + 14);
+    }
   });
-  it('one column is a plain list', () => {
-    expect(layout(cards(base), 1).every((x) => x.w === 1)).toBe(true);
+  it('keep the reading order within each column, and start with the first cards across the top', () => {
+    // (with no measured heights the rough ones are used)
+    const out = columnsFor(ids, 3);
+    expect(out.map((c) => c[0])).toEqual(['load', 'zones', 'power']);
+    for (const col of out) expect(col.map((id) => ids.indexOf(id))).toEqual([...col.map((id) => ids.indexOf(id))].sort((a, b) => a - b));
+  });
+  it('one column is the plain list', () => {
+    expect(columnsFor(ids, 1)).toEqual([ids]);
+  });
+});
+
+describe('the columns end level', () => {
+  it('leaves only a little to share out, for many mixes of card heights', () => {
+    let seed = 11;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    let worst = 0;
+    for (let run = 0; run < 300; run++) {
+      const some = ids.filter((id) => !['weight', 'body', 'breathing'].includes(id) || rnd() > 0.4);
+      const heights = Object.fromEntries(some.map((id) => [id, Math.round(250 + rnd() * 300)]));
+      for (const cols of [2, 3]) {
+        const out = columnsFor(some, cols, heights);
+        expect(out.flat().sort()).toEqual([...some].sort());
+        const tall = out.map((c) => c.reduce((a, id) => a + heights[id] + 14, 0));
+        worst = Math.max(worst, Math.max(...tall) - Math.min(...tall));
+      }
+    }
+    // With an uneven number of cards one column holds one more than the others, so some difference is unavoidable;
+    // it is shared out among that column's neighbours, a fraction each.
+    expect(worst).toBeLessThanOrEqual(260);
   });
 });

@@ -137,7 +137,26 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   cards.push({ id: 'tests', el: (wide) => <TestsCard key="tests" data={data} tests={tests} from={from} to={t} plan={active} series={series} readout={facts.readouts.tests} coach={coach} /> });
   if (facts.hasBody) cards.push({ id: 'body', el: (wide) => <BodyCard key="body" data={data} from={from} to={t} readout={facts.readouts.body} coach={coach} /> });
   if (facts.hasBreathing) cards.push({ id: 'breathing', el: (wide) => <BreathingCard key="breathing" data={data} curves={curvesState.curves} tests={tests} from={from} to={t} readout={facts.readouts.breathing} coach={coach} /> });
-  const placed = layout(cards, cols);
+  const topCards = cards.filter((c) => c.id === 'fitness' || c.id === 'key');
+  const rest = cards.filter((c) => c.id !== 'fitness' && c.id !== 'key');
+  // Each card's real height, measured once it is drawn, so the columns come out level. Measured again only when
+  // the cards themselves change (the range, the columns, the coach's lines arriving), never while you type in one.
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const measureKey = `${cols}|${rest.map((c) => c.id).join(',')}|${range}|${coach.on}|${coach.status}|${coach.written?.at ?? ''}|${curvesState.curves.length}|${tests.length}`;
+  useLayoutEffect(() => {
+    const box = grid.current?.querySelector('.pcols');
+    if (!box) return;
+    // Read with the levelling switched off, so what is measured is each card's own height.
+    box.classList.add('measuring');
+    const next: Record<string, number> = {};
+    let changed = false;
+    for (const c of rest) { const el = document.getElementById(`${c.id}-card`); if (!el) continue; next[c.id] = el.offsetHeight; if (Math.abs((heights[c.id] ?? 0) - next[c.id]) > 10) changed = true; }
+    box.classList.remove('measuring');
+    if (changed) setHeights(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measureKey]);
+  const columns = columnsFor(rest.map((c) => c.id), cols, heights);
+  const byId = new Map(rest.map((c) => [c.id, c]));
 
   return (
     <InfoCtx.Provider value={{ open: openInfo, set: setOpenInfo }}>
@@ -153,8 +172,11 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
         <Ticker cells={facts.ticker} />
         <ProgressCoach coach={coach} />
 
-        <div class={`pgrid3 cols-${cols}`} ref={grid}>
-          {placed.map((p) => <div key={p.id} class="pg-cell" style={cols > 1 && p.w > 1 ? `grid-column:span ${p.w}` : undefined}>{p.el(p.w > 1)}</div>)}
+        <div class={`pwrap cols-${cols}`} ref={grid}>
+          <div class="ptop">{topCards.map((c) => <div key={c.id} class={`pg-cell top-${c.id}`}>{c.el(false)}</div>)}</div>
+          <div class="pcols">
+            {columns.map((col, i) => <div key={i} class="pcol">{col.map((id) => <div key={id} class="pg-cell">{byId.get(id)!.el(false)}</div>)}</div>)}
+          </div>
         </div>
       </div>
     </InfoCtx.Provider>
@@ -165,66 +187,66 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
 
 interface GridItem { id: string; el: (wide: boolean) => preact.JSX.Element }
 
-/** Cards that are tables or grids: they sit together in a row, so a short row holds short cards. */
-const TABLE_CARDS = ['records', 'morning', 'consistency'];
-/** Cards with several small charts: when a row has room to spare, it goes to these, in this order. */
-const ROOMY_CARDS = ['totals', 'aerobic', 'weight'];
-/** Always across two columns when there are three: its three panels side by side make a short card, like its neighbours. */
-const ALWAYS_WIDE = ['breathing', 'wellness'];
+/** Roughly how tall each card is before it has been measured (px), so the first drawing is already close. */
+const CARD_HEIGHT: Record<string, number> = {
+  load: 330, zones: 330, power: 340, records: 300, durability: 300, aerobic: 400, wellness: 380, morning: 270,
+  consistency: 310, totals: 400, weight: 400, tests: 380, body: 380, breathing: 420,
+};
 
 /**
- * The order and width of the cards (11 Nov 2026, second pass). Rows are as tall as their cards need, so the
- * job here is only that no row ends short and like sits with like: the fitness chart beside Key numbers; the
- * load, zone and power charts; the three table cards together; then the rest in threes, with any spare column
- * given to a card that has several small charts (Totals, then Aerobic fitness, then Weight), whose charts then sit
- * side by side, rather than to whichever comes last. Wellness and Breathing always take two columns.
+ * Which column each card goes in (11 Nov 2026, third pass). Cards keep their own proportions: the page no longer
+ * forces a row of cards to one height. The cards are dealt in reading order, each to whichever column is shortest
+ * so far; then cards are moved or exchanged between the tallest and shortest columns for as long as that brings
+ * the columns closer to level (the first card of each column stays, so the page always opens the same way). What
+ * little difference is left is shared out among the cards of the shorter columns, a few pixels each, so every
+ * column ends on the same line and nothing hangs below the others.
  */
-export function layout<T extends { id: string }>(items: T[], cols: number): Array<T & { w: number }> {
-  const by = new Map(items.map((x) => [x.id, x]));
-  const take = (ids: string[]) => ids.map((id) => by.get(id)).filter((x): x is T => !!x);
-  if (cols === 1) return items.map((x) => ({ ...x, w: 1 }));
-  const out: Array<T & { w: number }> = [];
-  const put = (x: T, w = 1) => out.push({ ...x, w });
-  const top = take(['fitness', 'key']);
-  const used = new Set<string>(['fitness', 'key']);
-  if (cols === 2) {
-    top.forEach((x) => put(x, 2));
-    // Pairs of like height: the heatmap sits beside a single chart, the two tables together.
-    const order = ['load', 'zones', 'power', 'consistency', 'records', 'morning', 'durability', 'aerobic', 'wellness', 'weight', 'tests', 'body', 'totals'];
-    const singles = [...take(order), ...items.filter((x) => !order.includes(x.id) && !used.has(x.id) && x.id !== 'breathing')];
-    const odd = singles.length % 2 === 1;
-    for (const x of singles) put(x, odd && x.id === 'totals' ? 2 : 1);
-    // An odd count with no Totals card to widen: the last card takes the row.
-    if (odd && !by.has('totals') && out.length) out[out.length - 1].w = 2;
-    take(['breathing']).forEach((x) => put(x, 2));
-    return out;
+export function columnsFor(ids: string[], cols: number, heights: Record<string, number> = {}): string[][] {
+  const n = Math.max(1, cols);
+  const hOf = (id: string) => (heights[id] ?? CARD_HEIGHT[id] ?? 340) + 14;
+  const out: string[][] = Array.from({ length: n }, () => []);
+  const tall = out.map(() => 0);
+  for (const id of ids) {
+    let k = 0;
+    for (let i = 1; i < n; i++) if (tall[i] < tall[k] - 1) k = i;
+    out[k].push(id); tall[k] += hOf(id);
   }
-  if (top.length === 2) { put(top[0], 2); put(top[1], 1); } else top.forEach((x) => put(x, 3));
-  const first = take(['load', 'zones', 'power']);
-  const tables = take(TABLE_CARDS);
-  [...first, ...tables].forEach((x) => used.add(x.id));
-  const fixedWide = take(ALWAYS_WIDE);
-  const roomy = take(ROOMY_CARDS);
-  fixedWide.forEach((x) => used.add(x.id)); roomy.forEach((x) => used.add(x.id));
-  const rest = items.filter((x) => !used.has(x.id));
-  // The first rows as they are when whole; anything left over joins the rest.
-  const pool: T[] = [];
-  if (first.length === 3) first.forEach((x) => put(x)); else pool.push(...first);
-  if (tables.length === 3) tables.forEach((x) => put(x)); else pool.push(...tables);
-  pool.push(...rest);
-  // Units to fill: singles count one, wide cards two. Widen roomy cards until the total is a whole number of rows.
-  const units = pool.length + roomy.length + 2 * fixedWide.length;
-  let spare = (3 - (units % 3)) % 3;
-  const wide: T[] = [...fixedWide], single: T[] = [...pool];
-  // A roomy card left at one column is a tall one (its charts stacked): it goes first, into a row of three, so the
-  // shorter cards are the ones that sit beside the wide cards.
-  for (const x of [...roomy].reverse()) { if (spare > 0 && roomy.indexOf(x) < spare) wide.push(x); else single.unshift(x); }
-  spare = 0;
-  // Each wide card shares its row with one single; the other singles go in threes. A single short of a partner is widened.
-  const partners = single.splice(Math.max(0, single.length - wide.length));
-  while (single.length >= 3) single.splice(0, 3).forEach((x) => put(x));
-  if (single.length === 2) { put(single[0], 2); put(single[1], 1); } else if (single.length === 1) put(single[0], 3);
-  wide.forEach((x, i) => { const partner = partners[i]; if (partner) { if (i % 2) { put(partner, 1); put(x, 2); } else { put(x, 2); put(partner, 1); } } else put(x, 3); });
+  if (n > 1 && ids.length > n) {
+    // Every way of dealing the remaining cards is tried (there are few enough), and the most level one kept.
+    // The first card of each column stays where the plain deal put it, so the page always opens the same way.
+    const fixed = out.map((c) => c[0]);
+    const free = ids.filter((id) => !fixed.includes(id));
+    const hs = free.map(hOf);
+    const base = fixed.map(hOf);
+    const total = base.reduce((x, y) => x + y, 0) + hs.reduce((x, y) => x + y, 0);
+    const cap = total / n;
+    let bestSpread = Infinity, bestPick: number[] = [];
+    const pick: number[] = new Array(free.length).fill(0);
+    const sums = [...base];
+    const walk = (i: number) => {
+      if (bestSpread < 6) return;
+      if (i === free.length) {
+        const spread = Math.max(...sums) - Math.min(...sums);
+        if (spread < bestSpread) { bestSpread = spread; bestPick = [...pick]; }
+        return;
+      }
+      for (let k = 0; k < n; k++) {
+        // A column already far over its share cannot be part of a better answer.
+        if (sums[k] + hs[i] > cap + bestSpread) continue;
+        sums[k] += hs[i]; pick[i] = k;
+        walk(i + 1);
+        sums[k] -= hs[i];
+      }
+    };
+    // Start from the plain deal's answer, so the search only ever improves on it.
+    bestSpread = Math.max(...tall) - Math.min(...tall);
+    bestPick = free.map((id) => out.findIndex((c) => c.includes(id)));
+    walk(0);
+    const next: string[][] = fixed.map((id) => [id]);
+    free.forEach((id, i) => next[bestPick[i]].push(id));
+    for (const col of next) col.sort((p, q) => ids.indexOf(p) - ids.indexOf(q));
+    return next;
+  }
   return out;
 }
 
@@ -266,12 +288,14 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
 }
 
 /**
- * A chart that fills what its card has. A card is as tall as its row, and a row as tall as its tallest card
- * needs with every chart at its standard height (`initial`). When a neighbour makes the row taller, the chart
- * grows to take the difference, so no card has empty space under it. The chart never makes its own card
- * taller: what the card asks of the row is always its standard height.
+ * A chart at its standard height, which grows by the few pixels its column needs to end level with the others
+ * (and, for the fitness chart, to match Key numbers beside it). What a card asks for is always its standard height.
  */
-function Fill({ initial = 170, children }: { initial?: number; min?: number; children: (h: number) => preact.ComponentChildren }) {
+function Fill({ initial = 170, children }: { initial?: number; min?: number; stretch?: boolean; children: (h: number) => preact.ComponentChildren }) {
+  return <Stretch initial={initial}>{children}</Stretch>;
+}
+
+function Stretch({ initial, children }: { initial: number; children: (h: number) => preact.ComponentChildren }) {
   const outer = useRef<HTMLDivElement>(null), inner = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(initial);
   // Read through refs, so the resize watcher (set up once) never works from an earlier render's numbers:
@@ -425,7 +449,7 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
   const ptsIn = pts.filter((p) => p.date >= from);
   const avgTo = (d: string, get: (p: typeof pts[number]) => number | undefined) => { const xs = pts.filter((p) => p.date <= d).map(get).filter((v): v is number => v != null).slice(-5); return xs.length >= 3 ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined; };
   const efNow = avgTo(to, (p) => p.ef), efFrom = avgTo(from, (p) => p.ef), drNow = avgTo(to, (p) => p.drift), drFrom = avgTo(from, (p) => p.drift);
-  readouts.aerobic = ptsIn.length ? [`${ptsIn.length} steady ride${ptsIn.length === 1 ? '' : 's'}`, efNow != null ? `efficiency ${efNow.toFixed(2)}${efFrom != null ? ` (${sg(efNow - efFrom, 2)})` : ''}` : '', drNow != null ? `drift ${drNow.toFixed(1)}%${drFrom != null ? ` (was ${drFrom.toFixed(1)}%)` : ''}` : ''].filter(Boolean).join(' · ') : '';
+  readouts.aerobic = ptsIn.length ? [`${ptsIn.length} steady ride${ptsIn.length === 1 ? '' : 's'}`, efNow != null ? `efficiency ${efNow.toFixed(2)}${efFrom != null ? ` (${sg(efNow - efFrom, 2)})` : ''}` : '', drNow != null ? `drift ${drNow.toFixed(1)}%${drFrom != null ? ` (was ${drFrom.toFixed(1)}%)` : ''}`.replace(/-/g, '−') : ''].filter(Boolean).join(' · ') : '';
 
   // wellness
   const wm = (d: string, get: (w: Wellness) => number | undefined) => weekMean(data.wellness, d, get);
@@ -606,7 +630,7 @@ function FitnessCard({ data, series, projection, events, range, on, available, o
         {shown.map((k) => { const v = val(k); return v == null ? null : <span key={k} class="pr-item"><span class="sw-dot" style={`background:${label(k).color}`} />{label(k).label} <b>{v}</b></span>; })}
         {lo != null && hi != null && <span class="pr-item faint">fitness low <b>{Math.round(lo)}</b> · high <b>{Math.round(hi)}</b>{first && lastF ? <> · <b class={lastF.ctl - first.ctl >= 1 ? 'good-t' : ''}>{sg(lastF.ctl - first.ctl)}</b> over the range</> : null}</span>}
       </>}>
-      <Fill initial={260}>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill>
+      <Fill initial={240} stretch>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill>
       <OverlayChips on={on} available={available} onChange={pickOn} />
       <ChartCoach on={shown} range={range} from={from} to={to} series={series} data={data} coachState={coach} />
     </PCard>
@@ -814,7 +838,7 @@ function AerobicCard({ data, rides, readout, coach, wide }: { data: AppData; rid
   const idOf = (i: number) => rides.find((r) => r.date === pts[i].date && r.name === pts[i].name)?.id;
   return (
     <PCard id="aerobic" title="Aerobic fitness" coach={coach} readout={readout} explain={explain}>
-      <Fill initial={wide ? 170 : 230}>{(h) => {
+      <Fill initial={236}>{(h) => {
         const each = wide ? Math.max(90, h - 50) : Math.max(64, Math.round((h - 44) / 2));
         return (<div class={wide ? 'pmulti two' : undefined}><div>
           <div class="small" style="margin-bottom:2px"><b>Efficiency factor</b> <span class="faint">(watts per beat; higher is better)</span></div>
@@ -850,9 +874,9 @@ function WellnessCard({ data, from, to, readout, coach, wide }: { data: AppData;
   return (
     <PCard id="wellness" title="Wellness" coach={coach} readout={readout || undefined}
       explain={`Morning readings: dots are single mornings, the line is the 7-day average. Higher HRV and lower resting heart rate than your normal mean recovered.${flagged ? ` ${flagged} day${flagged > 1 ? 's' : ''} you marked as not real measurements ${flagged > 1 ? 'are' : 'is'} left out.` : ''}`}>
-      <Fill initial={wide ? 150 : 264}>{(h) => {
+      <Fill initial={270}>{(h) => {
         // Side by side when the card has two columns to itself; stacked otherwise.
-        const each = wide ? Math.max(90, h - 24) : Math.max(60, Math.round((h - 72) / 3));
+        const each = wide ? Math.max(90, h - 24) : Math.round((h - 72) / 3);
         return (<div class={wide ? 'pmulti three' : undefined}>
           {panel('Heart-rate variability', 'ms', 'var(--aqua)', days.map((d) => d.w?.hrv ?? null), (v) => `${Math.round(v)} ms`, each)}
           {panel('Resting heart rate', 'bpm', 'var(--z5)', days.map((d) => d.w?.restingHr ?? null), (v) => `${Math.round(v)} bpm`, each)}
@@ -954,7 +978,7 @@ function TotalsCard({ rides, imperial, readout, coach, wide }: { rides: Ride[]; 
     <PCard id="totals" title="Totals by month" coach={coach} readout={readout}
       explain={`Every activity, month by month over the last year; the current month is hatched because it is not over yet.${hasPrev ? ' "vs last year" outlines the same month a year before behind each bar.' : ''}`}
       aside={hasPrev ? <button class={`chip sm${vsLast ? ' on' : ''}`} aria-pressed={vsLast} onClick={() => setVsLast(!vsLast)}>vs last year</button> : undefined}>
-      <Fill initial={wide ? 150 : 250}>{(h) => {
+      <Fill initial={260}>{(h) => {
         // Four across when the card has two columns to itself; two by two otherwise.
         const each = wide ? Math.max(90, h - 22) : Math.max(70, Math.round((h - 60) / 2));
         return (
@@ -992,7 +1016,7 @@ function WeightCard({ data, from, to, imperial, readout, coach, wide }: { data: 
   return (
     <PCard id="weight" title="Weight and power to weight" coach={coach} readout={readout}
       explain="Body weight from your wellness data, and FTP divided by it. FTP is the value on record each day (it changes when you or Intervals.icu update it). Weight changes are never marked good or bad.">
-      <Fill initial={wide ? 170 : 230}>{(h) => {
+      <Fill initial={236}>{(h) => {
         const each = wide ? Math.max(90, h - 50) : Math.max(60, Math.round((h - 44) / 2));
         return (<div class={wide ? 'pmulti two' : undefined}><div>
           <div class="small" style="margin-bottom:1px"><b>Weight</b> <span class="faint">({unit})</span></div>
@@ -1291,23 +1315,19 @@ function TestsCard({ data, tests, from, to, plan, series, readout, coach }: { da
       )}
       {goalExtra?.chart && <Fill initial={120} min={80}>{(h) => goalExtra.chart!(h)}</Fill>}
       {!tests.length ? <p class="faint small" style="margin:6px 0 0">No tests yet: ride the Ramp Test from the Library to see your FTP and VO2max estimates here.</p> : (
-        <div class="tests-scroll">
-          <table class="rd-table tests-table">
-            <thead><tr><th>Date</th><th>Test</th><th>FTP estimate</th><th>VO2max estimate</th></tr></thead>
-            <tbody>{tests.map((x) => {
-              const when = fmtDate(x.date, x.date.slice(0, 4) === to.slice(0, 4) ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
-              const chose = x.result?.ftpAction === 'updated' ? 'you updated your FTP' : x.result?.ftpAction === 'kept' ? 'you kept your FTP' : '';
-              return (
-                <tr key={x.key}>
-                  <td>{x.rideId ? <a href={`#/rides/${x.rideId}`}>{when}</a> : when}</td>
-                  <td>{label(x.kind)}</td>
-                  <td class="num">{x.result?.ftpEstimate != null ? `${x.result.ftpEstimate} W` : x.result ? '—' : <a class="faint" href={x.rideId ? `#/rides/${x.rideId}` : undefined}>open it to see</a>}{chose && <div class="faint small">{chose}</div>}{x.result?.breath?.vt1 || x.result?.breath?.vt2 ? <div class="faint small">breathing thresholds {[x.result.breath.vt1, x.result.breath.vt2].filter(Boolean).map((v) => `${v!.watts} W`).join(' and ')}{x.result.breath.estimated ? ' (estimated)' : ''}</div> : null}</td>
-                  <td class="num">{x.kind === 'ramp' ? <>{vo2(x.result)}{x.result?.vo2maxMlKgMin != null ? <span class="faint small"> ml/kg/min</span> : null}</> : '—'}</td>
-                </tr>
-              );
-            })}</tbody>
-          </table>
-        </div>
+        <ul class="tests-list">{tests.map((x) => {
+          const when = fmtDate(x.date, x.date.slice(0, 4) === to.slice(0, 4) ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+          const chose = x.result?.ftpAction === 'updated' ? 'you updated your FTP' : x.result?.ftpAction === 'kept' ? 'you kept your FTP' : '';
+          const breath = x.result?.breath?.vt1 || x.result?.breath?.vt2 ? `breathing thresholds ${[x.result.breath.vt1, x.result.breath.vt2].filter(Boolean).map((v) => `${v!.watts} W`).join(' and ')}${x.result.breath.estimated ? ' (estimated)' : ''}` : '';
+          const numbers = [x.result?.ftpEstimate != null ? <>FTP estimate <b>{x.result.ftpEstimate} W</b></> : null, x.kind === 'ramp' && vo2(x.result) !== '\u2014' ? <>VO2max estimate <b>{vo2(x.result)}</b>{x.result?.vo2maxMlKgMin != null ? ' ml/kg/min' : ''}</> : null].filter(Boolean);
+          return (
+            <li key={x.key}>
+              <div class="tl-head">{x.rideId ? <a href={`#/rides/${x.rideId}`}>{when} · {label(x.kind)} ›</a> : <span>{when} · {label(x.kind)}</span>}</div>
+              <div class="small">{numbers.length ? numbers.map((n, i) => <span key={i}>{i > 0 ? ' · ' : ''}{n}</span>) : x.result ? 'no estimate from this test' : 'open it to see its results'}</div>
+              {(chose || breath) && <div class="faint small">{[chose, breath].filter(Boolean).join(' · ')}</div>}
+            </li>
+          );
+        })}</ul>
       )}
     </PCard>
   );
@@ -1361,6 +1381,7 @@ function BreathingCard({ data, curves, tests, from, to, readout, coach }: { data
   const rates = bc.filter((c) => c.date >= from && c.date <= to).map((c) => ({ date: c.date, id: c.id, v: enduranceBreathRate(c.breathAtPower) })).filter((x): x is { date: string; id: string; v: number } => x.v != null);
   const mark = (w?: number) => (w ? `${(zonePosition(w / profile.ftp, zones) * 100).toFixed(1)}%` : null);
   const any1 = ridesV.some((v) => v != null) || vt1T.some((v) => v != null) || vt2T.some((v) => v != null);
+  const points = Math.max(ridesV.filter((v) => v != null).length, vt1T.filter((v) => v != null).length, vt2T.filter((v) => v != null).length);
   return (
     <PCard id="breathing" title="Breathing" coach={coach} readout={readout}
       explain="Your two breathing thresholds from tests ridden with a breathing strap, and the first threshold as the app reads it from ordinary rides, marked on your power zones; how they move over time; and how fast you breathe at endurance power (55–75% of FTP) on each ride. Fewer breaths for the same power over time is a sign of aerobic fitness. Shown only when your rides include breathing data.">
@@ -1370,11 +1391,11 @@ function BreathingCard({ data, curves, tests, from, to, readout, coach }: { data
         {mark(now.vt2) && <i style={`left:${mark(now.vt2)}`} title="second threshold" />}
       </div>
       <div class="zbar-key faint small"><span>Z1</span><span>{now.vt1 || hist.vt1 ? `first ${now.vt1 ?? hist.vt1?.watts} W` : 'first threshold not read yet'}{now.vt2 ? ` · second ${now.vt2} W` : ''}</span><span>Z7</span></div>
-      <Fill initial={150} min={80}>{(h) => (
-        <div class="pgrid tight two">
+      <Fill initial={130}>{(h) => (
+        <div class="pmulti stack">
           <div>
             <div class="small" style="margin-bottom:1px"><b>Thresholds over time</b> <span class="faint">(W)</span></div>
-            {any1 ? <LineChart series={[
+            {points < 2 ? <div class="empty small">{points === 1 ? `One reading so far${now.vt2 ? `: second threshold ${now.vt2} W` : now.vt1 ? `: first threshold ${now.vt1} W` : ''}${now.date ? `, from the ${short(now.date)} test` : ''}. A line draws here after the next test.` : 'Not enough breathing yet to read a threshold.'}</div> : any1 ? <LineChart series={[
               { name: 'first, from tests', color: 'var(--z3)', values: vt1T, dots: true, width: 2 },
               { name: 'second, from tests', color: 'var(--z5)', values: vt2T, dots: true, width: 2 },
               { name: 'first, from rides', color: 'var(--aqua)', values: ridesV, width: 2, connectGaps: true },

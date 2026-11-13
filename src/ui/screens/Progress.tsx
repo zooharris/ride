@@ -39,6 +39,8 @@ import { EXERCISES } from '../../library/strength';
 import { resultFromStreams, testResultKey, type TestResult } from '../../player/tests';
 import { go } from '../router';
 import { ProgressCoach, CardCoachLine, useProgressCoach, type ProgressCoachState } from '../ProgressCoach';
+import { Measures } from '../../engine/measures';
+import { LargeView, URL_KEYS, type LargeRange, type LargeTarget } from '../LargeView';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -66,6 +68,13 @@ const RANGE_KEYS: RangeKey[] = ['6w', '3m', '6m', '1y', 'all'];
 
 /** Which card's explanation is open: one at a time. */
 const InfoCtx = createContext<{ open: string | null; set: (id: string | null) => void }>({ open: null, set: () => {} });
+
+/**
+ * Opening a card large (12 Nov 2026, large charts A1). `open` takes a measure (the large view) or `card:<id>` (the
+ * card itself, larger); `has` says whether a measure has anything to draw; `inBig` is true inside the larger card.
+ */
+interface BigApi { open: (t: LargeTarget) => void; has: (measure: string) => boolean; inBig: boolean }
+const BigCtx = createContext<BigApi>({ open: () => {}, has: () => false, inBig: false });
 
 export function Progress({ data, params }: { data: AppData; params?: URLSearchParams }) {
   const profile = data.profile!;
@@ -106,6 +115,28 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   const facts = useMemo(() => pageFacts({ data, from, to: t, range, series, curves: curvesState.curves, tests, plan: active, earliest }),
     [data, from, t, range, series, curvesState.curves, tests, active, earliest]);
   const coach: ProgressCoachState = useProgressCoach({ data, range, from, to: t, facts });
+
+  // Everything the large view can draw, worked out once for the data on hand.
+  const measures = useMemo(() => new Measures({
+    rides: data.rides, wellness: data.wellness, series, profile, today: t, weekStartOf: (d) => weekStart(d),
+    breath: curvesState.curves.filter((c) => c.breathAtPower?.length),
+    isEndurance: (r) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; },
+    hrZones: hrNumbers(profile).ladders?.hr,
+    weightUnit: profile.units === 'imperial' ? 'lb' : 'kg', distUnit: profile.units === 'imperial' ? 'mi' : 'km',
+    readiness: () => new Map(readinessSeries(data.wellness, series, data.rides, data.wellness.reduce((m, w) => (!m || w.date < m ? w.date : m), t), t).map((x) => [x.date, x.score])),
+  }), [data.rides, data.wellness, series, profile, t, curvesState.curves.length, data.planned, data.mine]);
+  const hardDays = useMemo(() => {
+    const by = new Map<string, Ride[]>();
+    for (const r of data.rides) { const l = by.get(r.date) ?? []; l.push(r); by.set(r.date, l); }
+    const out = new Set<string>();
+    for (const [d, l] of by) if (dayKind(l, profile.lthr ?? 0, hrNumbers(profile)) === 'hard') out.add(d);
+    return out;
+  }, [data.rides, profile]);
+  // Which card or measure is open large: in the address, so Back from a day opened there returns to it.
+  const [big, setBig] = useState<LargeTarget | null>(() => { const id = params?.get('big'); return id ? { id, card: params?.get('bc') ?? id } : null; });
+  const openBig = (tg: LargeTarget) => { replaceQuery({ big: tg.id, bc: tg.card }, URL_KEYS); setBig(tg); };
+  const closeBig = () => { replaceQuery({}, [...URL_KEYS, 'bc']); setBig(null); };
+  const bigApi: BigApi = { open: openBig, has: (m) => measures.count(m) >= 2, inBig: false };
 
   const [grid, gridW] = useWidth<HTMLDivElement>(960);
   const cols = gridW >= 900 ? 3 : gridW >= 600 ? 2 : 1;
@@ -160,6 +191,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
 
   return (
     <InfoCtx.Provider value={{ open: openInfo, set: setOpenInfo }}>
+    <BigCtx.Provider value={bigApi}>
       <div class="progress">
         <PageHead eyebrow={`${inRange.length} activities in this range`} title="Progress" help="progress">
           <RangePicker value={range} onChange={pick} keys={['6w', '3m', '6m', '1y', 'all']} />
@@ -179,6 +211,11 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
           </div>
         </div>
       </div>
+      {big && (big.id.startsWith('card:')
+        ? (() => { const c = cards.find((x) => x.id === big.id.slice(5)); return c ? <BigCard title={CARD_TITLES[c.id] ?? ''} onClose={closeBig}><BigCtx.Provider value={{ ...bigApi, inBig: true }}>{c.el(true)}</BigCtx.Provider></BigCard> : null; })()
+        : measures.def(big.id) ? <LargeView measures={measures} target={big} pageFrom={from} pageTo={t} pageRange={range as LargeRange} rides={data.rides}
+            hardDays={hardDays} testDays={tests.map((x) => x.date)} asideDays={data.dayNotes.filter((n) => n.badWellness).map((n) => n.date)} coach={coach} onClose={closeBig} /> : null)}
+    </BigCtx.Provider>
     </InfoCtx.Provider>
   );
 }
@@ -252,11 +289,15 @@ export function columnsFor(ids: string[], cols: number, heights: Record<string, 
 
 // ---------- the shared card ----------
 
-function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
+function PCard({ id, title, explain, readout, aside, children, coach, foot, big }: {
   id: string; title: string; explain?: preact.ComponentChildren; readout?: preact.ComponentChildren; aside?: preact.ComponentChildren;
   children: preact.ComponentChildren; coach?: ProgressCoachState; foot?: preact.ComponentChildren;
+  /** What the open-large button opens: a measure, or `card:<id>` for the card itself, larger. */
+  big?: string;
 }) {
   const info = useContext(InfoCtx);
+  const bigApi = useContext(BigCtx);
+  const canBig = !!big && !bigApi.inBig && (big.startsWith('card:') || bigApi.has(big));
   const open = info.open === id;
   const pop = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -275,6 +316,7 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
         <h2>{title}</h2>
         {explain && <button ref={btn} class="pc-i" aria-label={`What ${title.toLowerCase()} shows`} aria-expanded={open} aria-controls={`${id}-explain`} onClick={() => info.set(open ? null : id)}>i</button>}
         {aside && <div class="pc-aside">{aside}</div>}
+        {canBig && <button class="pc-big" aria-label={`Open ${title.toLowerCase()} large`} title="Open large" onClick={() => bigApi.open({ id: big!, card: id })}><BigIcon /></button>}
       </div>
       {open && explain && <div class="pc-pop small" id={`${id}-explain`} role="note" ref={pop}>{explain}</div>}
       <div class="panel pc-body">
@@ -292,7 +334,45 @@ function PCard({ id, title, explain, readout, aside, children, coach, foot }: {
  * (and, for the fitness chart, to match Key numbers beside it). What a card asks for is always its standard height.
  */
 function Fill({ initial = 170, children }: { initial?: number; min?: number; stretch?: boolean; children: (h: number) => preact.ComponentChildren }) {
-  return <Stretch initial={initial}>{children}</Stretch>;
+  // Inside a card opened larger, its chart is drawn at nearly twice its standard height.
+  const inBig = useContext(BigCtx).inBig;
+  return <Stretch initial={inBig ? Math.round(initial * 1.8) : initial}>{children}</Stretch>;
+}
+
+/** The open-large mark: four arrows out of a box. */
+function BigIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5h4v4M12.5 1.5 8 6M5.5 12.5h-4v-4M1.5 12.5 6 8" /></svg>;
+}
+
+/** A chart on a card that opens the card large when clicked (only where a click on the chart opens nothing else). */
+function Opens({ target, card, children }: { target: string; card: string; children: preact.ComponentChildren }) {
+  const b = useContext(BigCtx);
+  if (b.inBig || !(target.startsWith('card:') || b.has(target))) return <>{children}</>;
+  return <div class="pc-opens" onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label')) return; b.open({ id: target, card }); }}>{children}</div>;
+}
+
+const CARD_TITLES: Record<string, string> = { power: 'Power curve', records: 'Records', durability: 'Durability', hrrecords: 'Records' };
+
+/** A card that opens larger but has nothing to lay over it (power curve, Records, Durability): the card itself, in a wide panel. */
+function BigCard({ title, onClose, children }: { title: string; onClose: () => void; children: preact.ComponentChildren }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    box.current?.querySelector<HTMLElement>('.lv-close')?.focus();
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    document.addEventListener('keydown', key);
+    document.body.classList.add('lv-open');
+    return () => { document.removeEventListener('keydown', key); document.body.classList.remove('lv-open'); opener?.focus?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div class="lv-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="lv lv-card" role="dialog" aria-modal="true" aria-label={title} ref={box}>
+        <div class="lv-head"><div class="lv-title"><h2>{title}</h2></div><div class="lv-head-ctl"><button class="btn sm lv-close" onClick={onClose} aria-label={`Close ${title.toLowerCase()}`}>Close</button></div></div>
+        <div class="lv-cardbody">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 function Stretch({ initial, children }: { initial: number; children: (h: number) => preact.ComponentChildren }) {
@@ -630,14 +710,14 @@ function FitnessCard({ data, series, projection, events, range, on, available, o
   };
   const label = (k: OverlayKey) => OVERLAYS.find((o) => o.key === k)!;
   return (
-    <PCard id="fitness" title="Fitness, fatigue and form" coach={coach}
+    <PCard id="fitness" title="Fitness, fatigue and form" coach={coach} big="fitness"
       explain={<><p style="margin:0 0 8px">{FITNESS_EXPLAIN}</p><p style="margin:0">{CHART_CAPTION}</p></>}
       readout={<>
         <b>{day && day !== to ? fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Today'}</b>
         {shown.map((k) => { const v = val(k); return v == null ? null : <span key={k} class="pr-item"><span class="sw-dot" style={`background:${label(k).color}`} />{label(k).label} <b>{v}</b></span>; })}
         {lo != null && hi != null && <span class="pr-item faint">fitness low <b>{Math.round(lo)}</b> · high <b>{Math.round(hi)}</b>{first && lastF ? <> · <b class={lastF.ctl - first.ctl >= 1 ? 'good-t' : ''}>{sg(lastF.ctl - first.ctl)}</b> over the range</> : null}</span>}
       </>}>
-      <Fill initial={240} stretch>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill>
+      <Opens target="fitness" card="fitness"><Fill initial={240} stretch>{(h) => <FitnessChart series={series} range={range} projection={projection} events={events} height={h} on={shown} data={overlayData} onHover={setDay} />}</Fill></Opens>
       <OverlayChips on={on} available={available} onChange={pickOn} />
       <ChartCoach on={shown} range={range} from={from} to={to} series={series} data={data} coachState={coach} />
     </PCard>
@@ -653,7 +733,7 @@ function KeyCard({ rows, coach }: { rows: KeyRow[]; coach: ProgressCoachState })
   };
   return (
     <PCard id="key" title="Key numbers" coach={coach}
-      explain="Each number now, four weeks ago and the change, with its trend over the range shown. A change is green only when it moved the way training is meant to move it: fitness, FTP, watts per kilo, HRV, sleep and efficiency up; resting heart rate and drift down. Fatigue, form, load and weight are never coloured. HRV, resting heart rate, sleep and weight are 7-day averages; efficiency and drift the average of the last five steady rides. Tap a row to go to its card.">
+      explain="Each number now, four weeks ago and the change, with its trend over the range shown. A change is green only when it moved the way training is meant to move it: fitness, FTP, watts per kilo, HRV, sleep and efficiency up; resting heart rate and drift down. Fatigue, form, load and weight are never coloured. HRV, resting heart rate, sleep and weight are 7-day averages; efficiency and drift the average of the last five steady rides. Tap a row to open that measure large.">
       <div class="kn" style={`--kn-rows:${Math.ceil(rows.length / 2) + 1}`}>
         <div class="kn-h"><span>Metric</span><span>Now</span><span>4 wk ago</span><span>Change</span><span>Trend</span></div>
         {rows.slice(0, Math.ceil(rows.length / 2)).map((r) => <KeyRowEl key={r.key} r={r} spark={spark} />)}
@@ -664,9 +744,18 @@ function KeyCard({ rows, coach }: { rows: KeyRow[]; coach: ProgressCoachState })
   );
 }
 
+/** The measure each Key numbers row opens large. */
+const KEY_MEASURE: Record<string, string> = {
+  fitness: 'fitness', fatigue: 'fatigue', form: 'form', ftp: 'ftp', wkg: 'wkg', load: 'weekLoad', hrv: 'hrv', rhr: 'restingHr', sleep: 'sleep',
+  weight: 'weight', spo2: 'spo2', steps: 'steps', vo2watch: 'vo2watch', bodyfat: 'bodyFat', ef: 'ef', drift: 'drift',
+};
+
 function KeyRowEl({ r, spark }: { r: KeyRow; spark: (vs: Array<number | null>) => string }) {
+  const b = useContext(BigCtx);
+  const m = KEY_MEASURE[r.key];
+  const opens = !!m && b.has(m) && !b.inBig;
   return (
-          <button class="kn-r" onClick={() => document.getElementById(`${r.card}-card`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} aria-label={`${r.label}: ${r.now} now, ${r.was} four weeks ago, change ${r.change}. Go to its card.`}>
+          <button class="kn-r" onClick={() => (opens ? b.open({ id: m, card: 'key' }) : document.getElementById(`${r.card}-card`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))} aria-label={`${r.label}: ${r.now} now, ${r.was} four weeks ago, change ${r.change}. ${opens ? 'Open it large.' : 'Go to its card.'}`}>
             <span class="kn-m">{r.label}</span><span class="kn-n">{r.now}</span><span class="kn-w">{r.was}</span><span class={`kn-c${r.good === true ? ' good' : ''}`}>{r.change}</span>
             <span class="kn-t"><svg width="56" height="16" viewBox="0 0 56 16" aria-hidden="true"><polyline points={spark(r.trend)} fill="none" stroke={r.good === true ? 'var(--good)' : 'var(--info)'} stroke-width="1.6" stroke-linejoin="round" /></svg></span>
           </button>
@@ -681,7 +770,7 @@ function WeeklyLoadCard({ data, from, to, readout, coach }: { data: AppData; fro
   const [vsPlan, setVsPlan] = useState(true);
   coach.setExtra('load', hasPlan && vsPlan ? 'the planned load outlined behind each week' : 'load done only');
   return (
-    <PCard id="load" title="Weekly training load" coach={coach} readout={readout}
+    <PCard id="load" title="Weekly training load" coach={coach} readout={readout} big="weekLoad"
       explain={`Training load (TSS) done each week, by kind of session${hasPlan ? '; the dashed outline is what the calendar had planned for that week' : ''}. Done vs planned counts each planned session done at its recorded load, and a missed one as nothing. The ramp is how much the weekly load has changed, on average, from week to week over the last six whole weeks. Tap a week to open it on the Calendar.`}
       aside={hasPlan ? <button class={`chip sm${vsPlan ? ' on' : ''}`} aria-pressed={vsPlan} onClick={() => setVsPlan(!vsPlan)}>vs planned</button> : undefined}>
       <Fill initial={180}>{(h) => <BarChart
@@ -706,7 +795,7 @@ function ZonesCard({ rides, from, to, readout, coach }: { rides: Ride[]; from: s
   const weeks = weeklyZones(rides, from, to, (d) => weekStart(d));
   const hours = (s: number) => Math.round((s / 3600) * 10) / 10;
   return (
-    <PCard id="zones" title="Time in zone by week" coach={coach} readout={readout}
+    <PCard id="zones" title="Time in zone by week" coach={coach} readout={readout} big="zoneHard"
       explain={<><p style="margin:0 0 8px">Ride time in each power zone (heart-rate zones for rides without power). Most of it in zones 1–2 with a little at 4 and above is the polarised pattern most riders do best on; a thick zone 3 is the 'grey zone'. The card says polarised when at least three quarters of the time is in zones 1–2, at least 5% is at zone 4 and above, and zone 3 has less time than zone 4 and above. Tap a week to open it on the Calendar.</p><p style="margin:0">{ZONE_KEY}</p></>}
       aside={<div class="seg range sm"><button class={!share ? 'on' : ''} onClick={() => setShare(false)}>Hours</button><button class={share ? 'on' : ''} onClick={() => setShare(true)}>Share</button></div>}>
       <Fill initial={180}>{(h) => <BarChart
@@ -754,14 +843,14 @@ function PowerCurveCard({ curvesState, from, to, range, ftp, weightKg, readout, 
   coach.setExtra('power', `compared with ${otherName}: ${CURVE_LABELS.map((l, i) => `${l} ${best[i] || '–'} vs ${other[i] || '–'} W`).join(', ')}`);
   const opts: Array<['before' | 'year' | 'all', string]> = [...(prevFrom ? [['before', 'range before'] as ['before', string]] : []), ['year', 'this year'], ['all', 'all-time']];
   return (
-    <PCard id="power" title="Power curve" coach={coach} readout={readout || undefined}
+    <PCard id="power" title="Power curve" coach={coach} readout={readout || undefined} big={withPower.length ? 'card:power' : undefined}
       explain={`Your best average power for each length of effort, from a 1-second sprint to two hours. The solid line is the best in the range above; the dashed line is what you compare it with: the range of the same length before it, this calendar year's best, or the best of everything synced.`}
       foot={withPower.length ? <div class="pc-ctl"><span class="faint small">compare with</span>{opts.map(([k, l]) => <button key={k} class={`chip sm${cmp === k ? ' on' : ''}`} aria-pressed={cmp === k} onClick={() => setCmp(k)}>{l}</button>)}</div> : undefined}>
       {withPower.length === 0 ? (
         <div class="empty small">{prog?.error ? `Could not build the curve: ${prog.error}` : building ? `Building the power curve: ${prog!.done} of ${prog!.total} rides read…` : 'Rides with a power meter draw here.'}</div>
       ) : (
         <>
-          <Fill initial={180}>{(h) => <LineChart
+          <Opens target="card:power" card="power"><Fill initial={180}>{(h) => <LineChart
             series={[
               { name: 'this range', color: 'var(--accent)', values: best.map((v) => v || null), width: 2.2 },
               { name: otherName, color: 'var(--ink-3)', values: other.map((v) => v || null), dash: '4 3', width: 1.4 },
@@ -772,7 +861,7 @@ function PowerCurveCard({ curvesState, from, to, range, ftp, weightKg, readout, 
             refLines={[{ value: ftp, label: `FTP ${ftp}` }]}
             height={h}
             readout={(i) => `${CURVE_LABELS[i]} · this range ${best[i] || '–'} W${best[i] && weightKg ? ` (${(best[i] / weightKg).toFixed(2)} W/kg)` : ''} · ${otherName} ${other[i] || '–'} W`}
-          />}</Fill>
+          />}</Fill></Opens>
           {(building || prog?.error) && <p class="faint small" style="margin-top:6px">{prog?.error ? `Stopped: ${prog.error}` : `Still reading rides: ${prog!.done} of ${prog!.total}. The curve fills in as they arrive.`}</p>}
         </>
       )}
@@ -783,7 +872,7 @@ function PowerCurveCard({ curvesState, from, to, range, ftp, weightKg, readout, 
 function RecordsCard({ rows, building, readout, coach }: { rows: ReturnType<typeof records>; building: boolean; readout: string; coach: ProgressCoachState }) {
   const has = rows.some((r) => r.all > 0);
   return (
-    <PCard id="records" title="Records" coach={coach} readout={readout || undefined}
+    <PCard id="records" title="Records" coach={coach} readout={readout || undefined} big={has ? 'card:records' : undefined}
       explain="Your best average power for standard efforts: in the range shown, this calendar year, and all-time, with the date the range's best was set. A best is marked new when it equals your all-time best and was set inside the range. Tap a row to open the ride that set it.">
       {!has ? <div class="empty small">{building ? 'Reading your rides for their best efforts…' : 'Rides with a power meter set records here.'}</div> : (
         <Rest>
@@ -814,7 +903,7 @@ function DurabilityCard({ curves, from, to, range, ftp, building, coach }: { cur
   const eff = effort === 300 ? '5-minute' : '20-minute';
   coach.setExtra('durability', `the ${eff} effort: ${durabilityWords(d, kj)}`);
   return (
-    <PCard id="durability" title="Durability" coach={coach}
+    <PCard id="durability" title="Durability" coach={coach} big={shown.length ? 'card:durability' : undefined}
       readout={d.enough ? <>after <b>{kj} kJ</b> · best {eff} before <b>{d.before} W</b>, after <b>{d.after} W</b> · fade <b class={d.fadeBefore != null && d.fade! < d.fadeBefore ? 'good-t' : ''}>{d.fade}%</b>{d.fadeBefore != null ? ` (was ${d.fadeBefore}%)` : ''}</> : undefined}
       explain={`How well your power holds late in a ride. Late begins once a ride has done the work of one hour at your FTP: for you that is ${kj} kJ. The card compares your best ${eff} power before that point with your best after it, across the range; the fade is the drop as a share of the first. The chart shows the last eight rides that went past the point with the effort to spare on both sides: the dashed outline before, the bar after. This compares the efforts you actually rode: if you never push late in a ride, the fade looks larger than it is. Tap a ride to open it.`}
       aside={<div class="seg range sm"><button class={effort === 300 ? 'on' : ''} onClick={() => setEffort(300)}>5 min</button><button class={effort === 1200 ? 'on' : ''} onClick={() => setEffort(1200)}>20 min</button></div>}>
@@ -844,7 +933,7 @@ function AerobicCard({ data, rides, readout, coach, wide }: { data: AppData; rid
   const tick = (d: string, i: number) => (i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 4) === 0) ? short(d) : null;
   const idOf = (i: number) => rides.find((r) => r.date === pts[i].date && r.name === pts[i].name)?.id;
   return (
-    <PCard id="aerobic" title="Aerobic fitness" coach={coach} readout={readout} explain={explain}>
+    <PCard id="aerobic" title="Aerobic fitness" coach={coach} readout={readout} explain={explain} big="ef">
       <Fill initial={236}>{(h) => {
         const each = wide ? Math.max(90, h - 50) : Math.max(64, Math.round((h - 44) / 2));
         return (<div class={wide ? 'pmulti two' : undefined}><div>
@@ -870,24 +959,25 @@ function WellnessCard({ data, from, to, readout, coach, wide }: { data: AppData;
   const dates = days.map((d) => d.date);
   const tick = (d: string, i: number) => (i === 0 || i === days.length - 1 || i % Math.ceil(days.length / 4) === 0) ? short(d) : null;
   const flagged = data.dayNotes.filter((n) => n.badWellness && n.date >= from && n.date <= to).length;
-  const panel = (name: string, unit: string, color: string, vals: Array<number | null>, fmt: (v: number) => string, height: number) => (
-    <div style="margin-bottom:4px;min-width:0">
+  const panel = (name: string, unit: string, color: string, vals: Array<number | null>, fmt: (v: number) => string, height: number, measure: string) => (
+    <Opens key={measure} target={measure} card="wellness"><div style="margin-bottom:4px;min-width:0">
       <div class="small" style="margin-bottom:1px"><b>{name}</b> <span class="faint">({unit})</span></div>
       <LineChart series={[{ name: 'day', color, values: vals, dots: true, hideInLegend: true }, { name: '7-day average', color, values: rollingDays(dates, vals, 7), width: 2, hideInLegend: true }]}
         xLabels={dates} xTick={tick} yTitle={unit} height={height} yMin={Math.min(...vals.filter((v): v is number => v != null)) * 0.9}
         readout={(i) => `${fmtDate(dates[i], { weekday: 'short', month: 'short', day: 'numeric' })} · ${vals[i] != null ? fmt(vals[i]!) : 'no reading'}${rollingDays(dates, vals, 7)[i] != null ? ` · 7-day ${fmt(rollingDays(dates, vals, 7)[i]!)}` : ''}`} />
-    </div>
+    </div></Opens>
   );
+  const firstWith = ['hrv', 'restingHr', 'sleep'].find((k, i) => days.some((d) => (i === 0 ? d.w?.hrv : i === 1 ? d.w?.restingHr : d.w?.sleepSeconds))) ?? 'hrv';
   return (
-    <PCard id="wellness" title="Wellness" coach={coach} readout={readout || undefined}
+    <PCard id="wellness" title="Wellness" coach={coach} readout={readout || undefined} big={firstWith}
       explain={`Morning readings: dots are single mornings, the line is the 7-day average. Higher HRV and lower resting heart rate than your normal mean recovered.${flagged ? ` ${flagged} day${flagged > 1 ? 's' : ''} you marked as not real measurements ${flagged > 1 ? 'are' : 'is'} left out.` : ''}`}>
       <Fill initial={270}>{(h) => {
         // Side by side when the card has two columns to itself; stacked otherwise.
         const each = wide ? Math.max(90, h - 24) : Math.round((h - 72) / 3);
         return (<div class={wide ? 'pmulti three' : undefined}>
-          {panel('Heart-rate variability', 'ms', 'var(--aqua)', days.map((d) => d.w?.hrv ?? null), (v) => `${Math.round(v)} ms`, each)}
-          {panel('Resting heart rate', 'bpm', 'var(--z5)', days.map((d) => d.w?.restingHr ?? null), (v) => `${Math.round(v)} bpm`, each)}
-          {panel('Sleep', 'hours', 'var(--info)', days.map((d) => (d.w?.sleepSeconds ? Math.round((d.w.sleepSeconds / 3600) * 10) / 10 : null)), (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, each)}
+          {panel('Heart-rate variability', 'ms', 'var(--aqua)', days.map((d) => d.w?.hrv ?? null), (v) => `${Math.round(v)} ms`, each, 'hrv')}
+          {panel('Resting heart rate', 'bpm', 'var(--z5)', days.map((d) => d.w?.restingHr ?? null), (v) => `${Math.round(v)} bpm`, each, 'restingHr')}
+          {panel('Sleep', 'hours', 'var(--info)', days.map((d) => (d.w?.sleepSeconds ? Math.round((d.w.sleepSeconds / 3600) * 10) / 10 : null)), (v) => `${Math.floor(v)}h${String(Math.round((v % 1) * 60)).padStart(2, '0')}`, each, 'sleep')}
         </div>);
       }}</Fill>
     </PCard>
@@ -982,10 +1072,10 @@ function TotalsCard({ rides, imperial, readout, coach, wide }: { rides: Ride[]; 
     );
   };
   return (
-    <PCard id="totals" title="Totals by month" coach={coach} readout={readout}
+    <PCard id="totals" title="Totals by month" coach={coach} readout={readout} big="weekHours"
       explain={`Every activity, month by month over the last year; the current month is hatched because it is not over yet.${hasPrev ? ' "vs last year" outlines the same month a year before behind each bar.' : ''}`}
       aside={hasPrev ? <button class={`chip sm${vsLast ? ' on' : ''}`} aria-pressed={vsLast} onClick={() => setVsLast(!vsLast)}>vs last year</button> : undefined}>
-      <Fill initial={260}>{(h) => {
+      <Opens target="weekHours" card="totals"><Fill initial={260}>{(h) => {
         // Four across when the card has two columns to itself; two by two otherwise.
         const each = wide ? Math.max(90, h - 22) : Math.max(70, Math.round((h - 60) / 2));
         return (
@@ -996,7 +1086,7 @@ function TotalsCard({ rides, imperial, readout, coach, wide }: { rides: Ride[]; 
             {small('Sessions', 'count', (x) => x.sessions, (v) => `${v}`, each)}
           </div>
         );
-      }}</Fill>
+      }}</Fill></Opens>
       {(() => {
         // Runs on their own line: the charts above mix every kind, and a run's mile is not a ride's.
         const runs = rides.filter((r) => r.sport === 'run' && r.date.slice(0, 7) >= m[0].month);
@@ -1021,21 +1111,21 @@ function WeightCard({ data, from, to, imperial, readout, coach, wide }: { data: 
   const unit = imperial ? 'lb' : 'kg';
   const tick = (d: string, i: number) => (i === 0 || i === days.length - 1 || i % Math.ceil(days.length / 4) === 0) ? short(d) : null;
   return (
-    <PCard id="weight" title="Weight and power to weight" coach={coach} readout={readout}
+    <PCard id="weight" title="Weight and power to weight" coach={coach} readout={readout} big="weight"
       explain="Body weight from your wellness data, and FTP divided by it. FTP is the value on record each day (it changes when you or Intervals.icu update it). Weight changes are never marked good or bad.">
       <Fill initial={236}>{(h) => {
         const each = wide ? Math.max(90, h - 50) : Math.max(60, Math.round((h - 44) / 2));
-        return (<div class={wide ? 'pmulti two' : undefined}><div>
+        return (<div class={wide ? 'pmulti two' : undefined}><Opens target="weight" card="weight"><div>
           <div class="small" style="margin-bottom:1px"><b>Weight</b> <span class="faint">({unit})</span></div>
           <LineChart series={[{ name: 'day', color: 'var(--aqua)', values: kg.map((v) => (v ? Math.round(show(v) * 10) / 10 : null)), dots: true }, { name: '7-day average', color: 'var(--aqua)', values: avg.map((v) => (v ? Math.round(show(v) * 10) / 10 : null)), width: 2 }]}
             xLabels={dates} xTick={tick} yTitle={unit} height={each} yMin={Math.min(...kg.filter((v): v is number => !!v).map(show)) - 2}
             readout={(i) => `${short(dates[i])} · ${kg[i] ? `${(Math.round(show(kg[i]!) * 10) / 10)} ${unit}` : 'no reading'}${avg[i] ? ` · 7-day ${Math.round(show(avg[i]!) * 10) / 10} ${unit}` : ''}`} />
-          </div><div>
+          </div></Opens><Opens target="wkg" card="weight"><div>
           <div class="small" style={wide ? 'margin-bottom:1px' : 'margin:6px 0 1px'}><b>FTP per kilogram</b> <span class="faint">(W/kg)</span></div>
           <LineChart series={[{ name: 'W/kg', color: 'var(--accent)', values: wkg, width: 2 }]}
             xLabels={dates} xTick={tick} yTitle="W/kg" height={each} yMin={Math.min(...wkg.filter((v): v is number => v != null)) - 0.2}
             readout={(i) => `${short(dates[i])} · FTP ${ftp[i].ftp} W · ${wkg[i] ?? '–'} W/kg`} />
-        </div></div>);
+        </div></Opens></div>);
       }}</Fill>
     </PCard>
   );
@@ -1303,7 +1393,7 @@ function TestsCard({ data, tests, from, to, plan, series, readout, coach }: { da
     return null;
   })();
   return (
-    <PCard id="tests" title={title} coach={coach}
+    <PCard id="tests" title={title} coach={coach} big="ftp"
       readout={<>{readout}</>}
       explain={<><p style="margin:0 0 8px">Your FTP on record over this range, with each test's FTP estimate as a dot, and every test you've ridden (with its breathing thresholds when you wore a breathing strap). Open one to update your FTP or zones from it.</p>{ftpGoalOn && <p style="margin:0">The goal: your target as a line, and from today a dashed line to the target on the goal date. That line is what is needed, not a forecast. "Ahead", "on track" or "behind" compares the rate it needs with your own rate over the last twelve weeks, and only shows once you have had at least two FTP values in the last sixteen weeks.</p>}</>}>
       {fg && <p class="small" style="margin:0 0 4px"><b>{fg.needed} W</b> still needed in <b>{fg.daysLeft} days</b>{fg.neededPerWeek != null ? <> · needs <b>{fg.neededPerWeek} W</b> a week</> : null}{fg.ownPerWeek != null ? <> · your last 12 weeks <b>{sg(fg.ownPerWeek, 1)} W</b> a week</> : null}{fg.verdict && <> · <b class={fg.verdict === 'behind' ? '' : 'good-t'}>{fg.verdict}</b></>}</p>}
@@ -1390,7 +1480,7 @@ function BreathingCard({ data, curves, tests, from, to, readout, coach }: { data
   const any1 = ridesV.some((v) => v != null) || vt1T.some((v) => v != null) || vt2T.some((v) => v != null);
   const points = Math.max(ridesV.filter((v) => v != null).length, vt1T.filter((v) => v != null).length, vt2T.filter((v) => v != null).length);
   return (
-    <PCard id="breathing" title="Breathing" coach={coach} readout={readout}
+    <PCard id="breathing" title="Breathing" coach={coach} readout={readout} big="breath"
       explain="Your two breathing thresholds from tests ridden with a breathing strap, and the first threshold as the app reads it from ordinary rides, marked on your power zones; how they move over time; and how fast you breathe at endurance power (55–75% of FTP) on each ride. Fewer breaths for the same power over time is a sign of aerobic fitness. Shown only when your rides include breathing data.">
       <div class="zbar" role="img" aria-label={`Breathing thresholds on your power zones${now.vt1 ? `: first ${now.vt1} W` : ''}${now.vt2 ? `, second ${now.vt2} W` : ''}`}>
         {ZONE_VAR.map((c, i) => <span key={i} style={`background:${c}`} />)}

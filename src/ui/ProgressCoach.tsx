@@ -45,7 +45,8 @@ export interface ProgressCoachState {
   cardAnswers: Record<string, Answer>;
   cardBusy: string | null;
   cardError: { id: string; text: string } | null;
-  askCard: (id: string, q: string) => void;
+  /** A question about one card; `card` gives what is on screen when it is not one of the page's own cards (a chart opened large). */
+  askCard: (id: string, q: string, card?: { title: string; readout: string; extra?: string }) => void;
   /** What is switched on in a card (its chips, its comparison), sent with a question about it. */
   setExtra: (id: string, words: string) => void;
 }
@@ -144,13 +145,13 @@ export function useProgressCoach({ data, range, from, to, facts }: { data: AppDa
     }).catch((e) => setAskError((e as Error).message)).finally(() => setAskBusy(false));
   };
 
-  const askCard = (id: string, q: string) => {
+  const askCard = (id: string, q: string, card?: { title: string; readout: string; extra?: string }) => {
     const question = q.trim();
     if (!cfg || !question || cardBusy) return;
     setCardBusy(id); setCardError(null);
     const f = factsRef.current;
     const readout = id === 'tests' && f.readouts.testsGoal ? `${f.readouts.tests} · ${f.readouts.testsGoal}` : id === 'key' ? f.key.map((k) => `${k.label}: ${k.now} now, ${k.was} four weeks ago, change ${k.change}`).join('; ') : f.readouts[id] ?? '';
-    askProgressCard(cfg, sentFacts(data, f, from, to), { title: CARD_TITLE[id] ?? id, readout, extra: extras.current[id] }, question).then(async (a) => {
+    askProgressCard(cfg, sentFacts(data, f, from, to), card ?? { title: CARD_TITLE[id] ?? id, readout, extra: extras.current[id] }, question).then(async (a) => {
       const saved: Answer = { q: question, a, at: new Date().toISOString() };
       const all = await getSetting<Record<string, Answer>>('progressCardAsk', {});
       const next = { ...all, [id]: saved };

@@ -70,7 +70,17 @@ export async function looksRight(s: Session, info: TestInfo, where: string): Pro
   expect(text.length, `${where}: the page is blank`).toBeGreaterThan(40);
   // A page that settles within two seconds is fine; one that stays wider than the screen is not.
   const sideways = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  await expect.poll(sideways, { message: `${where}: the page scrolls sideways`, timeout: 2_000 }).toBeLessThanOrEqual(1);
+  try {
+    await expect.poll(sideways, { timeout: 2_000 }).toBeLessThanOrEqual(1);
+  } catch {
+    // Name what sticks out, so a failure on the publish's machine can be fixed without seeing it.
+    const wide = await page.evaluate(() => {
+      const W = document.documentElement.clientWidth;
+      return Array.from(document.querySelectorAll('body *')).filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > W + 1 && !(el.parentElement && el.parentElement.getBoundingClientRect().right > W + 1); })
+        .slice(0, 6).map((el) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className?.baseVal ?? (el as HTMLElement).className).trim().replace(/\s+/g, '.')} (${Math.round(el.getBoundingClientRect().right)}px) "${(el.textContent ?? '').trim().slice(0, 40)}"`);
+    });
+    throw new Error(`${where}: the page scrolls sideways by ${await sideways()}px. Sticking out: ${wide.join('; ')}`);
+  }
   expect(s.problems, `${where}: errors on the page`).toEqual([]);
   const shot = await page.screenshot({ fullPage: !!process.env.SHOTS });
   await info.attach(where, { body: shot, contentType: 'image/png' });

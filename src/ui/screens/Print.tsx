@@ -10,6 +10,7 @@ import { APP_NAME } from '../../appName';
 import type { PlannedWorkout, SessionKind, Workout } from '../../engine/types';
 import { KIND_LABEL } from './Plan';
 import { GOAL_LABEL_FULL } from './Plan';
+import { knownFtp, knownLthr } from '../../engine/known';
 
 /**
  * A plan on paper: US Letter, landscape, one row per week, one column per
@@ -58,14 +59,14 @@ export function PrintView({ data, planId, params }: { data: AppData; planId?: st
         <h1>{plan.name}</h1>
         <div class="p-sub">{goalText} · {weeks.length} weeks · {fmt(plan.start, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} to {fmt(plan.goalDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}{pages.length > 1 ? ` · page ${page} of ${pages.length}` : ''}</div>
       </div>
-      <div class="p-meta"><b>{profile.name}</b> · FTP {profile.ftp} W · threshold HR {profile.lthr} bpm{commitments ? <><br />Standing: {commitments}</> : null}<br />{Math.round(totalHours)} hours · {totalTss} TSS planned</div>
+      <div class="p-meta"><b>{profile.name}</b> · FTP {knownFtp(profile) ? `${profile.ftp} W` : 'not known yet'} · threshold HR {knownLthr(profile) ? `${profile.lthr} bpm` : 'not known yet'}{commitments ? <><br />Standing: {commitments}</> : null}<br />{Math.round(totalHours)} hours · {totalTss} TSS planned</div>
     </div>
   );
   const Legend = () => (
     <div class="p-legend">
       <span><i class="sw k-ride" />Ride</span><span><i class="sw k-strength" />Strength</span><span><i class="sw k-walk" />Walk</span><span><i class="sw k-mobility" />Mobility</span><span class="p-ph">Recovery week</span>
       <span class="p-done">✓ done · ✗ missed</span>
-      <span style="margin-left:auto">Rides are named for their turnaround from home; the full steps are on the Garmin.</span>
+      <span style="margin-left:auto">Rides are named for their turnaround from home; the full steps are on your device.</span>
     </div>
   );
   const Footer = ({ page }: { page: number }) => (

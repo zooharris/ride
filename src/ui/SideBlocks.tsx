@@ -9,6 +9,7 @@ import { weekSummary, plannedMinutes } from './week';
 import { getActivePlan, type ActivePlan } from './planService';
 import { Icon } from './icons';
 import { miles } from '../engine/units';
+import { isUnknown } from '../engine/known';
 
 /**
  * The sidebar's blocks under the navigation (11 Nov 2026). Each shows a live fact the page in
@@ -104,7 +105,7 @@ export function SideBlocks({ data, page }: { data: AppData; page: string }) {
         if (b === 'today') return <TodayBlock key={b} main={main} />;
         if (b === 'week') return <WeekBlock key={b} week={week} date={date} />;
         if (b === 'coming') return <ComingBlock key={b} coming={coming} />;
-        if (b === 'goal') return <GoalBlock key={b} plan={goal!} date={date} ftp={data.profile?.ftp ?? 0} />;
+        if (b === 'goal') return <GoalBlock key={b} plan={goal!} date={date} ftp={data.profile && !isUnknown(data.profile, 'ftp') ? data.profile.ftp : 0} />;
         return <LastBlock key={b} ride={last!} data={data} />;
       })}
     </div>

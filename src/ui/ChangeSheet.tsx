@@ -27,7 +27,7 @@ export async function moveSession(data: AppData, p: PlannedWorkout, date: string
   const wasSent = p.status === 'sent';
   await movePlanned(p, date);
   const kindWord = kind === 'ride' ? 'a ride' : kind === 'walk' ? 'a walk' : kind ? `a ${KIND_LABEL[kind].toLowerCase()} session` : 'a session';
-  toast({ ok: true, text: `Moved ${w?.name ?? 'the session'} to ${fmtDate(date)}.${clash ? ` That day already has ${kindWord}.` : ''}${wasSent ? ' It came off your Garmin; send it again when you are ready.' : ''}` });
+  toast({ ok: true, text: `Moved ${w?.name ?? 'the session'} to ${fmtDate(date)}.${clash ? ` That day already has ${kindWord}.` : ''}${wasSent ? ' It came off Intervals.icu and your devices; send it again when you are ready.' : ''}` });
 }
 
 /**
@@ -74,7 +74,7 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()} style="max-width:480px" role="dialog" aria-label={`Change ${w?.name ?? 'this session'}`}>
         <div class="row between" style="margin-bottom:6px"><h2>{w?.name ?? 'This session'}</h2><button class="btn sm quiet" onClick={onClose}>Cancel</button></div>
-        <p class="muted small" style="margin:0 0 14px">{fmtDate(planned.date)}{planned.planId ? ' · from your plan' : ''}{planned.status === 'sent' ? ' · on your Garmin' : ''}{planned.status === 'missed' ? ' · missed' : ''}</p>
+        <p class="muted small" style="margin:0 0 14px">{fmtDate(planned.date)}{planned.planId ? ' · from your plan' : ''}{planned.status === 'sent' ? ' · sent' : ''}{planned.status === 'missed' ? ' · missed' : ''}</p>
         <div class="stack">
           <div class="panel" style="padding:10px 12px">
             <div class="small" style="margin-bottom:8px"><b>Move to another day</b></div>
@@ -92,7 +92,7 @@ export function ChangeSheet({ data, planned, onClose, onDone, startWith }: {
           <button class="btn" style="justify-content:flex-start" onClick={() => setMode('replace')}>Replace with another session<span class="faint small" style="margin-left:auto">any kind</span></button>
           <button class="btn danger" style="justify-content:flex-start" onClick={remove}>Remove from the calendar</button>
         </div>
-        {planned.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Moving or replacing takes it off the Garmin; send the new one when you are ready.</p>}
+        {planned.status === 'sent' && <p class="faint small" style="margin:12px 0 0">Moving or replacing takes it off Intervals.icu and your devices; send the new one when you are ready.</p>}
         {planned.planId && <p class="faint small" style="margin:8px 0 0">The plan keeps your change. The daily re-check may still suggest something for this day, which you can accept or ignore.</p>}
       </div>
     </div>

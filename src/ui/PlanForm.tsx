@@ -7,6 +7,7 @@ import { toast } from './Toast';
 import { NumberBox } from './NumberBox';
 import { dayOrder, fmtDate } from './derived';
 import { miles } from '../engine/units';
+import { knownFtp } from '../engine/known';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -31,7 +32,7 @@ export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate,
             <select value={goal.kind} onChange={(e) => {
               const k = (e.target as HTMLSelectElement).value as Goal['kind'];
               setGoal(k === 'event' ? { kind: 'event', date: addDays(today(), 84), name: '', eventType: 'century', priority: 'A' }
-                : k === 'ftp' ? { kind: 'ftp', weeks: 12, targetWatts: Math.round(profile.ftp * 1.06) }
+                : k === 'ftp' ? { kind: 'ftp', weeks: 12, targetWatts: knownFtp(profile) ? Math.round(profile.ftp * 1.06) : 0 }
                 : k === 'endurance' ? { kind: 'endurance', weeks: 12, targetHours: 4 }
                 : { kind: k, weeks: 12 } as Goal);
             }}>
@@ -65,7 +66,7 @@ export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate,
             <div class="field"><label>Weeks</label><input type="number" min="4" max="24" value={goal.weeks} onInput={(e) => setGoal({ ...goal, weeks: Number((e.target as HTMLInputElement).value) || 8 })} /></div>
           )}
           {goal.kind === 'ftp' && (
-            <div class="field"><label>Target FTP (watts, now {profile.ftp})</label><input type="number" value={goal.targetWatts} onInput={(e) => setGoal({ ...goal, targetWatts: Number((e.target as HTMLInputElement).value) || profile.ftp })} /></div>
+            <div class="field"><label>Target FTP (watts, now {knownFtp(profile) ?? 'not known yet: the test in week 1 finds it'})</label><input type="number" value={goal.targetWatts || ''} onInput={(e) => setGoal({ ...goal, targetWatts: Number((e.target as HTMLInputElement).value) || 0 })} /></div>
           )}
           {goal.kind === 'endurance' && (
             <div class="field"><label>Ride this long comfortably (hours)</label><NumberBox decimals value={goal.targetHours} onValue={(v) => setGoal({ ...goal, targetHours: v || 3 })} /></div>

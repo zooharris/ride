@@ -13,6 +13,7 @@ import { resendRides, sentRidesAhead, takeThreshold } from './testService';
 import { fmtDate } from './derived';
 import { toast } from './Toast';
 import type { AppData } from './store';
+import { knownFtp } from '../engine/known';
 
 export const FTP_CHECK_KEY = 'ftpCheck';
 
@@ -26,7 +27,7 @@ export function FtpCheckPanel({ data }: { data: AppData }) {
   if (done) return (
     <section class="panel" style="margin-top:14px;padding:12px 16px">
       <p class="small" style="margin:0">{done.text}</p>
-      {done.ahead > 0 && <button class="btn sm" style="margin-top:8px" onClick={async () => { const [pl, w] = await Promise.all([db.planned.toArray(), db.workouts.toArray()]); toast(await resendRides(sentRidesAhead(pl, w))); setDone({ ...done, ahead: 0 }); }}>Re-send {done.ahead} ride{done.ahead === 1 ? '' : 's'} to Garmin with the new FTP</button>}
+      {done.ahead > 0 && <button class="btn sm" style="margin-top:8px" onClick={async () => { const [pl, w] = await Promise.all([db.planned.toArray(), db.workouts.toArray()]); toast(await resendRides(sentRidesAhead(pl, w))); setDone({ ...done, ahead: 0 }); }}>Re-send {done.ahead} ride{done.ahead === 1 ? '' : 's'} to your devices with the new FTP</button>}
     </section>
   );
   const check = ftpCheck({ ftp: p.ftp, ftpSetOn: p.ftpSetOn, estimate: ev.proven, lastTestDate: ev.lastTestDate, everTested: ev.everTested, signs: ev.signs, state, today: todayIs() });
@@ -52,10 +53,10 @@ export function FtpCheckPanel({ data }: { data: AppData }) {
   return (
     <section class="panel" style="margin-top:14px;padding:14px 16px">
       <h3 style="margin:0 0 4px;font-size:16px">Antogo estimates your FTP is now {check.estimate} W</h3>
-      <p class="small muted" style="margin:0">Currently {p.ftp} W.</p>
+      <p class="small muted" style="margin:0">{knownFtp(p) ? `Currently ${p.ftp} W.` : 'Your FTP was not known until now.'}</p>
       <div class="row wrap" style="gap:8px;margin-top:10px">
         <button class="btn primary" onClick={() => void update()}>Update to {check.estimate} W</button>
-        <button class="btn quiet" onClick={() => void save({ ...state, keptEstimate: check.estimate, keptAt: todayIs() })}>Keep {p.ftp} W</button>
+        <button class="btn quiet" onClick={() => void save({ ...state, keptEstimate: check.estimate, keptAt: todayIs() })}>{knownFtp(p) ? `Keep ${p.ftp} W` : 'Not now'}</button>
       </div>
       <p class="small" style="margin:8px 0 0"><a href="#/help?s=today">How is this worked out?</a></p>
     </section>

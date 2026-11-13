@@ -15,27 +15,29 @@ import { exportFileName } from './names';
 export type WorkoutFormat = 'fit' | 'zwo' | 'mrc' | 'erg' | 'text';
 export type ActivityFormat = 'fit' | 'tcx' | 'gpx';
 
+// The file type first, always choosable, with a hint after it (13 Nov 2026): a rider may want a type for some other
+// platform, so a maker's name never replaces it. The line under it says where the file goes.
 export const WORKOUT_FORMAT_LABEL: Record<WorkoutFormat, string> = {
-  fit: 'Garmin workout file (.fit)',
-  zwo: 'Zwift workout (.zwo)',
-  mrc: 'Trainer workout, shares of FTP (.mrc)',
-  erg: 'Trainer workout, watts (.erg)',
-  text: 'Readable list (.txt)',
+  fit: '.fit (Garmin and most bike computers)',
+  zwo: '.zwo (Zwift)',
+  mrc: '.mrc (Wahoo, copied to its plans folder; trainer apps)',
+  erg: '.erg (trainer apps)',
+  text: '.txt (a readable list)',
 };
 export const WORKOUT_FORMAT_WHAT: Record<WorkoutFormat, string> = {
-  fit: 'For Garmin and most bike computers and watches. The only one of these that carries heart-rate targets.',
-  zwo: 'For Zwift, and many other trainer apps that read Zwift files. Power as a share of your FTP.',
-  mrc: 'For older trainer apps. Power as a share of your FTP.',
-  erg: 'For older trainer apps. Power in watts, worked out from your FTP today.',
+  fit: 'On a Garmin, copy it into the NewFiles folder over a cable. Most other bike computers, watches and training apps that take workout files read it too. The only one of these that carries heart-rate targets.',
+  zwo: 'In Zwift, put it in Documents, Zwift, Workouts, then the folder named with your Zwift number. Many other trainer apps read Zwift files too. Power as a share of your FTP.',
+  mrc: 'On a Wahoo ELEMNT, copy it into the plans folder over a cable, then sync planned workouts on the device. Wahoo doesn’t officially support copying files this way, though riders report .mrc working; Send to my devices, through Intervals.icu, is the supported way. Trainer apps read it too. Power as a share of your FTP.',
+  erg: 'For trainer apps that take a fixed list of watts. Power in watts, worked out from your FTP today.',
   text: 'The session written out to read on a phone or print: each exercise with sets, reps, load or hold.',
 };
 export const ACTIVITY_FORMAT_LABEL: Record<ActivityFormat, string> = {
-  fit: 'Garmin activity file (.fit)',
-  tcx: 'Training Center (.tcx)',
-  gpx: 'GPS route (.gpx)',
+  fit: '.fit (the fullest record)',
+  tcx: '.tcx (Training Center)',
+  gpx: '.gpx (the route)',
 };
 export const ACTIVITY_FORMAT_WHAT: Record<ActivityFormat, string> = {
-  fit: 'The fullest record, every second, and what Garmin Connect, Strava and most training apps import.',
+  fit: 'Every second of the activity. Garmin Connect, Strava and most training apps import it.',
   tcx: 'For older apps that don’t read FIT files.',
   gpx: 'The route, with heart rate, cadence and power where recorded. For mapping apps; only for activities with a route.',
 };
@@ -60,7 +62,7 @@ export function workoutOffers(w: Workout, basis: SendBasis = 'power'): Array<Off
   const powerOnly = (f: WorkoutFormat): Offer<WorkoutFormat> => {
     if (w.kind !== 'ride') return { format: f, ok: false, why: 'Trainer workout files are for rides only.' };
     if (!w.bases.includes('power') && basis !== 'breath') return { format: f, ok: false, why: 'This ride works by heart rate only, and this format holds power only.' };
-    if (basis === 'hr') return { format: f, ok: false, why: 'This format holds power only. For heart-rate targets, use the Garmin workout file.' };
+    if (basis === 'hr') return { format: f, ok: false, why: 'This format holds power only. For heart-rate targets, use the .fit file.' };
     if ((f === 'mrc' || f === 'erg') && hasOpenEffort(w)) return { format: f, ok: false, why: w.family === 'test' ? 'This format needs a set power for every step, and a trainer holding a set wattage would spoil the test’s free effort.' : 'This format needs a set power for every step, and this ride’s all-out sprints have none. The .fit and .zwo files carry them as free steps.' };
     return { format: f, ok: true };
   };

@@ -1,6 +1,6 @@
 import { walkZoneWords } from '../engine/foot';
 import { useState } from 'preact/hooks';
-import type { ActivityEdit, DoneExercise, DoneRecord, PlannedWorkout, Ride, Workout } from '../engine/types';
+import type { ActivityEdit, DoneExercise, DoneRecord, Exercise, PlannedWorkout, Ride, Workout } from '../engine/types';
 import { buildDoneRecord, exerciseIdFor, isHold, lastDone, setsText, unitOf, weightText } from '../engine/record';
 import { EXERCISES, type Pattern } from '../library/strength';
 import { MOBILITY } from '../library/mobility';
@@ -9,6 +9,7 @@ import { saveActivityEffort, saveActivityRecord, saveEffort, saveRecord } from '
 import { fmtDate } from './derived';
 import { toast } from './Toast';
 import { ExThumb } from './ExercisePictures';
+import { AddList, ExerciseSheet, countsOf, type AddItem } from './ExerciseAdd';
 import { NumberBox } from './NumberBox';
 import { packWords } from '../engine/units';
 
@@ -116,11 +117,19 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
   const groups = choices(kind);
   const set = (i: number, patch: Partial<DoneExercise>) => setDraft({ ...draft, exercises: (draft.exercises ?? []).map((e, j) => (j === i ? { ...e, ...patch } : e)) });
   const remove = (i: number) => setDraft({ ...draft, exercises: (draft.exercises ?? []).filter((_, j) => j !== i) });
-  const add = () => {
-    const first = groups[0]?.items[0];
-    const lib = first ? fromLibrary(first.id) : undefined;
-    setDraft({ ...draft, exercises: [...(draft.exercises ?? []), { name: lib?.name ?? 'Exercise', ...lib, sets: kind === 'mobility' ? 1 : 3, reps: kind === 'mobility' ? undefined : '10' }] });
+  // Adding: the same searchable list and details sheet as the session builder (13 Nov 2026).
+  const [adding, setAdding] = useState(false);
+  const [sheet, setSheet] = useState<{ item?: AddItem; ex: Exercise } | null>(null);
+  const addItems: AddItem[] = groups.flatMap((g) => g.items.map((x) => ({
+    name: x.name, group: g.group,
+    make: (): Exercise => { const lib = fromLibrary(x.id)!; return { name: lib.name!, cue: lib.cue ?? '', why: lib.why, equipment: lib.equipment ?? [], holdSeconds: lib.holdSeconds, sets: kind === 'mobility' ? 1 : 3, reps: kind === 'mobility' ? undefined : '10' }; },
+    id: x.id,
+  })));
+  const add = (i: AddItem & { id?: string }) => {
+    const lib = i.id ? fromLibrary(i.id) : undefined;
+    setDraft((d) => ({ ...d, exercises: [...(d.exercises ?? []), { name: lib?.name ?? i.name, ...lib, sets: kind === 'mobility' ? 1 : 3, reps: kind === 'mobility' ? undefined : '10' }] }));
   };
+  const counts = countsOf(draft.exercises ?? []);
   const save = async () => {
     setBusy(true);
     const clean: DoneRecord = {
@@ -147,7 +156,7 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
         return (
           <div class={`done-edit${e.skipped ? ' skipped' : ''}`} key={i}>
             <div class="row" style="gap:8px;align-items:flex-end">
-              <ExThumb name={e.name} exerciseId={e.exerciseId} size={44} />
+              <button type="button" class="ex-thumb-btn" onClick={() => { const lib = fromLibrary(key); setSheet({ ex: { name: e.name, cue: e.cue ?? lib?.cue ?? '', why: e.why ?? lib?.why, equipment: e.equipment ?? lib?.equipment ?? [], sets: e.sets, reps: e.reps, holdSeconds: e.holdSeconds } }); }} aria-label={`Details: ${e.name}`} title="See its pictures and how to do it"><ExThumb name={e.name} exerciseId={e.exerciseId} size={44} /></button>
               <div class="field" style="flex:1;min-width:0">
                 <label>{kind === 'mobility' ? 'Stretch' : 'Exercise'}</label>
                 <select value={key} onChange={(ev) => { const v = (ev.target as HTMLSelectElement).value; const lib = fromLibrary(v); if (lib) set(i, { ...lib, holdSeconds: lib.holdSeconds ?? e.holdSeconds }); }}>
@@ -171,7 +180,10 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
           </div>
         );
       })}
-      {draft.exercises && <button class="btn sm quiet" style="margin-left:-8px;align-self:flex-start" onClick={add}>+ Add an exercise</button>}
+      {draft.exercises && (adding
+        ? <AddList items={addItems} counts={counts} autoFocus placeholder={`Find ${kind === 'mobility' ? 'a stretch' : 'an exercise'} by name`} onChoose={(i) => add(i)} onDetails={(i) => setSheet({ item: i, ex: i.make() })} onClose={() => setAdding(false)} />
+        : <button class="btn sm quiet" style="margin-left:-8px;align-self:flex-start" onClick={() => setAdding(true)}>+ Add {kind === 'mobility' ? 'a stretch' : 'an exercise'}</button>)}
+      {sheet && <ExerciseSheet ex={sheet.ex} count={sheet.item ? counts.get(sheet.ex.name) ?? 0 : 0} addLabel="Add to what you did" onAdd={sheet.item ? () => add(sheet.item!) : undefined} onClose={() => setSheet(null)} />}
       <div class="row wrap" style="gap:8px;margin-top:12px">
         <button class="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
         <button class="btn quiet" onClick={onClose} disabled={busy}>Cancel</button>

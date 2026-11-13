@@ -68,6 +68,8 @@ type FootProfile = Pick<Profile, 'lthr' | 'maxHr'> & Partial<Profile>;
 /** The foot ladder and threshold to resolve a band with; the standard ladder when there is no rider. */
 function ladderOf(profile?: FootProfile): { zones: Zone[]; lthr: number } {
   if (!profile) return { zones: HR_ZONES, lthr: 0 };
+  // Threshold not known yet, on the bike or on foot (13 Nov 2026): no beats per minute, as with no rider.
+  if (profile.unsure?.lthr && !profile.unsure.lthr.estimate && !profile.footLthr) return { zones: footHrZones(profile), lthr: 0 };
   return { zones: footHrZones(profile), lthr: footLthr(profile) };
 }
 

@@ -474,7 +474,7 @@ export async function sendPlanned(c: IntervalsCredentials, p: PlannedWorkout, w:
   const shaped = withBreathText(byBreath && full ? breathPowerVersion(w, full, table) : w, full);
   const id = await sendWorkout(c, shaped, p.date, targets, profile ?? full, sent.where);
   // The one record kept: how it went. The entry's own setting follows it, so a ride from the Garmin is judged by its targets.
-  await db.planned.update(p.id, { status: 'sent', icuEventId: id, basis: targets, sentBasis: targets, sentBreath: byBreath || undefined, where: sent.where, sentWhere: sent.where });
+  await db.planned.update(p.id, { status: 'sent', icuEventId: id, sentOn: today(), basis: targets, sentBasis: targets, sentBreath: byBreath || undefined, where: sent.where, sentWhere: sent.where });
   return { id, version: two ? (sent.where === 'outdoor' ? 'outdoor' : 'as written') : undefined, sent };
 }
 
@@ -562,7 +562,7 @@ export async function replacePlanned(p: PlannedWorkout, w: Workout, basis: Basis
 export async function deleteWorkoutEverywhere(w: Pick<Workout, 'id' | 'name'>): Promise<boolean> {
   const entries = await db.planned.where('workoutId').equals(w.id).toArray();
   const sent = entries.filter((p) => p.icuEventId && p.status !== 'completed');
-  const where = entries.length ? ` It comes off ${entries.length === 1 ? 'the calendar day it is on' : `the ${entries.length} calendar days it is on`}${sent.length ? `, and off Intervals.icu and your Garmin for the ${sent.length === 1 ? 'one' : sent.length} not yet done` : ''}.` : '';
+  const where = entries.length ? ` It comes off ${entries.length === 1 ? 'the calendar day it is on' : `the ${entries.length} calendar days it is on`}${sent.length ? `, and off Intervals.icu and your devices for the ${sent.length === 1 ? 'one' : sent.length} not yet done` : ''}.` : '';
   if (!confirm(`Delete ${w.name}?${where}`)) return false;
   const c = sent.length ? await credentials() : null;
   for (const p of sent) if (c) { try { await deleteEvent(c, p.icuEventId!); } catch { /* a stale event in Intervals.icu is harmless */ } }
@@ -577,7 +577,7 @@ export async function removePlanned(id: string, mine: Workout[]): Promise<boolea
   if (!p) return false;
   const w = findWorkout(mine, p.workoutId);
   const what = `${w?.name ?? 'this session'} from ${fmtDate(p.date)}`;
-  const also = p.status === 'completed' ? ' The recording stays in Intervals.icu and in your activities; only the calendar entry goes.' : p.icuEventId ? ' It will also be removed from Intervals.icu and your Garmin.' : '';
+  const also = p.status === 'completed' ? ' The recording stays in Intervals.icu and in your activities; only the calendar entry goes.' : p.icuEventId ? ' It will also be removed from Intervals.icu and your devices.' : '';
   if (!confirm(`Remove ${what}?${also}`)) return false;
   if (p.icuEventId && p.status !== 'completed') {
     const c = await credentials();
@@ -735,7 +735,7 @@ const EVENT_WORDS: Record<string, string> = { century: 'a century', 'gran-fondo'
 export function goalWords(goal: Goal): string {
   switch (goal.kind) {
     case 'event': return `${goal.name || 'an event'} on ${goal.date} (${EVENT_WORDS[goal.eventType] ?? 'an event'}${goal.distanceKm ? `, ${Math.round(goal.distanceKm)} km` : ''})`;
-    case 'ftp': return `raise FTP to ${goal.targetWatts} W in ${goal.weeks} weeks`;
+    case 'ftp': return goal.targetWatts > 0 ? `raise FTP to ${goal.targetWatts} W in ${goal.weeks} weeks` : `raise FTP in ${goal.weeks} weeks`;
     case 'vo2max': return `raise VO2max over ${goal.weeks} weeks`;
     case 'endurance': return `ride ${goal.targetHours} h comfortably within ${goal.weeks} weeks`;
     case 'weight': return `lose weight${goal.targetKg ? ` to ${goal.targetKg} kg` : ''} over ${goal.weeks} weeks`;

@@ -386,7 +386,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
               </tr>
             ))}
           </table>
-          <p class="faint small" style="margin-top:8px">Average ventilation through each effort against its breathing range{breathProvisional(profile) ? ' (provisional zones)' : ''}. Green: in range. Amber: under. Orange: over.{p?.rodeByBreath ? ' Ridden by breathing in the ride player.' : ' Sent to your Garmin by breathing.'}</p>
+          <p class="faint small" style="margin-top:8px">Average ventilation through each effort against its breathing range{breathProvisional(profile) ? ' (provisional zones)' : ''}. Green: in range. Amber: under. Orange: over.{p?.rodeByBreath ? ' Ridden by breathing in the ride player.' : ' Sent by breathing.'}</p>
         </section>
       )}
       {analysis && !testKind && !byBreathSteps && analysis.steps.some((s) => s.work) && (
@@ -448,10 +448,10 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       </section>
       {downloading && <DownloadActivity ride={r} data={data} onClose={() => setDownloading(false)} />}
       <StrapDetails activityId={r.id} />
-      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'through your Garmin' : undefined)} />
+      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'through your bike computer' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
-        <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>
+        <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Your device's own app keeps its own copy; delete it there as well if you want it gone everywhere.</p>
       </section>
     </div>
   );
@@ -731,7 +731,7 @@ function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdi
   const [keepable, setKeepable] = useState<string | undefined>();
   useEffect(() => { void keepableRecording(r, replaced).then((x) => setKeepable(x?.id)); }, [r.id, replaced?.playerActivityId, replaced?.recordingId]);
   const keepOurs = async () => {
-    if (!confirm(`Keep Antogo's recording of ${replaced!.name} instead?\n\nAntogo's is saved to Intervals.icu and completes the session. This Garmin recording stays in Garmin Connect and Intervals.icu, left out of training load so the ride counts once.`)) return;
+    if (!confirm(`Keep Antogo's recording of ${replaced!.name} instead?\n\nAntogo's is saved to Intervals.icu and completes the session. This recording from your device stays in its own app and Intervals.icu, left out of training load so the ride counts once.`)) return;
     setBusy(true);
     const res = await keepVeloiqInstead(keepable!, r.id);
     setBusy(false);
@@ -769,7 +769,7 @@ function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdi
         {breathSensor && <div class="small"><span class="faint">Breathing strap:</span> {breathSensor}</div>}
         {replaced && (
           <div class="row wrap" style="gap:8px 12px;align-items:center">
-            <span class="small" style="flex:1;min-width:220px">Your Garmin and Antogo's ride player both recorded this ride. This one, your Garmin's, was kept, since it's the one in Garmin Connect, and Antogo's copy was removed so the ride counts once.{!keepable && undoWindowOpen(replaced) ? " To keep Antogo's instead, open this recording on the computer you rode on." : ''}</span>
+            <span class="small" style="flex:1;min-width:220px">Your device and Antogo's ride player both recorded this ride. This one, your device's, was kept, since it's the one in your device's own app, and Antogo's copy was removed so the ride counts once.{!keepable && undoWindowOpen(replaced) ? " To keep Antogo's instead, open this recording on the computer you rode on." : ''}</span>
             {keepable && <button class="btn sm" disabled={busy} onClick={() => void keepOurs()}>Keep Antogo's instead…</button>}
           </div>
         )}

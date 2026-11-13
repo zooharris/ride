@@ -97,7 +97,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
 
       <section class="section">
         <h2>Steps <span class="muted" style="font-weight:400">· {rows.length}</span></h2>
-        <p class="muted small" style="margin:6px 0 10px;max-width:68ch">Each step is a time and a heart-rate band, named by zone on your foot table (threshold {footLthr(profile)} bpm); the Garmin holds you in it. A repeated step runs its recovery between repeats.{profile.thresholdPaceSec ? ' The pace beside each band comes from your threshold pace and is a guide only.' : ' Set a threshold run pace in Settings to see the pace each band implies.'}</p>
+        <p class="muted small" style="margin:6px 0 10px;max-width:68ch">Each step is a time and a heart-rate band, named by zone on your foot table (threshold {footLthr(profile)} bpm); your device holds you in it. A repeated step runs its recovery between repeats.{profile.thresholdPaceSec ? ' The pace beside each band comes from your threshold pace and is a guide only.' : ' Set a threshold run pace in Settings to see the pace each band implies.'}</p>
         <div class="stack">
           {rows.map((r, i) => (
             <div class="panel" key={i} style="padding:10px 12px">

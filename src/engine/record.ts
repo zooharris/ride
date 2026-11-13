@@ -102,7 +102,14 @@ export function lastDone(name: string, planned: PlannedWorkout[], before?: strin
   for (const p of planned) {
     if (p.status !== 'completed' || !p.done?.exercises || (before && p.date >= before)) continue;
     if (best && p.date <= best.date) continue;
-    const e = p.done.exercises.find((x) => !x.skipped && x.weight != null && ((id && x.exerciseId === id) || x.name.trim().toLowerCase() === n));
+    // An exercise can be in a session more than once (13 Nov 2026): warm-up sets then work sets. "Last time" is the
+    // heavier of them, since that is the weight to beat; with equal weights, the later one in the session.
+    const kg = (x: { weight?: number; unit?: 'lb' | 'kg' }) => (x.weight ?? 0) * ((x.unit ?? 'lb') === 'kg' ? 1 : 1 / 2.2046);
+    let e: (typeof p.done.exercises)[number] | undefined;
+    for (const x of p.done.exercises) {
+      if (x.skipped || x.weight == null || !((id && x.exerciseId === id) || x.name.trim().toLowerCase() === n)) continue;
+      if (!e || kg(x) >= kg(e)) e = x;
+    }
     if (e) best = { weight: e.weight!, unit: e.unit ?? 'lb', sets: e.sets, reps: e.reps, date: p.date };
   }
   return best;

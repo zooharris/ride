@@ -13,6 +13,8 @@
  *     text in `description`; Intervals.icu pushes it to Garmin Connect.
  */
 import { versionFor, type Where } from '../library/sendWhere';
+import type { UnsureNumber } from '../engine/types';
+import { markMine } from '../engine/known';
 import type { Basis, Ride, SessionKind, Wellness, Workout } from '../engine/types';
 import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
 import { defaultHrZoneTops, defaultZonePcts, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, rideLadders, ridePowerZones, validTops } from '../engine/zones';
@@ -40,7 +42,7 @@ function headers(c: IntervalsCredentials): HeadersInit {
   };
 }
 
-async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit = {}): Promise<T> {
+export async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, { ...init, headers: { ...headers(c), ...(init.headers ?? {}) } });
@@ -99,7 +101,9 @@ export interface AthleteNumbers {
  * rider changed it in Intervals.icu, and it arrives in Intervals.icu's unit.
  */
 export function applyAthleteNumbers(p: Profile, a: AthleteNumbers): Profile {
-  const next: Profile = { ...p, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, footLthr: a.footLthr ?? p.footLthr };
+  // A number Intervals.icu holds is the rider's own: it replaces an unknown or an estimate (13 Nov 2026).
+  const supplied = ([['ftp', a.ftp], ['lthr', a.lthr], ['maxHr', a.maxHr], ['weightKg', a.weight]] as Array<[UnsureNumber, number | undefined]>).filter(([, v]) => !!v).map(([k]) => k);
+  const next: Profile = markMine({ ...p, ftp: a.ftp ?? p.ftp, lthr: a.lthr ?? p.lthr, maxHr: a.maxHr ?? p.maxHr, restingHr: a.restingHr ?? p.restingHr, weightKg: a.weight ?? p.weightKg, footLthr: a.footLthr ?? p.footLthr }, supplied);
   const same = (x?: number[], y?: number[]) => !!x && !!y && x.length === y.length && x.every((v, i) => Math.abs(v - y[i]) <= 1);
   if (a.powerZonePcts && !same(a.powerZonePcts, ladderPcts(ridePowerZones(next)))) { next.powerZoneMode = 'pct'; next.powerZonePcts = a.powerZonePcts; }
   if (a.hrZoneTops && !same(a.hrZoneTops, ladderTops(rideHrZones(next), next.lthr))) { next.hrZoneMode = 'abs'; next.hrZoneTops = a.hrZoneTops; }
@@ -109,12 +113,15 @@ export function applyAthleteNumbers(p: Profile, a: AthleteNumbers): Profile {
 
 /** What Save sends: thresholds, and each table in the unit Intervals.icu keeps it in. */
 export function numbersToPush(p: Profile): Parameters<typeof pushAthleteNumbers>[1] {
+  // A number the rider doesn't know, or the app's estimate of it, is never written into their Intervals.icu account
+  // (13 Nov 2026): there it would read as theirs. Zone tables built on it stay behind with it.
+  const mine = (k: UnsureNumber) => !p.unsure?.[k];
   return {
-    ftp: p.ftp, lthr: p.lthr, maxHr: p.maxHr,
+    ftp: mine('ftp') ? p.ftp : undefined, lthr: mine('lthr') ? p.lthr : undefined, maxHr: mine('maxHr') ? p.maxHr : undefined,
     powerZonePcts: ladderPcts(ridePowerZones(p)),
-    hrZoneTops: ladderTops(rideHrZones(p), p.lthr),
-    footLthr: footThreshold(p),
-    footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)),
+    hrZoneTops: mine('lthr') && mine('maxHr') ? ladderTops(rideHrZones(p), p.lthr) : undefined,
+    footLthr: mine('lthr') || p.footLthr ? footThreshold(p) : undefined,
+    footHrZoneTops: (mine('lthr') || p.footLthr) && mine('maxHr') ? ladderTops(footHrZones(p), footThreshold(p)) : undefined,
   };
 }
 
@@ -465,7 +472,7 @@ export async function fetchWellness(c: IntervalsCredentials, oldest: string, new
  * outdoor version, as before the choice existed.
  */
 export async function sendWorkout(c: IntervalsCredentials, workout: Workout, date: string, basis: Basis, profile?: HrProfile, where: Where = 'outdoor'): Promise<number> {
-  if (workout.trainerOnly) throw new Error(`${workout.name} is ridden on the trainer in Antogo, so it isn't sent to the Garmin.`);
+  if (workout.trainerOnly) throw new Error(`${workout.name} is ridden on the trainer in Antogo, so it isn't sent to your devices.`);
   const body = workout.kind === 'walk' ? walkEvent(workout, date, profile)
     : workout.kind === 'run' ? runEvent(workout, date, profile)
     : workout.kind === 'strength' || workout.kind === 'mobility' ? sessionEvent(workout, date)

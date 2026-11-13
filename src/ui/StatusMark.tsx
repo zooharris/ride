@@ -15,7 +15,7 @@ export function statusOf(s: 'planned' | 'sent' | 'completed' | 'missed'): Sessio
   return s === 'completed' ? 'done' : s === 'sent' ? 'sent' : s === 'missed' ? 'missed' : 'todo';
 }
 
-export const STATUS_WORD: Record<SessionStatus, string> = { done: 'Done', todo: 'To do', sent: 'On Garmin', missed: 'Missed' };
+export const STATUS_WORD: Record<SessionStatus, string> = { done: 'Done', todo: 'To do', sent: 'Sent', missed: 'Missed' };
 
 export function StatusMark({ status, size = 18, title }: { status: SessionStatus; size?: number; title?: string }) {
   const label = title ?? STATUS_WORD[status];

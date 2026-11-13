@@ -94,7 +94,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
   const r = await getRecording(id);
   if (!r) return { ok: false, text: 'That ride is no longer on this computer.' };
   if (r.activityId) return { ok: true, text: 'Already saved.', activityId: r.activityId };
-  if (r.status === 'superseded' && r.supersededBy) return { ok: true, text: 'Kept your Garmin\'s recording of this ride.', activityId: r.supersededBy, superseded: true };
+  if (r.status === 'superseded' && r.supersededBy) return { ok: true, text: 'Kept your device\'s recording of this ride.', activityId: r.supersededBy, superseded: true };
   const c = await credentials();
   if (!c) {
     await patchRecording(id, { status: 'finished', error: 'Intervals.icu is not connected on this device.' });

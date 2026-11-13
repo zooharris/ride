@@ -28,6 +28,17 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Whole-journey tests on the built site: a failing journey stops the publish.
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: journeys-report
+          path: journeys-report
+          retention-days: 14
       - uses: actions/configure-pages@v5
         with:
           enablement: true

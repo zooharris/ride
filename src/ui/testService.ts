@@ -73,9 +73,9 @@ export async function applyNumbers(change: Partial<Profile>, what: string): Prom
   if (!c?.apiKey) return { ok: true, text: `Saved: ${what}. Connect Intervals.icu in Settings to send it there too.` };
   try {
     await pushAthleteNumbers(c, numbersToPush(next));
-    return { ok: true, text: `Saved, and sent to Intervals.icu: ${what}. Garmin workouts and Intervals.icu now use it.` };
+    return { ok: true, text: `Saved, and sent to Intervals.icu: ${what}. Workouts sent to your devices and Intervals.icu now use it.` };
   } catch (e) {
-    return { ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to Garmin use the numbers Intervals.icu has.` };
+    return { ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to your devices use the numbers Intervals.icu has.` };
   }
 }
 
@@ -91,13 +91,13 @@ export function sentRidesAhead(planned: PlannedWorkout[], mine: Workout[], on = 
 /** Send those rides again, each replacing its copy on the Garmin with the new numbers. */
 export async function resendRides(items: Array<{ p: PlannedWorkout; w: Workout }>): Promise<{ ok: boolean; text: string }> {
   const c = await credentials();
-  if (!c) return { ok: false, text: 'Connect Intervals.icu in Settings to send rides to your Garmin.' };
+  if (!c) return { ok: false, text: 'Connect Intervals.icu in Settings to send rides to your devices.' };
   const profile = await db.profile.get('me');
   let sent = 0;
   try {
     for (const { p, w } of items) { await sendPlanned(c, p, w, profile ?? undefined); sent++; }
     notify();
-    return { ok: true, text: `Sent ${sent} ride${sent === 1 ? '' : 's'} again with the new numbers. They replace the copies on your Garmin after its next phone sync.` };
+    return { ok: true, text: `Sent ${sent} ride${sent === 1 ? '' : 's'} again with the new numbers. Intervals.icu replaces the copies it passed to your devices at its next upload.` };
   } catch (e) {
     notify();
     return { ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` };

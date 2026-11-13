@@ -11,6 +11,7 @@ import { db } from '../data/db';
 import { today } from '../engine/load';
 import type { AppData } from './store';
 import { toast } from './Toast';
+import { knownFtp } from '../engine/known';
 
 /**
  * Download one workout or one finished activity, at any time (12 Nov 2026). A small sheet: the format and, for a
@@ -51,12 +52,14 @@ export function DownloadWorkout({ w, entry, profile, plans, onClose }: { w: Work
   const ride = w.kind === 'ride';
   const ways = ride ? sendWays(w, profile) : [];
   const breathOk = canSendByBreath(w, profile, table);
-  // The same starting point as Send: what the Garmin has for a sent entry, else the rider's default and the plan's version.
+  // The same starting point as Send: what was sent for a sent entry, else the rider's default and the plan's version.
   const start = entry?.status === 'sent' && ride ? onGarmin(entry, w, plans) : sendDefault(entry ?? { date: today() }, w, profile.basis, plans, !!profile.preferBreath && breathOk);
   const [basis, setBasis] = useState<SendBasis>(start.basis);
   const [where, setWhere] = useState<Where | undefined>(start.where);
-  const offers = workoutOffers(w, basis);
-  const firstOk = (b: SendBasis) => workoutOffers(w, b).find((o) => o.ok)?.format;
+  // Watts need an FTP: with none known yet, the watts file is offered with the reason it can't be made (13 Nov 2026).
+  const noFtp = (o: { format: WorkoutFormat; ok: boolean; why?: string }) => (o.format === 'erg' && o.ok && !knownFtp(profile) ? { ...o, ok: false, why: 'This file holds watts, and your FTP is not known yet. The other types hold shares of FTP.' } : o);
+  const offers = workoutOffers(w, basis).map(noFtp);
+  const firstOk = (b: SendBasis) => workoutOffers(w, b).map(noFtp).find((o) => o.ok)?.format;
   const [format, setFormat] = useState<WorkoutFormat | undefined>(firstOk(start.basis));
   // A change of targets keeps the format when it still works, else takes the first that does.
   useEffect(() => { if (!format || !offers.find((o) => o.format === format)?.ok) setFormat(firstOk(basis)); }, [basis]);
@@ -69,7 +72,7 @@ export function DownloadWorkout({ w, entry, profile, plans, onClose }: { w: Work
     } catch (e) { toast({ ok: false, text: `Could not make the file: ${(e as Error).message}` }); }
   };
   return (
-    <Sheet title={`Download ${w.name}`} onClose={onClose}>
+    <Sheet title={`Download workout file: ${w.name}`} onClose={onClose}>
       {!can.ok ? <p class="muted small">{can.why}</p> : (
         <>
           {ride && ways.length > 1 && <div class="send-row" style="margin-bottom:10px"><span class="small muted">Targets</span>

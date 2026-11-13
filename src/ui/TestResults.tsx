@@ -19,6 +19,7 @@ import { zonesFromTest, type BreathTest, type VtPoint } from '../engine/breathTh
 import { BREATH_ZONE_NAMES, ladderPcts, ladderTops, rideHrZones, ridePowerZones, PROVISIONAL_BREATH_PCTS } from '../engine/zones';
 import { applyZones } from './testService';
 import { maxHrInUse, useMaxHrSeen } from './maxHrSeen';
+import { knownFtp, knownLthr } from '../engine/known';
 
 export function TestResults({ result, profile, onChange, compact }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean }) {
   // Diagnostics brief, Part B (7 Nov 2026): Estimate anyway shows the best estimate from imperfect data in place of the
@@ -37,9 +38,10 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   const [ahead, setAhead] = useState<Array<{ p: PlannedWorkout; w: Workout }>>([]);
   const [resent, setResent] = useState(false);
   const [why, setWhy] = useState(false);
-  const ftpNow = profile.ftp;
+  // A number not known before the test has nothing to keep (13 Nov 2026).
+  const ftpNow = knownFtp(profile) ?? 0;
   const ftpEq = r.ftpEstimate != null && r.ftpEstimate === ftpNow;
-  const lthrEq = r.lthrEstimate != null && r.lthrEstimate === profile.lthr;
+  const lthrEq = r.lthrEstimate != null && r.lthrEstimate === knownLthr(profile);
   // Once FTP is updated: the rides already sent to the Garmin still carry the old watts.
   useEffect(() => {
     if (r.ftpAction !== 'updated') return;
@@ -89,7 +91,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
         </>}
         {msg && <p class="small" style={`margin:8px 0 0;color:${msg.ok ? 'var(--ink-2)' : 'var(--bad)'}`}>{msg.text}</p>}
         {r.ftpAction === 'updated' && ahead.length > 0 && !resent && (
-          <button class="btn" style="margin-top:10px" disabled={busy} onClick={() => void resend()}>Re-send {ahead.length} ride{ahead.length === 1 ? '' : 's'} to Garmin with the new numbers</button>
+          <button class="btn" style="margin-top:10px" disabled={busy} onClick={() => void resend()}>Re-send {ahead.length} ride{ahead.length === 1 ? '' : 's'} to your devices with the new numbers</button>
         )}
       </>}
 
@@ -112,10 +114,10 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
           {r.lthrAction === 'updated' ? <p class="small"><span class="rd-state on">Updated</span> Your threshold heart rate is {profile.lthr} bpm{r.lthrBefore != null && r.lthrBefore !== profile.lthr ? ` (was ${r.lthrBefore})` : ''}.</p>
             : lthrEq ? <p class="muted small">That matches your threshold heart rate setting.</p>
             : <>
-              <p class="muted small">Yours is currently {profile.lthr} bpm.{r.lthrAction === 'kept' ? ' You kept it.' : ''}</p>
+              <p class="muted small">{knownLthr(profile) ? `Yours is currently ${profile.lthr} bpm.` : 'Your threshold heart rate was not known until now.'}{r.lthrAction === 'kept' ? ' You kept it.' : ''}</p>
               <div class="row wrap" style="gap:8px;margin-top:8px">
                 <button class={`btn${r.ftpEstimate == null ? ' primary' : ''}`} disabled={busy} onClick={() => void take('lthr')}>Update my threshold heart rate to {r.lthrEstimate} bpm</button>
-                {r.lthrAction !== 'kept' && <button class="btn quiet" disabled={busy} onClick={() => keep('lthr')}>Keep {profile.lthr} bpm</button>}
+                {r.lthrAction !== 'kept' && knownLthr(profile) && <button class="btn quiet" disabled={busy} onClick={() => keep('lthr')}>Keep {profile.lthr} bpm</button>}
               </div>
             </>}
         </div>

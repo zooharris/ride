@@ -34,6 +34,7 @@ import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_N
 import { toast } from '../Toast';
 import { miles } from '../../engine/units';
 import { sameSessionName } from '../../engine/units';
+import { isUnknown } from '../../engine/known';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
@@ -193,8 +194,12 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
   useEffect(() => { if (ramp) getSetting<number>(RAMP_STEP_KEY, RAMP_STEP_DEFAULT).then((v) => setRampStep(RAMP_STEPS.includes(v) ? v : RAMP_STEP_DEFAULT)); }, [ramp]);
   const pickRampStep = (v: number) => { setRampStep(v); void setSetting(RAMP_STEP_KEY, v); };
   // The Ramp Test is drawn as it will be ridden at the chosen step, as far as a typical rider gets; it goes on until the rider stops.
-  const shown: Workout = ramp ? { ...workout, blocks: rampBlocks(profile.ftp, rampStep, rampExpectedSteps(profile.ftp, rampStep)) } : workout;
-  const shownProfile: Profile = ramp ? { ...profile, ftp: rampRef(profile.ftp) } : profile;
+  // A number the rider doesn't know yet (13 Nov 2026): the ramp starts at its fixed first step, as with no FTP, and
+  // no target is built on a stand-in.
+  const ftpKnown = !isUnknown(profile, 'ftp'), lthrKnown = !isUnknown(profile, 'lthr');
+  const rampFtp = ftpKnown ? profile.ftp : 0;
+  const shown: Workout = ramp ? { ...workout, blocks: rampBlocks(rampFtp, rampStep, rampExpectedSteps(rampFtp, rampStep)) } : workout;
+  const shownProfile: Profile = ramp ? { ...profile, ftp: rampRef(rampFtp), unsure: undefined } : profile;
   const s = workoutStats(shown.blocks);
   const when = planned ? (planned.date === today() ? `Today · ${fmtDate(planned.date)}` : `Planned for ${fmtDate(planned.date)}`) : 'Not on your calendar';
   const power = basis === 'power' && !byBreath;
@@ -207,18 +212,27 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
   const [scale, setScale] = useState(1);
   const [level, setLevel] = useState(3);
   const setSound = (on: boolean) => { void setSetting(PREF.sound, on); prefs.set({ ...prefs, sound: on }); };
-  const startable = byBreath ? (choice.mode === 'breath-self' || choice.mode === 'breath-trainer') : basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer');
-  const trainerRuns = choice.mode === 'erg' || choice.mode === 'hr-trainer' || choice.mode === 'breath-trainer';
+  // The number this ride's targets are built on, when the rider doesn't know it yet. A test is still ridden (it is
+  // how the number is found), by feel and with the trainer not holding a target; any other ride waits for the number.
+  const unknownNumber: 'ftp' | 'lthr' | undefined = ramp || byBreath ? undefined : power ? (ftpKnown ? undefined : 'ftp') : (lthrKnown ? undefined : 'lthr');
+  const isTest = !!workout.test || workout.family === 'test';
+  const numberBlocked = !!unknownNumber && !isTest;
+  const startable = !numberBlocked && (byBreath ? (choice.mode === 'breath-self' || choice.mode === 'breath-trainer') : basis === 'power' ? (choice.mode === 'erg' || choice.mode === 'power-self') : (choice.mode === 'hr-self' || choice.mode === 'hr-trainer'));
+  const trainerRuns = !unknownNumber && (choice.mode === 'erg' || choice.mode === 'hr-trainer' || choice.mode === 'breath-trainer');
   const [open, setOpen] = useState<Slot | null>(null);
   // When the ride can't start, the place where Start would be says why, and opens the box that fixes it.
+  const other = unknownNumber === 'ftp' ? (lthrKnown && allowsHr ? 'hr' : undefined) : (ftpKnown ? 'power' : undefined);
   const blocked: { head: string; text: string; action?: [string, () => void] } | undefined = startable ? undefined
+    : numberBlocked ? { head: unknownNumber === 'ftp' ? 'Your FTP is not known yet' : 'Your threshold heart rate is not known yet',
+      text: `This ride's ${unknownNumber === 'ftp' ? 'watts are' : 'heart rates are'} shares of it, so there is nothing to hold you to. The test in your plan finds it${other ? `; or ride this by ${other === 'hr' ? 'heart rate' : 'power'}` : ''}.`,
+      action: other ? [other === 'hr' ? 'Ride by heart rate' : 'Ride by power', () => pick(other)] : undefined }
     : byBreath ? { head: 'Waiting for breathing', text: choice.says, action: ['Ride by heart rate instead', () => pick('hr')] }
     : choice.needsPower ? { head: 'This workout needs a power meter', text: 'Connect a power meter, or a smart trainer that measures power, to ride it.', action: ['Choose power', () => setOpen('watts')] }
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
   const start = () => { started.current = true; if (prepared.used) void setSetting(LESSON_NEXT, (prepared.from + prepared.used) % LESSONS.length); startRide({
-    workout, planned, basis: byBreath ? 'power' : basis, byBreath: byBreath || undefined, profile, scale, level, rampStep: ramp ? rampStep : undefined, cuesBy: prepared.by,
+    workout, planned, basis: byBreath ? 'power' : basis, byBreath: byBreath || undefined, profile: ramp && !ftpKnown ? { ...profile, ftp: 0, unsure: undefined } : profile, scale, level, rampStep: ramp ? rampStep : undefined, cuesBy: prepared.by,
     mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   }); };
@@ -249,12 +263,13 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
             <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power || byBreath ? 'FTP' : 'threshold'}</small></div></div>
             {byBreath && profile.vt2Ve
               ? <div><div class="caption">Second breathing threshold</div><div class="pl-fig num">{Math.round(profile.vt2Ve)}<small> L/min</small></div></div>
-              : <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div><div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div></div>}
+              : <div><div class="caption">{power ? 'Your FTP' : 'Threshold heart rate'}</div>{(power ? ftpKnown : lthrKnown) ? <div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div> : <div class="pl-fig" style="font-size:15px">not known yet</div>}</div>}
           </div>
           {strapOn && whyNotBreath && !workout.test && <p class="faint small" style="margin:-4px 0 8px">{whyNotBreath}</p>}
           {profile.preferBreath && !byBreath && !touched && !workout.test && <p class="faint small" style="margin:-4px 0 8px">{!strapOn ? `Starting on ${power ? 'power' : 'heart rate'}: no breathing strap connected yet.` : whyNotBreath ? `Starting on ${power ? 'power' : 'heart rate'}.` : ''}</p>}
-          <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} />
-          {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={profile.ftp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
+          <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} known={ramp || (basis === 'power' ? ftpKnown : lthrKnown)} />
+          {unknownNumber && isTest && <p class="faint small" style="margin:-4px 0 8px">Your {unknownNumber === 'ftp' ? 'FTP' : 'threshold heart rate'} is not known yet: this test finds it. Ride the warm-up easy and the test effort as hard as you can hold evenly; the trainer doesn't hold a target.</p>}
+          {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={rampFtp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
           <StepList workout={shown} profile={shownProfile} basis={basis} byBreath={byBreath} />
         </section>
 
@@ -361,7 +376,7 @@ function RampCard({ step, onStep, ftp, ergOff, startable }: { step: number; onSt
 }
 
 /** The workout's shape at full width with its axes: the threshold line labelled in watts or bpm, time along the bottom. Pointing at a block names it (the shared diagram's own readout). */
-function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; profile: Profile; basis: Basis; seconds: number }) {
+function WorkoutChart({ workout, profile, basis, seconds, known = true }: { workout: Workout; profile: Profile; basis: Basis; seconds: number; known?: boolean }) {
   const steps = flattenSteps(workout.blocks);
   const maxI = Math.max(1.25, ...steps.map((st) => st.intensityHigh ?? st.intensity));
   const thresholdFromTop = (1 - 1 / maxI) * 100;
@@ -373,7 +388,7 @@ function WorkoutChart({ workout, profile, basis, seconds }: { workout: Workout; 
   return (
     <div class="pl-chart">
       <div class="pl-chart-y" aria-hidden="true">
-        <span style={`top:calc(${thresholdFromTop}% - 7px)`}>{basis === 'power' ? `${profile.ftp} W` : `${profile.lthr} bpm`}</span>
+        <span style={`top:calc(${thresholdFromTop}% - 7px)`}>{!known ? 'threshold' : basis === 'power' ? `${profile.ftp} W` : `${profile.lthr} bpm`}</span>
         <span style="bottom:-7px">0</span>
       </div>
       <div class="pl-chart-plot">
@@ -401,7 +416,7 @@ function StepList({ workout, profile, basis, byBreath }: { workout: Workout; pro
         <span class="z" style={`background:${ZONE_VAR[z - 1]}`} />
         <span class="pl-step-name">{nameOf(st, z, set)}{st.cadence ? <span class="faint"> · {st.cadence} rpm</span> : null}</span>
         <span class="num muted">{formatDuration(st.seconds)}</span>
-        <span class="num pl-step-target">{byBreath ? (() => { const b = stepBreath(st, profile); return b ? (b.ceiling ? `up to ${Math.round(b.hi)} L/min` : `${Math.round(b.lo)}–${Math.round(b.hi)} L/min`) : `${t.watts} W`; })() : basis === 'power' ? `${t.watts} W` : `${t.bpm} bpm`}</span>
+        <span class="num pl-step-target">{byBreath ? (() => { const b = stepBreath(st, profile); return b ? (b.ceiling ? `up to ${Math.round(b.hi)} L/min` : `${Math.round(b.lo)}–${Math.round(b.hi)} L/min`) : `${t.watts} W`; })() : basis === 'power' ? (isUnknown(profile, 'ftp') ? `zone ${z}` : `${t.watts} W`) : (isUnknown(profile, 'lthr') ? `zone ${z}` : `${t.bpm} bpm`)}</span>
       </div>
     );
   };

@@ -25,6 +25,7 @@ import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import { miles } from '../../engine/units';
+import { isUnknown } from '../../engine/known';
 import {
   answerBreath, answerHr, carryOnWithout, clearRide, nudgeBreath, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
 } from '../rideController';
@@ -237,7 +238,9 @@ const ALL_OUT_WORDS = <><b>All out.</b> No number to hit: everything you have un
 function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
   const e = ride.engine;
   const step = e.step;
-  const band = step && !step.step.allOut ? targetBand(step, 'hr', profile) : undefined;
+  // Threshold heart rate not known yet (13 Nov 2026): no band built on a stand-in; the zone, by feel.
+  const noNumber = isUnknown(profile, 'lthr');
+  const band = step && !step.step.allOut && !noNumber ? targetBand(step, 'hr', profile) : undefined;
   const bpm = ride.shownBpm;
   const mb = ride.markerBpm ?? bpm;
   const state = band && mb != null ? ride.band.state : undefined;
@@ -264,7 +267,7 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
           </div>
           <div class="rd-band-words"><span>Too easy</span><span>{band && mb != null ? zoneWords(mb, band, !adjusting && ride.cueState.closing) : ''}</span><span>Too hard</span></div>
         </>
-      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : 'Free ride: no target.'}</span></div>}
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : noNumber && zone ? `Zone ${zone}, by feel: your threshold heart rate is not known yet.` : 'Free ride: no target.'}</span></div>}
       {/* One message slot (10 Nov 2026): an instruction, the trainer's account of itself, or nothing; its space is always kept, so nothing below moves. */}
       {(() => {
         const slot = hrSlot({ adjusting, status: ride.hr?.status, cue: step && band ? ride.cue : undefined });
@@ -454,7 +457,8 @@ function FreeCard({ ride, trainerOk }: { ride: ActiveRide; trainerOk: boolean })
 function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
   const e = ride.engine;
   const step = e.step ?? (e.workoutDone ? undefined : undefined);
-  const band = step && !step.step.allOut ? targetBand(step, 'power', profile, e.scale) : undefined;
+  const noNumber = isUnknown(profile, 'ftp');
+  const band = step && !step.step.allOut && !noNumber ? targetBand(step, 'power', profile, e.scale) : undefined;
   const w = ride.shownWatts;
   // The marker and the label use the calmer reading (smooth.ts); the big number stays the rider's chosen average.
   const mw = ride.markerWatts ?? w;
@@ -479,7 +483,7 @@ function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile
           </div>
           <div class="rd-band-words"><span>Too easy</span><span>{mw != null ? (state === 'on' ? 'In the band' : `${Math.abs(Math.round(mw - band.mid))} W ${mw < band.mid ? 'under' : 'over'} the target`) : ''}</span><span>Too hard</span></div>
         </>
-      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : 'Free ride: no target.'}</span></div>}
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : noNumber && step ? `Zone ${step.zone}, ${pct(((step.low + step.high) / 2) * e.scale)} of FTP, by feel: your FTP is not known yet.` : 'Free ride: no target.'}</span></div>}
       <div class="rd-grow" />
       <div class="rd-controls">
         {trainerOk ? (
@@ -894,7 +898,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             </div>
             <div class="rd-grow" />
             {state === 'saved' ? (
-              <div class="rd-saved"><span class="rd-state on">{garmins ? "Garmin's kept" : 'Saved'}</span><span class="small">{said || 'Your ride is saved.'}</span>
+              <div class="rd-saved"><span class="rd-state on">{garmins ? "Your device's kept" : 'Saved'}</span><span class="small">{said || 'Your ride is saved.'}</span>
                 {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save Antogo's instead</button>}</div>
             ) : (
               <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride'}</button>

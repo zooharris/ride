@@ -3,6 +3,7 @@ import type { Recording } from '../player/types';
 import type { Thumb } from './thumbs';
 import Dexie, { type Table } from 'dexie';
 import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout, ActivityEdit } from '../engine/types';
+import { settleUnsure, settledText } from '../engine/known';
 
 export interface Settings {
   key: string;
@@ -207,6 +208,13 @@ export async function loadProfile(): Promise<Profile | null> {
 export async function saveProfile(p: Profile): Promise<void> {
   // A changed FTP carries the day it changed (Settings, a sync from Intervals.icu, or a test result), for "set 12 September".
   const before = await db.profile.get('me');
+  // A number the setup left unknown or estimated becomes the rider's own once it changes (13 Nov 2026).
+  const settled = settleUnsure(before, p);
+  p = settled.profile;
+  if (settled.settled.length && typeof window !== 'undefined') {
+    const text = settledText(p, settled.settled);
+    if (text) setTimeout(() => window.dispatchEvent(new CustomEvent('antogo:numbers-settled', { detail: text })), 0);
+  }
   const stamp = {
     ...(before && before.ftp !== p.ftp && p.ftpSetOn === before.ftpSetOn ? { ftpSetOn: localDay() } : {}),
     ...(before && before.lthr !== p.lthr && p.lthrSetOn === before.lthrSetOn ? { lthrSetOn: localDay() } : {}),

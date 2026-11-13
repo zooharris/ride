@@ -158,5 +158,5 @@ export function ActivityPicture({ ride, profile, height, width }: { ride: Ride; 
 
 /** The small tag beside a workout's family on a trainer-only workout (the Ramp Test). */
 export function TrainerOnlyTag() {
-  return <span class="tag" style="--c:var(--ink-2);white-space:nowrap" title="Ridden on the trainer in the ride player; not sent to the Garmin">Trainer only</span>;
+  return <span class="tag" style="--c:var(--ink-2);white-space:nowrap" title="Ridden on the trainer in the ride player; not sent to your devices">Trainer only</span>;
 }

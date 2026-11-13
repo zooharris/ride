@@ -32,7 +32,7 @@ import { garminTwin, playerMade, spanOf } from './twin';
 import { backToPlannedDay } from '../sync/doneDay';
 import type { Recording } from './types';
 
-export const KEPT_GARMIN = "Your Garmin recorded this ride too, so Antogo kept the Garmin's: it's the one in Garmin Connect.";
+export const KEPT_GARMIN = "Your bike computer or watch recorded this ride too, so Antogo kept its recording: it's the one in your device's own app.";
 
 /** Mark an activity as the player's own (synced, so every device knows). */
 export async function markPlayerMade(activityId: string, date: string, keep?: boolean, breathSensor?: string): Promise<void> {

@@ -30,7 +30,11 @@ import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTIN
 import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
 import { addDays, today } from '../../engine/load';
 import { useMaxHrSeen } from '../maxHrSeen';
+import { estimateOf, isUnknown, knownFtp, knownLthr, knownMaxHr, knownWeight, markMine, settleUnsure } from '../../engine/known';
+import type { UnsureNumber } from '../../engine/types';
 import { distUnitsOf, legacyUnits, miles, pounds, setPackUnit, weightUnitsOf } from '../../engine/units';
+import { SEND_GENERAL, UploadSteps, useDestinations } from '../Destinations';
+import { destinationWords, lastUploadWords } from '../../sync/destinations';
 
 
 export function Settings({ data }: { data: AppData }) {
@@ -123,15 +127,19 @@ export function Settings({ data }: { data: AppData }) {
     setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim()); setSavedProvider(provider); setSavedModel(model.trim());
     notify();
     const before = data.profile!;
+    // A number typed in place of an unknown or estimated one is the rider's own from now (13 Nov 2026).
+    const mineNow = settleUnsure(before, p).profile;
     const numbers = (x: Profile) => JSON.stringify(numbersToPush(x));
-    const changed = numbers(p) !== numbers(before);
+    const changed = numbers(mineNow) !== numbers(before);
     const c = await getSetting<IntervalsCredentials | null>('intervals', null);
     if (changed && c?.apiKey) {
       try {
-        await pushAthleteNumbers(c, numbersToPush(p));
-        setMsg({ ok: true, text: `Saved, and sent to Intervals.icu: FTP ${p.ftp} W, threshold heart rate ${p.lthr} bpm on the bike and ${footThreshold(p)} on foot, max ${p.maxHr}, and all three zone tables. Garmin workouts and Intervals.icu now use these numbers.` })
+        const sent = numbersToPush(mineNow);
+        await pushAthleteNumbers(c, sent);
+        const parts = [sent.ftp && `FTP ${sent.ftp} W`, sent.lthr && `threshold heart rate ${sent.lthr} bpm on the bike`, sent.footLthr && `${sent.footLthr} on foot`, sent.maxHr && `max ${sent.maxHr}`].filter(Boolean);
+        setMsg({ ok: true, text: `Saved, and sent to Intervals.icu: ${parts.length ? `${parts.join(', ')}, and the zone tables` : 'the zone tables'}. Workouts sent to your devices and Intervals.icu now use these numbers.${mineNow.unsure ? ' Numbers not known yet, and estimates, stay here until a test or you set them.' : ''}` })
       } catch (e) {
-        setMsg({ ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to Garmin use the numbers Intervals.icu has.` });
+        setMsg({ ok: false, text: `Saved here, but Intervals.icu was not updated: ${(e as Error).message} Until it is, workouts sent to your devices use the numbers Intervals.icu has.` });
       }
     } else {
       setMsg({ ok: true, text: 'Saved.' });
@@ -213,14 +221,15 @@ export function Settings({ data }: { data: AppData }) {
         <h2>You</h2>
         <div class="form">
           <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
-          <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} check={firstOf(within(25, 120, 'Resting heart rate'), (v) => p.lthr && v >= p.lthr ? `It must be below your threshold heart rate (${p.lthr}).` : undefined)} /></div>
+          <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} check={firstOf(within(25, 120, 'Resting heart rate'), (v) => knownLthr(p) && v >= p.lthr ? `It must be below your threshold heart rate (${p.lthr}).` : undefined)} /></div>
           <div class="field"><label>Weight ({pounds(p) ? 'lb' : 'kg'})</label>
-            <NumberBox value={pounds(p) ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', pounds(p) ? v / 2.2046 : v); }} check={pounds(p) ? within(66, 550, 'Weight in pounds') : within(30, 250, 'Weight in kilograms')} /></div>
+            <NumberBox value={knownWeight(p) == null ? undefined : pounds(p) ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} placeholder={knownWeight(p) == null ? 'not known yet' : undefined} onValue={(v) => { if (v) setP(markMine({ ...p, weightKg: pounds(p) ? v / 2.2046 : v }, ['weightKg'])); }} check={pounds(p) ? within(66, 550, 'Weight in pounds') : within(30, 250, 'Weight in kilograms')} />
+            <Unsure p={p} k="weightKg" unknown="Not known yet: watts per kilogram are not shown until you add it." /></div>
           <div class="field"><label>Hours per week</label><NumberBox decimals value={p.hoursPerWeek} onValue={num('hoursPerWeek')} check={within(0.5, 40, 'Hours per week')} /></div>
           <div class="field"><label>Birth year</label><NumberBox value={p.birthYear} onValue={(v) => upd('birthYear', v || undefined)} check={within(1920, thisYear - 10, 'Birth year')} /></div>
         </div>
         <div class="row wrap" style="margin-top:14px;gap:18px">
-          <div class="field"><label>Targets sent to Garmin</label>
+          <div class="field"><label>Targets sent to your devices</label>
             <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
           {/* Step 5 (11 Nov 2026): Breathing as the player's starting choice, offered only with breathing zones; the Garmin keeps power or heart rate. */}
           {breathZones(p) && <div class="field"><label>In the ride player, start on</label>
@@ -241,7 +250,7 @@ export function Settings({ data }: { data: AppData }) {
 
       <section class="section">
         <h2>Thresholds and zones</h2>
-        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your Garmin and for how it files your recordings. Set the same zones on the Garmin itself once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them.</p>
+        <p class="muted small" style="margin-bottom:12px">Your numbers live here. Save sends them to Intervals.icu, which uses them for every workout it passes to your devices and for how it files your recordings. Set the same zones on your bike computer or watch once (it keeps its own copy), and all three agree. Each table can be entered as shares of its threshold, which move when the threshold changes, or as watts or beats per minute, which stay where you put them.</p>
 
         <div class="seg" role="tablist" aria-label="Zone tables">
           <button role="tab" aria-selected={zoneTab === 'power'} class={zoneTab === 'power' ? 'on' : ''} onClick={() => setZoneTab('power')}>Power</button>
@@ -251,38 +260,41 @@ export function Settings({ data }: { data: AppData }) {
 
         <div class="panel" style={pane('power')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>FTP (watts)</label><NumberBox value={p.ftp} onValue={num('ftp')} check={within(50, 600, 'FTP')} /></div>
+            <div class="field"><label>FTP (watts)</label><NumberBox value={knownFtp(p)} placeholder={knownFtp(p) == null ? 'not known yet' : undefined} onValue={(v) => { if (v) setP(markMine({ ...p, ftp: v }, ['ftp'])); }} check={within(50, 600, 'FTP')} />
+              <Unsure p={p} k="ftp" unknown="Not known yet: a power test sets it (the Ramp Test on a smart trainer, or the 20-minute FTP test). Until then rides have no watts." /></div>
           </div>
           {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
-          <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
+          {knownFtp(p) != null && <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
             onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
             onPcts={(v) => setP({ ...p, powerZoneMode: 'pct', powerZonePcts: v })} onAbs={(v) => setP({ ...p, powerZoneMode: 'abs', powerZoneWatts: v })}
-            onStandard={() => setP({ ...p, powerZoneMode: undefined, powerZonePcts: undefined, powerZoneWatts: undefined })} />
+            onStandard={() => setP({ ...p, powerZoneMode: undefined, powerZonePcts: undefined, powerZoneWatts: undefined })} />}
         </div>
 
         <div class="panel" style={pane('hr')} role="tabpanel">
           <div class="form">
-            <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={p.lthr} onValue={num('lthr')} check={firstOf(within(80, 220, 'Threshold heart rate'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined, (v) => p.restingHr && v <= p.restingHr ? `It must be above your resting heart rate (${p.restingHr}).` : undefined)} /></div>
-            <div class="field"><label>Max heart rate</label><NumberBox value={p.maxHr} onValue={num('maxHr')} check={firstOf(within(100, 230, 'Max heart rate'), (v) => p.lthr && v <= p.lthr ? `It must be above your threshold heart rate (${p.lthr}).` : undefined, (v) => p.footLthr && v <= p.footLthr ? `It must be above your threshold heart rate on foot (${p.footLthr}).` : undefined)} />
+            <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={knownLthr(p)} placeholder={knownLthr(p) == null ? 'not known yet' : undefined} onValue={(v) => { if (v) setP(markMine({ ...p, lthr: v }, ['lthr'])); }} check={firstOf(within(80, 220, 'Threshold heart rate'), (v) => knownMaxHr(p) && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined, (v) => p.restingHr && v <= p.restingHr ? `It must be above your resting heart rate (${p.restingHr}).` : undefined)} />
+              <Unsure p={p} k="lthr" unknown="Not known yet: the threshold heart-rate test sets it, or the Ramp Test ridden with a heart-rate strap. Until then rides have no beats per minute." /></div>
+            <div class="field"><label>Max heart rate</label><NumberBox value={knownMaxHr(p)} placeholder={knownMaxHr(p) == null ? 'not known yet' : undefined} onValue={(v) => { if (v) setP(markMine({ ...p, maxHr: v }, ['maxHr'])); }} check={firstOf(within(100, 230, 'Max heart rate'), (v) => knownLthr(p) && v <= p.lthr ? `It must be above your threshold heart rate (${p.lthr}).` : undefined, (v) => p.footLthr && v <= p.footLthr ? `It must be above your threshold heart rate on foot (${p.footLthr}).` : undefined)} />
+              <Unsure p={p} k="maxHr" unknown="Not known yet: it is set the first time a recording shows it." />
               {maxSeen && <div class="faint small" style="margin-top:4px">Highest seen in your rides: {maxSeen.bpm} bpm ({fmtDate(maxSeen.date, { month: 'short', day: 'numeric', year: 'numeric' })})</div>}
             </div>
           </div>
-          <ZoneEditor title="Heart-rate zones on the bike" unit="bpm" threshold={p.lthr} max={p.maxHr} zones={rideHrZones(p)} mode={p.hrZoneMode ?? (p.hrZoneTops ? 'abs' : 'pct')} custom={!!(p.hrZonePcts || p.hrZoneTops)}
+          {knownLthr(p) != null && <ZoneEditor title="Heart-rate zones on the bike" unit="bpm" threshold={p.lthr} max={p.maxHr} zones={rideHrZones(p)} mode={p.hrZoneMode ?? (p.hrZoneTops ? 'abs' : 'pct')} custom={!!(p.hrZonePcts || p.hrZoneTops)}
             onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
             onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
-            onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />
+            onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />}
           <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
             <b class="small">On foot</b>
             <p class="muted small" style="margin:4px 0 10px">Runs and walks have their own numbers: threshold heart rate on foot is usually a few beats above the bike's.</p>
             <div class="form">
-              <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={footThreshold(p)} onValue={(v) => upd('footLthr', v || undefined)} check={firstOf(within(80, 220, 'Threshold heart rate on foot'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined)} />
-                {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
+              <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={!p.footLthr && isUnknown(p, 'lthr') ? undefined : footThreshold(p)} placeholder={!p.footLthr && isUnknown(p, 'lthr') ? 'not known yet' : undefined} onValue={(v) => upd('footLthr', v || undefined)} check={firstOf(within(80, 220, 'Threshold heart rate on foot'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined)} />
+                {!p.footLthr && <span class="faint small">{isUnknown(p, 'lthr') ? 'Not known yet, nor the bike\'s: walks and runs show zones until one is set.' : 'Not set yet: the bike\'s number is used. Most people run 3 to 6 beats higher.'}</span>}</div>
               <PaceField key={distUnitsOf(p)} value={p.thresholdPaceSec} imperial={miles(p)} onChange={(v) => upd('thresholdPaceSec', v)} />
             </div>
-            <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
+            {!(isUnknown(p, 'lthr') && !p.footLthr) && <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
               onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
               onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
-              onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />
+              onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />}
           </div>
         </div>
 
@@ -336,8 +348,8 @@ export function Settings({ data }: { data: AppData }) {
           <p class="faint small" style="margin-top:6px">On: each morning, and whenever a new activity arrives or the calendar or your notes change, the coach looks at how you have been riding, your overnight numbers, your notes and your plan, and recommends changes only when the evidence calls for them, saying why beside each. Off: the app's own check of the day recommends changes instead, with its reasons. Either way, nothing changes on the plan until you accept it.</p></div>
       </section>
 
-      <Fold title="Intervals.icu" summary={creds.apiKey && creds.athleteId ? (p.name ? `Connected as ${p.name}` : 'Connected') : 'Not connected yet'}>
-        <p class="muted small" style="margin-bottom:12px">The pipe to your Garmin. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold heart rates, max heart rate and the zone tables are kept in step both ways: change them here and Save sends them to Intervals.icu; change them there and the next sync brings them here.</p>
+      <Fold title="Intervals.icu" summary={creds.apiKey && creds.athleteId ? (p.name ? `Connected as ${p.name}` : 'Connected') : 'Not connected yet'} later={creds.apiKey && creds.athleteId ? <WhereWorkoutsGo /> : undefined}>
+        <p class="muted small" style="margin-bottom:12px">The link to your devices: workouts go out through it and recordings come back. Find both values on intervals.icu under Settings, in the Developer section near the bottom. Stored only on this device. FTP, threshold heart rates, max heart rate and the zone tables are kept in step both ways: change them here and Save sends them to Intervals.icu; change them there and the next sync brings them here.</p>
         <div class="form">
           <div class="field"><label>Athlete ID</label><input placeholder="i123456" value={creds.athleteId} onInput={(e) => setCreds({ ...creds, athleteId: (e.target as HTMLInputElement).value })} /></div>
           <div class="field"><label>API key</label><input type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>
@@ -380,7 +392,7 @@ export function Settings({ data }: { data: AppData }) {
       </Fold>
 
       <Fold title="Export to other apps" summary="Activities and workouts as files">
-        <p class="muted small" style="margin-bottom:12px">Download finished activities and workouts to ride, many at once, as files other apps import: Garmin's .fit, Zwift's .zwo, and others. One at a time, use Download on any ride's or activity's page.</p>
+        <p class="muted small" style="margin-bottom:12px">Download finished activities and workouts to ride, many at once, as files other apps import: .fit, .zwo and others. One at a time, use Download on any ride's or activity's page.</p>
         <a class="btn" href="#/export">Open Export</a>
       </Fold>
 
@@ -562,7 +574,7 @@ function HistoryLoader() {
     try {
       const r = await loadHistory(back, (done, total) => setProg({ done, total }));
       notify();
-      toast({ ok: true, text: r.activities || r.wellness ? `Loaded ${r.activities} more activities and ${r.wellness} more days of wellness.` : 'Nothing new: this device already has everything Intervals.icu holds for that span. If a Garmin history import is still running there, try again once it has finished.' });
+      toast({ ok: true, text: r.activities || r.wellness ? `Loaded ${r.activities} more activities and ${r.wellness} more days of wellness.` : 'Nothing new: this device already has everything Intervals.icu holds for that span. If a history import from your device’s maker is still running there, try again once it has finished.' });
     } catch (e) {
       toast({ ok: false, text: `Stopped part-way: ${(e as Error).message} What arrived is kept; try again to continue.` });
     } finally { setProg(null); refresh(); }
@@ -588,7 +600,7 @@ function HistoryLoader() {
         {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}
         {reread && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${(reread.done / reread.total) * 100}%`} /></div><p class="faint small">Updating your ride history: {reread.done} of {reread.total}</p></div>}
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
-        <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. Its Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
+        <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. If your device is a Garmin: Intervals.icu's Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
       </div>
     </Fold>
   );
@@ -783,6 +795,39 @@ function BreathEditor({ p, setP }: { p: Profile; setP: (p: Profile) => void }) {
         <span class="faint small">{mode === 'pct' ? 'Shares of VT2: change VT2 and these move with it.' : 'Litres a minute: these stay where you put them when VT2 changes.'}</span>
         {custom && std && <button class="btn sm quiet" style="margin-left:auto" onClick={() => setP({ ...p, breathZoneMode: undefined, breathZonePcts: undefined, breathZoneTops: undefined })}>Back to standard shares</button>}
       </div>
+    </div>
+  );
+}
+
+/** Under a number the setup left unknown or estimated: what it is now and how it gets set (13 Nov 2026). */
+function Unsure({ p, k, unknown }: { p: Profile; k: UnsureNumber; unknown: string }) {
+  const est = estimateOf(p, k);
+  if (est) return <div class="faint small" style="margin-top:4px"><span class="est-tag">estimate</span> from {est}. Type your own to replace it; a test replaces it too.</div>;
+  if (isUnknown(p, k)) return <div class="faint small" style="margin-top:4px">{unknown}</div>;
+  return null;
+}
+
+/** Where sent workouts go, read from Intervals.icu when this part of Settings is opened, with Check again (13 Nov 2026). */
+function WhereWorkoutsGo() {
+  const [again, setAgain] = useState(0);
+  const dest = useDestinations(true, again);
+  return (
+    <div class="panel" style="margin-top:12px;padding:10px 14px">
+      <div class="row between" style="gap:8px"><b class="small">Where your workouts go</b><button class="btn sm quiet" disabled={dest.kind === 'loading'} onClick={() => setAgain(again + 1)}>{dest.kind === 'loading' ? 'Checking…' : 'Check again'}</button></div>
+      <p class="faint small" style="margin:4px 0 8px">{SEND_GENERAL} The app only reads these settings; change them on intervals.icu.</p>
+      {dest.kind === 'error' && <p class="small" style="margin:0">Your Intervals.icu settings couldn't be read just now. Sending still works.</p>}
+      {dest.kind === 'ok' && (() => {
+        const w = destinationWords(dest.d);
+        return (
+          <div class="stack" style="gap:4px">
+            {dest.d.makers.length > 0 && <ul class="small dest-makers">{dest.d.makers.map((m) => <li key={m.maker}><b>{m.name}</b>: {m.connected ? (m.uploads ? 'connected, uploads on' : 'connected, uploads off') : 'uploads on, but not connected'}{m.filtered ? ', with an upload filter' : ''}</li>)}</ul>}
+            <p class="small" style="margin:0">{w.line}</p>
+            {w.extra.map((x) => <p key={x} class="faint small" style="margin:0">{x}</p>)}
+            {lastUploadWords(dest.d).map((x) => <p key={x} class="faint small" style="margin:0">{x}</p>)}
+            {w.none && <UploadSteps />}
+          </div>
+        );
+      })()}
     </div>
   );
 }

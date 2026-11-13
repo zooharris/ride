@@ -13,6 +13,8 @@ import { FAMILY_LABEL } from '../../library/workouts';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { NumberBox } from '../NumberBox';
+import { knownFtp } from '../../engine/known';
+import { TrainsLine } from '../RideTrains';
 
 /** A row in the editor: either a single step or a repeated set of steps. */
 type Row = { id: string; kind: 'step'; minutes: number; pct: number; pctHigh?: number; label: string; cadence?: number }
@@ -123,9 +125,11 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
       <div class="panel" style="padding:14px 16px 12px">
         <div class="row between" style="margin-bottom:8px">
           <span class="tag" style={`--c:var(--z${stats.dominantZone})`}>{FAMILY_LABEL[fam]}</span>
-          <span class="faint small">intensity as % of FTP {profile.ftp} W</span>
+          <span class="faint small">{knownFtp(profile) ? `intensity as % of FTP ${profile.ftp} W` : 'intensity as % of FTP (yours is not known yet)'}</span>
         </div>
         <WorkoutProfile blocks={blocks} height={88} targets={{ profile, basis: profile.basis, touch: true }} />
+        {/* What the steps train, as on a ride's page, following each edit (13 Nov 2026). Tests are measured differently and say nothing. */}
+        {fam !== 'test' && <div style="margin-top:10px"><TrainsLine w={{ blocks, family: fam, skills: source?.skills }} /></div>}
       </div>
 
       <div class="form" style="margin-top:16px">
@@ -151,7 +155,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
                   {minField(r.minutes, (v) => update(i, { minutes: v }))}<span class="faint small">min</span>
                   {pctField(r.pct, (v) => update(i, { pct: v ?? 50 }))}<span class="faint small">to</span>{pctField(r.pctHigh, (v) => update(i, { pctHigh: v }), '–')}<span class="faint small">%</span>
                   {labelField(r.label, (v) => update(i, { label: v }))}
-                  <span class="num small muted" style="min-width:72px;text-align:right">{stepTargets(toBlocks([r])[0] as WorkoutStep, profile).watts} W</span>
+                  <span class="num small muted" style="min-width:72px;text-align:right">{knownFtp(profile) ? `${stepTargets(toBlocks([r])[0] as WorkoutStep, profile).watts} W` : ''}</span>
                   <RowButtons onUp={() => move(i, -1)} onDown={() => move(i, 1)} onRemove={() => remove(i)} />
                 </div>
               ) : (

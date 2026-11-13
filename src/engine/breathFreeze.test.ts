@@ -17,7 +17,7 @@ describe('2E: a strap that froze mid-ride', () => {
   it('flat from minute 24 to the end of a 3-hour ride: cut at 24:00', () => {
     const r = ride(3 * 3600, (t) => t > 24 * 60);
     expect(findBreathFreeze(r.time, r.ve, r.br)!.at).toBe(24 * 60);
-    expect(breathStopNote(24 * 60, true)).toBe("Breathing stopped at 24:00 · the strap's link to the Garmin dropped");
+    expect(breathStopNote(24 * 60, true)).toBe("Breathing stopped at 24:00 · the strap's link to the bike computer dropped");
   });
   it('a flat run of 90 seconds at the end is not a freeze', () => {
     const r = ride(3600, (t) => t > 3600 - 90);

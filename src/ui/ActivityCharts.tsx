@@ -42,7 +42,7 @@ export function resample(s: StreamSet, points = 600): Sample[] {
 
 /** The breathing chart's note when the strap froze (2E): "Breathing stopped at 0:24 · the strap's link to the Garmin dropped". */
 export function breathStopNote(at: number, garmin: boolean): string {
-  return `Breathing stopped at ${clock(Math.round(at))} · the strap's link${garmin ? ' to the Garmin' : ''} dropped`;
+  return `Breathing stopped at ${clock(Math.round(at))} · the strap's link${garmin ? ' to the bike computer' : ''} dropped`;
 }
 
 /** A trailing mean over `seconds`, skipping gaps (NaN or absent); NaN where the window has nothing. */

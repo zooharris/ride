@@ -9,6 +9,7 @@ import { DEFAULT_PREFS, hoursWords, shopWeek, type Prefs, type ShopLibrary, type
 import { contribution } from './contribution';
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
+import { numbersToFind } from './known';
 
 /**
  * The planner: an assessment of the rider and a model of the goal go in; a
@@ -267,7 +268,13 @@ export function generatePlan(req: PlanRequest): Plan {
   let saidTwoLongs = false;
   // The test: wanted once, when the FTP in use looks unverified, in the first week that can hold it; a test already on
   // the calendar since the plan's first day is the test.
-  let testPending = a.ftpStatus.value !== 'fresh' && goal.kind !== 'weight' && !(req.pastSessions ?? []).some((x) => x.workout.family === 'test');
+  // A number the rider doesn't know yet (13 Nov 2026) asks for the test that finds it, whatever the goal.
+  const toFind = numbersToFind(req.profile);
+  const findTest = toFind && 'basis' in toFind ? toFind : undefined;
+  // No sensor to measure with: no test, whatever the evidence says (it would measure nothing).
+  const nothingToMeasure = !!toFind && 'none' in toFind;
+  let testPending = !nothingToMeasure && (!!findTest || (a.ftpStatus.value !== 'fresh' && goal.kind !== 'weight')) && !(req.pastSessions ?? []).some((x) => x.workout.family === 'test');
+  if (toFind && 'none' in toFind && !req.layout) decisions.push(toFind.none);
   let saidTest = false;
   let firstShopped = true;
 
@@ -293,10 +300,15 @@ export function generatePlan(req: PlanRequest): Plan {
     const held = req.keepQuality && !scoresMoved ? req.keepQuality.byWeek[weekStart]?.filter((q) => q !== 'test') as Family[] | undefined : undefined;
     const fixedSessions = refit ? (req.pastSessions ?? []).filter((x) => x.date >= weekStart && x.date < req.notBefore! && !gone(x.date)) : [];
     const keep = new Set((req.onCalendar ?? []).filter((x) => x.date >= weekStart && x.date < addDays(weekStart, 7)).map((x) => x.id));
-    const shop = shopWeek(need, slots, { ...ctxBase, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined, onCalendar: keep.size ? keep : undefined }, refit ? { before: req.notBefore!, sessions: fixedSessions } : undefined);
+    const shop = shopWeek(need, slots, { ...ctxBase, testBasis: findTest?.basis, recent: recentFor(weekStart), heldFamilies: held?.length ? held : undefined, onCalendar: keep.size ? keep : undefined }, refit ? { before: req.notBefore!, sessions: fixedSessions } : undefined);
     let sessions = refit ? [...fixedSessions, ...shop.sessions] : shop.sessions;
     if (sessions.some((x) => x.type === 'test' || x.workout.family === 'test')) testPending = false;
-    if (need.test && sessions.some((x) => x.type === 'test') && !saidTest) { saidTest = true; decisions.push(`A test ${i === 0 ? 'in week 1' : 'in the first full week'} because ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)} Later tests are added only when your rides suggest the number has moved.`); }
+    if (need.test && sessions.some((x) => x.type === 'test') && !saidTest) {
+      saidTest = true;
+      decisions.push(findTest
+        ? `A test ${i === 0 ? 'in week 1' : 'in the first full week'} because ${findTest.why}. Until it is done, rides show zones without the missing number.`
+        : `A test ${i === 0 ? 'in week 1' : 'in the first full week'} because ${a.ftpStatus.note.charAt(0).toLowerCase()}${a.ftpStatus.note.slice(1)} Later tests are added only when your rides suggest the number has moved.`);
+    }
     const hardPlaced = sessions.filter((x) => x.kind === 'ride' && ['tempo', 'sweetspot', 'threshold', 'vo2max', 'anaerobic', 'test'].includes(x.type)).length;
     if (!saidHardDropped && hardPlaced < need.hardSessions && slotsAll.length >= 3) { saidHardDropped = true; decisions.push('Some weeks carry one hard session instead of two: the only free day for a second one sits right after a hard or long day, and zone 2 there does more good than a compromised interval session.'); }
     if (firstShopped) { firstShopped = false; firstWeekDecisions(decisions, i, need, sessions, a, goal, av, may); }

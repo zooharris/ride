@@ -13,10 +13,10 @@ let started = false;
 let running = false;
 
 export function swapToast(s: Swap): void {
-  if (!s.undo) { toast({ ok: true, text: `Kept your Garmin's recording of ${s.name} and removed Antogo's copy. Undo is on the computer you rode on, on the Garmin recording's page.` }); return; }
+  if (!s.undo) { toast({ ok: true, text: `Kept your device's recording of ${s.name} and removed Antogo's copy. Undo is on the computer you rode on, on that recording's page.` }); return; }
   toast({
     ok: true,
-    text: `Kept your Garmin's recording of ${s.name}: it's the one in Garmin Connect.${s.noPower ? " Your Garmin didn't record power; Undo to keep Antogo's instead." : ''}`,
+    text: `Kept your device's recording of ${s.name}: it's the one in your device's own app.${s.noPower ? " Your device didn't record power; Undo to keep Antogo's instead." : ''}`,
     action: { label: 'Undo', run: async () => { const r = await keepVeloiqInstead(s.recordingId!); notify(); toast({ ok: r.ok, text: r.ok ? `Kept Antogo's recording of ${s.name}.` : r.text }); } },
   });
 }

@@ -29,12 +29,22 @@ import { NameSheet } from '../NameSheet';
 
 interface Saved { goal: Goal; availability: Availability; masters: boolean }
 
+/**
+ * The starting week, shaped like a typical one (longer weekend days, short weekday sessions, Friday off) and sized to
+ * the hours the rider gave in setup (13 Nov 2026), in quarter hours; 9 hours when there is no figure.
+ */
+export function weekShape(hours: number | undefined): number[] {
+  const shape = [3, 0.5, 1, 0.5, 1, 0, 3];
+  const k = (hours && hours > 0 ? hours : 9) / 9;
+  return shape.map((h) => Math.round(h * k * 4) / 4);
+}
+
 const DEFAULT_GOAL: Goal = { kind: 'event', date: addDays(today(), 84), name: '', eventType: 'century', priority: 'A' };
 
 export function Plan({ data }: { data: AppData }) {
   const profile = data.profile!;
   const [goal, setGoal] = useState<Goal>(DEFAULT_GOAL);
-  const [av, setAv] = useState<Availability>({ hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] });
+  const [av, setAv] = useState<Availability>({ hours: weekShape(profile.hoursPerWeek), outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] });
   const [masters, setMasters] = useState(profile.masters);
   const [plan, setPlan] = useState<GeneratedPlan | null>(null);
   const [openWeek, setOpenWeek] = useState<number | null>(null);
@@ -98,7 +108,7 @@ export function Plan({ data }: { data: AppData }) {
 
   async function cancel(p: ActivePlan) {
     const pending = data.planned.filter((x) => x.date >= today() && x.status !== 'completed' && x.planId === p.id).length;
-    if (!confirm(`Cancel “${p.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done, and anything you added by hand, are kept.`)) return;
+    if (!confirm(`Cancel “${p.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
     try { await cancelPlan(data, p.id); setCheck(null); await refreshPlans(); } finally { setBusy(false); }
   }
@@ -118,7 +128,7 @@ export function Plan({ data }: { data: AppData }) {
     setCheck({ ...check, changes: check.changes.filter((c) => !gone.has(changeSig(c))) });
   }
 
-  const DEFAULT_AV: Availability = { hours: [3, 0.5, 1, 0.5, 1, 0, 3], outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
+  const DEFAULT_AV: Availability = { hours: weekShape(profile.hoursPerWeek), outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
   async function resetForm() {
     if (!confirm('Reset the goal and your week to what was last saved?')) return;
     const saved = await getSetting<Saved | null>('planRequest', null);

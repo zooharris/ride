@@ -30,7 +30,7 @@ function Choice({ c, top }: { c: PendingChoice; top?: boolean }) {
   const secs = (r: Ride) => clock(r.elapsedSeconds ?? r.seconds);
   const keepAntogo = async () => {
     setBusy(true);
-    try { await keepAntogoChoice(c.playerId); notify(); toast({ ok: true, text: `Kept ${APP_NAME}'s recording of ${c.name}, with your breathing. Your Garmin's stays in Garmin Connect, left out of training load so the ride counts once.` }); }
+    try { await keepAntogoChoice(c.playerId); notify(); toast({ ok: true, text: `Kept ${APP_NAME}'s recording of ${c.name}, with your breathing. Your device's stays in its own app, left out of training load so the ride counts once.` }); }
     catch (e) { toast({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); }
   };
@@ -46,12 +46,12 @@ function Choice({ c, top }: { c: PendingChoice; top?: boolean }) {
       <b>Two recordings of {c.name}</b>
       <div class="two-recs-rows">
         <div class="two-recs-row"><span class="small"><b>{APP_NAME}</b>{mark('antogo')}</span><span class="small muted">{secs(c.antogo)} · {has(c.antogo)}, breathing</span></div>
-        <div class="two-recs-row"><span class="small"><b>Garmin</b>{mark('garmin')}</span><span class="small muted">{secs(c.garmin)} · {has(c.garmin)}</span></div>
+        <div class="two-recs-row"><span class="small"><b>Your device</b>{mark('garmin')}</span><span class="small muted">{secs(c.garmin)} · {has(c.garmin)}</span></div>
       </div>
-      <p class="small" style="margin-top:6px">{APP_NAME}'s has your breathing; the Garmin's doesn't. Keeping the Garmin's loses it from this ride.{c.recommend.stoppedEarly ? ` ${APP_NAME}'s recording stopped early.` : ''}</p>
+      <p class="small" style="margin-top:6px">{APP_NAME}'s has your breathing; your device's doesn't. Keeping your device's loses it from this ride.{c.recommend.stoppedEarly ? ` ${APP_NAME}'s recording stopped early.` : ''}</p>
       <div class="row wrap" style="gap:8px;margin-top:10px">
         <button class="btn sm" disabled={busy} onClick={keepAntogo}>Keep {APP_NAME}'s</button>
-        <button class="btn sm" disabled={busy} onClick={keepGarmin}>Keep Garmin's</button>
+        <button class="btn sm" disabled={busy} onClick={keepGarmin}>Keep your device's</button>
       </div>
     </section>
   );

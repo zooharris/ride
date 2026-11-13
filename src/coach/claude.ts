@@ -13,6 +13,7 @@ import { runStepsLine } from '../engine/run';
 import { JUDGE_SCHEMA, judgeSystem, plainWords, readJudge } from './judge';
 import { complete, type CoachConfig, type CompleteRequest } from './llm';
 import { unitsWords } from '../engine/units';
+import { estimateOf, knownFtp, knownLthr } from '../engine/known';
 
 
 /** One session on today's calendar, whoever put it there. */
@@ -79,7 +80,7 @@ export function riderLine(profile: Profile, date: string): string {
   const age = profile.birthYear ? Number(date.slice(0, 4)) - profile.birthYear : undefined;
   const name = riderName(profile);
   const who = name === 'the rider' ? 'The rider' : `The rider ("${name}")`;
-  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${unitsWords(profile)}, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm on the bike${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm), workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
+  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${unitsWords(profile)}, about ${profile.hoursPerWeek} h/week, ${knownFtp(profile) ? `FTP ${profile.ftp} W` : 'FTP not known yet (a test in the plan finds it; never state or guess a number)'}${estimateOf(profile, 'ftp') ? ` (the app's estimate, from ${estimateOf(profile, 'ftp')})` : ''}, ${knownLthr(profile) ? `threshold heart rate ${profile.lthr} bpm on the bike${estimateOf(profile, 'lthr') ? ' (an estimate)' : ''}${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm)` : 'threshold heart rate not known yet (never state or guess a number)'}, workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
 }
 
 /** The opening of every prompt: whose coach, and who they are. */
@@ -120,7 +121,7 @@ export function describeSession({ planned, workout, recorded }: TodaySession, wi
     ? `; what was actually done: ${planned.done.exercises.map((e) => exerciseLine(e)).join('; ')}`
     : planned.status === 'completed' && planned.done?.walk ? `; walked ${planned.done.walk.minutes} min${planned.done.walk.packKg ? ` with a ${Math.round(planned.done.walk.packKg * 2.2046)} lb pack` : ''}` : '';
   const status = planned.status === 'completed' ? `ALREADY DONE today${planned.plannedFor ? ` (it was planned for ${new Date(`${planned.plannedFor}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} and done today instead)` : ''}${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}${what}`
-    : planned.status === 'sent' ? 'on the Garmin, not done yet'
+    : planned.status === 'sent' ? 'sent to the rider\'s devices, not done yet'
     : planned.status === 'missed' ? 'marked missed'
     : 'not done yet';
   parts.push(status);

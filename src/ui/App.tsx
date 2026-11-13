@@ -1,4 +1,6 @@
-import { db } from '../data/db';
+import { db, loadProfile, saveProfile } from '../data/db';
+import { isUnknown, markMine } from '../engine/known';
+import { maxHrSeen } from './maxHrSeen';
 import { arrival, useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect, useRef } from 'preact/hooks';
@@ -66,7 +68,7 @@ export function App() {
         if (r.walks || r.runs) {
           if (c) await syncDevices(c);
           const parts = [r.walks ? `${r.walks} walk${r.walks === 1 ? '' : 's'} now easy (no minimum, up to the top of zone 2)` : '', r.runs ? `${r.runs} run${r.runs === 1 ? '' : 's'} now on your foot zones` : ''].filter(Boolean).join(' and ');
-          const sent = r.resent ? ` ${r.resent} re-sent to your Garmin with the new targets.` : '';
+          const sent = r.resent ? ` ${r.resent} re-sent to your devices with the new targets.` : '';
           const failed = r.failed ? ` ${r.failed} could not be re-sent: use Send on the Calendar.` : '';
           toast({ ok: !r.failed, text: `Updated your calendar: ${parts}.${sent}${failed}` });
         }
@@ -79,7 +81,7 @@ export function App() {
         const r = await moveSessionsToLibrary();
         if (r.moves.length) {
           if (c) await syncDevices(c);
-          toast({ ok: !r.failed, text: `Your plan’s sessions now come from the Library.${r.resent ? ` ${r.resent} re-sent to your Garmin.` : ''}${r.failed ? ` ${r.failed} could not be re-sent: use Send on the Calendar.` : ''}` });
+          toast({ ok: !r.failed, text: `Your plan’s sessions now come from the Library.${r.resent ? ` ${r.resent} re-sent to your devices.` : ''}${r.failed ? ` ${r.failed} could not be re-sent: use Send on the Calendar.` : ''}` });
         }
       } catch { /* runs again at the next start */ }
       // 30 Oct 2026: sessions of a plan placed before reasons were stored get theirs, once.
@@ -119,6 +121,25 @@ export function App() {
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); off(); offPulled(); };
   }, []);
+  // A number the setup left unknown or estimated that has just become the rider's own (a test, Settings, Intervals.icu): said once.
+  useEffect(() => {
+    const on = (e: Event) => toast({ ok: true, text: String((e as CustomEvent).detail) });
+    window.addEventListener('antogo:numbers-settled', on);
+    return () => window.removeEventListener('antogo:numbers-settled', on);
+  }, []);
+  // A max heart rate left unknown or estimated is replaced by the highest a recording shows, when that is higher (13 Nov 2026).
+  const unsureMax = !!data.profile?.unsure?.maxHr;
+  useEffect(() => {
+    if (!unsureMax) return;
+    void maxHrSeen().then(async (seen) => {
+      const p = await loadProfile();
+      if (!seen || !p?.unsure?.maxHr) return;
+      const shown = !isUnknown(p, 'maxHr');
+      if (shown && seen.bpm <= p.maxHr) return;
+      await saveProfile(markMine({ ...p, maxHr: seen.bpm }, ['maxHr']));
+      notify();
+    }).catch(() => { /* tried again at the next start */ });
+  }, [unsureMax, data.rides.length]);
   // A new screen starts at its top; a screen returned to (Back, or the browser's back or forward) is put
   // back where it was left (8 Nov 2026). A change of query inside a screen (the Calendar's ?d=) does not
   // jump; a screen that places itself (the Calendar's focused day, Progress's chart) scrolls after this.

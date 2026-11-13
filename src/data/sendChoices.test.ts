@@ -115,11 +115,11 @@ describe('a workout the rider built goes as written unless they choose Outdoor',
 });
 
 describe('the calendar row says how a ride went', () => {
-  it('"On Garmin, by power, outdoor"; a session that is not a ride keeps "On Garmin"', async () => {
+  it('"Sent, by power, outdoor" (13 Nov 2026: the app says sent, never "on your Garmin")', async () => {
     const { sentRowWord } = await import('../ui/SendButton');
     const e: PlannedWorkout = { id: 'e6', date: '2026-11-14', workoutId: overUnder.id, basis: 'power', status: 'sent', sentBasis: 'power', sentWhere: 'outdoor' };
-    expect(sentRowWord(e, overUnder, [plan])).toBe('On Garmin, by power, outdoor');
-    expect(sentRowWord({ ...e, sentBasis: 'hr', sentWhere: 'trainer' }, overUnder, [plan])).toBe('On Garmin, by heart rate');
+    expect(sentRowWord(e, overUnder, [plan])).toBe('Sent, by power, outdoor');
+    expect(sentRowWord({ ...e, sentBasis: 'hr', sentWhere: 'trainer' }, overUnder, [plan])).toBe('Sent, by heart rate');
     expect(sentRowWord({ ...e, status: 'planned' }, overUnder, [plan])).toBeUndefined();
     expect(sentRowWord(e, { ...overUnder, kind: 'strength' }, [plan])).toBeUndefined();
   });
@@ -130,11 +130,12 @@ describe('the week’s send, tidied (10 Nov 2026)', () => {
     const src = (await import('../ui/screens/Calendar.tsx?raw')).default;
     expect(src).toMatch(/class="t2 row-sent"/);
   });
-  it('the sheet lists only rides with a choice; one such ride gets its own choices; none gets a note', async () => {
+  it('the sheet lists only rides with a choice; one such ride gets its own choices; none has no arrow, only where it goes', async () => {
     const src = (await import('../ui/SendButton.tsx?raw')).default;
     expect(src).toMatch(/choosers\.map\(/);
     expect(src).toMatch(/Plus \{rest\} other/);
-    expect(src).toMatch(/nothing to choose this week/);
+    expect(src).toMatch(/choosers\.length > 0 && <button/);
+    expect(src).toMatch(/<SendWhereLine state=\{dest\} date=\{first\} \/>/);
     expect(src).toMatch(/\{only\.w\.name\} by \{BASIS_WORD\[b\]\}/);
   });
 });

@@ -6,18 +6,20 @@ import { useState } from 'preact/hooks';
  * open. The content stays mounted while folded, so anything running inside
  * (a history load, a sync) carries on and nothing typed is lost.
  */
-export function Fold({ title, summary, children }: { title: string; summary?: ComponentChildren; children: ComponentChildren }) {
+export function Fold({ title, summary, children, later }: { title: string; summary?: ComponentChildren; children: ComponentChildren; later?: ComponentChildren }) {
   const [open, setOpen] = useState(false);
+  // `later` is made only once the fold has been opened (13 Nov 2026): what it reads from a service is read then, not on every visit.
+  const [seen, setSeen] = useState(false);
   return (
     <section class="section">
       <h2>
-        <button class="fold-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button class="fold-head" onClick={() => { setOpen(!open); setSeen(true); }} aria-expanded={open}>
           <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
           <span>{title}</span>
           {!open && summary != null && <span class="fold-sum muted small">{summary}</span>}
         </button>
       </h2>
-      <div style={open ? '' : 'display:none'}>{children}</div>
+      <div style={open ? '' : 'display:none'}>{children}{seen && later}</div>
     </section>
   );
 }

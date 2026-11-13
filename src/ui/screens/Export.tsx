@@ -24,6 +24,7 @@ import { getPlans } from '../planService';
 import { credentials } from '../../sync/syncService';
 import { toast } from '../Toast';
 import { APP_SHORT_NAME } from '../../appName';
+import { knownFtp } from '../../engine/known';
 
 /**
  * The Export page (12 Nov 2026, export at any time): finished activities, workouts to ride, or both, into one
@@ -271,7 +272,7 @@ export function Export({ data }: { data: AppData }) {
             ))}
           </div>
           <p class="faint small" style="margin:6px 0 0">Strength and mobility sessions always go as a readable list (.txt).</p>
-          {wkFormat === 'erg' && <p class="faint small" style="margin:6px 0 0">Watts from your FTP today, {profile.ftp} W.</p>}
+          {wkFormat === 'erg' && <p class="faint small" style="margin:6px 0 0">{knownFtp(profile) ? `Watts from your FTP today, ${profile.ftp} W.` : 'Your FTP is not known yet, and this type holds watts: choose another, which holds shares of FTP.'}</p>}
           {fixable.length > 0 && (
             <div class="panel" style="margin-top:10px;padding:10px 14px">
               <p class="small" style="margin:0">{fixable.length} {fixable.length === 1 ? 'workout' : 'workouts'} can't go as {WORKOUT_FORMAT_LABEL[wkFormat]}:</p>

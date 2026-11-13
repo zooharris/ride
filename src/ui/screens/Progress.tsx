@@ -45,6 +45,7 @@ import { credentials } from '../../sync/syncService';
 import { LargeView, URL_KEYS, type LargeRange, type LargeTarget } from '../LargeView';
 import { miles, pounds } from '../../engine/units';
 import { best20MinHr, hasPowerHistory, hrRecords, type HrRecordRow } from '../../engine/hrRecords';
+import { knownFtp } from '../../engine/known';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -166,7 +167,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     { id: 'load', el: (wide) => <WeeklyLoadCard key="load" data={data} from={from} to={t} readout={facts.readouts.load} coach={coach} /> },
     { id: 'zones', el: (wide) => <ZonesCard key="zones" rides={data.rides} from={from} to={t} readout={facts.readouts.zones} coach={coach} /> },
     ...(powerHistory ? [
-      { id: 'power', el: (wide: boolean) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
+      { id: 'power', el: (wide: boolean) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={knownFtp(profile) ?? 0} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
       { id: 'records', el: (wide: boolean) => <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
       { id: 'durability', el: (wide: boolean) => <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
     ] : [{ id: 'hrrecords', el: (wide: boolean) => <HrRecordsCard key="hrrecords" rows={hrRows} profile={profile} coach={coach} readout={hrReadout(hrRows, profile)} /> }]),
@@ -485,10 +486,12 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
   const ftpDays = ftpByDay(data.rides, from < ago ? from : ago, to, profile.ftp);
   const ftpAt = (d: string) => valueOn(ftpDays, d, (x) => x.ftp);
   const ftp0 = ftpAt(from) ?? profile.ftp;
-  ticker.push({ label: 'FTP', value: `${profile.ftp} W`, change: ftp0 !== profile.ftp ? sg(profile.ftp - ftp0) : undefined, good: helpful('ftp', profile.ftp - ftp0), card: 'tests' });
+  // FTP not known yet (13 Nov 2026): no FTP figure and no watts per kilogram built on a stand-in.
+  const ftpKnown = knownFtp(profile) != null;
+  if (ftpKnown) ticker.push({ label: 'FTP', value: `${profile.ftp} W`, change: ftp0 !== profile.ftp ? sg(profile.ftp - ftp0) : undefined, good: helpful('ftp', profile.ftp - ftp0), card: 'tests' });
   const wNow = weekMean(data.wellness, to, (w) => w.weightKg) ?? valueOn(data.wellness, to, (w) => w.weightKg);
   const w0 = weekMean(data.wellness, from, (w) => w.weightKg) ?? valueOn(data.wellness, from, (w) => w.weightKg);
-  const wkgNow = wNow ? profile.ftp / wNow : undefined;
+  const wkgNow = wNow && ftpKnown ? profile.ftp / wNow : undefined;
   const wkg0 = w0 ? ftp0 / w0 : undefined;
   if (wkgNow) ticker.push({ label: 'W/kg', value: wkgNow.toFixed(2), change: wkg0 ? sg(wkgNow - wkg0, 2) : undefined, good: wkg0 ? helpful('wkg', Math.round((wkgNow - wkg0) * 100)) : undefined, card: 'weight' });
 
@@ -575,7 +578,7 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
 
   // tests and goal
   const testsIn = tests.filter((x) => x.date >= from && x.date <= to).length;
-  readouts.tests = `FTP ${profile.ftp} W${profile.ftpSetOn ? ` since ${short(profile.ftpSetOn)}` : ''} · ${testsIn} test${testsIn === 1 ? '' : 's'} in this range`;
+  readouts.tests = `${knownFtp(profile) ? `FTP ${profile.ftp} W${profile.ftpSetOn ? ` since ${short(profile.ftpSetOn)}` : ''}` : 'FTP not known yet'} · ${testsIn} test${testsIn === 1 ? '' : 's'} in this range`;
   const context: string[] = [];
   if (plan) {
     const g = plan.goal;
@@ -627,7 +630,7 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
   row('fitness', 'Fitness', 'fitness', f1?.ctl, fA?.ctl, (v) => `${Math.round(v)}`, (v) => sg(v), (d) => fit(d)?.ctl);
   row('fatigue', 'Fatigue', 'fitness', f1?.atl, fA?.atl, (v) => `${Math.round(v)}`, (v) => sg(v), (d) => fit(d)?.atl);
   row('form', 'Form', 'fitness', f1?.tsb, fA?.tsb, (v) => sg(v), (v) => sg(v), (d) => fit(d)?.tsb);
-  row('ftp', 'FTP', 'tests', profile.ftp, ftpAt(ago), (v) => `${Math.round(v)} W`, (v) => sg(v), (d) => ftpAt(d));
+  if (ftpKnown) row('ftp', 'FTP', 'tests', profile.ftp, ftpAt(ago), (v) => `${Math.round(v)} W`, (v) => sg(v), (d) => ftpAt(d));
   const wkgAt = (d: string) => { const f = ftpAt(d), w = weekMean(data.wellness, d, (x) => x.weightKg); return f && w ? f / w : undefined; };
   row('wkg', 'W/kg', 'weight', wkgNow, wkgAt(ago), (v) => v.toFixed(2), (v) => sg(v, 2), wkgAt, 100);
   row('load', '7-day load', 'load', sevenDayLoad(data.rides, to), sevenDayLoad(data.rides, ago), (v) => `${Math.round(v)}`, (v) => sg(v), (d) => sevenDayLoad(data.rides, d));

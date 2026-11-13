@@ -84,7 +84,7 @@ export function CoachFtp({ profile, data, onChanged }: { profile: Profile; data?
           )}
           {open && (!a.ftp || a.ftp === profile.ftp) && <div class="row" style="margin-top:8px"><button class="btn quiet sm" onClick={() => void choose('kept')}>Done</button></div>}
           {msg && <p class="small" style={`margin:8px 0 0;color:${msg.ok ? 'var(--ink-2)' : 'var(--bad)'}`}>{msg.text} {msg.ok && (zonesFollowFtp(profile) ? 'Your power zones follow your FTP.' : 'Your power zones are set in watts and stay as they are.')}</p>}
-          {ahead > 0 && <button class="btn" style="margin-top:8px" onClick={() => void resend()}>Re-send {ahead} ride{ahead === 1 ? '' : 's'} to Garmin with the new numbers</button>}
+          {ahead > 0 && <button class="btn" style="margin-top:8px" onClick={() => void resend()}>Re-send {ahead} ride{ahead === 1 ? '' : 's'} to your devices with the new numbers</button>}
         </div>
       )}
     </div>

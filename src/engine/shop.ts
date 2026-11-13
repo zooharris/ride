@@ -58,6 +58,8 @@ export interface ShopContext {
   heldFamilies?: Family[];
   /** Re-checking: Library ids the calendar already has this week; preferred over an equally good alternative (9 Nov 2026). */
   onCalendar?: Set<string>;
+  /** The kind of test a number the rider doesn't know needs (13 Nov 2026); absent: the plan's basis decides. */
+  testBasis?: Basis;
 }
 
 /** What the Library could not supply, for the sweep. Never shown to the rider. */
@@ -485,8 +487,9 @@ function bestQuality(rides: Workout[], s: Slot, target: Ability, rem: Minutes, c
 }
 
 function testRide(rides: Workout[], s: Slot, ctx: ShopContext): Workout | null {
-  const tests = rides.filter((w) => w.family === 'test' && w.bases.includes(ctx.basis) && contribution(w).minutes <= s.minutes + 2);
-  if (ctx.basis === 'hr') return tests.find((w) => w.id === 'lib-lthr-30') ?? tests[0] ?? null;
+  const basis = ctx.testBasis ?? ctx.basis;
+  const tests = rides.filter((w) => w.family === 'test' && w.bases.includes(basis) && contribution(w).minutes <= s.minutes + 2);
+  if (basis === 'hr') return tests.find((w) => w.id === 'lib-lthr-30') ?? tests[0] ?? null;
   if (s.outdoor) return tests.find((w) => w.setting !== 'indoor' && !w.trainerOnly && w.id === 'trail-20min-test') ?? tests.find((w) => !w.trainerOnly) ?? null;
   return tests.find((w) => w.test === 'ramp') ?? tests[0] ?? null;
 }

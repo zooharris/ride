@@ -8,9 +8,11 @@ import { sendPlanned } from './planService';
 import { credentials } from '../sync/syncService';
 import { notify } from './store';
 import { toast } from './Toast';
+import { NothingReceives, SEND_LABEL, SendWhereLine, sentWords, useDestinations } from './Destinations';
+import { nameList } from '../sync/destinations';
 
 /**
- * How a session goes to the Garmin is chosen when it is sent (10 Nov 2026 evening brief). One design everywhere: a
+ * How a session goes to the rider's devices is chosen when it is sent (10 Nov 2026 evening brief). One design everywhere: a
  * two-part button whose main part sends what its words say, in one tap, and a small arrow that offers the rest. For a
  * ride with two versions the arrow opens a small panel (targets, version, and its own Send); otherwise a short menu.
  * Nothing is chosen anywhere else, and nothing is sent unless the rider presses a Send.
@@ -51,13 +53,13 @@ function versionSource(entry: PlannedWorkout, w: Workout, plans: PlanDays[], whe
 
 async function doSend(entry: PlannedWorkout, w: Workout, profile: Profile, choice: SendChoice): Promise<boolean> {
   const c = await credentials();
-  if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return false; }
+  if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return false; }
   const again = entry.status === 'sent';
   try {
     const r = await sendPlanned(c, entry, w, profile, choice);
     notify();
     const words = w.kind === 'ride' ? ` ${sendWords(r.sent)}` : '';
-    toast({ ok: true, text: again ? `Sent again${words}: the copy on your Garmin is replaced after its next phone sync.` : `Sent${words}. It will be on your Garmin after the next phone sync, under Training, Workouts.` });
+    toast({ ok: true, text: again ? `Sent again${words}: Intervals.icu replaces the copy it passed to your devices at its next upload.` : `Sent${words} to Intervals.icu. It passes it to the devices you've connected there; each picks it up at its next sync.` });
     return true;
   } catch (e) { toast({ ok: false, text: `Could not send: ${(e as Error).message}` }); return false; }
 }
@@ -77,16 +79,22 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
   const main = now ?? def;
   const [pick, setPick] = useState<SendChoice>(main);
   const go = async (choice: SendChoice) => { setBusy(true); setOpen(false); await doSend(entry, w, profile, choice); setBusy(false); };
-  const label = busy ? 'Sending…' : sent ? 'Send again' : ride ? `Send to Garmin ${sendWords(def)}` : 'Send to Garmin';
+  const label = busy ? 'Sending…' : sent ? 'Send again' : ride && twoWay ? `${SEND_LABEL} ${sendWords(def)}` : SEND_LABEL;
+  // Where it will go, read from the rider's Intervals.icu settings (13 Nov 2026); nothing set to receive it replaces the button.
+  const dest = useDestinations();
+  const nothing = !sent && dest.kind === 'ok' && !dest.d.receiving.length ? dest : undefined;
   const arrow = twoWay || two;
   const size = `${large ? '' : ' sm'}${primary ? ' primary' : ''}`;
   return (
     <span class="send-wrap">
-      {sent && ride && <span class="send-has">On your Garmin, {sendWords(now!)}{now!.basis === 'breath' ? ' (as power)' : ''}.</span>}
+      {sent && <span class="send-has">{sentWords(entry)}{ride ? ` ${sendWords(now!).replace(/^by/, 'By')}${now!.basis === 'breath' ? ' (as power)' : ''}.` : ''}</span>}
+      {nothing ? <NothingReceives state={nothing} busy={busy} onAnyway={() => void go(main)} /> : <>
       <span class="split">
         <button class={`btn${size} split-main${arrow ? '' : ' alone'}`} disabled={busy} onClick={() => void go(main)}>{label}</button>
         {arrow && <button class={`btn${size} split-arrow${open ? ' open' : ''}`} disabled={busy} aria-label={two ? 'Choose how to send' : 'Choose power or heart rate'} aria-expanded={open} onClick={() => { setPick(main); setOpen(!open); }}>▾</button>}
       </span>
+      <SendWhereLine state={dest} date={entry.date} />
+      </>}
       {open && (
         <>
           <button class="send-pop-bg" aria-label="Close" onClick={() => setOpen(false)} />
@@ -94,7 +102,7 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
             {!two ? ways.map((b) => (
               <button key={b} class={`send-item${b === main.basis ? ' on' : ''}`} disabled={b === 'breath' && !breathOk} onClick={() => void go({ basis: b })}>
                 <span>{sent ? 'Send again' : 'Send'} by {BASIS_WORD[b]}</span>
-                {b === main.basis ? <span class="send-note">{sent ? 'on your Garmin now' : 'your default'}</span>
+                {b === main.basis ? <span class="send-note">{sent ? 'as sent now' : 'your default'}</span>
                   : b === 'breath' && !breathOk ? <span class="send-note">{BREATH_SEND_NEEDS}</span> : b === 'breath' ? <span class="send-note">as power, from the watts your breathing zones match</span> : null}
               </button>
             )) : (
@@ -104,7 +112,7 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
                 {twoWay && ways.includes('breath') && !breathOk && <p class="faint small" style="margin:0">{BREATH_SEND_NEEDS}</p>}
                 <div class="send-row"><span class="small muted">Version</span>
                   <div class="seg" role="group" aria-label="Version">{(['outdoor', 'trainer'] as Where[]).map((x) => <button key={x} class={pick.where === x ? 'on' : ''} aria-pressed={pick.where === x} onClick={() => setPick({ ...pick, where: x })}>{x === 'outdoor' ? 'Outdoor' : 'As written'}</button>)}</div></div>
-                <p class="faint small" style="margin:0">{sent ? `On your Garmin now: ${sendWords(now!)}.` : versionSource(entry, w, plans, def.where ?? 'trainer')}</p>
+                <p class="faint small" style="margin:0">{sent ? `Sent now: ${sendWords(now!)}.` : versionSource(entry, w, plans, def.where ?? 'trainer')}</p>
                 <button class="btn sm" style="align-self:flex-end" onClick={() => void go({ basis: fit(w, pick.basis, breathOk, profile), where: pick.where })}>{sent ? 'Send again' : 'Send'}</button>
               </div>
             )}
@@ -119,7 +127,7 @@ export function SendButton({ w, entry, profile, plans, large, primary }: { w: Wo
 export function sentRowWord(entry: PlannedWorkout, w: Workout | undefined, plans: PlanDays[]): string | undefined {
   if (entry.status !== 'sent' || !w || w.kind !== 'ride') return undefined;
   const g = onGarmin(entry, w, plans);
-  return `On Garmin, ${g.basis === 'breath' ? 'by breathing' : g.basis === 'hr' ? 'by heart rate' : 'by power'}${g.where === 'outdoor' ? ', outdoor' : ''}`;
+  return `Sent, ${g.basis === 'breath' ? 'by breathing' : g.basis === 'hr' ? 'by heart rate' : 'by power'}${g.where === 'outdoor' ? ', outdoor' : ''}`;
 }
 
 /** Whether a session has anything to choose when sent: two kinds of target, or two versions. */
@@ -147,12 +155,12 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
   async function send(pickFor: (p: PlannedWorkout, w: Workout) => SendChoice | undefined) {
     setOpen(false); setSheet(null);
     const c = await credentials();
-    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
+    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return; }
     setBusy(true);
     let sent = 0;
     try {
       for (const { p, w } of items) { await sendPlanned(c, p, w, profile, pickFor(p, w)); sent++; }
-      toast({ ok: true, text: `Sent ${sent}.` });
+      toast({ ok: true, text: `Sent ${sent} to Intervals.icu.${dest.kind === 'ok' && dest.d.receiving.length ? ` It passes them to your ${nameList(dest.d.receiving)}.` : ''}` });
     } catch (e) { toast({ ok: false, text: `Sent ${sent}, then: ${(e as Error).message}` }); }
     finally { setBusy(false); notify(); }
   }
@@ -161,15 +169,20 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
   const withOnly = (c: SendChoice) => (p: PlannedWorkout) => (only && p.id === only.p.id ? c : undefined);
   const openSheet = () => { setOpen(false); setSheet(Object.fromEntries(choosers.map(({ p, w }) => [p.id, sendDefault(p, w, profile.basis, plans)]))); };
   const toggle = () => { if (only) setPick(sendDefault(only.p, only.w, profile.basis, plans)); setOpen(!open); };
-  const label = busy ? 'Sending…' : `Send ${n} to Garmin${choosers.length ? ` by ${BASIS_WORD[profile.basis]}` : ''}`;
+  const label = busy ? 'Sending…' : `Send this week to my devices${choosers.length ? ` by ${BASIS_WORD[profile.basis]}` : ''}`;
+  const dest = useDestinations();
+  const nothing = dest.kind === 'ok' && !dest.d.receiving.length ? dest : undefined;
+  const first = items.map((x) => x.p.date).sort()[0];
   const rest = n - choosers.length;
   return (
     <span class="send-wrap">
+      {nothing ? <NothingReceives state={nothing} busy={busy} onAnyway={() => void send(() => undefined)} /> : <>
       <span class="split">
-        <button class={`btn sm split-main${choosers.length ? '' : ' alone'}`} disabled={busy} onClick={() => void send(() => undefined)}>{label}</button>
+        <button class={`btn sm split-main${choosers.length ? '' : ' alone'}`} disabled={busy} onClick={() => void send(() => undefined)} title={`${n} session${n === 1 ? '' : 's'}`}>{label}</button>
         {choosers.length > 0 && <button class={`btn sm split-arrow${open ? ' open' : ''}`} disabled={busy} aria-label={only ? `Choose how to send ${only.w.name}` : 'Choose how to send the week'} aria-expanded={open} onClick={toggle}>▾</button>}
       </span>
-      {choosers.length === 0 && <span class="faint small">nothing to choose this week</span>}
+      <SendWhereLine state={dest} date={first} />
+      </>}
       {open && (
         <>
           <button class="send-pop-bg" aria-label="Close" onClick={() => setOpen(false)} />
@@ -201,8 +214,8 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
       )}
       {sheet && (
         <div class="modal-bg" onClick={() => setSheet(null)}>
-          <div class="modal" style="max-width:560px" role="dialog" aria-label={`Send ${n} to your Garmin`} onClick={(e) => e.stopPropagation()}>
-            <h2 style="margin:0">Send {n} {n === 1 ? 'session' : 'sessions'} to your Garmin</h2>
+          <div class="modal" style="max-width:560px" role="dialog" aria-label={`Send ${n} to your devices`} onClick={(e) => e.stopPropagation()}>
+            <h2 style="margin:0">Send {n} {n === 1 ? 'session' : 'sessions'} to your devices</h2>
             <p class="muted small" style="margin:4px 0 12px">Each ride starts on your default. Change any you like.</p>
             <div class="send-sheet">
               {choosers.map(({ p, w }) => {

@@ -5,11 +5,11 @@ import { BackLink } from '../BackLink';
 import { replaceRoute } from '../router';
 
 const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: string }> = [
-  { kind: 'ride', title: 'Ride', text: 'Steps and intervals by power or heart rate, sent to your Garmin.' },
+  { kind: 'ride', title: 'Ride', text: 'Steps and intervals by power or heart rate, sent to your devices.' },
   { kind: 'strength', title: 'Strength', text: 'Exercises for your equipment, with sets, reps and load.' },
   { kind: 'mobility', title: 'Mobility', text: 'Stretches and how long to hold each one.' },
   { kind: 'walk', title: 'Walk', text: 'Treadmill or outdoors, with or without a weighted pack.' },
-  { kind: 'run', title: 'Run', text: 'Steps on time with a heart-rate band, sent to your Garmin as a run.' },
+  { kind: 'run', title: 'Run', text: 'Steps on time with a heart-rate band, sent to your devices as a run.' },
 ];
 
 /**

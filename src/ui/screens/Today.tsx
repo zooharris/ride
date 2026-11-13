@@ -130,7 +130,7 @@ export function Today({ data }: { data: AppData }) {
     try {
       const r = await acceptRecommended(data, check, rec, changes, active);
       if (active) setCheck(await replan(await freshData(data)));
-      const sent = r.wereSent ? ` ${r.wereSent === 1 ? 'A session that was on your Garmin came off it' : `${r.wereSent} sessions that were on your Garmin came off it`}: send the week again from the Calendar.` : '';
+      const sent = r.wereSent ? ` ${r.wereSent === 1 ? 'A session that was sent came off Intervals.icu and your devices' : `${r.wereSent} sessions that were sent came off Intervals.icu and your devices`}: send the week again from the Calendar.` : '';
       setMsg({ ok: true, text: `${changes.length === 1 ? 'Change made on the calendar.' : `${changes.length} changes made on the calendar.`}${sent}` });
     } catch (e) { setMsg({ ok: false, text: `Not changed: ${(e as Error).message}` }); }
     finally { setChecking(false); }

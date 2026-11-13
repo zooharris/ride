@@ -2,6 +2,9 @@
 
 export type Basis = 'power' | 'hr';
 
+/** The numbers the first-run setup can leave unknown or estimated. */
+export type UnsureNumber = 'ftp' | 'lthr' | 'maxHr' | 'weightKg';
+
 export interface Profile {
   updatedAt?: string;       // set by the database on every write; drives the sync across devices
   name: string;
@@ -54,6 +57,18 @@ export interface Profile {
   /** Threshold run pace, seconds per kilometre (shown per mile or km by units). Optional: runs are by heart rate; pace is a hint. */
   thresholdPaceSec?: number;
   basis: Basis;         // default basis for new workouts
+  /**
+   * First-run setup without made-up numbers (13 Nov 2026): a number listed here is not the rider's own. With an
+   * `estimate`, it is the app's estimate, shown marked as one ("estimate from your age"). Without, it is not known:
+   * the stored figure is a stand-in for the maths only and is never shown, and no target is built on it. An entry
+   * goes when the rider types the number, a test sets it, Intervals.icu supplies it, or (max heart rate) a recording
+   * shows a higher one. Absent for every rider set up before: their numbers are theirs.
+   */
+  unsure?: Partial<Record<UnsureNumber, { estimate?: string }>>;
+  /** What the rider said in setup about power: a power meter or smart trainer, or not. Absent: not asked (set up before). */
+  hasPower?: boolean;
+  /** What the rider said in setup about heart rate: a strap or a watch that reads it, or not. Absent: not asked. */
+  hasHr?: boolean;
   /**
    * Step 5 (11 Nov 2026): "Ride by" set to Breathing. `basis` is then 'hr' (heart rate is the way on when breathing
    * can't be used, and how rides go to the Garmin until Step 6). Offered only to a rider with breathing zones.
@@ -242,6 +257,8 @@ export interface PlannedWorkout {
   basis: Basis;
   status: 'planned' | 'sent' | 'completed' | 'missed';
   icuEventId?: number;
+  /** The day it was last sent to Intervals.icu (13 Nov 2026), for "Sent to Intervals.icu, Fri, Nov 13." */
+  sentOn?: string;
   activityId?: string;
   note?: string;
   /** Set when a plan put this on the calendar; hand-added sessions have none. */

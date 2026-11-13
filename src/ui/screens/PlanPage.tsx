@@ -65,7 +65,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   }
   async function cancel() {
     const pending = sessions.filter((x) => x.date >= today() && x.status !== 'completed').length;
-    if (!confirm(`Cancel “${plan!.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your Garmin. Sessions already done, and anything you added by hand, are kept.`)) return;
+    if (!confirm(`Cancel “${plan!.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
     try { await cancelPlan(data, plan!.id); go('plan'); } finally { setBusy(false); }
   }
@@ -247,7 +247,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
     if (declined.length) await rejectChanges(declined);
     setCurrentEquipment(av.equipment);   // the Library builds sessions for this equipment
     const sent = garminCount(accepted);
-    toast({ ok: true, text: `${accepted.length ? `Plan saved; ${accepted.length} change${accepted.length === 1 ? '' : 's'} made on the calendar.` : 'Plan settings saved; the calendar is unchanged.'}${sent ? ` ${sent} changed session${sent === 1 ? ' was' : 's were'} on your Garmin: send the week again from the calendar.` : ''}` });
+    toast({ ok: true, text: `${accepted.length ? `Plan saved; ${accepted.length} change${accepted.length === 1 ? '' : 's'} made on the calendar.` : 'Plan settings saved; the calendar is unchanged.'}${sent ? ` ${sent} changed session${sent === 1 ? ' was' : 's were'} already sent: send the week again from the calendar.` : ''}` });
     go(`plan/${plan.id}`);
   }
 
@@ -323,7 +323,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
                 <p class="faint small" style="margin-top:4px">Unticked changes are declined: the daily re-check will not suggest them again. Changes to sessions you added or changed yourself start unticked.</p>
               </div>
             )}
-            {onGarmin > 0 && <p class="msg small" style="margin-top:10px">{onGarmin} session{onGarmin === 1 ? ' is' : 's are'} already on your Garmin and will be replaced; send the week again from the calendar afterwards.</p>}
+            {onGarmin > 0 && <p class="msg small" style="margin-top:10px">{onGarmin} session{onGarmin === 1 ? ' is' : 's are'} already sent and will be replaced; send the week again from the calendar afterwards.</p>}
             <div class="row" style="gap:8px;margin-top:12px">
               <button class="btn primary" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : ticked.size ? `Save plan and make ${ticked.size} change${ticked.size === 1 ? '' : 's'}` : 'Save plan settings'}</button>
             </div>

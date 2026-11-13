@@ -1,5 +1,6 @@
 import type { Assessment } from './assessment';
 import type { Profile } from './types';
+import { isUnknown } from './known';
 
 /** What the rider wants, with the numbers the planner needs. */
 export type Goal =
@@ -61,10 +62,12 @@ export function demand(goal: Goal, profile: Profile, a: Assessment, recentLongRi
   const ctl = a.fitness.ctl;
   switch (goal.kind) {
     case 'ftp': {
-      const gain = goal.targetWatts / Math.max(1, profile.ftp) - 1;
+      // FTP not known yet (13 Nov 2026), or no target typed: a typical block's gain, and the reason says so.
+      const unknownFtp = isUnknown(profile, 'ftp') || !(goal.targetWatts > 0);
+      const gain = unknownFtp ? 0.06 : goal.targetWatts / Math.max(1, profile.ftp) - 1;
       const requiredCtl = Math.round(Math.max(45, ctl + Math.max(5, gain * 100)));
       return { eventHours: 0, eventIF: 0, eventTss: 0, requiredCtl, requiredLongest: 0, emphasis: { durability: 0.3, threshold: 1, vo2max: 0.6, anaerobic: 0.2, base: 0.6 },
-        why: `Raising FTP from ${profile.ftp} to ${goal.targetWatts} W (${Math.round(gain * 100)}%) is mostly threshold and sweet-spot work on a base that can absorb it. A gain like that usually needs fitness to rise to about ${requiredCtl}.` };
+        why: unknownFtp ? `Raising FTP is mostly threshold and sweet-spot work on a base that can absorb it; your FTP is not known yet, so the test in week 1 sets where you start. A typical block raises it about 6%, which usually needs fitness to rise to about ${requiredCtl}.` : `Raising FTP from ${profile.ftp} to ${goal.targetWatts} W (${Math.round(gain * 100)}%) is mostly threshold and sweet-spot work on a base that can absorb it. A gain like that usually needs fitness to rise to about ${requiredCtl}.` };
     }
     case 'vo2max':
       return { eventHours: 0, eventIF: 0, eventTss: 0, requiredCtl: Math.round(Math.max(40, ctl + 6)), requiredLongest: 0, emphasis: { durability: 0.3, threshold: 0.5, vo2max: 1, anaerobic: 0.4, base: 0.5 },

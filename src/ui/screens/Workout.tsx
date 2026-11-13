@@ -40,6 +40,8 @@ import { DownloadWorkout } from '../DownloadSheet';
 import { workoutExportable } from '../../export/formats';
 import { miles, weightSystem } from '../../engine/units';
 import { packWords, sameSessionName } from '../../engine/units';
+import { knownFtp, knownLthr } from '../../engine/known';
+import { AfterSend, NothingReceives, SEND_LABEL, SendWhereLine, sentWords, useDestinations } from '../Destinations';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -112,18 +114,20 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         {/* The same Add to a date sheet as every other page (10 Nov 2026): a hidden date box over a label opened nothing on a laptop. */}
         <button class="btn" onClick={() => setAdding(true)}>Pick a date</button>
-        {canDownload && !(plannedEntry && plannedEntry.status !== 'completed') && <button class="btn" onClick={() => setDownloading(true)}>Download</button>}
+        {canDownload && !(plannedEntry && plannedEntry.status !== 'completed') && <button class="btn" onClick={() => setDownloading(true)}>Download workout file</button>}
       </div>
-      {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
+      {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to your devices: a workout on a bike computer or watch is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (<>
-        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{plannedEntry.status !== 'completed' && !w.trainerOnly && <> <SendButton w={w} entry={plannedEntry} profile={profile} plans={plans} /></>}{changeButtons}{plannedEntry.status !== 'completed' && canDownload && <button class="btn sm" style="margin-left:6px" onClick={() => setDownloading(true)}>Download</button>} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{plannedEntry.status !== 'completed' && !w.trainerOnly && <> <SendButton w={w} entry={plannedEntry} profile={profile} plans={plans} /></>}{changeButtons}{plannedEntry.status !== 'completed' && canDownload && <button class="btn sm" style="margin-left:6px" onClick={() => setDownloading(true)}>Download workout file</button>} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
+        {plannedEntry.status === 'sent' && !w.trainerOnly && <div style="margin:-8px 0 14px"><AfterSend entry={plannedEntry} /></div>}
         {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
       </>)}
 
       <section class="section">
         <h2>Steps</h2>
-        {w.test === 'ramp' ? <p class="faint small" style="margin:4px 0 8px">The standard ramp, each step as a share of FTP (yours is {profile.ftp} W). In the ride player you choose the step size, the trainer holds each step, and the steps keep climbing until you stop.</p>
-        : <p class="faint small" style="margin:4px 0 8px">Each step's targets in watts (FTP {profile.ftp}) and in beats per minute (threshold {profile.lthr}, through your zone tables){breathZones(profile) && w.bases.includes('hr') ? <>, and as breathing: a share of your second breathing threshold ({Math.round(profile.vt2Ve!)} L/min) and litres a minute, for riding by breathing in the ride player</> : null}. Your Garmin holds you to whichever you send.</p>}
+        {w.test === 'ramp' ? <p class="faint small" style="margin:4px 0 8px">The standard ramp, each step as a share of FTP{knownFtp(profile) ? ` (yours is ${profile.ftp} W)` : ''}. In the ride player you choose the step size, the trainer holds each step, and the steps keep climbing until you stop.{knownFtp(profile) ? '' : ' Your FTP is not known yet, so start on the smallest step: the ramp finds where you are.'}</p>
+        : (knownFtp(profile) || knownLthr(profile)) ? <p class="faint small" style="margin:4px 0 8px">Each step's targets {[knownFtp(profile) && `in watts (FTP ${profile.ftp})`, knownLthr(profile) && `in beats per minute (threshold ${profile.lthr}, through your zone tables)`].filter(Boolean).join(' and ')}{breathZones(profile) && w.bases.includes('hr') ? <>, and as breathing: a share of your second breathing threshold ({Math.round(profile.vt2Ve!)} L/min) and litres a minute, for riding by breathing in the ride player</> : null}. Your device holds you to whichever you send.</p>
+        : <p class="faint small" style="margin:4px 0 8px">Each step's zone and its share of threshold. Your FTP and threshold heart rate are not known yet, so there are no watts or beats per minute: ride each zone by feel (zone 1 very easy, zone 2 can talk in full sentences, zone 3 short sentences, zone 4 a few words, zone 5 and up flat out for minutes or less).</p>}
         <StepsTable blocks={w.blocks} basis={basis} profile={profile} breath={w.bases.includes('hr')} />
       </section>
 
@@ -143,7 +147,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
       {!w.trainerOnly && <section class="section">
         <button class="btn quiet sm" style="margin-left:-10px" onClick={() => setShowText(!showText)}>{showText ? 'Hide' : 'Show'} what is sent to Intervals.icu</button>
-        {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans, !!profile.preferBreath && canSendByBreath(w, profile, breathTable)); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it is on your Garmin' : 'As Send to Garmin sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{(() => { const x = shapedForSend(w, c.basis, profile, breathTable); return renderIntervalsText(versionFor(x.workout, c.where ?? 'trainer').workout, x.targets); })()}</pre></>; })()}
+        {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans, !!profile.preferBreath && canSendByBreath(w, profile, breathTable)); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it was sent' : 'As Send to my devices sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{(() => { const x = shapedForSend(w, c.basis, profile, breathTable); return renderIntervalsText(versionFor(x.workout, c.where ?? 'trainer').workout, x.targets); })()}</pre></>; })()}
       </section>}
       {changeSheet}
       {downloadSheet}
@@ -161,13 +165,13 @@ function SessionScreen({ w, backHref, planned, recording, history, units, milesO
   async function sendWalk() {
     if (!planned) return;
     const c = await credentials();
-    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your Garmin.' }); return; }
+    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return; }
     setSending(true);
     try {
       const again = planned.status === 'sent';
       await sendPlanned(c, { ...planned, basis }, w, hr ?? { maxHr, lthr });
       notify();
-      setSendMsg({ ok: true, text: again ? 'Sent again: the copy on your Garmin is replaced with this version after its next phone sync.' : w.kind === 'strength' || w.kind === 'mobility' ? 'Sent. On the watch it is under Today\'s Workouts in an indoor-bike profile (Garmin only shows step names for rides); the recording is filed here as what it really was.' : 'Sent. It reaches your Garmin on its next phone sync.' });
+      setSendMsg({ ok: true, text: again ? 'Sent again: Intervals.icu replaces the copy it passed to your devices at its next upload.' : w.kind === 'strength' || w.kind === 'mobility' ? 'Sent to Intervals.icu. It goes as an indoor ride so each step\'s name shows on the device (some show step names only for rides); the recording is filed here as what it really was.' : 'Sent to Intervals.icu. It passes it to the devices you\'ve connected there; each picks it up at its next sync.' });
     } catch (e) { setSendMsg({ ok: false, text: `Could not send: ${(e as Error).message}` }); }
     finally { setSending(false); }
   }
@@ -224,7 +228,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, milesO
               return out;
             })}
           </table>
-          <p class="muted small" style="margin-top:10px">Runs go by heart rate, each band a zone on your foot table (threshold {footLthr(hr ?? { lthr })} bpm): the Garmin holds you in it. {thresholdPace ? 'The pace column comes from your threshold pace and is only a guide; on hills, heat or tired legs, follow the heart rate.' : 'Set a threshold run pace in Settings to see the pace each band implies.'} Easy means easy: if the heart rate climbs past the band, slow down or walk.</p>
+          <p class="muted small" style="margin-top:10px">Runs go by heart rate, each band a zone on your foot table (threshold {footLthr(hr ?? { lthr })} bpm): your device holds you in it. {thresholdPace ? 'The pace column comes from your threshold pace and is only a guide; on hills, heat or tired legs, follow the heart rate.' : 'Set a threshold run pace in Settings to see the pace each band implies.'} Easy means easy: if the heart rate climbs past the band, slow down or walk.</p>
         </section>
       )}
 
@@ -253,14 +257,14 @@ function SessionScreen({ w, backHref, planned, recording, history, units, milesO
 
       {planned && w.kind !== 'ride' && planned.status !== 'completed' && (
         <section class="section">
-          <h2>On the Garmin</h2>
-          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? (w.kind === 'walk' ? 'Sent: it is on your Garmin after its next phone sync, as a walking workout with the heart-rate target.' : w.kind === 'run' ? 'Sent: it is on your Garmin after its next phone sync, as a running workout with each step and its heart-rate band.' : 'Sent: it is on your Garmin after its next phone sync, as a step-by-step workout. Start it from the watch\u2019s Training menu; the recording comes back here through Intervals.icu.') : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'run' ? 'Send it as a running workout: the watch shows each step with its heart-rate band and moves you on. The recording comes back through Intervals.icu and is matched to this session.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
-          {planned.status === 'planned' && <button class="btn primary" onClick={sendWalk} disabled={sending}>{sending ? 'Sending…' : 'Send to Garmin'}</button>}
-          {planned.status === 'sent' && <button class="btn" onClick={sendWalk} disabled={sending} title="Replaces the copy on your Garmin with this version">{sending ? 'Sending…' : 'Send again'}</button>}
+          <h2>On your devices</h2>
+          <p class="muted small" style="margin:4px 0 8px">{planned.status === 'sent' ? `${sentWords(planned)} ${w.kind === 'walk' ? 'It goes to your devices as a walking workout with the heart-rate target.' : w.kind === 'run' ? 'It goes to your devices as a running workout with each step and its heart-rate band.' : 'It goes to your devices as a step-by-step workout; start it from the device\u2019s workouts. The recording comes back here through Intervals.icu.'}` : w.kind === 'walk' ? 'Send it as a walking workout with the heart-rate target, so the watch or head unit guides the effort and records it; the recording then comes back through Intervals.icu like a ride.' : w.kind === 'run' ? 'Send it as a running workout: the watch shows each step with its heart-rate band and moves you on. The recording comes back through Intervals.icu and is matched to this session.' : w.kind === 'strength' ? 'Send it as a step-by-step strength workout: the watch names each exercise with its reps and load, each set ends when you press lap, and each rest counts down. The recording comes back through Intervals.icu and is matched to this session.' : 'Send it as a timed stretching routine: the watch names each stretch and counts the hold down, then moves you on. The recording comes back through Intervals.icu and is matched to this session.'}</p>
+          <FootSend planned={planned} sending={sending} onSend={() => void sendWalk()} />
+          {planned.status === 'sent' && <AfterSend entry={planned} />}
           {w.kind === 'run' && (
             <details style="margin-top:10px"><summary class="small muted">What the watch will show, step by step</summary>
               <pre class="panel small" style="white-space:pre-wrap;margin-top:8px;font-family:inherit">{runEvent(w, planned.date, hr ?? { maxHr, lthr }).description.split('\n').slice(2).join('\n')}</pre>
-              <p class="faint small">Percentages are of your threshold heart rate on foot ({footLthr(hr ?? { lthr })} bpm), which is how Intervals.icu and the Garmin take heart-rate targets; the app's bands are zones on your foot table, so the percentages come straight from it.</p>
+              <p class="faint small">Percentages are of your threshold heart rate on foot ({footLthr(hr ?? { lthr })} bpm), which is how Intervals.icu and your devices take heart-rate targets; the app's bands are zones on your foot table, so the percentages come straight from it.</p>
             </details>
           )}
           {w.kind !== 'walk' && w.kind !== 'run' && (
@@ -301,11 +305,25 @@ function OutdoorNote({ w }: { w: Workout }) {
   if (hasTwoVersions(w)) {
     const { note } = outdoorVersion(w);
     if (!note) return null;
-    return <p class="faint small" style="margin-top:6px">This ride has an outdoor version for the Garmin: {note.replace(/^Adjusted for riding outdoors: /, '')} You choose it or the ride as written when you send it; the ride player on the trainer always keeps the steps as written.</p>;
+    return <p class="faint small" style="margin-top:6px">This ride has an outdoor version for riding outdoors: {note.replace(/^Adjusted for riding outdoors: /, '')} You choose it or the ride as written when you send it; the ride player on the trainer always keeps the steps as written.</p>;
   }
   if (t.outdoor !== 'indoor') return null;
   if (w.indoorWhy) return <p class="faint small" style="margin-top:6px"><b>Trainer only:</b> {w.indoorWhy}</p>;
   const alt = LIBRARY.filter((x) => x.id !== w.id && tagsOf(x).purpose === t.purpose && tagsOf(x).outdoor === 'well' && w.bases.some((b) => x.bases.includes(b)))
     .sort((a, b) => Math.abs(tagsOf(a).minutes - t.minutes) - Math.abs(tagsOf(b).minutes - t.minutes))[0];
   return <p class="faint small" style="margin-top:6px"><b>Best on the trainer:</b> its quick changes can't be followed on an open road.{alt ? <> For a road ride, <a href={`#/workout/${alt.id}?from=library`}>{alt.name}</a> ({alt.subtitle ?? PURPOSE_LABEL[t.purpose]}) does a similar job.</> : null}</p>;
+}
+
+/** Send for a walk, run, strength or mobility session: the same words and the same "where it goes" line as a ride's Send. */
+function FootSend({ planned, sending, onSend }: { planned: PlannedWorkout; sending: boolean; onSend: () => void }) {
+  const dest = useDestinations();
+  const sent = planned.status === 'sent';
+  if (!sent && dest.kind === 'ok' && !dest.d.receiving.length) return <NothingReceives state={dest} busy={sending} onAnyway={onSend} />;
+  return (
+    <span class="send-wrap">
+      {sent ? <button class="btn" onClick={onSend} disabled={sending} title="Intervals.icu replaces the copy it passed to your devices">{sending ? 'Sending…' : 'Send again'}</button>
+        : <button class="btn primary" onClick={onSend} disabled={sending}>{sending ? 'Sending…' : SEND_LABEL}</button>}
+      {!sent && <SendWhereLine state={dest} date={planned.date} />}
+    </span>
+  );
 }

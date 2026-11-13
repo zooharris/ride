@@ -51,7 +51,7 @@ export function RideTrains({ w }: { w: Workout }) {
             {levels.map((x) => {
               const s = workoutStats(x.blocks);
               const on = x.id === here;
-              const what = x.levelChange ? `adds ${x.levelChange}` : x.tags!.series!.rung === levels[0].tags!.series!.rung ? 'where it starts' : x.subtitle ?? '';
+              const what = x.levelChange ? x.levelChange.charAt(0).toUpperCase() + x.levelChange.slice(1) : x.tags!.series!.rung === levels[0].tags!.series!.rung ? 'Where it starts' : x.subtitle ?? '';
               return (
                 <li key={x.id} class={`fam-row${on ? ' on' : ''}`}>
                   {on ? <span class="fam-l"><b>Level {x.tags!.series!.rung}</b> · this ride</span>

@@ -903,9 +903,9 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
             ) : (
               <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride'}</button>
             )}
-            <div class="row" style="gap:10px">
-              <button class="btn" style="flex:1" onClick={() => downloadRide(rec)}>Download the ride file</button>
-              {state !== 'saved' && <button class="btn danger" style="flex:1" onClick={() => void discard()}>Discard ride…</button>}
+            <div class="row" style="gap:10px;flex-wrap:wrap">
+              <button class="btn" style="flex:1 1 auto" onClick={() => downloadRide(rec)}>Download the ride file</button>
+              {state !== 'saved' && <button class="btn danger" style="flex:1 1 auto" onClick={() => void discard()}>Discard ride…</button>}
               {state === 'waiting' && <button class="btn quiet" onClick={done}>Done for now</button>}
             </div>
             <p class="faint small" style="text-align:center;margin:0">{state === 'waiting' ? 'The ride is kept on this computer and tried again each time the app opens.' : 'A copy stays on this computer until the upload succeeds.'}</p>

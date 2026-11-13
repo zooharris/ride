@@ -40,8 +40,11 @@ import { resultFromStreams, testResultKey, type TestResult } from '../../player/
 import { go } from '../router';
 import { ProgressCoach, CardCoachLine, useProgressCoach, type ProgressCoachState } from '../ProgressCoach';
 import { Measures } from '../../engine/measures';
+import { fetchPowerStream } from '../../sync/intervals';
+import { credentials } from '../../sync/syncService';
 import { LargeView, URL_KEYS, type LargeRange, type LargeTarget } from '../LargeView';
 import { miles, pounds } from '../../engine/units';
+import { best20MinHr, hasPowerHistory, hrRecords, type HrRecordRow } from '../../engine/hrRecords';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -113,8 +116,14 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   const available = useMemo(() => overlayAvailability(data, from, t), [data, from, t]);
   const curvesState = useCurves(data);
   const tests = useTests(data);
+  // A rider who has never ridden with power sees heart-rate records in place of the power cards (12 Nov 2026).
+  const powerHistory = useMemo(() => hasPowerHistory(data.rides), [data.rides]);
+  const hr20 = useHr20(data, !powerHistory);
+  const hrRows = useMemo(() => (powerHistory ? [] : hrRecords(data.rides, hr20, from, t, (d) => weekStart(d))), [powerHistory, data.rides, hr20, from, t]);
   const facts = useMemo(() => pageFacts({ data, from, to: t, range, series, curves: curvesState.curves, tests, plan: active, earliest }),
     [data, from, t, range, series, curvesState.curves, tests, active, earliest]);
+  // The heart-rate records card speaks to the coach like the others.
+  if (!powerHistory) facts.readouts.hrrecords = hrReadout(hrRows, profile);
   const coach: ProgressCoachState = useProgressCoach({ data, range, from, to: t, facts });
 
   // Everything the large view can draw, worked out once for the data on hand.
@@ -156,9 +165,11 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     { id: 'key', el: (wide) => <KeyCard key="key" rows={facts.key} coach={coach} /> },
     { id: 'load', el: (wide) => <WeeklyLoadCard key="load" data={data} from={from} to={t} readout={facts.readouts.load} coach={coach} /> },
     { id: 'zones', el: (wide) => <ZonesCard key="zones" rides={data.rides} from={from} to={t} readout={facts.readouts.zones} coach={coach} /> },
-    { id: 'power', el: (wide) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
-    { id: 'records', el: (wide) => <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
-    { id: 'durability', el: (wide) => <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
+    ...(powerHistory ? [
+      { id: 'power', el: (wide: boolean) => <PowerCurveCard key="power" curvesState={curvesState} from={from} to={t} range={range} ftp={profile.ftp} weightKg={profile.weightKg} readout={facts.readouts.power} coach={coach} /> },
+      { id: 'records', el: (wide: boolean) => <RecordsCard key="records" rows={facts.records} building={curvesState.building} readout={facts.readouts.records} coach={coach} /> },
+      { id: 'durability', el: (wide: boolean) => <DurabilityCard key="durability" curves={curvesState.curves} from={from} to={t} range={range} ftp={profile.ftp} building={curvesState.building} coach={coach} /> },
+    ] : [{ id: 'hrrecords', el: (wide: boolean) => <HrRecordsCard key="hrrecords" rows={hrRows} profile={profile} coach={coach} readout={hrReadout(hrRows, profile)} /> }]),
     { id: 'aerobic', el: (wide) => <AerobicCard key="aerobic" wide={wide} data={data} rides={inRange} readout={facts.readouts.aerobic} coach={coach} /> },
     { id: 'wellness', el: (wide) => <WellnessCard key="wellness" wide={wide} data={data} from={from} to={t} readout={facts.readouts.wellness} coach={coach} /> },
     { id: 'morning', el: (wide) => <MorningAfterCard key="morning" data={data} from={from} to={t} readout={facts.readouts.morning} coach={coach} /> },
@@ -227,7 +238,7 @@ interface GridItem { id: string; el: (wide: boolean) => preact.JSX.Element }
 
 /** Roughly how tall each card is before it has been measured (px), so the first drawing is already close. */
 const CARD_HEIGHT: Record<string, number> = {
-  load: 330, zones: 330, power: 340, records: 300, durability: 300, aerobic: 400, wellness: 380, morning: 270,
+  load: 330, zones: 330, power: 340, records: 300, hrrecords: 320, durability: 300, aerobic: 400, wellness: 380, morning: 270,
   consistency: 310, totals: 400, weight: 400, tests: 380, body: 380, breathing: 420,
 };
 
@@ -1413,7 +1424,7 @@ function TestsCard({ data, tests, from, to, plan, series, readout, coach }: { da
           onPick={(i) => { const x = onDay.get(dates[i]); if (x?.rideId) go(`rides/${x.rideId}`); }} pickLabel={(i) => (onDay.get(dates[i])?.rideId ? 'open the test' : null)} />}</Fill>
       )}
       {goalExtra?.chart && <Fill initial={120} min={80}>{(h) => goalExtra.chart!(h)}</Fill>}
-      {!tests.length ? <p class="faint small" style="margin:6px 0 0">No tests yet: ride the Ramp Test from the Library to see your FTP and VO2max estimates here.</p> : (
+      {!tests.length ? <p class="faint small" style="margin:6px 0 0">{hasPowerHistory(data.rides) ? 'No tests yet: ride the Ramp Test from the Library to see your FTP and VO2max estimates here.' : <>No tests yet. Without a power meter, the <a href="#/workout/lib-lthr-30?from=library">threshold heart-rate test</a> (thirty minutes, ridden anywhere) sets the heart rate your zones are built on.</>}</p> : (
         <ul class="tests-list">{tests.map((x) => {
           const when = fmtDate(x.date, x.date.slice(0, 4) === to.slice(0, 4) ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
           const chose = x.result?.ftpAction === 'updated' ? 'you updated your FTP' : x.result?.ftpAction === 'kept' ? 'you kept your FTP' : '';
@@ -1513,3 +1524,78 @@ function BreathingCard({ data, curves, tests, from, to, readout, coach }: { data
 }
 
 export type { PlannedWorkout };
+
+// ---------- records without a power meter (12 Nov 2026) ----------
+
+/** The best 20-minute heart rate of each ride without power: read once from its heart-rate record, gently, and kept on this device. */
+function useHr20(data: AppData, on: boolean): Record<string, number> {
+  const [map, setMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!on) return;
+    let alive = true;
+    void (async () => {
+      const kept = await getSetting<Record<string, number>>('hr20Best', {});
+      if (alive) setMap(kept);
+      const todo = data.rides.filter((r) => r.sport === 'ride' && r.averageHr && r.seconds >= 1200 && kept[r.id] == null).slice(0, 400);
+      if (!todo.length) return;
+      const c = await credentials();
+      const next = { ...kept };
+      let n = 0;
+      for (const r of todo) {
+        if (!alive) return;
+        try {
+          const local = await db.streams.get(r.id);
+          const s = local?.heartrate?.length ? local : c ? await fetchPowerStream(c, r.id) : undefined;
+          next[r.id] = s?.heartrate?.length ? best20MinHr(s.time, s.heartrate) ?? 0 : 0;
+        } catch { next[r.id] = 0; }
+        if (++n % 10 === 0) { await setSetting('hr20Best', next); if (alive) setMap({ ...next }); }
+        if (c && !(await db.streams.get(r.id))) await new Promise((res) => setTimeout(res, 300));
+      }
+      await setSetting('hr20Best', next);
+      if (alive) setMap({ ...next });
+    })();
+    return () => { alive = false; };
+  }, [on, data.rides.length]);
+  return map;
+}
+
+function hrRecordValue(r: HrRecordRow, v: number, p: Profile): string {
+  switch (r.key) {
+    case 'time': return hm(v / 3600);
+    case 'distance': return miles(p) ? `${(v / 1609.344).toFixed(1)} mi` : `${(v / 1000).toFixed(1)} km`;
+    case 'climb': return miles(p) ? `${Math.round(v * 3.28084).toLocaleString()} ft` : `${Math.round(v).toLocaleString()} m`;
+    case 'weekHours': return hm(v);
+    case 'weekLoad': return `${Math.round(v)} TSS`;
+    case 'hr20': return `${Math.round(v)} bpm`;
+  }
+}
+
+function hrReadout(rows: HrRecordRow[], p: Profile): string {
+  return rows.filter((r) => r.range).map((r) => `${r.label.toLowerCase()} ${hrRecordValue(r, r.range!.v, p)} in this range${r.all ? ` (all-time ${hrRecordValue(r, r.all.v, p)})` : ''}`).join(' · ');
+}
+
+function HrRecordsCard({ rows, profile, coach, readout }: { rows: HrRecordRow[]; profile: Profile; coach: ProgressCoachState; readout: string }) {
+  const has = rows.some((r) => r.all);
+  const open = (r: HrRecordRow) => { const x = r.range; if (!x) return; go(r.week ? `calendar?v=list&w=${x.id}` : `rides/${x.id}`); };
+  return (
+    <PCard id="hrrecords" title="Records" coach={coach} readout={readout || undefined} big={has ? 'card:hrrecords' : undefined}
+      explain="Your biggest rides and weeks: in the range shown, this calendar year, and all-time, with the date the range's best was set. A best is marked new when it equals your all-time best and was set inside the range. The 20-minute heart rate is the highest average over any twenty minutes of a ride. Tap a row to open the ride or week that set it.">
+      {!has ? <div class="empty small">Your rides set records here as they arrive.</div> : (
+        <Rest>
+          <table class="rtable hrr">
+            <thead><tr><th>Record</th><th class="r">This range</th><th class="r">This year</th><th class="r">All-time</th><th class="r">Set</th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.key} class={r.range ? 'pick' : ''} tabIndex={r.range ? 0 : undefined} onClick={() => open(r)} onKeyDown={(e) => { if (r.range && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(r); } }}>
+                <td>{r.label}</td>
+                <td class={`r num${r.isNew ? ' good-t' : ''}`}>{r.range ? hrRecordValue(r, r.range.v, profile) : '–'}{r.isNew && <span class="new-tag">new</span>}</td>
+                <td class="r">{r.year ? hrRecordValue(r, r.year.v, profile) : '–'}</td>
+                <td class="r">{r.all ? hrRecordValue(r, r.all.v, profile) : '–'}</td>
+                <td class="r faint">{r.range ? `${short(r.range.date)} ›` : ''}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Rest>
+      )}
+    </PCard>
+  );
+}

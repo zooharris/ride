@@ -1996,3 +1996,9 @@ body.lv-open { overflow: hidden; }
 .rd-cues ol { list-style: none; padding: 0; margin: 6px 0 0; max-height: 220px; overflow: auto; }
 .rd-cues li { padding: 2px 0; }
 .rd-cues li .num { display: inline-block; min-width: 44px; }
+/* Records without a power meter: on a phone, the year and the date give way so the table fits the screen. */
+.rtable.hrr td:first-child { white-space: normal; }
+@media (max-width: 560px) {
+  .rtable.hrr th:nth-child(3), .rtable.hrr td:nth-child(3), .rtable.hrr th:nth-child(5), .rtable.hrr td:nth-child(5) { display: none; }
+  .rtable.hrr td, .rtable.hrr th { padding-left: 4px; padding-right: 4px; }
+}

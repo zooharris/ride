@@ -18,7 +18,7 @@ import type { PageFacts } from './screens/Progress';
 export const CARD_TITLE: Record<string, string> = {
   fitness: 'Fitness, fatigue and form', key: 'Key numbers', load: 'Weekly training load', zones: 'Time in zone by week', power: 'Power curve',
   records: 'Records', durability: 'Durability', aerobic: 'Aerobic fitness', wellness: 'Wellness', morning: 'The morning after',
-  consistency: 'Consistency', totals: 'Totals by month', weight: 'Weight and power to weight', tests: 'Tests and goal', body: 'Whole body', breathing: 'Breathing',
+  consistency: 'Consistency', totals: 'Totals by month', hrrecords: 'Records', weight: 'Weight and power to weight', tests: 'Tests and goal', body: 'Whole body', breathing: 'Breathing',
 };
 
 interface Written { sig: string; headline: string; lines: Record<string, string>; at: string }

@@ -125,4 +125,10 @@ describe('zone 2 inside a repeated set is endurance, not a rest (13 Nov 2026)', 
     expect(of('b1-z2-hilltempo-135')).toEqual({ tempo: 24 * 60, endurance: 80 * 60 });
     expect(trainsOf(LIBRARY.find((w) => w.id === 'b1-z2-hilltempo-135')!).label).toBe('Tempo and endurance');
   });
+  it('Aldie: a step named "Zone 2 for the rest" is endurance riding, not a rest', async () => {
+    const { LIBRARY } = await import('./workouts');
+    const t = trainsOf(LIBRARY.find((w) => w.id === 'trail-ss-4x10')!);
+    expect(t.label).toBe('Sweet spot and endurance');
+    expect(t.parts.find((p) => p.sys === 'endurance')?.amount).toBe(30 * 60);
+  });
 });

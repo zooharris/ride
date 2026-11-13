@@ -60,6 +60,8 @@ export function bandOf(st: WorkoutStep): Exclude<System, 'sprint'> | 'sprint' | 
 
 const WARM_COOL = /warm|cool/i;
 const EASY_LABEL = /easy|recover|rest|between|spin it out/i;
+/** A step named as zone 2 or endurance riding is never a rest, whatever else its label says ("Zone 2 for the rest" of the ride; 13 Nov 2026). */
+const NAMED_ENDURANCE = /zone 2|endurance/i;
 const isWork = (st: WorkoutStep) => !!st.allOut || (st.intensityHigh ? (st.intensity + st.intensityHigh) / 2 : st.intensity) >= 0.75;
 
 interface Flat { st: WorkoutStep; inWorkSet: boolean; top: boolean }
@@ -116,7 +118,7 @@ export function trainsOf(w: Pick<Workout, 'blocks' | 'family' | 'skills'>): Trai
       // Easy spells never count: a recovery inside a set of efforts, one named as easy, or a short one between efforts.
       // A spell named as easy, or a short one inside a set of efforts, is a rest. Five minutes or more of zone 2 is
       // endurance riding wherever it sits: in a set with sprints or tempo efforts as much as on its own (13 Nov 2026).
-      if (EASY_LABEL.test(st.label ?? '')) return;
+      if (EASY_LABEL.test(st.label ?? '') && !NAMED_ENDURANCE.test(st.label ?? '')) return;
       if (x.inWorkSet && st.seconds < 300) return;
       if (anyWork && (k < firstWork || k > lastWork) && x.top && st.seconds <= 900 && (k === 0 || k === steps.length - 1)) return;
       if (anyWork && k > firstWork && k < lastWork && st.seconds < 300) return;

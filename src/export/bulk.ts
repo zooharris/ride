@@ -21,8 +21,13 @@ export interface ActivityItem { kind: 'activity'; ride: Ride; origin: Origin; lo
 export interface WorkoutItem { kind: 'workout'; w: Workout; date?: string; choice: { basis: SendBasis; where?: Where }; from: string }
 export type ExportItem = ActivityItem | WorkoutItem;
 
-/** Above this, a folder is split, so a phone can hold and save each part. */
-export const PART_BYTES = 150 * 1024 * 1024;
+/**
+ * Above this, a folder is split, so a phone can hold and save each part (12 Nov 2026: lowered from 150 MB). Each
+ * folder is handed over as soon as it is full and then let go, so at most about two folders' worth is ever held
+ * (the files of the one filling, and the finished one waiting to be saved): about 200 MB at this size, which an
+ * older phone's browser and its share sheet manage.
+ */
+export const PART_BYTES = 100 * 1024 * 1024;
 
 /** Rough size of a file before it is made, for "about 12 MB" before the export starts. */
 export function estimateBytes(it: ExportItem, actFormat: ActivityFormat, wkFormat: WorkoutFormat): number {
@@ -54,7 +59,12 @@ export function workoutFits(it: WorkoutItem, format: WorkoutFormat): { ok: boole
 
 export interface Problem { name: string; date?: string; why: string }
 export interface BulkResult {
+  /** The folders, when the caller takes them at the end; empty when each was handed over as it filled (`onPart`). */
   parts: FileOut[];
+  /** How many folders were made. */
+  partCount: number;
+  /** The export stopped because the device ran short of memory: the item it had reached (0-based); the folders made are kept. */
+  stoppedAt?: number;
   done: number;
   failed: Problem[];
   skipped: Problem[];
@@ -79,6 +89,19 @@ export interface BulkOptions {
   now?: Date;
   /** The size a folder is split at; PART_BYTES unless a check asks for less. */
   partBytes?: number;
+  /**
+   * Each folder as soon as it is full (and the last at the end), to be offered for saving at once; the export
+   * carries on and keeps nothing of it. `last` is true for the final one. Without it, the folders come back at the end.
+   */
+  onPart?: (part: FileOut, n: number, last: boolean) => void;
+  /** The folder numbering starts here (an export carried on after a stop continues the numbers). */
+  firstPart?: number;
+}
+
+/** Whether an error means the device ran short of memory, rather than one item going wrong. */
+export function outOfMemory(e: unknown): boolean {
+  const x = e as { name?: string; message?: string } | undefined;
+  return x?.name === 'RangeError' || /out of memory|allocation|array buffer|invalid array length/i.test(x?.message ?? '');
 }
 
 interface Row { date: string; name: string; kind: string; length: string; load: string; from: string; file: string; how: string }
@@ -97,7 +120,7 @@ export function readMe(o: { at: Date; part?: { n: number; of: number }; actForma
   const acts = o.rows.filter((r) => r.how !== 'workout').length;
   const wks = o.rows.length - acts;
   const L: string[] = [];
-  L.push(`Antogo export, ${o.at.toLocaleString()}${o.part ? ` (part ${o.part.n} of ${o.part.of})` : ''}`, '');
+  L.push(`Antogo export, ${o.at.toLocaleString()}${o.part ? (o.part.of ? ` (part ${o.part.n}, the last)` : ` (part ${o.part.n}; the export carried on into the next part)`) : ''}`, '');
   L.push('WHAT IS IN THIS FOLDER');
   if (acts) {
     const files = acts - o.how.summary;
@@ -149,14 +172,27 @@ export async function runBulk(o: BulkOptions): Promise<BulkResult> {
   const at = o.now ?? new Date();
   const day = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
   const folder = `Antogo export ${day}`;
-  const result: BulkResult = { parts: [], done: 0, failed: [], skipped: [], cancelled: false, how: { original: 0, player: 0, record: 0, summary: 0 } };
+  const result: BulkResult = { parts: [], partCount: 0, done: 0, failed: [], skipped: [], cancelled: false, how: { original: 0, player: 0, record: 0, summary: 0 } };
   type Part = { entries: ZipEntry[]; rows: Row[]; bytes: number; sources: Record<string, number>; book: NameBook; how: BulkResult['how']; ergUsed: boolean; hrUsed: boolean };
   const newPart = (): Part => ({ entries: [], rows: [], bytes: 0, sources: {}, book: new NameBook(), how: { original: 0, player: 0, record: 0, summary: 0 }, ergUsed: false, hrUsed: false });
-  const parts: Part[] = [newPart()];
-  const cur = () => parts[parts.length - 1];
+  let part = newPart();
+  const cur = () => part;
+  const first = o.firstPart ?? 1;
+  // A folder is finished: its note lists everything left out or failed so far; it is handed over (or kept for the
+  // end), and the export lets go of its files before carrying on.
+  const finish = (p: Part, last: boolean) => {
+    const n = first + result.partCount;
+    const split = !last || n > 1;
+    const note = readMe({ at, part: split ? { n, of: last ? n : 0 } : undefined, actFormat: p.rows.some((r) => r.how !== 'workout') ? o.actFormat : undefined, wkFormat: p.rows.some((r) => r.how === 'workout') ? o.wkFormat : undefined, rows: p.rows, failed: [...result.failed], skipped: [...result.skipped], ftp: o.profile.ftp, ergUsed: p.ergUsed, hrUsed: p.hrUsed, how: p.how, sources: p.sources });
+    const entries: ZipEntry[] = [{ name: `${folder}/Read me first.txt`, data: note, date: at }, { name: `${folder}/List of everything.csv`, data: '﻿' + csv(p.rows), date: at }, ...p.entries];
+    const file: FileOut = { name: safeName(split ? `${folder} part ${n}${last ? ' (the last)' : ''}` : folder, 'zip'), data: zip(entries), mime: 'application/zip' };
+    p.entries.length = 0;
+    result.partCount++;
+    if (o.onPart) o.onPart(file, n, last); else result.parts.push(file);
+  };
   const add = (f: FileOut, row: Omit<Row, 'file'>) => {
     const size = bytesOf(f.data).length;
-    if (cur().bytes + size > (o.partBytes ?? PART_BYTES) && cur().entries.length) parts.push(newPart());
+    if (cur().bytes + size > (o.partBytes ?? PART_BYTES) && cur().entries.length) { finish(part, false); part = newPart(); }
     const p = cur();
     const name = p.book.take(f.name);
     p.entries.push({ name: `${folder}/${name}`, data: f.data, date: at });
@@ -184,6 +220,7 @@ export async function runBulk(o: BulkOptions): Promise<BulkResult> {
         if (format === 'fit' && (it.w.kind !== 'ride' || it.choice.basis === 'hr')) cur().hrUsed = true;
         result.done++;
       } catch (e) {
+        if (outOfMemory(e)) { result.stoppedAt = i; break; }
         console.info('[Antogo] export: a workout file could not be written:', (e as Error).message);
         result.failed.push({ name: label, date: it.date, why: 'Its file could not be written.' });
       }
@@ -201,18 +238,16 @@ export async function runBulk(o: BulkOptions): Promise<BulkResult> {
         result.done++;
       }
     } catch (e) {
+      if (outOfMemory(e)) { result.stoppedAt = i; break; }
       const p = { name: r.name, date: r.date, why: `${(e as Error).message} (tried three times)` };
       result.failed.push(p);
     }
     if (o.gapMs !== 0 && o.credentials) await wait(o.gapMs ?? 300);
   }
   o.onProgress?.(result.done + result.failed.length + result.skipped.length, total, '');
-  const of = parts.length;
-  // Problems are listed in every part's note, so whichever part is opened says what is missing.
-  parts.forEach((p, k) => {
-    const note = readMe({ at, part: of > 1 ? { n: k + 1, of } : undefined, actFormat: p.rows.some((r) => r.how !== 'workout') ? o.actFormat : undefined, wkFormat: p.rows.some((r) => r.how === 'workout') ? o.wkFormat : undefined, rows: p.rows, failed: result.failed, skipped: result.skipped, ftp: o.profile.ftp, ergUsed: p.ergUsed, hrUsed: p.hrUsed, how: p.how, sources: p.sources });
-    const entries: ZipEntry[] = [{ name: `${folder}/Read me first.txt`, data: note, date: at }, { name: `${folder}/List of everything.csv`, data: '﻿' + csv(p.rows), date: at }, ...p.entries];
-    result.parts.push({ name: safeName(of > 1 ? `${folder} part ${k + 1} of ${of}` : folder, 'zip'), data: zip(entries), mime: 'application/zip' });
-  });
+  // The last folder; when the device ran short, what was made so far, if there is room to make it.
+  if (part.entries.length || result.partCount === 0) {
+    try { finish(part, true); } catch (e) { if (!outOfMemory(e)) throw e; result.stoppedAt ??= total; }
+  }
   return result;
 }

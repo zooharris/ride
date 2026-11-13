@@ -77,9 +77,11 @@ const round5 = (w: number) => Math.round(w / 5) * 5;
  * Where a step starts: the watts the table holds for its zone; else a
  * neighbouring zone's, scaled (×1.15 per zone up, ×0.87 per zone down); else,
  * with an FTP of the rider's own, the middle of the matching power zone;
- * else 90 W.
+ * else 1 W per kilogram of the rider's weight, to the nearest 5 W, never under
+ * 40 W (12 Nov 2026: the same start in proportion for every rider, not 90 W for all).
  */
-export function startWatts(table: HrPowerTable, zone: number, profile: Pick<Profile, 'ftp' | 'powerZoneMode' | 'powerZonePcts' | 'powerZoneWatts'>): { watts: number; learned: boolean } {
+export const HR_START_W_PER_KG = 1;
+export function startWatts(table: HrPowerTable, zone: number, profile: Pick<Profile, 'ftp' | 'powerZoneMode' | 'powerZonePcts' | 'powerZoneWatts'> & Partial<Pick<Profile, 'weightKg'>>): { watts: number; learned: boolean } {
   const own = table[zone];
   if (own) return { watts: round5(own.watts), learned: true };
   const zones = Object.keys(table).map(Number).filter((z) => table[z]?.watts > 0);
@@ -93,7 +95,7 @@ export function startWatts(table: HrPowerTable, zone: number, profile: Pick<Prof
     const high = Number.isFinite(z.high) ? z.high : z.low * 1.2;
     return { watts: round5(((low + high) / 2) * profile.ftp), learned: false };
   }
-  return { watts: 90, learned: false };
+  return { watts: Math.max(MIN_W, round5((profile.weightKg ?? 70) * HR_START_W_PER_KG)), learned: false };
 }
 
 /**

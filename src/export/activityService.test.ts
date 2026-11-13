@@ -62,6 +62,8 @@ describe('one activity', () => {
     const got = await activityFile(cred, ride('b'), 'tcx', { antogo: false, source: 'Garmin' });
     expect(got.how).toBe('record');
     expect(got.file.name.endsWith('.tcx')).toBe(true);
+    // One call to the data service for the activity: its record, never its original as well (12 Nov 2026).
+    expect(calls).toEqual(['streams b']);
   });
   it('no original, but a record: written from the record', async () => {
     originals.c = 404;

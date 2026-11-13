@@ -14,7 +14,7 @@ import { encodeFitActivity, encodeGpx, encodeTcx, type ActivityStreams } from '.
 import { crc32, unzip, zip } from './zip';
 import { exportFileName, NameBook, safeName } from './names';
 import { makerOf, originOf, originalKind, summaryText } from './activity';
-import { csv, readMe, runBulk, type ExportItem } from './bulk';
+import { csv, readMe, runBulk, type ExportItem, type WorkoutItem } from './bulk';
 import { encodeFit } from '../player/fit';
 import { totals } from '../player/summary';
 import type { Recording } from '../player/types';
@@ -341,15 +341,40 @@ describe('the bulk export', () => {
     const items: ExportItem[] = rides.slice(0, 6).map((w) => ({ kind: 'workout', w, choice: { basis: 'power' }, from: 'x' }));
     const res = await runBulk({ items, actFormat: 'fit', wkFormat: 'zwo', unfit: 'fallback', profile, table: {}, credentials: null, gapMs: 0, partBytes: 3000 });
     expect(res.parts.length).toBeGreaterThan(1);
-    expect(res.parts[0].name).toMatch(/part 1 of \d+\.zip$/);
+    expect(res.parts[0].name).toMatch(/part 1\.zip$/);
+    expect(res.parts[res.parts.length - 1].name).toMatch(/part \d+ \(the last\)\.zip$/);
     let total = 0;
     for (const p of res.parts) {
       const files = unzip(p.data as Uint8Array);
       expect(files.some((f) => f.name.endsWith('Read me first.txt'))).toBe(true);
-      expect(new TextDecoder().decode(files.find((f) => f.name.endsWith('Read me first.txt'))!.data)).toMatch(/\(part \d of \d\)/);
+      expect(new TextDecoder().decode(files.find((f) => f.name.endsWith('Read me first.txt'))!.data)).toMatch(/\(part \d/);
       total += files.length - 2;
     }
     expect(total).toBe(6);
+  });
+  it('hands over each folder as it fills, before the last is built, and keeps none of it (12 Nov 2026)', async () => {
+    const items: ExportItem[] = rides.slice(0, 6).map((w) => ({ kind: 'workout', w, choice: { basis: 'power' }, from: 'x' }));
+    const order: string[] = [];
+    const res = await runBulk({ items, actFormat: 'fit', wkFormat: 'zwo', unfit: 'fallback', profile, table: {}, credentials: null, gapMs: 0, partBytes: 3000,
+      onProgress: (done, total, now) => { if (now) order.push(`item ${done + 1}`); }, onPart: (f, n, last) => order.push(`part ${n}${last ? ' last' : ''}`) });
+    expect(res.parts).toEqual([]);   // nothing held: every folder went to the page as it was made
+    expect(res.partCount).toBeGreaterThan(1);
+    expect(order.indexOf('part 1')).toBeGreaterThan(-1);
+    expect(order.indexOf('part 1')).toBeLessThan(order.indexOf('item 6'));
+    expect(order[order.length - 1]).toMatch(/last$/);
+  });
+  it('a device that runs short stops cleanly, keeping the folders made, and says where to carry on', async () => {
+    const items: ExportItem[] = rides.slice(0, 6).map((w) => ({ kind: 'workout', w, choice: { basis: 'power' }, from: 'x' }));
+    // The fourth workout's file cannot be made: the device is out of memory.
+    const w3 = { ...(items[3] as WorkoutItem).w };
+    Object.defineProperty(w3, 'blocks', { get() { throw new RangeError('Array buffer allocation failed'); } });
+    items[3] = { ...(items[3] as WorkoutItem), w: w3 };
+    const got: string[] = [];
+    const res = await runBulk({ items, actFormat: 'fit', wkFormat: 'zwo', unfit: 'fallback', profile, table: {}, credentials: null, gapMs: 0, partBytes: 3000, onPart: (f) => got.push(f.name) });
+    expect(res.stoppedAt).toBe(3);
+    expect(res.done).toBe(3);
+    expect(got.length).toBeGreaterThan(0);
+    expect(res.failed).toEqual([]);
   });
 });
 

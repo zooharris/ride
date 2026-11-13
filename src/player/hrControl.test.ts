@@ -5,7 +5,7 @@ import { hrAnswer, hrLearn, hrLearns, hrResumed, hrStatus, hrStepStart, hrTick, 
 // A rider whose zone 2 sits near 100 W, so a first ride from 90 W can find it under the 1.25 ceiling.
 const rider = { ftp: 130, lthr: 160, restingHr: 55, maxHr: 185 };
 const z2: HrStep = { seconds: 2400, noFloor: false, zone: 2, low: 131, high: 142 };
-const noFtp = { ftp: 200 };
+const noFtp = { ftp: 200, weightKg: 90 };
 
 let seed = 1;
 beforeEach(() => { seed = 1; vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }); });
@@ -194,5 +194,15 @@ describe('a step change is a change of effort (heart rate takes time to answer)'
     const near = (out: { st: HrCtl }[], w: number) => out.slice(120).every((o) => Math.abs(o.st.target - w) <= 10);
     expect(near(a.out, table[2].watts)).toBe(true);
     expect(near(b.out, table[3].watts)).toBe(true);
+  });
+});
+
+describe('where an unknown rider starts (12 Nov 2026)', () => {
+  it('1 W per kilogram, to the nearest 5 W, never under 40 W', () => {
+    expect(startWatts({}, 2, { ftp: 200, weightKg: 50 }).watts).toBe(50);
+    expect(startWatts({}, 2, { ftp: 200, weightKg: 75 }).watts).toBe(75);
+    expect(startWatts({}, 2, { ftp: 200, weightKg: 110 }).watts).toBe(110);
+    expect(startWatts({}, 2, { ftp: 200, weightKg: 32 }).watts).toBe(40);
+    expect(startWatts({}, 2, { ftp: 200, weightKg: 77 }).watts).toBe(75);
   });
 });

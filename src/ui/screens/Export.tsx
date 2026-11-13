@@ -10,7 +10,7 @@ import { db } from '../../data/db';
 import type { Recording } from '../../player/types';
 import { originOf, UNKNOWN_SOURCE, type Origin } from '../../export/activity';
 import { ACTIVITY_FORMAT_LABEL, ACTIVITY_FORMAT_WHAT, WORKOUT_FORMAT_LABEL, WORKOUT_FORMAT_WHAT, type ActivityFormat, type FileOut, type WorkoutFormat } from '../../export/formats';
-import { estimateBytes, fallbackFormat, runBulk, sizeWords, workoutFits, type BulkResult, type ExportItem, type WorkoutItem } from '../../export/bulk';
+import { estimateBytes, fallbackFormat, PART_BYTES, runBulk, sizeWords, workoutFits, type BulkResult, type ExportItem, type WorkoutItem } from '../../export/bulk';
 import { workoutExportable } from '../../export/formats';
 import { deliver } from '../../export/deliver';
 import { applyFilters, FilterBar, useFilters } from '../LibraryFilters';
@@ -141,18 +141,41 @@ export function Export({ data }: { data: AppData }) {
   const bytes = items.reduce((n, it) => n + estimateBytes(it, actFormat, wkFormat), 0);
   const [run, setRun] = useState<{ done: number; total: number; now: string } | null>(null);
   const [result, setResult] = useState<BulkResult | null>(null);
+  // Folders handed over as each fills (12 Nov 2026): saved by the rider while the export carries on, then let go.
+  const [folders, setFolders] = useState<Array<{ n: number; last: boolean; name: string; bytes: number; file: FileOut | null; saved: boolean }>>([]);
+  // Where to carry on from after the device ran short of memory: the items not yet done, and the next folder's number.
+  const [resume, setResume] = useState<{ items: ExportItem[]; part: number; of: number } | null>(null);
   const stop = useRef(false);
-  const start = async () => {
+  const start = async (from?: { items: ExportItem[]; part: number }) => {
     stop.current = false;
     setResult(null);
-    setRun({ done: 0, total: items.length, now: '' });
+    if (!from) setFolders([]);
+    setResume(null);
+    const list = from?.items ?? items;
+    setRun({ done: 0, total: list.length, now: '' });
     try {
-      const res = await runBulk({ items, actFormat, wkFormat, unfit, profile, table, credentials: wantActs ? await credentials() : null, onProgress: (done, total, now) => setRun({ done, total, now }), cancelled: () => stop.current });
+      const res = await runBulk({ items: list, actFormat, wkFormat, unfit, profile, table, credentials: wantActs ? await credentials() : null, onProgress: (done, total, now) => setRun({ done, total, now }), cancelled: () => stop.current,
+        firstPart: from?.part, onPart: (file, n, last) => setFolders((f) => [...f, { n, last, name: file.name, bytes: (file.data as Uint8Array).length, file, saved: false }]) });
       setResult(res);
+      if (res.stoppedAt != null) setResume({ items: list.slice(res.stoppedAt), part: (from?.part ?? 1) + res.partCount, of: list.length });
     } catch (e) { toast({ ok: false, text: `The export stopped: ${(e as Error).message}` }); }
     setRun(null);
   };
-  const save = async (parts: FileOut[]) => { if (await deliver(parts)) toast({ ok: true, text: parts.length > 1 ? `Saved ${parts.length} folders.` : `Saved ${parts[0].name}.` }); };
+  const save = async (n: number) => {
+    const f = folders.find((x) => x.n === n);
+    if (!f?.file) return;
+    if (await deliver([f.file])) {
+      toast({ ok: true, text: `Saved ${f.name}.` });
+      // Saved: the folder is let go, so the export never holds more than it must.
+      setFolders((all) => all.map((x) => (x.n === n ? { ...x, file: null, saved: true } : x)));
+    }
+  };
+  const saveButtons = folders.length > 0 && (
+    <div class="row wrap" style="gap:8px;margin-top:12px">
+      {folders.map((f) => f.saved ? <span key={f.n} class="small faint" style="align-self:center">{folders.length === 1 && f.last ? 'Folder' : `Part ${f.n}`} saved ✓</span>
+        : <button key={f.n} class={`btn${folders.find((x) => !x.saved)?.n === f.n ? ' primary' : ''}`} onClick={() => void save(f.n)}>{folders.length === 1 && f.last && f.n === 1 ? 'Save the folder' : `Save part ${f.n}`}</button>)}
+    </div>
+  );
 
   if (run || result) return (
     <div class="ex-page">
@@ -161,21 +184,23 @@ export function Export({ data }: { data: AppData }) {
         <section class="section">
           <p class="small" style="margin:0 0 8px">Exporting {Math.min(run.done + 1, run.total)} of {run.total}{run.now ? `: ${run.now}` : ''}</p>
           <div class="ex-bar" role="progressbar" aria-valuemin={0} aria-valuemax={run.total} aria-valuenow={run.done}><span style={`width:${run.total ? Math.round((run.done / run.total) * 100) : 0}%`} /></div>
-          <p class="faint small" style="margin:8px 0 12px">Keep this page open until it finishes. Activities are fetched one at a time.</p>
+          <p class="faint small" style="margin:8px 0 12px">Keep this page open until it finishes. Activities are fetched one at a time.{folders.length ? ' A large export is split into folders: save each one as it is ready, and the export carries on.' : ''}</p>
           <button class="btn" onClick={() => { stop.current = true; }}>Cancel</button>
+          {saveButtons}
         </section>
       )}
       {result && (
         <section class="section">
-          <h2>{result.cancelled ? 'Stopped' : 'Ready'}</h2>
-          <p class="small" style="margin:6px 0">{result.done} {result.done === 1 ? 'file' : 'files'}{result.parts.length > 1 ? ` in ${result.parts.length} folders, because together they are too large for one` : ' in one folder'}, {sizeWords(result.parts.reduce((n, p) => n + (p.data as Uint8Array).length, 0))}.{result.cancelled ? ' You cancelled part-way; what was ready is in the folder.' : ''}</p>
+          <h2>{result.cancelled || resume ? 'Stopped' : 'Ready'}</h2>
+          {resume && <p class="small" style="margin:6px 0;color:var(--warn)">This device ran short of memory after {resume.of - resume.items.length} of {resume.of}. The folders made so far are below and are complete; carry on to export the other {resume.items.length}.</p>}
+          <p class="small" style="margin:6px 0">{result.done} {result.done === 1 ? 'file' : 'files'}{folders.length > 1 ? ` in ${folders.length} folders, because together they are too large for one (a folder is split at ${Math.round(PART_BYTES / (1024 * 1024))} MB, so a phone can save each)` : ' in one folder'}, {sizeWords(folders.reduce((n, f) => n + f.bytes, 0))}.{result.cancelled ? ' You cancelled part-way; what was ready is in the folder.' : ''}</p>
           {result.how.summary > 0 && <p class="faint small" style="margin:4px 0">{result.how.summary} {result.how.summary === 1 ? 'activity has' : 'activities have'} only a summary (no recording was ever kept), so {result.how.summary === 1 ? 'it is' : 'they are'} a short text file.</p>}
           {result.skipped.length > 0 && <details style="margin:6px 0"><summary class="small">{result.skipped.length} left out</summary><ul class="small muted">{result.skipped.map((p, i) => <li key={i}>{p.date ? `${fmtDate(p.date)}: ` : ''}{p.name}: {p.why}</li>)}</ul></details>}
           {result.failed.length > 0 && <div style="margin:6px 0"><p class="small" style="color:var(--warn);margin:0">{result.failed.length} could not be exported:</p><ul class="small muted">{result.failed.map((p, i) => <li key={i}>{p.date ? `${fmtDate(p.date)}: ` : ''}{p.name}: {p.why}</li>)}</ul><p class="faint small">The folder's note lists them too. Export them again later.</p></div>}
+          {saveButtons}
           <div class="row wrap" style="gap:8px;margin-top:12px">
-            {result.parts.length === 1 ? <button class="btn primary" onClick={() => void save(result.parts)}>Save the folder</button>
-              : result.parts.map((p, i) => <button key={i} class={`btn${i === 0 ? ' primary' : ''}`} onClick={() => void save([p])}>Save part {i + 1} of {result.parts.length}</button>)}
-            <button class="btn" onClick={() => setResult(null)}>Start again</button>
+            {resume && <button class="btn primary" onClick={() => void start({ items: resume.items, part: resume.part })}>Carry on from there</button>}
+            <button class="btn" onClick={() => { setResult(null); setFolders([]); setResume(null); }}>Start again</button>
           </div>
           <p class="faint small" style="margin-top:10px">The folder is zipped. Open it to get the files: most apps import them one at a time. "Read me first" says where each kind can go.</p>
         </section>

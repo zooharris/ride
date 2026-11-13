@@ -439,7 +439,7 @@ function steerByBreath(a: ActiveRide, now: number, step: TimelineStep) {
     a.breath = { step: step.index, st: breathStepStart(breathStartWatts(a.breathTable, bs.zone, bs.plannedWatts), undefined, prev), inS: 0, status: '' };
   }
   const offsetKnown = a.breathOffsetToday != null;
-  const r = breathTick(a.breath.st, bs, inS, offsetKnown ? a.veNow : undefined, a.live.bpm != null ? a.shownBpm : undefined);
+  const r = breathTick(a.breath.st, bs, inS, offsetKnown ? a.veNow : undefined, a.live.bpm != null ? a.shownBpm : undefined, a.setup.profile.ftp);
   const status = a.breathStopped ? `Breathing has stopped arriving. The trainer is holding ${r.state.target} W.` : breathStatus(r.state, bs, inS, a.veNow, offsetKnown);
   a.breath = { ...a.breath, st: r.state, inS, status };
   e.hrWatts = r.state.target;

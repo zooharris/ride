@@ -64,8 +64,16 @@ export const BREATH_FALL_WAIT_S = 45;
 /** The same ceiling riding by heart rate uses: a quarter above the start watts, unless the rider allows more. */
 export const BREATH_CEILING = 1.25;
 export const BREATH_MORE = 0.15;
-/** Changes of 5 W, or 10 W when breathing is well outside the range (a tenth of the range's top). */
+/** Breathing well outside the range: a tenth of the range's top beyond it. */
 export const BREATH_FAR = 0.1;
+/**
+ * Each change is a share of the rider's FTP (12 Nov 2026): 2%, or 4% when breathing is well outside the range,
+ * in whole watts and never less than 5 W. The same for every rider in proportion, not the same watts for all.
+ */
+export const BREATH_NEAR_SHARE = 0.02;
+export const BREATH_FAR_SHARE = 0.04;
+export const BREATH_MIN_CHANGE_W = 5;
+export const breathChange = (ftp: number, far: boolean): number => Math.max(BREATH_MIN_CHANGE_W, Math.round(ftp * (far ? BREATH_FAR_SHARE : BREATH_NEAR_SHARE)));
 /** Heart rate this far over the step's zone for 20 seconds eases straight to four fifths of the start. */
 export const BREATH_SAFE_BPM = 10;
 export const BREATH_SAFE_S = 20;
@@ -114,7 +122,7 @@ export function breathAnswer(st: BreathCtl, answer: 'harder' | 'keep'): BreathCt
  * One second. `ve` is the 30-second ventilation already corrected for today's offset; undefined while it is
  * not usable (missing, frozen, or the offset not yet known): the target holds. `bpm` is heart rate, if any.
  */
-export function breathTick(st: BreathCtl, step: BreathStep, inS: number, ve: number | undefined, bpm?: number): { state: BreathCtl; easedNow: boolean } {
+export function breathTick(st: BreathCtl, step: BreathStep, inS: number, ve: number | undefined, bpm: number | undefined, ftp: number): { state: BreathCtl; easedNow: boolean } {
   const s: BreathCtl = { ...st };
   // Safety by heart rate works on every step, steered or held.
   if (bpm != null && step.hrHigh != null && bpm > step.hrHigh + BREATH_SAFE_BPM) {
@@ -133,12 +141,12 @@ export function breathTick(st: BreathCtl, step: BreathStep, inS: number, ve: num
   const far = step.high * BREATH_FAR;
   if (ve > step.high) {
     if (s.loweredAtS != null && inS - s.loweredAtS < BREATH_FALL_WAIT_S) return { state: s, easedNow: false };
-    const to = Math.max(MIN_W, s.target + (ve > step.high + far ? -10 : -5));
+    const to = Math.max(MIN_W, s.target - breathChange(ftp, ve > step.high + far));
     if (to !== s.target) { s.lastDelta = to - s.target; s.target = to; s.lastChangeS = inS; s.asking = false; }
   } else if (!step.noFloor && ve < step.low) {
     if (s.raisedAtS != null && inS - s.raisedAtS < BREATH_RISE_WAIT_S) return { state: s, easedNow: false };
     if (s.target >= s.ceiling) { s.asking = true; return { state: s, easedNow: false }; }
-    const to = Math.min(s.ceiling, s.target + (ve < step.low - far ? 10 : 5));
+    const to = Math.min(s.ceiling, s.target + breathChange(ftp, ve < step.low - far));
     s.lastDelta = to - s.target; s.target = to; s.lastChangeS = inS; s.raisedAtS = inS;
   }
   return { state: s, easedNow: false };

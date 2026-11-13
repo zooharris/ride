@@ -128,8 +128,9 @@ export async function activityFile(c: IntervalsCredentials | null, r: Ride, form
   const name = (ext: string) => exportFileName(r.date, r.name, r.sport, ext);
   // 1. The player's own file, when its recording is still on this device.
   if (format === 'fit' && local?.samples.length) return { file: { name: name('fit'), data: rideFile(local), mime: MIME.fit }, how: 'player' };
-  // 2. The original, unchanged, when it is already this format.
-  if (c) {
+  // 2. The original, unchanged, when it is already this format. Only a .fit can be: an original is a .fit file, so
+  // a .tcx or .gpx goes straight to the record and the data service is asked for each activity once (12 Nov 2026).
+  if (c && format === 'fit') {
     try {
       const orig = await maybeGunzip(await patiently(() => fetchActivityFile(c, r.id)));
       if (orig.length && originalKind(orig) === format) return { file: { name: name(format), data: orig, mime: MIME[format] }, how: 'original' };

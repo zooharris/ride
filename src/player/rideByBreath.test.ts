@@ -89,35 +89,35 @@ describe('the trainer follows the breathing', () => {
   });
   it('rises a little when breathing is under, no more than every 20 seconds, and waits a minute after a rise', () => {
     let st = breathStepStart({ watts: 200, learned: false });
-    let r = breathTick(st, step, BREATH_GAP_S, 60);
-    expect(r.state.target).toBe(210);           // well under: 10 W
+    let r = breathTick(st, step, BREATH_GAP_S, 60, undefined, 250);
+    expect(r.state.target).toBe(210);           // well under: 4% of an FTP of 250, 10 W
     st = r.state;
-    r = breathTick(st, step, BREATH_GAP_S + 30, 60);
+    r = breathTick(st, step, BREATH_GAP_S + 30, 60, undefined, 250);
     expect(r.state.target).toBe(210);           // waiting after the rise
-    r = breathTick(st, step, BREATH_GAP_S + BREATH_RISE_WAIT_S, 68);
-    expect(r.state.target).toBe(215);           // a little under: 5 W
+    r = breathTick(st, step, BREATH_GAP_S + BREATH_RISE_WAIT_S, 68, undefined, 250);
+    expect(r.state.target).toBe(215);           // a little under: 2% of 250, 5 W
   });
   it('eases when breathing is over; holds when it is in range or not yet usable', () => {
     const st = breathStepStart({ watts: 240, learned: true });
-    expect(breathTick(st, step, 30, 90).state.target).toBe(230);
-    expect(breathTick(st, step, 30, 75).state.target).toBe(240);
-    expect(breathTick(st, step, 30, undefined).state.target).toBe(240);
+    expect(breathTick(st, step, 30, 90, undefined, 250).state.target).toBe(230);
+    expect(breathTick(st, step, 30, 75, undefined, 250).state.target).toBe(240);
+    expect(breathTick(st, step, 30, undefined, undefined, 250).state.target).toBe(240);
   });
   it('short steps are held, not steered', () => {
     const st = breathStepStart({ watts: 300, learned: true });
-    expect(breathTick(st, { ...step, seconds: BREATH_SHORT_S - 1 }, 60, 50).state.target).toBe(300);
+    expect(breathTick(st, { ...step, seconds: BREATH_SHORT_S - 1 }, 60, 50, undefined, 250).state.target).toBe(300);
     expect(breathStatus(st, { ...step, seconds: 60 }, 30, 50, true)).toMatch(/Short efforts aren't steered by breathing/);
   });
   it('heart rate well above its zone eases the trainer, even on a short step', () => {
     let st = breathStepStart({ watts: 300, learned: true });
-    st = breathTick(st, { ...step, seconds: 60 }, 1, 50, 180).state;
-    const r = breathTick(st, { ...step, seconds: 60 }, 22, 50, 180);
+    st = breathTick(st, { ...step, seconds: 60 }, 1, 50, 180, 250).state;
+    const r = breathTick(st, { ...step, seconds: 60 }, 22, 50, 180, 250);
     expect(r.easedNow).toBe(true);
     expect(r.state.target).toBe(240);
   });
   it('never above its ceiling: at the limit it asks', () => {
     let st = breathStepStart({ watts: 200, learned: false });
-    for (let t = 20; t < 2000; t += 70) st = breathTick(st, step, t, 50).state;
+    for (let t = 20; t < 2000; t += 70) st = breathTick(st, step, t, 50, undefined, 250).state;
     expect(st.target).toBeLessThanOrEqual(250);
     expect(st.asking).toBe(true);
   });
@@ -145,5 +145,14 @@ describe('after the ride', () => {
     expect(st.onTarget).toBeCloseTo(0.8, 2);
     expect(st.avgVe).toBeGreaterThan(0);
     expect(timeInZone(samples, tl, (s) => breathBand(s, p), (x) => x.ve).seconds).toBe(80);
+  });
+});
+
+describe('breathing changes are a share of FTP (12 Nov 2026)', () => {
+  it('2%, or 4% when far off, in whole watts, never under 5 W', async () => {
+    const { breathChange } = await import('./breathControl');
+    expect([breathChange(120, false), breathChange(120, true)]).toEqual([5, 5]);
+    expect([breathChange(250, false), breathChange(250, true)]).toEqual([5, 10]);
+    expect([breathChange(400, false), breathChange(400, true)]).toEqual([8, 16]);
   });
 });

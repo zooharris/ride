@@ -2046,3 +2046,13 @@ body.lv-open { overflow: hidden; }
 .link-btn { background: none; border: 0; padding: 4px 0; min-height: 32px; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .after-send { display: flex; flex-direction: column; align-items: flex-start; }
 .dest-makers { margin: 0 0 4px; padding-left: 18px; }
+
+/* 13 Nov 2026 (found by the journeys): on a phone the riding header could not fit Resume, End ride
+   and the keyboard button, and pushed the page sideways. Let it wrap, and hide keyboard help where
+   there is no keyboard to press. */
+@media (max-width: 560px) {
+  .pl-head:has(.rd-pause) { height: auto; min-height: 64px; flex-wrap: wrap; row-gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+  .pl-head .rd-title { min-width: 0; flex: 1 1 140px; }
+  .pl-head .rd-name, .pl-head .rd-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (hover: none) and (pointer: coarse) { .rd-keys-help { display: none; } }

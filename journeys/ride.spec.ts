@@ -46,3 +46,22 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await expect(page.locator('main')).toContainText(/Done/);
   await looksRight(s, info, 'Today, done');
 });
+
+/** The riding screen, paused, fits a phone: Resume is wider than Pause. */
+test('pause a ride on a phone', async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith('phone'), 'a phone check');
+  const s = await setUp(page, 'power');
+  await makePlan(page);
+  await simulatedTrainer(page);
+  await go(page, '#/calendar');
+  const list = page.getByRole('button', { name: 'List', exact: true });
+  if (await list.isVisible()) await list.click();
+  await page.locator('a[href*="#/workout/"]').first().click();
+  await page.getByRole('link', { name: 'Ride indoors on the trainer' }).first().click();
+  await page.getByRole('button', { name: 'Choose your trainer' }).click();
+  await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();
+  await page.getByRole('button', { name: 'Start ride' }).click();
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await expect(page.getByRole('button', { name: 'Resume' }).first()).toBeVisible();
+  await looksRight(s, info, 'Paused');
+});

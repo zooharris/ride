@@ -205,7 +205,7 @@ const MODE_WORD: Record<TrainerMode, string> = { erg: 'ERG', resistance: 'Resist
 function KeysHelp() {
   const [open, setOpen] = useState(false);
   return (
-    <div class="menu">
+    <div class="menu rd-keys-help">
       <button class="icon-btn" aria-label="Keyboard keys" title="Keyboard keys" aria-expanded={open} onClick={() => setOpen(!open)}><span style="font-weight:700;font-size:14px">⌨</span></button>
       {open && <>
         <div class="menu-bg" onClick={() => setOpen(false)} />

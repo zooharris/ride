@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { PanelDef, Sample } from './ActivityCharts';
-import { COLORS, DASH, HONEST, LineKey } from './LargeView';
+import { chartHeight, COLORS, DASH, HONEST, LANE_H, LineKey } from './LargeView';
 import { correlation, linkWords, trendLine, type Pair } from '../engine/compare';
 import { getSetting, setSetting } from '../data/db';
 import { deliver } from '../export/deliver';
@@ -82,15 +82,7 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
   const col = phone ? 38 : 46;
   const padL = 46, padR = together ? col * (defs.length - 1) : 12, padT = 8, padB = 22, gap = 18;
   const lanes = stacked ? defs.map((_, i) => [i]) : [defs.map((_, i) => i)];
-  const [colH, setColH] = useState(0);
-  useEffect(() => {
-    const el = wrap.current; if (!el || phone) return;
-    const ro = new ResizeObserver(() => setColH(el.clientHeight));
-    ro.observe(el); setColH(el.clientHeight);
-    return () => ro.disconnect();
-  }, [phone]);
-  const room = (phone ? 260 : Math.max(260, colH - 30 - 46 - 16)) - padT - padB - (lanes.length - 1) * gap;
-  const laneH = Math.max(phone ? 110 : 90, Math.round(room / lanes.length));
+  const laneH = lanes.length > 1 ? LANE_H : chartHeight(W);
   const H = padT + padB + lanes.length * laneH + (lanes.length - 1) * gap;
   const plotW = W - padL - padR;
   const x0 = xOf(samples[lo]), x1 = Math.max(x0 + 1e-9, xOf(samples[hi]));
@@ -190,13 +182,6 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
             <p class="faint small" style="margin:0">The strip is the whole activity. Drag its window to move along it; pull the window's ends to look at one part.</p>
           </div>
           <div class="lv-panels">
-            <section class="lv-p">
-              <h3>Under the pointer</h3>
-              <table class="lv-t small"><tbody>
-                <tr><td class="faint">{byDistance ? 'Distance' : 'Time'}</td><td class="r">{fmtX(xOf(samples[at]))}</td></tr>
-                {defs.map((d, i) => <tr key={d.key}><td><LineKey i={i} /> {d.title}</td><td class="r"><b>{fmt(d, d.get(samples[at]))}</b></td></tr>)}
-              </tbody></table>
-            </section>
             <section class="lv-p">
               <h3>{whole ? 'Over the whole activity' : 'Over this part'}</h3>
               <table class="lv-t small">

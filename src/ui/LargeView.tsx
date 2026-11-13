@@ -51,6 +51,10 @@ export function suggestionsFor(m: Measures, id: string, from: string, to: string
 }
 
 /** Colour and line style together (A3): each measure reads without relying on colour. */
+/** The height of one chart: about a quarter of its width, within sensible limits; and of each lane when stacked. */
+export const chartHeight = (width: number): number => Math.max(170, Math.min(250, Math.round(width / 4.5)));
+export const LANE_H = 90;
+
 export const COLORS = ['var(--info)', 'var(--aqua)', 'var(--z2)', 'var(--z3)'];
 export const DASH = ['', '7 4', '2 3', '9 3 2 3'];
 
@@ -161,16 +165,6 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
 
   const [wrap, wrapW] = useWidth<HTMLDivElement>(900);
   const phone = typeof window !== 'undefined' && window.innerWidth < 760;
-  // The chart takes the height its column has left, so nothing hangs below it and no space is left empty.
-  const [colH, setColH] = useState(0);
-  useEffect(() => {
-    const el = wrap.current; if (!el || phone) return;
-    const ro = new ResizeObserver(() => setColH(el.clientHeight));
-    ro.observe(el); setColH(el.clientHeight);
-    return () => ro.disconnect();
-  }, [phone]);
-  const chartH = phone ? 0 : Math.max(260, colH - 30 - 46 - 16);
-
   const download = () => {
     const cadWeek = defs.some((d) => d.cadence === 'week');
     const heads = defs.map((d, i) => `${d.name}${d.unit ? ` (${d.unit})` : ''}${i > 0 && v.slides[i - 1] ? `, ${slideWords(v.slides[i - 1], d.cadence)}` : ''}${cadWeek && d.cadence === 'day' ? ', weekly average' : ''}`);
@@ -228,8 +222,8 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
 
         <div class="lv-main">
           <div class="lv-chartcol" ref={wrap}>
-            <Reading defs={defs} vals={vals} at={at} rides={rides} />
-            <Chart defs={defs} vals={vals} M={M} from={v.from} to={v.to} stacked={stacked} width={Math.max(260, wrapW)} phone={phone} height={chartH}
+            <Reading defs={defs} vals={vals} at={at} rides={rides} normal={M.normal(view.id)?.get(at)} />
+            <Chart defs={defs} vals={vals} M={M} from={v.from} to={v.to} stacked={stacked} width={Math.max(260, wrapW)} phone={phone}
               marks={shownMarks} at={at} setPointer={setPointer} openDay={openDay}
               cmp={v.cmp} onPan={(from, to) => set({ from, to, rk: 'custom' })} />
             {!phone && <Strip M={M} view={view} from={v.from} to={v.to} width={Math.max(260, wrapW)} onChange={(from, to) => set({ from, to, rk: 'custom' })} />}
@@ -307,13 +301,14 @@ export function LineKey({ i, bars }: { i: number; bars?: boolean }) {
 
 // ---------- the reading line ----------
 
-function Reading({ defs, vals, at, rides }: { defs: MeasureDef[]; vals: Values[]; at: string; rides: Array<{ date: string; name: string }> }) {
+function Reading({ defs, vals, at, rides, normal }: { defs: MeasureDef[]; vals: Values[]; at: string; rides: Array<{ date: string; name: string }>; normal?: [number, number] }) {
   const onDay = rides.filter((r) => r.date === at);
   const weekOnly = defs.every((d) => d.cadence === 'week');
   return (
     <div class="lv-read small" aria-live="polite">
       <b>{weekOnly ? `Week of ${short(weekStart(at))}` : longDay(at)}</b>
       {defs.map((d, i) => <span key={d.id} class="pr-item"><LineKey i={i} bars={d.style === 'bars'} />{d.name} <b>{fmtValue(d, valueAt(d, vals[i], at))}</b></span>)}
+      {normal && <span class="pr-item faint">your normal {fmtValue(defs[0], normal[0], false)}–{fmtValue(defs[0], normal[1])}</span>}
       {!weekOnly && onDay.length > 0 && <span class="pr-item faint">· {onDay.length === 1 ? onDay[0].name : `${onDay.length} activities`}</span>}
     </div>
   );
@@ -323,8 +318,8 @@ function Reading({ defs, vals, at, rides }: { defs: MeasureDef[]; vals: Values[]
 
 interface Mark { k: string; label: string; days: string[] }
 
-function Chart({ defs, vals, M, from, to, stacked, width, phone, height, marks, at, setPointer, openDay, cmp, onPan }: {
-  defs: MeasureDef[]; vals: Values[]; M: Measures; from: string; to: string; stacked: boolean; width: number; phone: boolean; height: number;
+function Chart({ defs, vals, M, from, to, stacked, width, phone, marks, at, setPointer, openDay, cmp, onPan }: {
+  defs: MeasureDef[]; vals: Values[]; M: Measures; from: string; to: string; stacked: boolean; width: number; phone: boolean;
   marks: Mark[]; at: string; setPointer: (d: string | null) => void; openDay: (d: string) => void; cmp: string[]; onPan: (from: string, to: string) => void;
 }) {
   const N = Math.max(1, daysBetween(from, to) + 1);
@@ -333,8 +328,8 @@ function Chart({ defs, vals, M, from, to, stacked, width, phone, height, marks, 
   // Together: the measure viewed has its scale on the left; each one laid over has its own column of numbers on the right.
   const col = phone ? 38 : 46;
   const padL = 46, padR = together ? col * (defs.length - 1) : 12, padT = 8, padB = 22, gap = 18;
-  const room = height > 0 ? height - padT - padB - (lanes.length - 1) * gap : phone ? 250 : 330;
-  const laneH = Math.max(phone ? 110 : 90, Math.round(room / lanes.length));
+  // A wide, low chart at a fixed height (13 Nov 2026): about a quarter as tall as it is wide; stacked lanes are short.
+  const laneH = lanes.length > 1 ? LANE_H : chartHeight(width);
   const H = padT + padB + lanes.length * laneH + (lanes.length - 1) * gap;
   const W = width;
   const plotW = W - padL - padR;
@@ -578,7 +573,6 @@ function Panels({ defs, vals, M, from, to, at, slides, cmp, setCmp, coach, card 
   const other = defs.length > 1 ? defs[j + 1] : undefined;
   const pr = useMemo(() => other ? pairUp(M.values(view.id), view.cadence, M.values(other.id), other.cadence, slides[j] ?? 0, from, to, (d) => weekStart(d)) : null,
     [view.id, other?.id, slides[j], from, to]);
-  const normal = M.normal(view.id)?.get(at);
   const sums = defs.map((d, i) => summary(inRange(vals[i], d.cadence === 'week' ? weekStart(from) : from, to), d.cadence));
   const N = daysBetween(from, to) + 1;
   const prevFrom = addDays(from, -N), prevTo = addDays(from, -1);
@@ -587,14 +581,6 @@ function Panels({ defs, vals, M, from, to, at, slides, cmp, setCmp, coach, card 
   const hasPrev = periods.some((p) => p.prev != null), hasYear = periods.some((p) => p.year != null);
   return (
     <div class="lv-panels">
-      <section class="lv-p">
-        <h3>Under the pointer</h3>
-        <table class="lv-t small"><tbody>
-          {defs.map((d, i) => <tr key={d.id}><td><LineKey i={i} bars={d.style === 'bars'} /> {d.name}{i > 0 && slides[i - 1] ? <span class="faint"> ({slideWords(slides[i - 1], d.cadence)})</span> : null}</td><td class="r"><b>{fmtValue(d, valueAt(d, vals[i], at))}</b></td></tr>)}
-          {normal && <tr><td class="faint">Your normal {view.word}</td><td class="r faint">{fmtValue(view, normal[0], false)}–{fmtValue(view, normal[1])}</td></tr>}
-        </tbody></table>
-      </section>
-
       <section class="lv-p">
         <h3>Over this range</h3>
         <table class="lv-t small">

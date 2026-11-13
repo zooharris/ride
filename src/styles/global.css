@@ -1907,7 +1907,7 @@ body {
 .pc-opens { cursor: zoom-in; }
 body.lv-open { overflow: hidden; }
 .lv-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.lv { background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); width: min(1240px, 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; overflow: hidden; }
+.lv { background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); width: min(1100px, 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; overflow: hidden; }
 .lv-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 14px 16px 6px; background: var(--bg-2); }
 .lv-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 16px 8px; border-bottom: 1px solid var(--line); }
 .lv-title { min-width: 0; flex: 1 1 260px; }
@@ -1933,8 +1933,8 @@ body.lv-open { overflow: hidden; }
 .mk-sw.mk-tests { background: var(--today); width: 3px; }
 .mk-sw.mk-aside, .mk-band.mk-aside { background: var(--ink-3); fill: var(--ink-3); fill-opacity: .18; }
 .mk-sw.mk-aside { opacity: .5; }
-.lv-main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; padding: 6px 16px 16px; min-height: 0; flex: 1; overflow: hidden; }
-.lv-chartcol { min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.lv-main { padding: 6px 16px 16px; overflow: auto; }
+.lv-chartcol { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .lv-read { display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: center; min-height: 22px; }
 .lv-read .pr-item { display: inline-flex; gap: 5px; align-items: center; }
 .lv-svg { display: block; max-width: 100%; outline-offset: 2px; user-select: none; -webkit-user-select: none; }
@@ -1942,7 +1942,7 @@ body.lv-open { overflow: hidden; }
 .lv-strip { display: block; max-width: 100%; cursor: grab; touch-action: none; }
 .lv-strip:focus-visible { outline: 2px solid var(--accent); }
 .lv-win { fill: var(--accent); fill-opacity: .16; stroke: var(--accent); stroke-width: 1.2; cursor: grab; }
-.lv-panels { overflow: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; padding-right: 2px; }
+.lv-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 10px; align-items: start; margin-top: 12px; }
 .lv-p { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg-3); }
 .lv-p h3 { margin: 0 0 6px; font-size: 13px; }
 .lv-t { width: 100%; border-collapse: collapse; }
@@ -1955,14 +1955,12 @@ body.lv-open { overflow: hidden; }
 .lv-card { width: min(980px, 100%); }
 .lv-cardbody { padding: 12px 16px 16px; overflow: auto; }
 .lv-cardbody .pc { height: auto; }
-@media (max-width: 1000px) { .lv-main { grid-template-columns: minmax(0, 1fr) 290px; } }
 @media (max-width: 760px) {
   .lv-bg { padding: 0; align-items: stretch; }
   .lv { border-radius: 0; max-height: 100dvh; height: 100dvh; width: 100%; border: 0; overflow: auto; display: block; }
   .lv-head { position: sticky; top: 0; z-index: 3; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
   .lv-tools { border-bottom: 0; padding: 8px 12px 0; }
-  .lv-main { grid-template-columns: minmax(0, 1fr); overflow: visible; }
-  .lv-chartcol, .lv-panels { overflow: visible; }
+  .lv-main { overflow: visible; }
   .lv-head { padding: 10px 12px 6px; }
   .lv-ctl, .lv-main { padding-left: 12px; padding-right: 12px; }
   .lv-lab { min-width: 0; flex-basis: 100%; }

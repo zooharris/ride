@@ -40,7 +40,7 @@ export const CORE: Workout[] = [
 
   // Endurance
   lib({ id: 'lib-z2-60', name: 'Foundation 60', family: 'endurance', phases: ['base', 'build', 'any'], bases: ['power', 'hr'],
-    purpose: 'An hour of steady zone 2. The bread and butter of aerobic fitness, and the ride most riders over fifty should be doing more of. Conversational the whole way.',
+    purpose: 'An hour of steady zone 2. The bread and butter of aerobic fitness, and the ride most riders should be doing more of. Conversational the whole way.',
     physiology: 'Mitochondrial density, fat oxidation, capillary growth.',
     blocks: [warm(10), step(45, 0.62, { intensityHigh: 0.72, label: 'Steady' }), cool(5)] }),
   lib({ id: 'lib-z2-90', name: 'Foundation 90', family: 'endurance', phases: ['base', 'build', 'any'], bases: ['power', 'hr'],
@@ -102,7 +102,7 @@ export const CORE: Workout[] = [
 
   // Anaerobic and sprint
   lib({ id: 'lib-sprints', name: 'Neuromuscular Sprints', family: 'anaerobic', phases: ['build', 'peak', 'any'], bases: ['power'],
-    purpose: 'Eight fifteen-second all-out sprints with long, lazy recoveries. Masters riders lose top-end power first, and this is the cheapest way to keep it. Fresh legs, full gas, long rests.',
+    purpose: 'Eight fifteen-second all-out sprints with long, lazy recoveries. Top-end power fades first without it, and this is the cheapest way to keep it. Fresh legs, full gas, long rests.',
     physiology: 'Neuromuscular power and recruitment of fast-twitch fibres.',
     blocks: [warm(15), rep(8, 'Sprints', step(0.25, 1.8), step(4.75, 0.5)), cool(10)] }),
   lib({ id: 'lib-anaerobic-6x1', name: 'Anaerobic 6 x 1', family: 'anaerobic', phases: ['peak'], bases: ['power'],
@@ -145,7 +145,7 @@ export const CORE: Workout[] = [
     physiology: 'Lactate threshold; repeatability at FTP.',
     blocks: [warm(15), rep(3, 'Threshold', step(12, 0.97, { intensityHigh: 1.02 }), step(6, 0.5)), cool(10)] }),
   lib({ id: 'lib-vo2-4x5', name: 'VO2max 4 x 5', family: 'vo2max', phases: ['peak'], bases: ['power'],
-    purpose: 'Four five-minute efforts above threshold with five minutes easy. Longer than 4 x 4 and the top of the VO2max progression for a masters rider; once a week at most, fresh.',
+    purpose: 'Four five-minute efforts above threshold with five minutes easy. Longer than 4 x 4 and the top of the VO2max progression; once a week at most, ridden fresh.',
     physiology: 'Maximal oxygen uptake; sustained high-intensity tolerance.',
     blocks: [warm(15), rep(4, 'VO2max', step(5, 1.08, { intensityHigh: 1.15 }), step(5, 0.5)), cool(10)] }),
 

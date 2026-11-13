@@ -2,7 +2,7 @@
 
 *(formerly AntoVelo, and before that VeloIQ 2.0)*
 
-A personal cycling training app for masters riders: plan the week, send each ride to a Garmin, pull the results back, and adapt the plan. Runs entirely in the browser; installs on an iPhone home screen as a PWA.
+A cycling training app for any rider: plan the week, send each ride to a Garmin, pull the results back, and adapt the plan. Runs entirely in the browser; installs on an iPhone home screen as a PWA.
 
 Antogo is the family name. This repository is **Antogo Cycling**, the training app; **Antogo BikeFit**, the camera-based bike fitter, lives in its own repository.
 

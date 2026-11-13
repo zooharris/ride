@@ -31,7 +31,7 @@ const LEGS = 'legs and trunk', UPPER = 'upper body and posterior chain';
 export const STRENGTH_SESSIONS: StrengthSessionDef[] = [
   // Heavy strength
   { id: 'heavy-legs', name: 'Heavy legs', quality: 'heavy', focus: 'legs', needs: ['dumbbells', 'bench'], ids: ['db-front-squat', 'split-squat', 'db-deadlift', 'hip-thrust', 'calf-raise', 'plank'],
-    purpose: 'Few reps, big lifts for the legs: the strength masters riders lose fastest and gain most from.' },
+    purpose: 'Few reps, big lifts for the legs: the strength riding alone never builds, and which fades fastest with age.' },
   { id: 'heavy-upper', name: 'Heavy upper body', quality: 'heavy', focus: 'upper', needs: ['dumbbells', 'bench'], ids: ['db-bench', 'one-arm-row', 'db-overhead', 'db-rdl', 'db-pullover', 'farmer-carry'],
     purpose: 'Pressing, pulling and the posterior chain, heavy: an upper body that holds the bars steady for hours.' },
   { id: 'heavy-legs-kb', name: 'Heavy legs, kettlebell', quality: 'heavy', focus: 'legs', needs: ['kettlebell'], ids: ['kb-goblet-squat', 'kb-deadlift', 'kb-rack-lunge', 'kb-sl-rdl', 'calf-raise', 'kb-suitcase-carry'],
@@ -185,7 +185,7 @@ export function strengthWorkout(d: StrengthSessionDef, dose: StrengthDose, estim
 }
 
 const QUALITY_PHYSIOLOGY: Record<StrengthQuality, string> = {
-  heavy: 'Heavy, low-rep work builds muscle and tendon strength, which masters riders lose fastest and which no amount of riding replaces.',
+  heavy: 'Heavy, low-rep work builds muscle and tendon strength, which riding alone never builds, and which fades fastest with age.',
   power: 'Rate of force development falls with age faster than strength; moving a load fast keeps the quick part of the stroke.',
   endurance: 'Higher reps, carries and long holds train the muscles to keep working well when they are tired, as at the end of a long day.',
   stability: 'One side at a time finds and fixes the weaker leg, and trains the hips and trunk to hold the pelvis level over every pedal stroke.',

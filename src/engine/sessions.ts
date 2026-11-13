@@ -197,7 +197,7 @@ const RUN_NAME: Record<RunKind, (m: number) => string> = {
 /** The newer kinds (0) take their load from their steps' bands instead. */
 const RUN_KIND_TSS: Record<RunKind, { perHour: number; effort: number }> = { easy: { perHour: 55, effort: 4 }, long: { perHour: 55, effort: 4 }, strides: { perHour: 60, effort: 5 }, tempo: { perHour: 75, effort: 7 }, hills: { perHour: 80, effort: 7 }, fartlek: { perHour: 0, effort: 6 }, progression: { perHour: 0, effort: 6 }, 'run-walk': { perHour: 0, effort: 3 } };
 const RUN_PHYSIOLOGY: Record<RunKind, string> = {
-  easy: 'Aerobic work with the impact and bone loading cycling never gives, and calf and foot strength the bike leaves alone. Easy means easy: a masters rider recovers from running more slowly than from riding, so the heart rate stays low and the pace is whatever that allows.',
+  easy: 'Aerobic work with the impact and bone loading cycling never gives, and calf and foot strength the bike leaves alone. Easy means easy: a cyclist recovers from running more slowly than from riding, so the heart rate stays low and the pace is whatever that allows.',
   long: 'Time on feet at an easy heart rate: the tendons, feet and hips get used to running for longer while the aerobic system does the same work a long ride does, at a lower dose.',
   strides: 'Six short, quick strides on top of an easy run teach the legs to turn over fast and smoothly, with almost no fatigue: running form without running hard.',
   tempo: 'Three blocks at a comfortably hard heart rate raise the pace you can hold aerobically; for a cyclist it is threshold work with the legs used differently. Keep it to one a week at most.',

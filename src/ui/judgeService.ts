@@ -39,7 +39,7 @@ export const JUDGE_WAIT_MS = 90_000;
 const KIND_ORDER: SessionKind[] = ['ride', 'strength', 'mobility', 'walk', 'run'];
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const dowOf = (date: string) => new Date(date + 'T00:00:00').getDay();
-const dayWords = (date: string) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+const dayWords = (date: string) => new Date(date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
 /** What a workout is for the duplicate check: its Library entry when it is a copy. */
 const keyOf = (w: Workout) => w.libraryId ?? w.id;

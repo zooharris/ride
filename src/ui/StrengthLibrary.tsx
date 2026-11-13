@@ -20,7 +20,7 @@ export const ALL_EQUIPMENT: Equipment[] = ['bodyweight', 'dumbbells', 'bench', '
 const LEVELS: StrengthDose[] = ['foundation', 'build', 'maintain', 'light'];
 const QUALITIES: StrengthQuality[] = ['heavy', 'power', 'endurance', 'stability'];
 const LEAD: Record<StrengthQuality, string> = {
-  heavy: 'Few reps, big lifts: the strength masters riders lose fastest and gain most from. A plan uses it early in a block, while the riding is steady.',
+  heavy: 'Few reps, big lifts: the strength riding alone never builds, and which fades fastest with age. A plan uses it early in a block, while the riding is steady.',
   power: 'Moving a load fast: swings, quick step-ups and lunges. The bridge from strength to sprints and standing climbs; a plan uses it as the riding gets harder, and late in the block for group rides.',
   endurance: 'Higher reps, carries and long holds: legs and a trunk that last. A plan uses it late in the block for a century, a long climb or a time trial.',
   stability: 'Single-leg lifts and hip control: finds and fixes the weaker side. Good after a lay-off, and on any day heavy work would cost too much.',

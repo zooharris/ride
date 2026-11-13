@@ -55,7 +55,7 @@ export const INDOOR: Workout[] = [
 
   // VO2max, short form
   lib({ id: 'in-vo2-4x4', name: 'VO2max 4 x 4', family: 'vo2max', phases: ['build', 'peak'], bases: ['power'],
-    purpose: 'Four four-minute efforts with four minutes easy. The classic, and enough for a masters rider in any week that also has a long ride.',
+    purpose: 'Four four-minute efforts with four minutes easy. The classic, and enough VO2max work for any week that also has a long ride.',
     physiology: 'Maximal oxygen uptake.',
     blocks: [warm(15), rep(4, 'VO2max', step(4, 1.1, { intensityHigh: 1.18 }), step(4, 0.5)), cool(10)] }),
   lib({ id: 'in-vo2-40-20', name: '40/20s', family: 'vo2max', phases: ['build', 'peak'], bases: ['power'],

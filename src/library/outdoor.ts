@@ -116,7 +116,7 @@ export const OUTDOOR: Workout[] = [
     purpose: 'One more effort than last week. If the fourth is noticeably slower than the first, the pacing was off, not the fitness.',
     physiology: 'Lactate threshold; repeatability at FTP.' }),
   trail({ id: 'trail-thr-3x10', name: 'Threshold 3 x 10', family: 'threshold', phases: ['build'], bases: BOTH, total: 105, set: thr(3, 10, 5),
-    purpose: 'Longer threshold efforts with a little more recovery. Thirty minutes at FTP in a session is a serious day for a masters rider; the next day should be easy.',
+    purpose: 'Longer threshold efforts with a little more recovery. Thirty minutes at FTP in a session is a serious day for any rider; the next day should be easy.',
     physiology: 'Lactate threshold; time-trial tolerance.' }),
   trail({ id: 'trail-thr-2x15', name: 'Threshold 2 x 15', family: 'threshold', phases: ['build', 'peak'], bases: BOTH, total: 105, set: thr(2, 15, 8),
     purpose: 'Two long threshold efforts. Closer to a time trial than an interval session; ride the first one conservatively.',

@@ -108,7 +108,7 @@ export function loadSignal(loads: Array<{ date: string; tss: number }>, date: st
   const r1 = rank(day(y), byWeekday ? sameDow : days), r3 = rank(three(y), threes);
   const z = -(quantile(r1) + quantile(r3)) / 2;
   const pct = (r: number) => Math.round(r * 100);
-  const weekday = new Date(y + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+  const weekday = new Date(y + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long' });
   const dayWords = day(y) === 0 ? 'yesterday was a rest day'
     : byWeekday ? (r1 >= 0.8 ? `yesterday's training load (${Math.round(day(y))} TSS) was above your usual for a ${weekday}` : r1 <= 0.2 ? `yesterday's training load (${Math.round(day(y))} TSS) was below your usual for a ${weekday}` : `yesterday's training load (${Math.round(day(y))} TSS) was about your usual for a ${weekday}`)
     : `yesterday's training load (${Math.round(day(y))} TSS) was more than ${pct(r1)}% of your days in the last 8 weeks`;

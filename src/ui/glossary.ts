@@ -65,7 +65,7 @@ export const GLOSSARY = {
   ramp: {
     term: 'Ramp rate',
     short: 'How many fitness points a week you are adding',
-    long: 'How many fitness points a week you are adding. The planner caps it (4 a week for a masters rider, more with evidence you recover well).',
+    long: 'How many fitness points a week you are adding. The planner caps it (4 a week with masters recovery on, more with evidence you recover well).',
   },
   powerCurve: {
     term: 'Power curve, W/kg',

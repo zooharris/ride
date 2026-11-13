@@ -88,7 +88,7 @@ describe('every Library ride speaks in the player (10 Nov 2026)', () => {
     }
   });
   it('hand-written cues are kept; the first rides get cues from their effort', () => {
-    const tl = buildTimeline(LIBRARY.find((w) => w.id === 'lib-vo2-5x3')!, profile);
+    const tl = buildTimeline(LIBRARY.find((w) => w.id === 'lib-vo2-hr-45')!, profile);
     const hard = tl.filter((s) => s.intensity >= 1.06);
     expect(hard.length).toBeGreaterThan(2);
     expect(cueAt(hard[0], 5)).toMatch(/VO2max/);

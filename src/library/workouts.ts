@@ -9,6 +9,7 @@ import { BATCH2 } from './batch2';
 import { withAutoCues } from './autoCues';
 import { GUIDE_RIDES } from './guide';
 import { withCueKinds } from './cueKinds';
+import { reworked } from './rework';
 import { ALL_OUT_STANDIN } from './trains';
 
 // Small helpers so the library reads like a training plan, not JSON.
@@ -26,7 +27,7 @@ const lib = (w: Omit<Workout, 'source' | 'setting' | 'kind'>): Workout => relaxF
  * short, standard or long feel so the calendar has something for most days.
  * Intensities are fractions of FTP; the engine renders them as HR when asked.
  */
-const CORE: Workout[] = [
+export const CORE: Workout[] = [
   // Recovery
   lib({ id: 'lib-spin-30', name: 'Easy Spin', family: 'recovery', phases: ['any'], bases: ['power', 'hr'],
     purpose: 'Thirty minutes of light pedalling to move blood through tired legs the day after strength work or intervals. Keep the cadence high and the ego at home.',
@@ -220,8 +221,8 @@ const CORE: Workout[] = [
 /** The whole library: core sessions, trail-shaped outdoor rides, indoor short forms (every step given a cue), and the two batches of 9–10 Nov. */
 export const LIBRARY: Workout[] = [...[...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
-  return withAutoCues(withTags(place ? { ...w, name: place, subtitle: w.name } : w));
-}), ...BATCH1, ...BATCH2].map((w) => withCueKinds(sprintsAllOut(w))), ...GUIDE_RIDES];
+  return withAutoCues(reworked(withTags(place ? { ...w, name: place, subtitle: w.name } : w)));
+}), ...[...BATCH1, ...BATCH2].map(reworked)].map((w) => withCueKinds(sprintsAllOut(w))), ...GUIDE_RIDES];
 
 /**
  * Sprints are all out (12 Nov 2026, brief B3): a Library sprint that had a percentage target (150 to 180% of FTP)

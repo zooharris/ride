@@ -116,8 +116,8 @@ export const FIND_WORDS: Record<Slot, string> = {
 /** The one line some lists carry: what makes the device appear. */
 export const WAKE: Partial<Record<Slot, string>> = {
   bpm: 'Wake it first: put the strap on, or turn on Broadcast heart rate on your watch.',
-  ve: 'Put the strap on and close the Tymewear app first: the strap connects to one app at a time.',
+  ve: 'Put the strap on and close the strap\u2019s own app first: the strap connects to one app at a time.',
 };
 /** The breathing box, empty: it is never needed. */
-export const BREATH_OPTIONAL = 'Optional. A Tymewear VitalPro; close the Tymewear app first.';
-export const BREATH_QUIET = 'Connected, but no breathing is arriving. Check the strap is snug and that the Tymewear app is closed.';
+export const BREATH_OPTIONAL = 'Optional. A breathing strap (the Tymewear VitalPro is the one supported); close the strap\u2019s own app first.';
+export const BREATH_QUIET = 'Connected, but no breathing is arriving. Check the strap is snug and that the strap\u2019s own app is closed.';

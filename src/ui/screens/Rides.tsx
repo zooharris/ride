@@ -19,6 +19,7 @@ import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
 import { toast } from '../Toast';
 import { go, goBack, readQuery, useUrlSync } from '../router';
+import { DownloadActivity } from '../DownloadSheet';
 import { fetchActivityFile, fetchStreams, nameLaps, sessionLapNames, sportOf } from '../../sync/intervals';
 import { breathingOf } from '../../engine/breathFreeze';
 import { cachedStreamsUsable, fillBreathing, FIRST_BREATHING_KEY, hasBreathing, noteBreathingDate } from '../../player/breathRead';
@@ -83,6 +84,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   return (
     <div>
       <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities" help="activities">
+        <a class="btn sm" href="#/export">Export</a>
         <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
       </PageHead>
       {hidden > 0 && (
@@ -255,6 +257,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const refused = !p && data.planned.find((x) => x.notActivityIds?.includes(r.id));
   const refusedW = refused ? findWorkout(data.mine, refused.workoutId) : undefined;
   const [busy, setBusy] = useState(false);
+  // Download at any time (12 Nov 2026).
+  const [downloading, setDownloading] = useState(false);
   const differentWorkout = async () => {
     if (!p || !w) return;
     const past = p.date < today() ? ' (missed, as its day has passed)' : '';
@@ -300,7 +304,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const showRecording = !handLogged && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120;
   return (
     <div>
-      <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`} />
+      <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`}><button class="btn sm" onClick={() => setDownloading(true)}>Download</button></PageHead>
       <SummaryStrip items={items} />
       <TwoRecordings edits={data.edits} rides={data.ridesAll} only={r.id} top />
       {w && p && !c && (
@@ -437,8 +441,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           ))}
         </table>
       </section>
+      {downloading && <DownloadActivity ride={r} data={data} onClose={() => setDownloading(false)} />}
       <StrapDetails activityId={r.id} />
-      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'VitalPro, through your Garmin' : undefined)} />
+      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'through your Garmin' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Garmin Connect keeps its own copy; delete it there as well if you want it gone everywhere.</p>

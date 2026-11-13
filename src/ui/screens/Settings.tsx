@@ -9,13 +9,13 @@ import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
-import { autoBackup, downloadBackup, restoreBackup } from '../../data/backup';
+import { autoBackup, backupSummary, downloadBackup, restoreBackup } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { breathZones, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, standardBreathPcts, tableOf, validBreathTops, validTops, type Zone, type ZoneMode } from '../../engine/zones';
 import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
-import { APP_NAME } from '../../appName';
+import { APP_NAME, APP_SHORT_NAME } from '../../appName';
 import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
@@ -180,10 +180,17 @@ export function Settings({ data }: { data: AppData }) {
   }
 
   async function restore(e: Event) {
-    const f = (e.target as HTMLInputElement).files?.[0];
+    const input = e.target as HTMLInputElement;
+    const f = input.files?.[0];
     if (!f) return;
     try {
-      const r = await restoreBackup(await f.text());
+      const text = await f.text();
+      // Restoring replaces this device's own data, so it asks first and says what (12 Nov 2026).
+      const sum = backupSummary(text);
+      if (!sum.ok) { setMsg({ ok: false, text: sum.words }); input.value = ''; return; }
+      const made = sum.exportedAt ? ` made ${new Date(sum.exportedAt).toLocaleString()}` : '';
+      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nYour profile, settings, calendar, workouts, plans and day notes on this device are replaced with the backup's. Activities and wellness come back from your account on the next sync. Ride recordings already on this device are kept. Your other devices follow at their next merge.`)) { input.value = ''; return; }
+      const r = await restoreBackup(text);
       notify();
       setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
       setTimeout(() => location.reload(), 800);
@@ -360,11 +367,17 @@ export function Settings({ data }: { data: AppData }) {
           <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
         </div>
         <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
-        <p class="muted small" style="margin:16px 0 8px">A file copy as well, for your own keeping; unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
+        <p class="muted small" style="margin:16px 0 8px">A file copy of everything as well, for moving {APP_SHORT_NAME} to another device or keeping it safe: plans, calendar, workouts, settings, favourites, what the app has learned about you (such as the watts that hold each heart-rate zone), notes and efforts, and ride recordings still on this device. Unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
-          <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Save backup file</button>
-          <label class="btn" style="position:relative;overflow:hidden">Restore from file<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
+          <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Back up everything</button>
+          <label class="btn" style="position:relative;overflow:hidden">Restore from a backup<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
         </div>
+        <p class="faint small" style="margin:8px 0 0">To take rides and workouts to other apps instead, use <a href="#/export">Export</a>.</p>
+      </Fold>
+
+      <Fold title="Export to other apps" summary="Activities and workouts as files">
+        <p class="muted small" style="margin-bottom:12px">Download finished activities and workouts to ride, many at once, as files other apps import: Garmin's .fit, Zwift's .zwo, and others. One at a time, use Download on any ride's or activity's page.</p>
+        <a class="btn" href="#/export">Open Export</a>
       </Fold>
 
       <HistoryLoader />

@@ -1875,3 +1875,27 @@ body {
 .rtable .r { padding-left: 6px; }
 
 .rd-key i.ln.br { background: var(--aqua); }
+
+/* Export at any time (12 Nov 2026): the download sheet's format choices, and the Export page. */
+.dl-opt { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--bg-2); }
+.dl-opt input { margin-top: 3px; flex: 0 0 auto; }
+.dl-opt:has(input:checked) { border-color: var(--accent); }
+.dl-opt.off { cursor: default; background: transparent; }
+.dl-opt.off b { color: var(--ink-3); font-weight: 500; }
+.ex-list { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); }
+.ex-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); font-size: 14px; min-width: 0; }
+.ex-row:last-child { border-bottom: 0; }
+.ex-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-row .d { flex: 0 0 auto; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ex-step { margin: 18px 0 8px; }
+.ex-bar { height: 8px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+.ex-bar > span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.ex-dates { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ex-dates input[type=date] { max-width: 170px; }
+.ex-page .seg { flex-wrap: wrap; max-width: 100%; }
+.ex-page .send-row { flex-wrap: wrap; }
+@media (max-width: 520px) {
+  .ex-row { flex-wrap: wrap; row-gap: 0; }
+  .ex-row .t { flex: 1 1 calc(100% - 34px); }
+  .ex-row .d { flex: 1 1 100%; padding-left: 26px; }
+}

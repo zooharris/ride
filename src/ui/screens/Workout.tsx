@@ -35,6 +35,8 @@ import { ExercisePictures } from '../ExercisePictures';
 import { playerOffered, TRAINER_ONLY_ELSEWHERE } from '../../player/platform';
 import { TrainerOnlyTag } from '../Thumbs';
 import { APP_SHORT_NAME } from '../../appName';
+import { DownloadWorkout } from '../DownloadSheet';
+import { workoutExportable } from '../../export/formats';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
@@ -51,6 +53,8 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const [adding, setAdding] = useState(false);
   const [showText, setShowText] = useState(false);
   const [change, setChange] = useState<'menu' | 'replace' | null>(null);
+  // Download at any time (12 Nov 2026): the sheet with the format and, for a ride, the same choices as Send.
+  const [downloading, setDownloading] = useState(false);
   // The plans' outdoor weekdays, for where a ride with an outdoor version will be ridden (10 Nov 2026).
   const [plans, setPlans] = useState<PlanDays[]>([]);
   const breathTable = useBreathTable();
@@ -65,7 +69,9 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') replaceRoute(`workout/${w.id}?from=${from}&date=${p.date}`); else goBack(backHref); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm" style="margin-left:6px" onClick={() => setChange('replace')}>Replace</button></>;
-  if (w.kind !== 'ride') return <SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); } : undefined} />;
+  const canDownload = workoutExportable(w).ok;
+  const downloadSheet = downloading && <DownloadWorkout w={w} entry={plannedEntry} profile={profile} plans={plans} onClose={() => setDownloading(false)} />;
+  if (w.kind !== 'ride') return <><SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); } : undefined} onDownload={canDownload ? () => setDownloading(true) : undefined} />{downloadSheet}</>;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -100,10 +106,11 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
         {/* The same Add to a date sheet as every other page (10 Nov 2026): a hidden date box over a label opened nothing on a laptop. */}
         <button class="btn" onClick={() => setAdding(true)}>Pick a date</button>
+        {canDownload && !(plannedEntry && plannedEntry.status !== 'completed') && <button class="btn" onClick={() => setDownloading(true)}>Download</button>}
       </div>
       {w.trainerOnly && <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Ridden on the trainer in {APP_SHORT_NAME}, not sent to the Garmin: a Garmin workout is a fixed list of steps, and this one goes on until you can't.{playerOffered() ? '' : ` ${TRAINER_ONLY_ELSEWHERE}`}</p>}
       {plannedEntry && (<>
-        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{plannedEntry.status !== 'completed' && !w.trainerOnly && <> <SendButton w={w} entry={plannedEntry} profile={profile} plans={plans} /></>}{changeButtons} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
+        <p class="faint small" style="margin-top:-8px;margin-bottom:14px">Planned for {fmtDate(plannedEntry.date)}{plannedEntry.note ? ` · ${plannedEntry.note}` : ''}.{plannedEntry.status !== 'completed' && !w.trainerOnly && <> <SendButton w={w} entry={plannedEntry} profile={profile} plans={plans} /></>}{changeButtons}{plannedEntry.status !== 'completed' && canDownload && <button class="btn sm" style="margin-left:6px" onClick={() => setDownloading(true)}>Download</button>} <button class="btn sm quiet" onClick={async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); }}>Remove from the calendar</button></p>
         {plannedEntry.reason && <p style="margin:-6px 0 14px;font-size:15px"><b>Why it’s on your plan:</b> {plannedEntry.reason}</p>}
       </>)}
 
@@ -133,6 +140,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
         {showText && (() => { const c = plannedEntry?.status === 'sent' ? onGarmin(plannedEntry, w, plans) : sendDefault(plannedEntry ?? { date: today() }, w, profile.basis, plans, !!profile.preferBreath && canSendByBreath(w, profile, breathTable)); return <><p class="faint small" style="margin:8px 0 0">{plannedEntry?.status === 'sent' ? 'As it is on your Garmin' : 'As Send to Garmin sends it'}: {sendWords(c)}.</p><pre class="panel small" style="white-space:pre-wrap;margin-top:6px;font-family:inherit">{(() => { const x = shapedForSend(w, c.basis, profile, breathTable); return renderIntervalsText(versionFor(x.workout, c.where ?? 'trainer').workout, x.targets); })()}</pre></>; })()}
       </section>}
       {changeSheet}
+      {downloadSheet}
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}
     </div>
   );
@@ -140,7 +148,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, hr, thresholdPace, onRemove, changeButtons, changeSheet }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; hr?: HrProfile; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, hr, thresholdPace, onRemove, changeButtons, changeSheet, onDownload }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; hr?: HrProfile; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren; onDownload?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -164,7 +172,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <BackLink fallback={backHref} style="margin-left:-10px;margin-bottom:8px" />
       <div class="row" style="gap:10px;margin-bottom:6px"><KindDot kind={w.kind} big /><span class="faint small">{KIND_LABEL[w.kind]} · about {minutes} min{planned ? <> · on the calendar {planned.date === today() ? 'today' : fmtDate(planned.date, { weekday: 'long', month: 'short', day: 'numeric' })}</> : null}{w.estimatedTss ? <span title="Estimated training stress (TSS) for this session; it counts toward fitness and fatigue the way a ride’s TSS does."> · ≈ {w.estimatedTss} TSS, estimated</span> : null}</span></div>
       <div class="row" style="gap:8px;align-items:center"><h1>{w.name}</h1><Star w={w} /></div>
-      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
+      {planned && <p class="faint small" style="margin-top:4px">Planned for {fmtDate(planned.date)}{planned.note ? ` · ${planned.note}` : ''}.{changeButtons}{onDownload && planned.status !== 'completed' && <button class="btn sm" style="margin-left:6px" onClick={onDownload}>Download</button>}{onRemove && <button class="btn danger sm" style="margin-left:6px" onClick={onRemove}>Remove from the calendar</button>}</p>}
       {planned?.reason && <p style="margin:8px 0 0;font-size:15px"><b>Why it’s on your plan:</b> {planned.reason}</p>}
       <p style="margin:14px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
@@ -267,6 +275,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       <div class="row wrap" style="margin-top:22px;gap:8px">
         {!planned && <button class="btn primary" onClick={() => setAdding(true)}>Add to a date</button>}
         {w.source === 'mine' ? <a class="btn" href={`#/build/${w.id}`}>Edit</a> : <a class="btn" href={`#/build?copy=${w.id}`}>Copy and edit</a>}
+        {onDownload && !(planned && planned.status !== 'completed') && <button class="btn" onClick={onDownload}>Download</button>}
         {w.source === 'generated' && <span class="faint small" style="align-self:center">built by the plan</span>}
       </div>
       {adding && <AddToDate w={w} basis={basis} onClose={() => setAdding(false)} />}

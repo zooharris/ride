@@ -4,6 +4,7 @@ import { EASY_WALK, bandKeyOf, bandTssPerHour, recoveryBand, stepBand, walkBand,
 import { newId } from './workout';
 import { mobilityFor, type Target } from '../library/mobility';
 import { packWords } from './units';
+import { ownWalkRate } from './walkRates';
 
 /**
  * Generators for the non-riding sessions. Like ride generation, each returns a
@@ -143,7 +144,8 @@ export function retargetWorkout(w: Workout, profile?: Pick<Profile, 'lthr' | 'ma
 export function sessionTssPerHour(kind: Workout['kind'], opts: Partial<WalkSpec> & { effort?: number } = {}): number {
   if (kind === 'walk') {
     const b = walkBand({ minutes: 0, ...opts });
-    return bandTssPerHour(b) + (opts.packKg ?? 0) * 0.5;
+    // The rider's own rate for the band once they have five walks with heart rate in it (12 Nov 2026).
+    return (ownWalkRate(b) ?? bandTssPerHour(b)) + (opts.packKg ?? 0) * 0.5;
   }
   if (kind === 'mobility') return 8;
   if (kind === 'run') { const e = opts.effort ?? 4; return e <= 4 ? 55 : e === 5 ? 60 : e === 6 ? 68 : e === 7 ? 75 : 80; }

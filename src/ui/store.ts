@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { db, getSetting, loadProfile } from '../data/db';
+import { db, getSetting, loadProfile, setSetting } from '../data/db';
+import { walkBand } from '../engine/foot';
 import type { ActivityEdit, DayNote, Equipment, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
 import { LIBRARY } from '../library/workouts';
 import { readyMadeSessions } from '../library/sessions';
@@ -11,6 +12,7 @@ import { setLastWeightLookup } from '../sync/intervals';
 import { lastDone, weightText } from '../engine/record';
 import { today } from '../engine/load';
 import { packUnit, sameSessionName, setPackUnit, weightUnitsOf } from '../engine/units';
+import { learnWalkRates, setWalkRates, WALK_RATES_KEY, type WalkRates } from '../engine/walkRates';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
@@ -65,6 +67,16 @@ export async function loadAppData(): Promise<AppData> {
   ]);
   setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
   setPackUnit(weightUnitsOf(profile));
+  // The rider's own walk rates: worked out again from their recorded walks, kept (and synced) only when they change.
+  const walks = planned.filter((p) => p.status === 'completed' && p.activityId).flatMap((p) => {
+    const w = mine.find((x) => x.id === p.workoutId);
+    const r = ridesAll.find((x) => x.id === p.activityId);
+    return w?.walk && r && r.sport === 'walk' && r.tssBasis === 'heart-rate' && r.tss ? [{ band: walkBand(w.walk), seconds: r.seconds, tss: r.tss }] : [];
+  });
+  const rates = learnWalkRates(walks);
+  const kept = await getSetting<WalkRates>(WALK_RATES_KEY, {});
+  if (JSON.stringify(rates) !== JSON.stringify(kept) && Object.keys(rates).length) await setSetting(WALK_RATES_KEY, rates);
+  setWalkRates(Object.keys(rates).length ? rates : kept);
   // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
   const history = doneHistory(planned, edits);
   setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });

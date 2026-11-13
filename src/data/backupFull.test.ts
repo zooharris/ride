@@ -21,6 +21,7 @@ describe('back up everything (12 Nov 2026)', () => {
     await setSetting('hrPowerTable', { 2: { watts: 180 } });
     await setSetting('breathPowerTable', { 1: { watts: 150 } });
     await setSetting('libraryFavorites', ['lib-z2-105']);
+    await setSetting('walkRates', { '0-300': { perHour: 27.5, n: 6 } });
     await setSetting('playerSound', 'beeps');
     await setSetting('coachChat', { date: '2026-11-08', turns: [] });
     await setSetting('intervals', { athleteId: 'i1', apiKey: 'k' });
@@ -36,6 +37,7 @@ describe('back up everything (12 Nov 2026)', () => {
     await restoreBackup(file);
 
     expect((await db.profile.get('me'))?.ftp).toBe(250);
+    expect(await getSetting('walkRates', {})).toEqual({ '0-300': { perHour: 27.5, n: 6 } });
     expect(await db.workouts.get('w1')).toBeTruthy();
     expect(await db.planned.get('p1')).toBeTruthy();
     expect(await db.plans.get('plan1')).toBeTruthy();

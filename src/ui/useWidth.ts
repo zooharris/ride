@@ -12,7 +12,14 @@ export function useWidth<T extends HTMLElement = HTMLDivElement>(fallback = 480)
   // first shows "loading"), so watch for it on every render rather than only once, or the fallback
   // width sticks and a phone gets the three-column layout.
   const [el, setEl] = useState<T | null>(null);
-  useLayoutEffect(() => { if (ref.current !== el) setEl(ref.current); });
+  useLayoutEffect(() => {
+    const cur = ref.current;
+    if (cur === el) return;
+    setEl(cur);
+    // Measure before the browser paints, so a chart never shows for a moment at the fallback width.
+    const w0 = cur ? Math.round(cur.getBoundingClientRect().width) : 0;
+    if (w0 > 0) setW(w0);
+  });
   useEffect(() => {
     if (!el) return;
     const first = Math.round(el.getBoundingClientRect().width);

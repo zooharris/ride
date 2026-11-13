@@ -68,8 +68,9 @@ export async function looksRight(s: Session, info: TestInfo, where: string): Pro
   await page.waitForLoadState('networkidle').catch(() => {});
   const text = (await page.locator('body').innerText()).trim();
   expect(text.length, `${where}: the page is blank`).toBeGreaterThan(40);
-  const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(sideways, `${where}: the page scrolls sideways by ${sideways}px`).toBeLessThanOrEqual(1);
+  // A page that settles within two seconds is fine; one that stays wider than the screen is not.
+  const sideways = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await expect.poll(sideways, { message: `${where}: the page scrolls sideways`, timeout: 2_000 }).toBeLessThanOrEqual(1);
   expect(s.problems, `${where}: errors on the page`).toEqual([]);
   const shot = await page.screenshot({ fullPage: !!process.env.SHOTS });
   await info.attach(where, { body: shot, contentType: 'image/png' });

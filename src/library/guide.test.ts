@@ -131,4 +131,10 @@ describe('zone 2 inside a repeated set is endurance, not a rest (13 Nov 2026)', 
     expect(t.label).toBe('Sweet spot and endurance');
     expect(t.parts.find((p) => p.sys === 'endurance')?.amount).toBe(30 * 60);
   });
+  it('touches: efforts short of the minimum once the main work has begun; warm-up pickups are left out', async () => {
+    const { LIBRARY } = await import('./workouts');
+    const by = (name: string) => trainsOf(LIBRARY.find((w) => w.name === name)!);
+    expect(by('Great Falls').touches).toEqual([{ sys: 'threshold', amount: 360, counts: false }]);
+    expect(by('Aldie').touches).toEqual([]);   // its two one-minute pickups come before the sweet spot
+  });
 });

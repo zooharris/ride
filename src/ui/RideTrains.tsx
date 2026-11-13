@@ -15,13 +15,15 @@ export function RideTrains({ w }: { w: Workout }) {
   // One plain line (13 Nov 2026): only what counts, with how much of it. The bars and the "too little" rows are gone.
   const low = (n: string) => n.toLowerCase().replace('vo2max', 'VO2max');
   const got = t.parts.filter((p) => p.counts).map((p) => `${low(SYSTEM[p.sys].name)}, ${amountWords(p)}`);
+  const listed = (xs: string[]) => (xs.length === 1 ? xs[0] : xs.length === 2 ? `${xs[0]}, and ${xs[1]}` : `${xs.slice(0, -1).join('; ')}; and ${xs[xs.length - 1]}`);
+  const touched = t.touches.length ? listed(t.touches.map((p) => `${low(SYSTEM[p.sys].name)}, ${amountWords(p)}`)) : '';
   const said = got.length === 0
     ? (w.skills?.length ? 'a skill rather than an energy system' : 'nothing hard or long enough to count: an easy ride')
-    : got.length === 1 ? got[0] : got.length === 2 ? `${got[0]}, and ${got[1]}` : `${got.slice(0, -1).join('; ')}; and ${got[got.length - 1]}`;
+    : listed(got);
   return (
     <>
       <section class="section">
-        <p style="margin:0"><b>Trains:</b> {said}{said.endsWith('.') ? '' : '.'}</p>
+        <p style="margin:0"><b>Trains:</b> {said}.{touched ? <> <span class="muted"><b>Also touches:</b> {touched}.</span></> : null}</p>
         {w.skills?.length ? <div class="chips" style="margin-top:8px" aria-label="Skills">{w.skills.map((s) => <span key={s} class="chip sm static">{SKILL_NAME[s]}</span>)}</div> : null}
       </section>
       {w.why && (

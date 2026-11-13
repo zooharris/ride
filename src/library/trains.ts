@@ -80,6 +80,8 @@ export interface TrainsPart { sys: System; amount: number; counts: boolean }
 export interface Trains {
   /** Every system present, hardest first, with how much and whether it reaches the least that counts. */
   parts: TrainsPart[];
+  /** Systems short of their minimum whose efforts come after the ride's main work has begun: touched, not trained. Efforts before it (warm-up pickups) are left out. */
+  touches: TrainsPart[];
   /** The systems that count, hardest first. */
   counted: System[];
   /** More than three count: the guide's limit is three (listed in the report, never changed silently). */
@@ -93,6 +95,7 @@ export function trainsOf(w: Pick<Workout, 'blocks' | 'family' | 'skills'>): Trai
   const steps = flat(w.blocks);
   const amount: Record<System, number> = { sprint: 0, anaerobic: 0, vo2: 0, threshold: 0, sweetspot: 0, tempo: 0, endurance: 0 };
   const taken = new Set<number>();
+  const gave: Array<{ k: number; sys: System; amt: number }> = [];
   // A short on-off set: efforts of a minute or less at VO2max or above, each followed by a rest no longer than it
   // and below tempo; three pairs or more in a row. The whole set's length counts as VO2max.
   for (let i = 0; i + 1 < steps.length;) {
@@ -102,7 +105,7 @@ export function trainsOf(w: Pick<Workout, 'blocks' | 'family' | 'skills'>): Trai
       const onI = on.intensityHigh ? (on.intensity + on.intensityHigh) / 2 : on.intensity;
       if (!on.allOut && onI > 1.05 && on.seconds <= 60 && !isWork(off) && off.seconds <= on.seconds) { pairs++; j += 2; } else break;
     }
-    if (pairs >= 3) { for (let k = i; k < j; k++) { taken.add(k); amount.vo2 += steps[k].st.seconds; } i = j; } else i++;
+    if (pairs >= 3) { for (let k = i; k < j; k++) { taken.add(k); amount.vo2 += steps[k].st.seconds; gave.push({ k, sys: 'vo2', amt: steps[k].st.seconds }); } i = j; } else i++;
   }
   // The first and last runs of easy steps are the warm-up and cool-down, whatever their labels say, in a ride with work.
   const anyWork = steps.some((x) => isWork(x.st));
@@ -124,20 +127,27 @@ export function trainsOf(w: Pick<Workout, 'blocks' | 'family' | 'skills'>): Trai
       if (anyWork && k > firstWork && k < lastWork && st.seconds < 300) return;
     }
     amount[sys] += sys === 'sprint' ? 1 : st.seconds;
+    gave.push({ k, sys, amt: sys === 'sprint' ? 1 : st.seconds });
   });
   const parts: TrainsPart[] = SYSTEMS.filter((s) => amount[s.id] > 0).map((s) => ({ sys: s.id, amount: amount[s.id], counts: amount[s.id] >= s.min }));
   const counted = parts.filter((p) => p.counts).map((p) => p.sys);
+  // What a ride merely touches (13 Nov 2026): efforts short of their system's minimum, once the main work has begun.
+  const begins = counted.length ? Math.min(...gave.filter((g) => counted.includes(g.sys)).map((g) => g.k)) : -1;
+  const touches: TrainsPart[] = SYSTEMS.filter((s) => !counted.includes(s.id))
+    .map((s) => ({ sys: s.id, amount: gave.filter((g) => g.sys === s.id && g.k > begins).reduce((a, g) => a + g.amt, 0), counts: false }))
+    .filter((p) => p.amount > 0);
   const name = (s: System) => SYSTEM[s].name;
   const list = counted.slice(0, 3).map((s, i) => (i === 0 ? name(s) : name(s).replace(/^(?!VO2)\w/, (c) => c.toLowerCase())));
   const label = list.length === 0 ? (w.skills?.length ? 'A skill ride' : w.family === 'recovery' ? 'Recovery' : 'Easy riding')
     : list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
-  return { parts, counted, overThree: counted.length > 3, label };
+  return { parts, touches, counted, overThree: counted.length > 3, label };
 }
 
 /** "4 efforts", "12 min", "3 min 20". */
 export function amountWords(p: Pick<TrainsPart, 'sys' | 'amount'>): string {
   if (p.sys === 'sprint') return `${p.amount} effort${p.amount === 1 ? '' : 's'}`;
   const m = Math.floor(p.amount / 60), s = Math.round(p.amount % 60);
+  if (m === 0) return `${s} sec`;
   return s ? `${m} min ${String(s).padStart(2, '0')}` : `${m} min`;
 }
 

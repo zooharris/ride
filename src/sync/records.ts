@@ -2,9 +2,10 @@ import { db } from '../data/db';
 import { today } from '../engine/load';
 import { buildDoneRecord, recordTss } from '../engine/record';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Ride, SessionKind, Workout } from '../engine/types';
-import { deleteActivity, durationFor, sportOf, updateActivityName, updateActivityType } from './intervals';
+import { deleteActivity, deleteEvent, durationFor, sportOf, updateActivityName, updateActivityType } from './intervals';
 import { applyLoadEdits, credentials, recheckMatches, scoreActivity, writeRecord } from './syncService';
 import { weightSystem } from '../engine/units';
+import { toDoneDay } from './doneDay';
 
 /**
  * What the screens do with the record of a done session. Each saves locally
@@ -178,7 +179,11 @@ export async function saveActivityEffort(r: Ride, rpe: number): Promise<void> {
  */
 export async function matchByHand(p: PlannedWorkout, w: Workout, r: Ride): Promise<void> {
   const e = await db.activityEdits.get(r.id);
+  // Done on another day: the session moves to the day it was done (13 Nov 2026).
+  const move = toDoneDay(p, r.date);
+  if (move.dropEvent) { const c = await credentials(); if (c) { try { await deleteEvent(c, move.dropEvent); } catch { /* harmless: the session is done either way */ } } }
   await db.planned.update(p.id, {
+    ...move.patch,
     status: 'completed',
     activityId: r.id,
     matchedByHand: true,

@@ -9,7 +9,7 @@ import { alreadyText, findWorkout, scheduleWorkout, sessionHref } from '../store
 import { WorkoutProfile } from '../Profile';
 import { addDays, today } from '../../engine/load';
 import { clock, garminSendable, workoutStats } from '../../engine/workout';
-import { fmtDate, plannedOn, weekStart } from '../derived';
+import { fmtDate, plannedOn, shortDay, weekStart } from '../derived';
 import type { PlannedWorkout, Ride, Workout } from '../../engine/types';
 import { KIND_LABEL, KindDot } from './Plan';
 import { getPlans, replacePlanned } from '../planService';
@@ -123,7 +123,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                     : w.kind === 'ride' ? <span class="mi-diag"><WorkoutProfile blocks={w.blocks} height={30} ratio={6} /></span>
                     : null;
                   return (
-                    <a class={`month-item ${p.status} k-${w.kind}${pic ? ' has-pic' : ''}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}`} style={`--c:${colour}`}>
+                    <a class={`month-item ${p.status} k-${w.kind}${pic ? ' has-pic' : ''}${movable(p) ? ' movable' : ''}${dnd.dragging === p.id ? ' drag-src' : ''}`} key={p.id} {...(movable(p) ? dnd.source(p.id, d, w.name) : {})} href={sessionHref(p, w.id, 'calendar', d, data.rides)} title={`${w.name} · ${STATUS_WORD[statusOf(p.status)]}${p.plannedFor ? ` · planned for ${shortDay(p.plannedFor)}` : ''}`} style={`--c:${colour}`}>
                       <span class="mi-top"><StatusMark status={statusOf(p.status)} size={11} />{w.kind !== 'ride' && <KindDot kind={w.kind} />}<span class="mi-name">{shortName(w.name)}</span></span>
                       {pic && <span class="mi-pic">{pic}</span>}
                     </a>
@@ -172,7 +172,7 @@ export function Calendar({ data, params }: { data: AppData; params?: URLSearchPa
                             <a href={sessionHref(p, w.id, 'calendar', d, data.rides)} draggable={false} class="row" style="flex:1;min-width:0;text-decoration:none">
                               <StatusMark status={st} />
                               {rec ? <ActivityPicture ride={rec} w={w} profile={profile} height={52} width={88}  /> : <PlanPicture w={w} />}
-                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{rowWord && <span class="t2 row-sent">{rowWord}</span>}{(p.note || p.userEdited) && <span class="t2">{[p.note, p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
+                              <div class="t"><b>{w.name}</b><span>{st === 'done' ? recorded : plannedLine}</span>{rowWord && <span class="t2 row-sent">{rowWord}</span>}{(p.note || p.userEdited || p.plannedFor) && <span class="t2">{[p.note, p.plannedFor ? `planned for ${shortDay(p.plannedFor)}` : p.userEdited ? (p.movedFrom && p.movedFrom !== p.date ? `moved by you from ${fmtDate(p.movedFrom, { month: 'short', day: 'numeric' })}` : 'changed by you') : ''].filter(Boolean).join(' · ')}</span>}</div>
                             </a>
                             <StatusPill status={st} word={rowWord} />
                             {p.status !== 'completed' && <button class="btn sm quiet" aria-label="Change" title="Move, replace or remove" onClick={() => setChanging(p)}>⋯</button>}

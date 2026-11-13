@@ -6,7 +6,7 @@ import { breathNumbers } from '../../engine/breathNumbers';
 import type { AppData } from '../store';
 import { doneHistory, findWorkout, notify } from '../store';
 import { clock } from '../../engine/workout';
-import { distance, elevation, fmtDate, weekStart } from '../derived';
+import { distance, elevation, fmtDate, shortDay, weekStart } from '../derived';
 import { scoreRide } from '../../engine/compliance';
 import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
@@ -262,8 +262,10 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const [downloading, setDownloading] = useState(false);
   const differentWorkout = async () => {
     if (!p || !w) return;
-    const past = p.date < today() ? ' (missed, as its day has passed)' : '';
-    if (!confirm(`Was this ${clock(r.seconds)} ${r.name} recording a different workout, not ${w.name}?\n\n${w.name} goes back to to-do${past}. The recording stays as a separate activity and still counts toward your training load. The app will not match it to this session again.`)) return;
+    const home = p.plannedFor ?? p.date;
+    const past = home < today() ? ' (missed, as its day has passed)' : '';
+    const where = p.plannedFor ? ` on ${shortDay(p.plannedFor)}` : '';
+    if (!confirm(`Was this ${clock(r.seconds)} ${r.name} recording a different workout, not ${w.name}?\n\n${w.name} goes back to to-do${where}${past}. The recording stays as a separate activity and still counts toward your training load. The app will not match it to this session again.`)) return;
     setBusy(true);
     await unmatchRecording(p.id);
     notify();
@@ -287,7 +289,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     </div>
   );
   const deleteIt = async () => {
-    const also = p && w ? `\n\n${w.name} goes back to to-do${p.date < today() ? ' (missed, as its day has passed)' : ''}.` : '';
+    const also = p && w ? `\n\n${w.name} goes back to to-do${p.plannedFor ? ` on ${shortDay(p.plannedFor)}` : ''}${(p.plannedFor ?? p.date) < today() ? ' (missed, as its day has passed)' : ''}.` : '';
     if (!confirm(`Delete ${r.name} (${fmtDate(r.date)}, ${clock(r.seconds)})?\n\nIt is deleted from Intervals.icu and from this app, and cannot be brought back here.${also}`)) return;
     setBusy(true);
     try {
@@ -311,6 +313,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
+          {p.plannedFor && <p class="faint small" style="margin-top:2px">planned for {shortDay(p.plannedFor)}</p>}
           <p class="muted small" style="margin-top:4px">{doneAgainst(r.seconds, plannedSecs, handLogged ? 'logged' : 'recorded')}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}{r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}.</p>
           {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
@@ -319,6 +322,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {c && w && p && (
         <div class="panel hub" style={`margin-top:14px;border-color:${verdictColor(c.verdict)}`}>
           <b style={`color:${verdictColor(c.verdict)}`}>{w.test ? 'Done' : verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
+          {p.plannedFor && <p class="faint small" style="margin-top:2px">planned for {shortDay(p.plannedFor)}</p>}
           <p class="muted small" style="margin-top:4px">{w.test === 'ramp' && rampTop != null ? `Ramp test: ridden to ${rampTop} W.` : c.reason}{analysis && !w.test ? ` ${analysis.summary}` : ''}</p>
           {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
           {hubActions}
@@ -694,7 +698,8 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
   const go2 = async () => {
     if (!chosen) return;
     const kindNote = chosen.w.kind !== r.sport ? ` It will count as ${KIND_LABEL[chosen.w.kind].toLowerCase()}.` : '';
-    if (!confirm(`Match this ${clock(r.seconds)} ${r.name} recording to ${chosen.w.name} (${fmtDate(chosen.p.date)})?\n\nThat session is marked done with it.${kindNote} You can undo it with This was a different workout.`)) return;
+    const moves = chosen.p.date !== r.date ? ` It moves to ${shortDay(r.date)}, the day you did it.` : '';
+    if (!confirm(`Match this ${clock(r.seconds)} ${r.name} recording to ${chosen.w.name} (${fmtDate(chosen.p.date)})?\n\nThat session is marked done with it.${moves}${kindNote} You can undo it with This was a different workout.`)) return;
     setBusy(true);
     try { await matchByHand(chosen.p, chosen.w, r); notify(); toast({ ok: true, text: `Matched to ${chosen.w.name}.` }); }
     catch (e) { toast({ ok: false, text: `Not matched: ${(e as Error).message}` }); }

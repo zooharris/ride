@@ -95,6 +95,11 @@ export function fmtDate(date: string, opts: Intl.DateTimeFormatOptions = { weekd
   return new Date(date + 'T00:00:00').toLocaleDateString(undefined, opts);
 }
 
+/** A day in short, the device's way ("Thu, Nov 12" / "Thu 12 Nov"): for the small "planned for" lines. */
+export function shortDay(date: string): string {
+  return fmtDate(date, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export function distance(m: number | undefined, profile: Profile): string {
   if (!m) return '';
   return miles(profile) ? `${(m / 1609.344).toFixed(1)} mi` : `${(m / 1000).toFixed(1)} km`;

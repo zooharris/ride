@@ -311,6 +311,23 @@ describe('adaptation', () => {
   });
 });
 
+describe('a session done early (13 Nov 2026)', () => {
+  it('never refills the day it was planned for', async () => {
+    const { diffPlan } = await import('./adapt');
+    const plan = generatePlan(req());
+    const workouts = new Map(plan.weeks.flatMap((w) => w.sessions.map((s) => [s.workout.id, s.workout] as const)));
+    const planned = plan.weeks.flatMap((w) => w.sessions.map((s) => ({ id: s.date + s.kind, date: s.date, workoutId: s.workout.id, basis: 'power' as const, status: 'planned' as const, planId: 'p' })));
+    const i = planned.findIndex((p) => p.date > today);
+    const was = planned[i];
+    const kind = workouts.get(was.workoutId)!.kind;
+    const early = { ...was, date: today, plannedFor: was.date, status: 'completed' as const, activityId: 'rec' };
+    const cal = planned.map((p, j) => (j === i ? early : p));
+    for (const opts of [{}, { includeEdited: true }]) {
+      expect(diffPlan(cal, workouts, plan, today, opts).filter((c) => c.date === was.date && c.kind === kind)).toHaveLength(0);
+    }
+  });
+});
+
 describe('hand-added sessions in the re-check', () => {
   it('offers, never pre-selects, a change to a session the rider put on the calendar themselves', async () => {
     const { diffPlan } = await import('./adapt');

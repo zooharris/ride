@@ -134,6 +134,11 @@ export function diffPlan(current: PlannedWorkout[], workouts: Map<string, Workou
   }
   // A date and kind already done is history: never suggested again.
   const doneKeys = new Set(current.filter((p) => p.date >= from && p.status === 'completed').map((p) => { const w = workouts.get(p.workoutId); return w ? key(p.date, w.kind) : ''; }));
+  // A session done early moved to the day it was done (13 Nov 2026): its planned day is not a gap to refill.
+  for (const p of current) {
+    const w = p.status === 'completed' && p.plannedFor && p.plannedFor >= from ? workouts.get(p.workoutId) : undefined;
+    if (w) doneKeys.add(key(p.plannedFor!, w.kind));
+  }
   const changes: Change[] = [];
   const removedW = new Map<string, Workout[]>(), addedW = new Map<string, Workout[]>();
   const keys = new Set([...before.keys(), ...after.keys()]);

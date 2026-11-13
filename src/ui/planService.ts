@@ -310,6 +310,11 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
     if (p.userEdited) edited.add(key(p.date, w.kind));
     if (p.movedFrom) edited.add(key(p.movedFrom, w.kind));
   }
+  // A session done early sits on the day it was done; its planned day is not refilled (13 Nov 2026).
+  for (const p of data.planned) {
+    const w = p.status === 'completed' && p.plannedFor && p.plannedFor >= from ? findWorkout(data.mine, p.workoutId) : undefined;
+    if (w) edited.add(key(p.plannedFor!, w.kind));
+  }
   const allowed = (k: string) => (accept ? accept.has(k) : !edited.has(k));
   const keep = new Map<string, true>();
   const existing = new Map<string, typeof future[number]>();

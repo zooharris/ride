@@ -6,9 +6,10 @@ import { LIBRARY } from '../library/workouts';
 import { workoutStats } from '../engine/workout';
 import { footHrZones, footLthr, rideLadders, ridePowerZones } from '../engine/zones';
 import type { IntervalsCredentials } from './intervals';
-import { applyAthleteNumbers, durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
+import { applyAthleteNumbers, durationFor, fetchPowerCurve, fetchRides, fetchWellness, deleteEvent, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
 import { schedulePush, syncDevices } from '../data/devicesync';
 import { weightSystem } from '../engine/units';
+import { backToPlannedDay, toDoneDay } from './doneDay';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -212,6 +213,8 @@ export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], wor
       const fresh = !own && (p.status !== 'completed' || p.activityId !== match.id);
       const done = !fresh && p.done ? p.done : (w ? buildDoneRecord(w, p.loggedSeconds ? Math.round(p.loggedSeconds / 60) : undefined) : undefined);
       if (fresh) { await db.planned.update(p.id, { status: 'completed', activityId: match.id, done }); p.status = 'completed'; p.activityId = match.id; p.done = done; changed++; }
+      // Done on another day (Intervals.icu can pair a recording to an event on a different day): the session moves to the day it was done.
+      if (!own && match.date !== p.date) { await moveToDoneDay(p, match.date, c); changed++; }
       else if (own && p.activityId !== match.id) { await db.planned.update(p.id, { activityId: match.id, done }); p.activityId = match.id; p.done = done; }
       else if (!p.done && done) { await db.planned.update(p.id, { done }); p.done = done; }   // done before records existed
       // Heart rate under-reads lifting: once the rider has rated the effort, that sets the load.
@@ -221,7 +224,9 @@ export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], wor
     } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds && undoable(p)) {
       // It was marked done from a recording that is gone or no longer counts. Undo that. Sessions the rider logged by hand stay done.
       if (c) await undoRelabel(c, p);
-      await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: c ? undefined : p.relabelled, done: undefined, rpe: undefined, matchedByHand: undefined });
+      const back = backToPlannedDay(p);
+      await db.planned.update(p.id, { ...back, relabelled: c ? undefined : p.relabelled });
+      Object.assign(p, back);
       changed++;
     } else if (opts.markMissed && p.date < today() && p.status !== 'completed' && p.status !== 'missed') {
       await db.planned.update(p.id, { status: 'missed' });
@@ -263,6 +268,34 @@ export async function rescoreAllOnce(): Promise<boolean> {
   return true;
 }
 
+/** Move a done session to the day its recording was made, taking a copy still waiting on the rider's device off Intervals.icu. */
+export async function moveToDoneDay(p: PlannedWorkout, recordedOn: string, c: IntervalsCredentials | null): Promise<boolean> {
+  const move = toDoneDay(p, recordedOn);
+  if (!Object.keys(move.patch).length) return false;
+  if (move.dropEvent && c) { try { await deleteEvent(c, move.dropEvent); } catch { /* harmless: the session is done either way */ } }
+  await db.planned.update(p.id, move.patch);
+  Object.assign(p, move.patch);
+  return true;
+}
+
+/**
+ * Sessions matched to a recording made on another day, before done sessions moved to their day (13 Nov 2026), or by
+ * a device still on an older version: each moves to its recording's date, across all history. The recording's date
+ * is the same on every device, so every device reaches the same calendar; once moved, nothing changes again.
+ */
+export async function moveDoneToTheirDay(): Promise<number> {
+  const done = (await db.planned.where('status').equals('completed').toArray()).filter((p) => p.activityId && p.activityId !== p.manualActivityId);
+  if (!done.length) return 0;
+  const rides = new Map((await db.rides.bulkGet(done.map((p) => p.activityId!))).filter((r): r is Ride => !!r).map((r) => [r.id, r]));
+  const c = await credentials();
+  let n = 0;
+  for (const p of done) {
+    const r = rides.get(p.activityId!);
+    if (r && r.date !== p.date && (await moveToDoneDay(p, r.date, c))) n++;
+  }
+  return n;
+}
+
 /** Every session dated before today and still to do is missed, however long ago (a fortnight without a sync must not leave them pending forever). */
 export async function markMissedAll(): Promise<number> {
   const t = today();
@@ -273,6 +306,7 @@ export async function markMissedAll(): Promise<number> {
 
 export async function recheckMatches(): Promise<number> {
   await rescoreAllOnce();
+  const moved = await moveDoneToTheirDay();
   await markMissedAll();
   const oldest = addDays(today(), -14), newest = addDays(today(), 1);
   const [rides, planned, profile] = await Promise.all([
@@ -285,7 +319,7 @@ export async function recheckMatches(): Promise<number> {
   const changed = await applyPairing(rides, planned, await workoutLookup(), await credentials(), profile);
   applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
-  return changed;
+  return changed + moved;
 }
 
 /** The rider's correction of what an activity was: it takes that kind, its duration rule and its scoring. */
@@ -587,12 +621,8 @@ export async function unmatchRecording(plannedId: string): Promise<void> {
   const c = await credentials();
   if (c) await undoRelabel(c, p);
   await db.planned.update(p.id, {
-    status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned',
-    activityId: undefined,
+    ...backToPlannedDay(p),
     relabelled: undefined,
-    done: undefined,
-    rpe: undefined,
-    matchedByHand: undefined,
     notActivityIds: [...(p.notActivityIds ?? []), p.activityId],
   });
   // The recording keeps its own load again, not the one the rider's effort for this session gave it.
@@ -648,6 +678,13 @@ export function pairRecordings(planned: PlannedWorkout[], rides: Ride[], workout
   for (const p of planned) {
     if (!p.matchedByHand || !p.activityId) continue;
     const m = rides.find((r) => r.id === p.activityId && free(r));
+    if (m) { taken.add(m.id); matches.set(p.id, m); }
+  }
+  // A session moved to the day it was done keeps its recording while that still fits: its copy may have come off
+  // Intervals.icu with the move, so Intervals.icu's own pairing can no longer name it (13 Nov 2026).
+  for (const p of planned) {
+    if (matches.has(p.id) || !p.plannedFor || p.status !== 'completed' || !p.activityId) continue;
+    const m = rides.find((r) => r.id === p.activityId && fits(p, r));
     if (m) { taken.add(m.id); matches.set(p.id, m); }
   }
   for (const p of planned) {

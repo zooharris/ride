@@ -252,6 +252,11 @@ export interface PlannedWorkout {
   userEdited?: boolean;
   /** When a session was moved here, the date it came from. */
   movedFrom?: string;
+  /**
+   * Done on a different day from the one planned (13 Nov 2026): the session moved to the day its recording was made
+   * (`date`), and this is the day it was planned for. Undoing the match puts it back here. See sync/doneDay.ts.
+   */
+  plannedFor?: string;
   /** Why the plan put this session here, in one plain sentence (30 Oct 2026); hand-added sessions have none. */
   reason?: string;
   /** For sessions logged in the app (strength, mobility, walks): how it felt, 1..10. */

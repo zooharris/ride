@@ -119,7 +119,7 @@ export function describeSession({ planned, workout, recorded }: TodaySession, wi
   const what = planned.status === 'completed' && planned.done?.exercises?.length
     ? `; what was actually done: ${planned.done.exercises.map((e) => exerciseLine(e)).join('; ')}`
     : planned.status === 'completed' && planned.done?.walk ? `; walked ${planned.done.walk.minutes} min${planned.done.walk.packKg ? ` with a ${Math.round(planned.done.walk.packKg * 2.2046)} lb pack` : ''}` : '';
-  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}${what}`
+  const status = planned.status === 'completed' ? `ALREADY DONE today${planned.plannedFor ? ` (it was planned for ${new Date(`${planned.plannedFor}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} and done today instead)` : ''}${planned.rpe ? `, felt ${planned.rpe}/10` : ''}${done}${what}`
     : planned.status === 'sent' ? 'on the Garmin, not done yet'
     : planned.status === 'missed' ? 'marked missed'
     : 'not done yet';

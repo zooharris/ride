@@ -29,6 +29,7 @@ import { calendarEntryFor, getRecording, patchRecording, rideSeconds, uploadRide
 import { fetchHasBreathing } from '../sync/intervals';
 import { hasBreathing } from './breathRead';
 import { garminTwin, playerMade, spanOf } from './twin';
+import { backToPlannedDay } from '../sync/doneDay';
 import type { Recording } from './types';
 
 export const KEPT_GARMIN = "Your Garmin recorded this ride too, so Antogo kept the Garmin's: it's the one in Garmin Connect.";
@@ -74,7 +75,7 @@ export async function garminFirst(r: Recording): Promise<UploadResult | undefine
 
 /** A session gives up the Garmin's recording and goes back to to-do (missed if its day has passed); the pairing won't hand it back. */
 async function release(p: PlannedWorkout, gid: string): Promise<void> {
-  await db.planned.update(p.id, { status: p.date < today() ? 'missed' : p.icuEventId ? 'sent' : 'planned', activityId: undefined, matchedByHand: undefined, done: undefined, notActivityIds: [...(p.notActivityIds ?? []).filter((x) => x !== gid), gid] });
+  await db.planned.update(p.id, { ...backToPlannedDay(p), rpe: p.rpe, notActivityIds: [...(p.notActivityIds ?? []).filter((x) => x !== gid), gid] });
 }
 
 /**

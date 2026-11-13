@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Measures, fmtValue, rollingNormal, type MeasureInput } from './measures';
 import { correlation, ends, linkWords, meanOver, pairUp, slid, slideWords, summary, weekly } from './compare';
-import { canPair, showsSentence, slideSentence, suggestionsFor } from '../ui/LargeView';
+import { canPair, showsSentence, suggestionsFor } from '../ui/LargeView';
 import { addDays } from './load';
 import type { Ride, Wellness } from './types';
 
@@ -124,10 +124,6 @@ describe('the large view words', () => {
   it('too few days: no sentence', () => {
     const pr = pairUp(m.values('hrv'), 'day', m.values('sleep'), 'day', 0, addDays(T, -10), T, ws);
     expect(showsSentence(m.def('hrv')!, m.def('sleep')!, pr.pairs, pr.cadence, 0)).toBeNull();
-  });
-  it('says what a slide means', () => {
-    expect(slideSentence(m.def('hrv')!, m.def('load')!, 1)).toBe("Each day's HRV is set against training load from the day before: does a change in training load show in HRV a day later?");
-    expect(slideSentence(m.def('hrv')!, m.def('sleep')!, 0)).toBe("Each day's HRV is set against sleep from the same day.");
   });
   it('is quick with years of history', () => {
     const many = Array.from({ length: 365 * 6 }, (_, i) => addDays('2020-11-12', i));

@@ -8,6 +8,8 @@ import { ZONE_VAR } from './Profile';
 import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, type Zone } from '../engine/zones';
 import { clock } from '../engine/workout';
 import { fahrenheit, miles } from '../engine/units';
+import { ActivityLarge } from './ActivityLarge';
+import { createPortal } from 'preact/compat';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
 export interface Sample { t: number; d: number; watts?: number; hr?: number; cad?: number; speed?: number; alt?: number; temp?: number; lat?: number; lng?: number; ve?: number; br?: number; tv?: number }
@@ -57,7 +59,7 @@ export function trailingMean(time: number[], v: number[], seconds: number): numb
 }
 
 type Axis = 'time' | 'distance';
-type PanelDef = { key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }>;
+export type PanelDef = { key: string; title: string; unit: string; color: string; get: (p: Sample) => number | undefined; area?: boolean; explain: string; refs?: Array<{ v: number; label: string }>;
   /** A second line on its own axis (breathing rate on the breathing chart). */
   second?: { get: (p: Sample) => number | undefined; color: string; unit: string };
   /** The readout's words for this chart, when not just its value. */
@@ -71,7 +73,7 @@ type PanelDef = { key: string; title: string; unit: string; color: string; get: 
  * and a readout of every value under the cursor. The same cursor index drives
  * the route map, so the parent owns it.
  */
-export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false, breathStop }: { samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean;
+export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false, breathStop, name = 'This activity' }: { /** The activity's name, for the head of a chart opened large. */ name?: string; samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean;
   /** Where the breathing strap froze (2E): the second, and whether the link was to a Garmin. */
   breathStop?: { at: number; garmin: boolean } }) {
   const ride = kind === 'ride';
@@ -80,6 +82,8 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   // By distance suits a ride on the road; walks (often on a treadmill), strength, mobility and indoor rides read by time.
   const timeFirst = kind === 'walk' || kind === 'strength' || kind === 'mobility' || (ride && indoor);
   const [axis, setAxis] = useState<Axis>(() => (!timeFirst && samples.some((s) => s.d > 0) ? 'distance' : 'time'));
+  // A chart opened large (13 Nov 2026): the measure clicked, with the recording's other measures to lay over it.
+  const [large, setLarge] = useState<string | null>(null);
   const imperial = miles(profile);
   const degF = fahrenheit(profile);
   const hasDist = samples.some((s) => s.d > 0);
@@ -135,9 +139,11 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
       </div>
       <div class="stack" style="gap:4px">
         {panels.map((p, idx) => (
-          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} padR={padR} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} />
+          <Panel key={p.key} samples={samples} panel={p} xOf={xOf} xMax={xMax} fmtX={fmtX} hover={hover} onHover={onHover} analysis={p.key === 'watts' ? targets?.watts : p.key === 'hr' ? targets?.hr : undefined} padR={padR} ftp={profile.ftp} lthr={ride ? profile.lthr : footLthr(profile)} hrZones={ride ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} basis={p.key === 'watts' ? 'power' : 'hr'} showXAxis={idx === panels.length - 1} onLarge={() => setLarge(p.key)} />
         ))}
       </div>
+      {/* Drawn at the top of the page, so it sits over the map, the readout and the navigation. */}
+      {large && createPortal(<ActivityLarge name={name} samples={samples} panels={panels} open={large} xOf={xOf} fmtX={fmtX} byDistance={axis === 'distance' && hasDist} onClose={() => setLarge(null)} />, document.body)}
     </div>
   );
 }
@@ -147,8 +153,8 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
  * compact height, so a wide window shows more of the ride rather than taller
  * charts, and the text stays the same size at any width.
  */
-function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR = 6, ftp, lthr, hrZones, powerZones, basis, showXAxis }: {
-  samples: Sample[]; panel: PanelDef;
+function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR = 6, ftp, lthr, hrZones, powerZones, basis, showXAxis, onLarge }: {
+  samples: Sample[]; panel: PanelDef; onLarge: () => void;
   xOf: (p: Sample) => number; xMax: number; fmtX: (v: number) => string; hover: number | null; onHover: (i: number | null) => void; analysis?: Analysis; padR?: number; ftp: number; lthr: number; hrZones?: Zone[]; powerZones?: Zone[]; basis: 'power' | 'hr'; showXAxis: boolean;
 }) {
   const [box, W] = useWidth(480);
@@ -195,8 +201,9 @@ function Panel({ samples, panel, xOf, xMax, fmtX, hover, onHover, analysis, padR
   };
   return (
     <div style="position:relative" ref={box}>
-      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit}{panel.second ? `; thin line, ${panel.second.unit}` : ''})</span>{panel.note && <span class="faint"> · {panel.note}</span>}</span>{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}</div>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y" aria-label={`${panel.title} chart`}
+      <div class="row between" style="margin-bottom:0"><span class="small" title={panel.explain}><b>{panel.title}</b> <span class="faint">({panel.unit}{panel.second ? `; thin line, ${panel.second.unit}` : ''})</span>{panel.note && <span class="faint"> · {panel.note}</span>}</span><span class="row" style="gap:8px">{hv != null && <span class="num small" style="color:var(--ink-2)">{panel.unit === 'mph' || panel.unit === 'km/h' ? hv.toFixed(1) : Math.round(hv)} {panel.unit}</span>}<button class="pc-big" style="width:22px;height:22px" aria-label={`Open ${panel.title.toLowerCase()} large`} title="Open large" onClick={onLarge}><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5h4v4M12.5 1.5 8 6M5.5 12.5h-4v-4M1.5 12.5 6 8" /></svg></button></span></div>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style="display:block;width:100%;touch-action:pan-y;cursor:zoom-in" aria-label={`${panel.title} chart`}
+        onClick={(e) => { if ((e as unknown as PointerEvent).pointerType !== 'touch') onLarge(); }}
         onMouseMove={(e) => pick(e.currentTarget as SVGSVGElement, e.clientX)}
         onMouseLeave={() => onHover(null)}
         onTouchStart={(e) => pick(e.currentTarget as SVGSVGElement, e.touches[0].clientX)}

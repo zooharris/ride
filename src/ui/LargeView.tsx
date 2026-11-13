@@ -12,7 +12,7 @@ import { useWidth } from './useWidth';
 
 /**
  * A Progress chart opened large (12 Nov 2026, large charts, Part A). One measure, with up to three others laid
- * over it, together on two scales or stacked in lanes; days marked; one measure slid against another by hand;
+ * over it, together on two scales or stacked in lanes; days marked; 
  * and panels that say in numbers what the rider is looking at. Everything here works with no AI connected; the
  * coach's panel is added only with one. The view's state lives in the address, so a day opened from it and Back
  * return to it exactly as it was left.
@@ -51,8 +51,8 @@ export function suggestionsFor(m: Measures, id: string, from: string, to: string
 }
 
 /** Colour and line style together (A3): each measure reads without relying on colour. */
-const COLORS = ['var(--info)', 'var(--aqua)', 'var(--z2)', 'var(--z3)'];
-const DASH = ['', '7 4', '2 3', '9 3 2 3'];
+export const COLORS = ['var(--info)', 'var(--aqua)', 'var(--z2)', 'var(--z3)'];
+export const DASH = ['', '7 4', '2 3', '9 3 2 3'];
 
 export interface LargeTarget {
   /** The measure opened. */
@@ -92,7 +92,7 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
     if (fromUrl) {
       const over = parseList(q0.get('lo')).filter((x) => M.def(x) && canPair(view, M.def(x)!)).slice(0, 3);
       return {
-        over, slides: over.map((_, i) => Number(parseList(q0.get('ls'))[i] ?? 0) || 0), stacked: q0.get('lw') === 's', marks: parseList(q0.get('lm')),
+        over, slides: over.map(() => 0), stacked: q0.get('lw') === 's', marks: parseList(q0.get('lm')),
         from: q0.get('lf') ?? pageFrom, to: q0.get('lt') ?? pageTo, rk: (q0.get('lr') as LargeRange) ?? pageRange, cmp: parseList(q0.get('lc')),
       };
     }
@@ -109,11 +109,12 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
   }, []);
   // The view in the address, so Back from a day opened here finds it as it was left.
   useEffect(() => {
-    replaceQuery({ big: target.id, lo: v.over.join(','), ls: v.slides.some((x) => x) ? v.slides.join(',') : undefined, lw: v.stacked ? 's' : undefined, lm: v.marks.join(','), lf: v.from, lt: v.to, lr: v.rk, lc: v.cmp.join(',') });
+    replaceQuery({ big: target.id, lo: v.over.join(','), lw: v.stacked ? 's' : undefined, lm: v.marks.join(','), lf: v.from, lt: v.to, lr: v.rk, lc: v.cmp.join(',') });
   }, [v, target.id]);
   const set = (p: Partial<View>) => setV((s) => ({ ...s, ...p }));
   const setOver = (over: string[]) => {
-    setV((s) => ({ ...s, over, slides: over.map((id) => s.slides[s.over.indexOf(id)] ?? 0) }));
+    // Sliding one measure against another was removed on 13 Nov 2026 (Todd's decision): every measure is read on its own day.
+    setV((s) => ({ ...s, over, slides: over.map(() => 0) }));
     getSetting<Record<string, string[]>>('largeOver', {}).then((all) => setSetting('largeOver', { ...all, [target.id]: over }));
   };
   const setStacked = (stacked: boolean) => { set({ stacked }); setSetting('largeShow', stacked ? 'stacked' : 'together'); };
@@ -168,7 +169,7 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
     ro.observe(el); setColH(el.clientHeight);
     return () => ro.disconnect();
   }, [phone]);
-  const chartH = phone ? 0 : Math.max(260, colH - 30 - 46 - v.over.length * (v.over.length ? 62 : 0) - 16);
+  const chartH = phone ? 0 : Math.max(260, colH - 30 - 46 - 16);
 
   const download = () => {
     const cadWeek = defs.some((d) => d.cadence === 'week');
@@ -233,7 +234,6 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
               cmp={v.cmp} onPan={(from, to) => set({ from, to, rk: 'custom' })} />
             {!phone && <Strip M={M} view={view} from={v.from} to={v.to} width={Math.max(260, wrapW)} onChange={(from, to) => set({ from, to, rk: 'custom' })} />}
             {phone && <p class="faint small" style="margin:4px 0 0">Drag the chart to move through time; pinch to zoom.</p>}
-            {v.over.length > 0 && <Slides defs={defs} slides={v.slides} onChange={(slides) => set({ slides })} />}
           </div>
           <Panels defs={defs} vals={vals} M={M} from={v.from} to={v.to} at={at} slides={v.slides} cmp={v.cmp} setCmp={(cmp) => set({ cmp })}
             coach={coach} card={target.card} />
@@ -296,7 +296,7 @@ function LayOver({ M, view, over, from, to, onChange }: { M: Measures; view: Mea
 }
 
 /** A small sample of a measure's colour and line style, for the chips, the reading line and the panels. */
-function LineKey({ i, bars }: { i: number; bars?: boolean }) {
+export function LineKey({ i, bars }: { i: number; bars?: boolean }) {
   return (
     <svg class="lk" width="22" height="10" viewBox="0 0 22 10" aria-hidden="true">
       {bars ? <rect x="5" y="1" width="12" height="8" fill={COLORS[i]} fill-opacity={i ? 0.35 : 0.8} stroke={COLORS[i]} stroke-dasharray={DASH[i]} />
@@ -564,46 +564,6 @@ function Strip({ M, view, from, to, width, onChange }: { M: Measures; view: Meas
       <text x={2} y={H / 2 + 3} font-size="9" fill="var(--ink-3)">{fmtDate(start, { month: 'short', year: 'numeric' })}</text>
     </svg>
   );
-}
-
-// ---------- sliding ----------
-
-function Slides({ defs, slides, onChange }: { defs: MeasureDef[]; slides: number[]; onChange: (s: number[]) => void }) {
-  const view = defs[0];
-  return (
-    <div class="lv-slides">
-      {defs.slice(1).map((d, j) => {
-        const s = slides[j] ?? 0, max = d.cadence === 'week' ? 4 : 7;
-        const setS = (n: number) => { const next = [...slides]; next[j] = Math.max(-max, Math.min(max, n)); onChange(next); };
-        const words = slideWords(s, d.cadence);
-        const unit = d.cadence === 'week' ? 'week' : 'day';
-        return (
-          <div key={d.id} class="lv-slide small" role="group" aria-label={`Slide ${d.name.toLowerCase()}`}>
-            <span class="lv-lab">Slide</span>
-            <LineKey i={j + 1} bars={d.style === 'bars'} />
-            <button class="btn sm" aria-label={`${d.name}: one ${unit} earlier`} disabled={s <= -max} onClick={() => setS(s - 1)}>‹</button>
-            <b class="lv-slide-v">{cap(d.word)} {words}</b>
-            <button class="btn sm" aria-label={`${d.name}: one ${unit} later`} disabled={s >= max} onClick={() => setS(s + 1)}>›</button>
-            {s !== 0 && <button class="btn quiet sm" onClick={() => setS(0)}>Back to the same {unit}</button>}
-            <span class="faint lv-slide-say">{slideSentence(view, d, s)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/** What a slide means for this pair, in plain words (A5). */
-export function slideSentence(view: MeasureDef, other: MeasureDef, s: number): string {
-  const each = view.cadence === 'week' ? `Each week's ${view.word}` : `Each day's ${view.word}`;
-  if (!s) return `${each} is set against ${other.word} from the same ${other.cadence === 'week' ? 'week' : 'day'}.`;
-  const w = slideWords(s, other.cadence);
-  const n = Math.abs(s), unit = other.cadence === 'week' ? (n === 1 ? 'week' : 'weeks') : (n === 1 ? 'day' : 'days');
-  return s > 0
-    ? `${each} is set against ${other.word} from ${w}: does a change in ${other.word} show in ${view.word} ${n === 1 ? `a ${unit}` : `${n} ${unit}`} later?`
-    : `${each} is set against ${other.word} from ${w}: does ${view.word} change ahead of ${other.word}?`;
 }
 
 // ---------- the panels ----------

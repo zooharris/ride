@@ -361,7 +361,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
             <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded steps are what was planned; the lines are what you rode.' : r.sport === 'ride' ? 'Rides done from a plan show the planned steps under the lines, in their zone colours.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}
-              <div class="rec-charts"><ActivityCharts samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} breathStop={breathStop} /></div>
+              <div class="rec-charts"><ActivityCharts name={r.name} samples={samples} targets={targets} profile={profile} hover={hover} onHover={setHover} kind={r.sport} indoor={isIndoor(r)} breathStop={breathStop} /></div>
             </div>
           </section>
         </>

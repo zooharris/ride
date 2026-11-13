@@ -1942,10 +1942,6 @@ body.lv-open { overflow: hidden; }
 .lv-strip { display: block; max-width: 100%; cursor: grab; touch-action: none; }
 .lv-strip:focus-visible { outline: 2px solid var(--accent); }
 .lv-win { fill: var(--accent); fill-opacity: .16; stroke: var(--accent); stroke-width: 1.2; cursor: grab; }
-.lv-slides { display: flex; flex-direction: column; gap: 6px; }
-.lv-slide { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.lv-slide-v { min-width: 150px; text-align: center; }
-.lv-slide-say { flex-basis: 100%; }
 .lv-panels { overflow: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; padding-right: 2px; }
 .lv-p { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg-3); }
 .lv-p h3 { margin: 0 0 6px; font-size: 13px; }

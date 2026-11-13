@@ -43,6 +43,8 @@ export interface RideSetup {
   rampStep?: number;
   /** Step 5 (11 Nov 2026): ridden by breathing. `basis` is then 'power' (the trainer's watts are what is recorded and scored). */
   byBreath?: boolean;
+  /** Who wrote the ride's cues (12 Nov 2026, B6): the ride itself, or the rider's AI before it started. */
+  cuesBy?: 'ai' | 'written';
 }
 
 export interface ActiveRide {
@@ -148,6 +150,9 @@ export function startRide(setup: RideSetup): void {
     samples: [], laps: [], events: [], timerSeconds: 0, distanceM: 0, savedMs: now,
   };
   if (setup.byBreath) rec.byBreath = true;
+  // The cues as they will be shown, kept with the recording so its summary can show what was said.
+  const cueLines = timeline.flatMap((st) => (st.step.cues ?? []).filter((c) => (c.rep === 'last' ? st.rep === st.reps : c.rep == null || c.rep === st.rep)).map((c) => ({ t: st.start + (c.at >= 0 ? c.at : st.seconds + c.at), text: c.text })));
+  if (cueLines.length) rec.cues = { by: setup.cuesBy ?? 'written', lines: cueLines.sort((a, b) => a.t - b.t) };
   active = { setup, engine, timeline, rec, live: {}, band: { count: 0 }, cueState: {}, hrTable: {}, breathTable: {} };
   if (setup.byBreath) void Promise.all([getSetting<BreathPowerTable>(BREATH_TABLE, {}), getSetting<BreathNormal | undefined>(BREATH_NORMAL_KEY, undefined)]).then(([t, n]) => { if (active?.rec.id === rec.id) { active.breathTable = t ?? {}; active.breathNormal = n; } });
   if (setup.basis === 'hr') void getSetting<HrPowerTable>(HR_TABLE, {}).then((t) => { if (active?.rec.id === rec.id) active.hrTable = t ?? {}; });

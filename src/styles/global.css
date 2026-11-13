@@ -1992,3 +1992,7 @@ body.lv-open { overflow: hidden; }
   .fam-row { grid-template-columns: minmax(0, 1fr) auto; }
   .fam-what { grid-column: 1 / -1; order: 3; }
 }
+.rd-cues { margin-top: 10px; }
+.rd-cues ol { list-style: none; padding: 0; margin: 6px 0 0; max-height: 220px; overflow: auto; }
+.rd-cues li { padding: 2px 0; }
+.rd-cues li .num { display: inline-block; min-width: 44px; }

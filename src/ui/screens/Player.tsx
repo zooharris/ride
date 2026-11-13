@@ -8,7 +8,7 @@ import { hrAlternatives } from '../../player/alternatives';
 import type { Basis, PlannedWorkout, Profile, Workout, WorkoutStep } from '../../engine/types';
 import { clock, flattenSteps, formatDuration, stepBreath, stepTargets, workoutStats } from '../../engine/workout';
 import { powerZone, ridePowerZones } from '../../engine/zones';
-import { today } from '../../engine/load';
+import { addDays, today } from '../../engine/load';
 import { fmtDate } from '../derived';
 import { WorkoutProfile, ZONE_VAR } from '../Profile';
 import { Logo } from '../Brand';
@@ -19,6 +19,9 @@ import { getRecording, patchRecording } from '../../player/rides';
 import type { Recording } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
 import { startRide } from '../rideController';
+import { LESSONS, withLessons } from '../../library/cueKinds';
+import { aiCues } from '../../coach/rideCues';
+import { coachConfig } from '../coachConfig';
 import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform } from '../../player/platform';
@@ -96,7 +99,7 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
-  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} /></Frame>;
+  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} history={rideHistory(data, workout)} /></Frame>;
 }
 
 function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }) {
@@ -135,7 +138,38 @@ function NoBluetooth() {
 
 // ── The workout, left ───────────────────────────────────────────────────────
 
-function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean; mine: Workout[] }) {
+/** The rider's recent riding in a few lines, for the AI that writes the ride's cues (B6): what the coach already uses. */
+function rideHistory(data: AppData, w: Workout): string[] {
+  const since = addDays(today(), -21);
+  const lines = data.rides.filter((r) => r.date >= since).slice(0, 12).map((r) => `${r.date}: ${r.name}, ${Math.round(r.seconds / 60)} min${r.tss ? `, training load ${Math.round(r.tss)}` : ''}`);
+  const last = data.planned.filter((p) => p.status === 'completed' && (p.workoutId === w.id || findWorkout(data.mine, p.workoutId)?.name === w.name)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (last) lines.unshift(`Last rode this same workout on ${last.date}.`);
+  return lines;
+}
+
+function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: { workout: Workout; planned?: PlannedWorkout; profile: Profile; sim: boolean; bt: boolean; mine: Workout[]; history: string[] }) {
+  // The ride's cues are made ready here, before it starts (12 Nov 2026, B5 and B6): the next lessons in turn, and
+  // with an AI connected (and the setting on) the cues reworded for this rider. Start never waits for the AI: after
+  // ten seconds, or on any error, or if Start is pressed first, the ride has its written cues.
+  const [prepared, setPrepared] = useState<{ workout: Workout; by: 'ai' | 'written'; used: number; from: number }>({ workout: given, by: 'written', used: 0, from: 0 });
+  const started = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const from = await getSetting<number>(LESSON_NEXT, 0);
+      const l = withLessons(given, from);
+      if (!alive) return;
+      setPrepared({ workout: l.workout, by: 'written', used: l.used, from });
+      if (!(await getSetting<boolean>(PREF.aiCues, DEFAULT_PREFS.aiCues))) return;
+      const cfg = await coachConfig();
+      if (!cfg || !alive) return;
+      const r = await aiCues(cfg, l.workout, history);
+      if (alive && r && !started.current) setPrepared({ workout: r.workout, by: 'ai', used: l.used, from });
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [given.id]);
+  const workout = prepared.workout;
   const allowsHr = workout.bases.includes('hr');
   // Power or heart rate (10 Nov 2026 evening): chosen here, on the opening screen, starting on the rider's default
   // whatever page the player was opened from and however the ride was sent.
@@ -181,11 +215,11 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
     : choice.suggestHr ? { head: 'No power source connected', text: 'Connect your trainer or a power meter to ride by power, or ride this workout by heart rate.', action: ['Ride by heart rate', () => setBasis('hr')] }
     : basis === 'hr' && sources.watts ? { head: 'Connect a heart-rate monitor', text: 'This ride is by heart rate: connect a heart-rate strap, or your watch broadcasting heart rate.', action: ['Choose heart rate', () => setOpen('bpm')] }
     : { head: 'Connect your trainer to start', text: basis === 'hr' ? 'Or a heart-rate monitor: this ride is by heart rate.' : 'Or a power meter: this ride is by power.', action: ['Choose your trainer', () => setOpen('trainer')] };
-  const start = () => startRide({
-    workout, planned, basis: byBreath ? 'power' : basis, byBreath: byBreath || undefined, profile, scale, level, rampStep: ramp ? rampStep : undefined,
+  const start = () => { started.current = true; if (prepared.used) void setSetting(LESSON_NEXT, (prepared.from + prepared.used) % LESSONS.length); startRide({
+    workout, planned, basis: byBreath ? 'power' : basis, byBreath: byBreath || undefined, profile, scale, level, rampStep: ramp ? rampStep : undefined, cuesBy: prepared.by,
     mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
-  });
+  }); };
 
   return (
     <>
@@ -197,6 +231,7 @@ function PreRide({ workout, planned, profile, sim, bt, mine }: { workout: Workou
             <div style="min-width:0">
               <h1>{workout.name}</h1>
               {workout.subtitle && <p class="pl-sub">{workout.subtitle}</p>}
+              {prepared.by === 'ai' && <p class="faint small" style="margin:2px 0 0">The cues on this ride were written for you by your AI.</p>}
             </div>
             {allowsHr || (strapOn && !workout.test) ? (
               <div class="seg" role="group" aria-label="Targets by">
@@ -619,15 +654,18 @@ function unitOf(m: Metric, profile: Profile): string {
 
 
 /** The player's preferences on this computer (Settings → Ride player). */
-export const PREF = { sound: 'playerSound', autoPause: 'playerAutoPause', guard: 'playerGuard', smoothing: 'playerSmoothing' } as const;
-export interface Prefs { sound: boolean; autoPause: boolean; guard: boolean; smoothing: number }
-export const DEFAULT_PREFS: Prefs = { sound: true, autoPause: true, guard: true, smoothing: 3 };
+export const PREF = { sound: 'playerSound', autoPause: 'playerAutoPause', guard: 'playerGuard', smoothing: 'playerSmoothing', aiCues: 'playerAiCues' } as const;
+export interface Prefs { sound: boolean; autoPause: boolean; guard: boolean; smoothing: number; aiCues: boolean }
+export const DEFAULT_PREFS: Prefs = { sound: true, autoPause: true, guard: true, smoothing: 3, aiCues: true };
+/** Where the next ride's lessons start in the shared list, so consecutive rides never show the same one. */
+const LESSON_NEXT = 'lessonNext';
 export async function loadPrefs(): Promise<Prefs> {
   return {
     sound: await getSetting(PREF.sound, DEFAULT_PREFS.sound),
     autoPause: await getSetting(PREF.autoPause, DEFAULT_PREFS.autoPause),
     guard: await getSetting(PREF.guard, DEFAULT_PREFS.guard),
     smoothing: await getSetting(PREF.smoothing, DEFAULT_PREFS.smoothing),
+    aiCues: await getSetting(PREF.aiCues, DEFAULT_PREFS.aiCues),
   };
 }
 function usePrefs(): Prefs & { set: (p: Prefs) => void } {

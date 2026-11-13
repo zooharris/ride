@@ -66,7 +66,10 @@ const pyramid = (top: 3 | 4): WorkoutStep[] => {
       : i > (top === 4 ? 3 : 2) ? [c('focus', 0, 'Shorter now, and a little harder. Lift the pressure, keep it smooth.')]
       : [c('focus', 0, 'Longer, slightly lower. Find a pace you can hold to the end of this step.')];
     out.push(st(min, x, undefined, { label: `Pyramid, ${min} min`, cues }));
-    out.push(easy(rest, i === 0 ? [c('why', 0, 'The longer the effort, the lower its target: every step is hard but possible.')] : rest >= 3 ? [c('lesson', 20, 'Breathing comes down before the legs do. Wait for both before the next step.')] : []));
+    const last = i === up.length + down.length - 1;
+    out.push(easy(rest, i === 0 ? [c('why', 0, 'The longer the effort, the lower its target: every step is hard but possible.')]
+      : last ? [c('lesson', 20, 'Pyramids teach pacing: the same hard feeling, held for longer or for less.'), c('next', -30, 'Sweet spot next: steady, firm, no surge at the start.')]
+      : rest >= 3 ? [c('lesson', 20, 'Breathing comes down before the legs do. Wait for both before the next step.')] : []));
   });
   return out;
 };

@@ -874,6 +874,12 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               </>
             ) : <><h2 class="pl-h2">The ride</h2><p class="muted">{timeline.length ? 'No hard efforts in this workout to compare.' : 'A free ride: no workout to compare against.'}</p></>}
             {note && <div class="rd-note"><span class="pl-kind">↗</span><p>{note}</p></div>}
+            {rec.cues?.lines.length ? (
+              <details class="rd-cues">
+                <summary class="small">What the cues said{rec.cues.by === 'ai' ? ', written for you by your AI' : ''}</summary>
+                <ol class="small">{rec.cues.lines.filter((l) => l.t <= rec.timerSeconds + 1).map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span> {l.text}</li>)}</ol>
+              </details>
+            ) : null}
           </div>}
 
           <div class="rd-card rd-save">

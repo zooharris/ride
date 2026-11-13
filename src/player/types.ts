@@ -34,6 +34,8 @@ export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded
 
 export interface Recording {
   id: string;
+  /** The cues the player showed, at seconds into the workout, and who wrote them (12 Nov 2026, B6). */
+  cues?: { by: 'ai' | 'written'; lines: Array<{ t: number; text: string }> };
   status: RecordingStatus;
   /** ISO local-time string of the start, and the start in ms since 1970. */
   startedAt: string;

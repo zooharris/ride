@@ -8,6 +8,7 @@ import { BATCH1 } from './batch1';
 import { BATCH2 } from './batch2';
 import { withAutoCues } from './autoCues';
 import { GUIDE_RIDES } from './guide';
+import { withCueKinds } from './cueKinds';
 import { ALL_OUT_STANDIN } from './trains';
 
 // Small helpers so the library reads like a training plan, not JSON.
@@ -220,7 +221,7 @@ const CORE: Workout[] = [
 export const LIBRARY: Workout[] = [...[...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
   return withAutoCues(withTags(place ? { ...w, name: place, subtitle: w.name } : w));
-}), ...BATCH1, ...BATCH2].map(sprintsAllOut), ...GUIDE_RIDES];
+}), ...BATCH1, ...BATCH2].map((w) => withCueKinds(sprintsAllOut(w))), ...GUIDE_RIDES];
 
 /**
  * Sprints are all out (12 Nov 2026, brief B3): a Library sprint that had a percentage target (150 to 180% of FTP)

@@ -54,7 +54,10 @@ export function PlayerSettings() {
           <div class="seg"><button class={prefs.autoPause ? 'on' : ''} onClick={() => void pref('autoPause', true)}>On</button><button class={!prefs.autoPause ? 'on' : ''} onClick={() => void pref('autoPause', false)}>Off</button></div></div>
         <div class="field"><label>Ease off if your cadence drops</label>
           <div class="seg"><button class={prefs.guard ? 'on' : ''} onClick={() => void pref('guard', true)}>On</button><button class={!prefs.guard ? 'on' : ''} onClick={() => void pref('guard', false)}>Off</button></div></div>
+        <div class="field"><label>Cues written by your AI</label>
+          <div class="seg"><button class={prefs.aiCues ? 'on' : ''} aria-pressed={prefs.aiCues} onClick={() => void pref('aiCues', true)}>On</button><button class={!prefs.aiCues ? 'on' : ''} aria-pressed={!prefs.aiCues} onClick={() => void pref('aiCues', false)}>Off</button></div></div>
       </div>
+      <p class="faint small" style="margin-top:6px">Cues written by your AI: with an AI connected, before a trainer ride starts your AI may reword the ride's written cues for you, or mention your own recent rides. It never changes a target or the ride; if it is slow or fails, the ride uses its written cues. Off: always the written cues.</p>
       <p class="faint small" style="margin-top:6px">Pause: ten seconds without pedalling pauses the ride and lets the trainer go; pedalling carries on. Ease off: in ERG, if your cadence stays under 50 rpm for three seconds the trainer drops to half the target, and builds back once you are spinning over 70 rpm, so a heavy stroke never stalls you.</p>
       <div class="field" style="margin-top:14px"><label>Practice with a simulated trainer</label>
         <div class="seg"><button class={sim ? 'on' : ''} aria-pressed={sim} onClick={() => void setPractice(true)}>On</button><button class={!sim ? 'on' : ''} aria-pressed={!sim} onClick={() => void setPractice(false)}>Off</button></div>

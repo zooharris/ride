@@ -8,6 +8,7 @@ import { footHrZones, footLthr, rideLadders, ridePowerZones } from '../engine/zo
 import type { IntervalsCredentials } from './intervals';
 import { applyAthleteNumbers, durationFor, fetchPowerCurve, fetchRides, fetchWellness, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
 import { schedulePush, syncDevices } from '../data/devicesync';
+import { weightSystem } from '../engine/units';
 
 export async function credentials(): Promise<IntervalsCredentials | null> {
   const c = await getSetting<IntervalsCredentials | null>('intervals', null);
@@ -216,7 +217,7 @@ export async function applyPairing(rides: Ride[], planned: PlannedWorkout[], wor
       // Heart rate under-reads lifting: once the rider has rated the effort, that sets the load.
       const fromEffort = w ? recordTss(w, match.seconds, p.rpe) : undefined;
       if (fromEffort != null) match.tss = fromEffort;
-      if (c && w && done) await writeRecord(c, match, w.name, done, p.rpe, profile?.units);
+      if (c && w && done) await writeRecord(c, match, w.name, done, p.rpe, weightSystem(profile));
     } else if (p.status === 'completed' && p.activityId && !p.loggedSeconds && undoable(p)) {
       // It was marked done from a recording that is gone or no longer counts. Undo that. Sessions the rider logged by hand stay done.
       if (c) await undoRelabel(c, p);

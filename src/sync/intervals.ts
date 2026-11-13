@@ -18,6 +18,7 @@ import { NO_FLOOR, renderIntervalsText, workoutStats } from '../engine/workout';
 import { defaultHrZoneTops, defaultZonePcts, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, rideLadders, ridePowerZones, validTops } from '../engine/zones';
 import type { Profile } from '../engine/types';
 import { EASY_WALK, bandFractions, hasNoFloor, recoveryBand, stepBand, walkBand, type FootBand } from '../engine/foot';
+import { packWords } from '../engine/units';
 
 const BASE = 'https://intervals.icu/api/v1';
 
@@ -703,7 +704,7 @@ export function setLastWeightLookup(fn: (name: string) => string | undefined): v
 function walkEvent(workout: Workout, date: string, profile?: HrProfile) {
   const w = workout.walk ?? { minutes: workout.minutes ?? 30, ...EASY_WALK };
   const b = walkBand(w, profile);
-  const pack = w.packKg ? ` with a ${Math.round(w.packKg * 2.2)} lb pack` : '';
+  const pack = w.packKg ? ` with a ${packWords(w.packKg)} pack` : '';
   const lines = [
     `${workout.purpose}${pack ? ` Walk${pack}.` : ''}`,
     '',

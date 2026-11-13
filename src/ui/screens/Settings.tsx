@@ -30,6 +30,7 @@ import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTIN
 import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
 import { addDays, today } from '../../engine/load';
 import { useMaxHrSeen } from '../maxHrSeen';
+import { distUnitsOf, legacyUnits, miles, pounds, setPackUnit, weightUnitsOf } from '../../engine/units';
 
 
 export function Settings({ data }: { data: AppData }) {
@@ -107,6 +108,7 @@ export function Settings({ data }: { data: AppData }) {
 
   async function save() {
     setFirstDay(p.weekStartsOn === 0 ? 0 : 1);
+    setPackUnit(weightUnitsOf(p));
     await saveProfile(p);
     // The database stamps the profile on every write; take the stored copy so the page reads as saved.
     const stored = await db.profile.get('me');
@@ -212,8 +214,8 @@ export function Settings({ data }: { data: AppData }) {
         <div class="form">
           <div class="field"><label>Name</label><input value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
           <div class="field"><label>Resting heart rate</label><NumberBox value={p.restingHr} onValue={num('restingHr')} check={firstOf(within(25, 120, 'Resting heart rate'), (v) => p.lthr && v >= p.lthr ? `It must be below your threshold heart rate (${p.lthr}).` : undefined)} /></div>
-          <div class="field"><label>Weight ({p.units === 'imperial' ? 'lb' : 'kg'})</label>
-            <NumberBox value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} check={p.units === 'imperial' ? within(66, 550, 'Weight in pounds') : within(30, 250, 'Weight in kilograms')} /></div>
+          <div class="field"><label>Weight ({pounds(p) ? 'lb' : 'kg'})</label>
+            <NumberBox value={pounds(p) ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onValue={(v) => { if (v) upd('weightKg', pounds(p) ? v / 2.2046 : v); }} check={pounds(p) ? within(66, 550, 'Weight in pounds') : within(30, 250, 'Weight in kilograms')} /></div>
           <div class="field"><label>Hours per week</label><NumberBox decimals value={p.hoursPerWeek} onValue={num('hoursPerWeek')} check={within(0.5, 40, 'Hours per week')} /></div>
           <div class="field"><label>Birth year</label><NumberBox value={p.birthYear} onValue={(v) => upd('birthYear', v || undefined)} check={within(1920, thisYear - 10, 'Birth year')} /></div>
         </div>
@@ -224,11 +226,13 @@ export function Settings({ data }: { data: AppData }) {
           {breathZones(p) && <div class="field"><label>In the ride player, start on</label>
             <div class="seg"><button class={!p.preferBreath ? 'on' : ''} onClick={() => upd('preferBreath', undefined)}>{p.basis === 'hr' ? 'Heart rate' : 'Power'}</button><button class={p.preferBreath ? 'on' : ''} onClick={() => upd('preferBreath', true)}>Breathing</button></div>
             {p.preferBreath && <span class="faint small">When a breathing strap is connected and the ride works by breathing; otherwise {p.basis === 'hr' ? 'heart rate' : 'power'}.</span>}</div>}
-          <div class="field"><label>Units</label>
-            <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
+          <div class="field"><label>Distance</label>
+            <div class="seg"><button class={miles(p) ? 'on' : ''} aria-pressed={miles(p)} onClick={() => setP({ ...p, distUnits: 'mi', weightUnits: weightUnitsOf(p), units: legacyUnits('mi', weightUnitsOf(p)) })}>Miles</button><button class={!miles(p) ? 'on' : ''} aria-pressed={!miles(p)} onClick={() => setP({ ...p, distUnits: 'km', weightUnits: weightUnitsOf(p), units: legacyUnits('km', weightUnitsOf(p)) })}>Kilometres</button></div></div>
+          <div class="field"><label>Weight</label>
+            <div class="seg"><button class={pounds(p) ? 'on' : ''} aria-pressed={pounds(p)} onClick={() => setP({ ...p, weightUnits: 'lb', distUnits: distUnitsOf(p), units: legacyUnits(distUnitsOf(p), 'lb') })}>Pounds</button><button class={!pounds(p) ? 'on' : ''} aria-pressed={!pounds(p)} onClick={() => setP({ ...p, weightUnits: 'kg', distUnits: distUnitsOf(p), units: legacyUnits(distUnitsOf(p), 'kg') })}>Kilograms</button></div></div>
           <div class="field"><label>Week starts on</label>
             <div class="seg"><button class={(p.weekStartsOn ?? 1) === 1 ? 'on' : ''} onClick={() => upd('weekStartsOn', 1)}>Monday</button><button class={p.weekStartsOn === 0 ? 'on' : ''} onClick={() => upd('weekStartsOn', 0)}>Sunday</button></div></div>
-          <div class="field"><label>Masters recovery (over 50)</label>
+          <div class="field"><label>Masters recovery (40 and over)</label>
             <div class="seg"><button class={p.masters ? 'on' : ''} onClick={() => upd('masters', true)}>On</button><button class={!p.masters ? 'on' : ''} onClick={() => upd('masters', false)}>Off</button></div></div>
         </div>
         <div class="field" style="margin-top:14px"><label>Days you can ride</label>
@@ -273,7 +277,7 @@ export function Settings({ data }: { data: AppData }) {
             <div class="form">
               <div class="field"><label>Threshold heart rate (bpm)</label><NumberBox value={footThreshold(p)} onValue={(v) => upd('footLthr', v || undefined)} check={firstOf(within(80, 220, 'Threshold heart rate on foot'), (v) => p.maxHr && v >= p.maxHr ? `It must be below your max heart rate (${p.maxHr}).` : undefined)} />
                 {!p.footLthr && <span class="faint small">Not set yet: the bike's number is used. Most people run 3 to 6 beats higher.</span>}</div>
-              <PaceField key={p.units} value={p.thresholdPaceSec} imperial={p.units === 'imperial'} onChange={(v) => upd('thresholdPaceSec', v)} />
+              <PaceField key={distUnitsOf(p)} value={p.thresholdPaceSec} imperial={miles(p)} onChange={(v) => upd('thresholdPaceSec', v)} />
             </div>
             <ZoneEditor title="Heart-rate zones on foot" unit="bpm" threshold={footThreshold(p)} max={p.maxHr} zones={footHrZones(p)} mode={p.footHrZoneMode ?? (p.footHrZoneTops ? 'abs' : 'pct')} custom={!!(p.footHrZonePcts || p.footHrZoneTops)}
               onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
@@ -607,7 +611,7 @@ function UpdateCheck() {
 }
 
 /** Profile fields the coach is told about: a change to any of them means the day's note is out of date. */
-export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'ftp', 'lthr', 'footLthr', 'hoursPerWeek', 'basis'] as const;
+export const COACH_FIELDS = ['name', 'birthYear', 'masters', 'units', 'distUnits', 'weightUnits', 'ftp', 'lthr', 'footLthr', 'hoursPerWeek', 'basis'] as const;
 export function coachFieldsChanged(before: Profile, after: Profile): boolean {
   // The coach is told the zone tops too, so a changed table rewrites its note; max HR alone is not something it reads.
   const tops = (p: Profile) => JSON.stringify([ladderTops(rideHrZones(p), p.lthr), ladderPcts(ridePowerZones(p))]);

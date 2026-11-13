@@ -24,6 +24,7 @@ import { credentials } from '../sync/syncService';
 import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './derived';
 import type { AppData } from './store';
 import { alreadyOnDay, findWorkout, getCurrentEquipment, loadAppData, notify, readyMade } from './store';
+import { sameSessionName } from '../engine/units';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
@@ -382,7 +383,7 @@ export async function nameRideSessions(): Promise<number> {
     if (!w || w.source !== 'generated' || w.kind === 'strength') continue;
     const lib = snap(w, { basis: p.basis, extra: own, equipment });
     if (!lib) continue;
-    if (w.kind !== 'ride' && lib.name === w.name) continue;                      // already the Library's session, as its own copy
+    if (w.kind !== 'ride' && sameSessionName(lib.name, w.name)) continue;                      // already the Library's session, as its own copy
     if (p.status === 'sent' && !sameWithin(w, lib)) continue;                     // the watch's copy would no longer match
     await db.planned.update(p.id, { workoutId: await storeSessionWorkout(lib) });
     n++;

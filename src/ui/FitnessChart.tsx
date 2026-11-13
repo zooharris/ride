@@ -59,6 +59,7 @@ export interface OverlayData {
   mine: Workout[];
   lthr: number;
   hr?: HrNumbers;
+  /** Weight in pounds. */
   imperial: boolean;
 }
 

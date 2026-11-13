@@ -6,6 +6,7 @@ import type { Equipment, Profile, SessionKind } from '../engine/types';
 import { toast } from './Toast';
 import { NumberBox } from './NumberBox';
 import { dayOrder, fmtDate } from './derived';
+import { miles } from '../engine/units';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EVENT_TYPES: Array<[EventType, string]> = [
@@ -20,7 +21,7 @@ export const GOAL_KIND_LABEL: Record<Goal['kind'], string> = { event: 'An event 
  * end date instead of a number of weeks.
  */
 export function GoalFields({ goal, setGoal, profile, fixedKind = false, endDate, setEndDate }: { goal: Goal; setGoal: (g: Goal) => void; profile: Profile; fixedKind?: boolean; endDate?: string; setEndDate?: (d: string) => void }) {
-  const imperial = profile.units === 'imperial';
+  const imperial = miles(profile);
   return (
     <>
           {fixedKind ? (

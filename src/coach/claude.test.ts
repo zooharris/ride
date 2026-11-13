@@ -21,9 +21,9 @@ const chart = { profile: todd, date: '2026-10-21', from: '2026-09-10', to: '2026
 
 describe('one rider, one voice', () => {
   it('describes the rider from the profile', () => {
-    expect(riderLine(todd, '2026-10-21')).toMatch(/^The rider \("Todd Harris"\) is a 60-year-old road cyclist training on a masters recovery rhythm, imperial units/);
+    expect(riderLine(todd, '2026-10-21')).toMatch(/^The rider \("Todd Harris"\) is a 60-year-old road cyclist training on a masters recovery rhythm, distance in miles, weight in pounds/);
     const a = riderLine(angie, '2026-10-21');
-    expect(a).toMatch(/^The rider \("Angie"\) is a road cyclist, metric units/);
+    expect(a).toMatch(/^The rider \("Angie"\) is a road cyclist, distance in kilometres, weight in kilograms/);
     expect(a).not.toMatch(/year-old|masters/);
     expect(a).toMatch(/workouts sent by heart rate/);
     expect(riderLine({ ...todd, name: '  ' }, '2026-10-21')).toMatch(/^The rider is a/);

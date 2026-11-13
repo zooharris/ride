@@ -10,6 +10,7 @@ import { fmtDate } from './derived';
 import { toast } from './Toast';
 import { ExThumb } from './ExercisePictures';
 import { NumberBox } from './NumberBox';
+import { packWords } from '../engine/units';
 
 const PATTERN_LABEL: Record<Pattern, string> = { squat: 'Squat', 'single-leg': 'Lunge and single leg', hinge: 'Hinge', push: 'Push', pull: 'Pull', carry: 'Carry', rotate: 'Rotate', trunk: 'Trunk', hip: 'Hips and calves' };
 const LB_PER_KG = 2.2046;
@@ -182,7 +183,7 @@ export function DoneEditor({ rec, kind, date, units, history, plannedRec, onSave
 
 /** The planned exercises or stretches as a compact list, for "What was planned". */
 export function PlannedList({ workout }: { workout: Workout }) {
-  if (workout.walk) return <p class="small">{workout.walk.minutes} min walk{workout.walk.packKg ? ` with a ${Math.round(workout.walk.packKg * LB_PER_KG)} lb pack` : ''}, heart rate {walkZoneWords(workout.walk)}.</p>;
+  if (workout.walk) return <p class="small">{workout.walk.minutes} min walk{workout.walk.packKg ? ` with a ${packWords(workout.walk.packKg)} pack` : ''}, heart rate {walkZoneWords(workout.walk)}.</p>;
   return (
     <div>
       {(workout.exercises ?? []).map((e, i) => (

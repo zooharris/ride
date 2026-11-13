@@ -7,6 +7,7 @@ import type { Profile, SessionKind } from '../engine/types';
 import { ZONE_VAR } from './Profile';
 import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, type Zone } from '../engine/zones';
 import { clock } from '../engine/workout';
+import { fahrenheit, miles } from '../engine/units';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
 export interface Sample { t: number; d: number; watts?: number; hr?: number; cad?: number; speed?: number; alt?: number; temp?: number; lat?: number; lng?: number; ve?: number; br?: number; tv?: number }
@@ -79,7 +80,8 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
   // By distance suits a ride on the road; walks (often on a treadmill), strength, mobility and indoor rides read by time.
   const timeFirst = kind === 'walk' || kind === 'strength' || kind === 'mobility' || (ride && indoor);
   const [axis, setAxis] = useState<Axis>(() => (!timeFirst && samples.some((s) => s.d > 0) ? 'distance' : 'time'));
-  const imperial = profile.units === 'imperial';
+  const imperial = miles(profile);
+  const degF = fahrenheit(profile);
   const hasDist = samples.some((s) => s.d > 0);
   const xOf = (p: Sample) => (axis === 'distance' && hasDist ? p.d : p.t);
   const xMax = Math.max(1, ...samples.map(xOf));
@@ -108,7 +110,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
     if (run && samples.some((s) => s.speed != null)) list.push({ key: 'pace', title: 'Pace', unit: imperial ? 'min/mi' : 'min/km', color: 'var(--run)', get: (p) => (p.speed == null || p.speed < 1 ? undefined : (imperial ? 1609.344 : 1000) / p.speed / 60), explain: 'Minutes per ' + (imperial ? 'mile' : 'kilometre') + '; lower is faster. Pace drifts on hills and in heat at the same heart rate, which is why runs are set by heart rate.' });
     else if ((ride || onFoot) && samples.some((s) => s.speed != null)) list.push({ key: 'speed', title: ride ? 'Speed' : 'Walking speed', unit: imperial ? 'mph' : 'km/h', color: 'var(--z4)', get: (p) => (p.speed == null ? undefined : imperial ? p.speed * 2.23694 : p.speed * 3.6), explain: ride ? 'Ground speed from GPS or the wheel sensor.' : 'Ground speed from GPS or the watch.' });
     if ((ride || onFoot) && samples.some((s) => s.alt != null)) list.push({ key: 'alt', title: 'Elevation', unit: imperial ? 'ft' : 'm', color: 'var(--ink-3)', get: (p) => (p.alt == null ? undefined : imperial ? p.alt * 3.28084 : p.alt), area: true, explain: 'Height above sea level along the route.' });
-    if (samples.some((s) => s.temp != null)) list.push({ key: 'temp', title: 'Temperature', unit: imperial ? '°F' : '°C', color: 'var(--z1)', get: (p) => (p.temp == null ? undefined : imperial ? p.temp * 1.8 + 32 : p.temp), explain: 'As measured by the head unit; it lags the air by a few minutes.' });
+    if (samples.some((s) => s.temp != null)) list.push({ key: 'temp', title: 'Temperature', unit: degF ? '°F' : '°C', color: 'var(--z1)', get: (p) => (p.temp == null ? undefined : degF ? p.temp * 1.8 + 32 : p.temp), explain: 'As measured by the head unit; it lags the air by a few minutes.' });
     return list;
   }, [samples, profile.ftp, profile.lthr, profile.footLthr, imperial, kind, breathStop?.at]);
 

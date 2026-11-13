@@ -12,6 +12,7 @@ import { workoutStats } from '../engine/workout';
 import { runStepsLine } from '../engine/run';
 import { JUDGE_SCHEMA, judgeSystem, plainWords, readJudge } from './judge';
 import { complete, type CoachConfig, type CompleteRequest } from './llm';
+import { unitsWords } from '../engine/units';
 
 
 /** One session on today's calendar, whoever put it there. */
@@ -78,7 +79,7 @@ export function riderLine(profile: Profile, date: string): string {
   const age = profile.birthYear ? Number(date.slice(0, 4)) - profile.birthYear : undefined;
   const name = riderName(profile);
   const who = name === 'the rider' ? 'The rider' : `The rider ("${name}")`;
-  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${profile.units} units, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm on the bike${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm), workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
+  return `${who} is a${age ? ` ${age}-year-old` : ''} road cyclist${profile.masters ? ' training on a masters recovery rhythm' : ''}, ${unitsWords(profile)}, about ${profile.hoursPerWeek} h/week, FTP ${profile.ftp} W, threshold heart rate ${profile.lthr} bpm on the bike${profile.footLthr ? ` and ${profile.footLthr} on foot` : ''} (heart-rate zone tops Z1–Z6: ${rideHrZones(profile).slice(0, 6).map((z) => Math.round(z.high * profile.lthr)).join('/')} bpm), workouts sent by ${profile.basis === 'hr' ? 'heart rate' : 'power'}.`;
 }
 
 /** The opening of every prompt: whose coach, and who they are. */
@@ -437,7 +438,7 @@ ${f.cards.map((c) => `- ${c.id} · ${c.title}: ${c.readout}`).join('\n') || '- n
 
 /** On Progress the coach is told only what the page shows, and the name as set: no profile details beyond those. */
 function pageIntro(profile: Profile): string {
-  return `You are the rider's cycling coach, reading their Progress page with them. ${nameRule(profile)} Units: ${profile.units}.`;
+  return `You are the rider's cycling coach, reading their Progress page with them. ${nameRule(profile)} Units: ${unitsWords(profile)}.`;
 }
 
 export function progressSystem(f: PageFacts): string {

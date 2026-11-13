@@ -10,6 +10,7 @@ import { credentials, onSyncRunning, recheckMatches, syncRunning } from '../sync
 import { setLastWeightLookup } from '../sync/intervals';
 import { lastDone, weightText } from '../engine/record';
 import { today } from '../engine/load';
+import { packUnit, sameSessionName, setPackUnit, weightUnitsOf } from '../engine/units';
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
@@ -63,6 +64,7 @@ export async function loadAppData(): Promise<AppData> {
     db.activityEdits.toArray(),
   ]);
   setFirstDay(profile?.weekStartsOn === 0 ? 0 : 1);
+  setPackUnit(weightUnitsOf(profile));
   // "last 35 lb" in the step text sent to the Garmin comes from the calendar's done records.
   const history = doneHistory(planned, edits);
   setLastWeightLookup((name) => { const l = lastDone(name, history, today()); return l ? weightText(l) : undefined; });
@@ -91,7 +93,8 @@ export function useAppData(): AppData {
 const readyCache = new Map<string, Workout[]>();
 export const DEFAULT_EQUIPMENT: Equipment[] = ['bodyweight', 'dumbbells', 'bench', 'outdoor-walk'];
 export function readyMade(equipment: Equipment[] = currentEquipment): Workout[] {
-  const key = [...equipment].sort().join(',');
+  // Walk names carry the pack in the rider's weight unit, so the cache is kept per unit too.
+  const key = `${packUnit()}|${[...equipment].sort().join(',')}`;
   if (!readyCache.has(key)) readyCache.set(key, readyMadeSessions(equipment));
   return readyCache.get(key)!;
 }
@@ -140,7 +143,7 @@ export async function alreadyOnDay(w: Workout, date: string, except?: string): P
   if (w.source !== 'library' || w.kind === 'ride') return false;
   for (const p of entries) {
     const c = await db.workouts.get(p.workoutId);
-    if (c && c.source === 'generated' && c.kind === w.kind && c.name === w.name) return true;
+    if (c && c.source === 'generated' && c.kind === w.kind && sameSessionName(c.name, w.name)) return true;
   }
   return false;
 }

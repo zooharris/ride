@@ -38,13 +38,15 @@ import { TrainerOnlyTag } from '../Thumbs';
 import { APP_SHORT_NAME } from '../../appName';
 import { DownloadWorkout } from '../DownloadSheet';
 import { workoutExportable } from '../../export/formats';
+import { miles, weightSystem } from '../../engine/units';
+import { packWords, sameSessionName } from '../../engine/units';
 
 export function WorkoutScreen({ data, id, params }: { data: AppData; id: string; params: URLSearchParams }) {
   const profile = data.profile!;
   const w = findWorkout(data.mine, id);
   // The calendar entry this page is about: the one on the date in the link, else the nearest upcoming entry for
   // this workout or for a copy of it (a library session is copied when it is put on a date).
-  const sameSession = (p: PlannedWorkout) => { if (!w) return false; if (p.workoutId === w.id) return true; const c = findWorkout(data.mine, p.workoutId); return !!c && c.source === 'generated' && c.kind === w.kind && c.name === w.name; };
+  const sameSession = (p: PlannedWorkout) => { if (!w) return false; if (p.workoutId === w.id) return true; const c = findWorkout(data.mine, p.workoutId); return !!c && c.source === 'generated' && c.kind === w.kind && sameSessionName(c.name, w.name); };
   const plannedEntry = !w ? undefined : params.get('date')
     ? data.planned.find((p) => p.date === params.get('date') && p.workoutId === w.id)
     : data.planned.filter((p) => p.date >= today() && p.status !== 'completed' && sameSession(p)).sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -65,14 +67,16 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
   // Where Back goes when nothing is behind this page (a fresh tab); otherwise Back returns to the page before, as it was left.
   const backHref = from === 'today' ? '#/today' : from === 'calendar' ? (params.get('date') ? `#/calendar?d=${params.get('date')}` : '#/calendar') : from === 'rides' ? (params.get('ride') ? `#/rides/${params.get('ride')}` : '#/rides') : '#/library';
   const recording = plannedEntry?.status === 'completed' && plannedEntry.activityId ? data.rides.find((r) => r.id === plannedEntry.activityId) : undefined;
-  const units = profile.units ?? 'imperial';
+  // Weights in strength and walk records follow the weight setting; distances and paces the distance setting.
+  const units = weightSystem(profile);
+  const milesOn = miles(profile);
   // Move, replace or remove this session; the page follows a move to its new date.
   const changeSheet = change && plannedEntry && <ChangeSheet data={data} planned={plannedEntry} startWith={change} onClose={() => setChange(null)}
     onDone={(what, p) => { if (what === 'moved') replaceRoute(`workout/${w.id}?from=${from}&date=${p.date}`); else goBack(backHref); }} />;
   const changeButtons = plannedEntry && plannedEntry.status !== 'completed' && <><button class="btn sm" style="margin-left:6px" onClick={() => setChange('menu')}>Move</button><button class="btn sm" style="margin-left:6px" onClick={() => setChange('replace')}>Replace</button></>;
   const canDownload = workoutExportable(w).ok;
   const downloadSheet = downloading && <DownloadWorkout w={w} entry={plannedEntry} profile={profile} plans={plans} onClose={() => setDownloading(false)} />;
-  if (w.kind !== 'ride') return <><SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); } : undefined} onDownload={canDownload ? () => setDownloading(true) : undefined} />{downloadSheet}</>;
+  if (w.kind !== 'ride') return <><SessionScreen w={w} backHref={backHref} planned={plannedEntry} recording={recording} history={doneHistory(data.planned, data.edits)} units={units} milesOn={milesOn} basis={data.profile?.basis ?? 'power'} maxHr={data.profile?.maxHr ?? 0} lthr={data.profile?.lthr ?? 0} hr={data.profile ?? undefined} thresholdPace={data.profile?.thresholdPaceSec} changeButtons={changeButtons} changeSheet={changeSheet} onRemove={plannedEntry ? async () => { if (await removePlanned(plannedEntry.id, data.mine)) goBack(backHref); } : undefined} onDownload={canDownload ? () => setDownloading(true) : undefined} />{downloadSheet}</>;
   const s = workoutStats(w.blocks);
 
   async function schedule(date: string) {
@@ -126,14 +130,14 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       {plannedEntry && plannedEntry.status === 'completed' && (
         <section class="section">
           <h2>Done</h2>
-          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} units={units} history={doneHistory(data.planned, data.edits)} /></div>
+          <div style="margin-top:8px"><SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} recording={recording} units={units} miles={milesOn} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {plannedEntry && plannedEntry.status !== 'completed' && (
         <section class="section">
           <h2>Rode it without a device?</h2>
           <p class="faint small" style="margin:4px 0 8px">Normally the ride arrives from Intervals.icu on the next Sync. Use this only when nothing recorded it.</p>
-          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} units={units} history={doneHistory(data.planned, data.edits)} />
+          <SessionLog planned={plannedEntry} workout={w} defaultMinutes={Math.round(s.seconds / 60)} units={units} miles={milesOn} history={doneHistory(data.planned, data.edits)} />
         </section>
       )}
 
@@ -150,7 +154,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
 
 
 /** Strength, mobility and walk sessions: the checklist is the player. */
-function SessionScreen({ w, backHref, planned, recording, history, units, basis, maxHr, lthr, hr, thresholdPace, onRemove, changeButtons, changeSheet, onDownload }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; basis: 'power' | 'hr'; maxHr: number; lthr: number; hr?: HrProfile; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren; onDownload?: () => void }) {
+function SessionScreen({ w, backHref, planned, recording, history, units, milesOn, basis, maxHr, lthr, hr, thresholdPace, onRemove, changeButtons, changeSheet, onDownload }: { w: NonNullable<ReturnType<typeof findWorkout>>; backHref: string; planned?: PlannedWorkout; recording?: Ride; history: PlannedWorkout[]; units: 'imperial' | 'metric'; milesOn: boolean; basis: 'power' | 'hr'; maxHr: number; lthr: number; hr?: HrProfile; thresholdPace?: number; onRemove?: () => void; changeButtons?: ComponentChildren; changeSheet?: ComponentChildren; onDownload?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [sending, setSending] = useState(false);
   const setSendMsg = toast;
@@ -191,7 +195,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
             <div class="stat"><div class="v">{capFirst(walkZoneWords(w.walk, hr))}</div><div class="l">heart-rate band on your foot table{noFloor ? ' · no minimum' : ''}</div></div>
             {bpm && <div class="stat"><div class="v">{noFloor ? 'up to ' : `${bpm.low}–`}{bpm.high}</div><div class="l">beats per minute (foot threshold {footLthr(hr ?? { lthr })})</div></div>}
             {w.estimatedTss ? <div class="stat"><div class="v">≈ {w.estimatedTss}</div><div class="l">TSS, estimated from the heart-rate band{w.walk.packKg ? ' and pack' : ''}</div></div> : null}
-            {w.walk.packKg && <div class="stat"><div class="v">{Math.round(w.walk.packKg * 2.2)}<span class="faint small" style="font-weight:400"> lb</span></div><div class="l">Pack weight</div></div>}
+            {w.walk.packKg && <div class="stat"><div class="v">{packWords(w.walk.packKg).split(' ')[0]}<span class="faint small" style="font-weight:400"> {packWords(w.walk.packKg).split(' ')[1]}</span></div><div class="l">Pack weight</div></div>}
           </div>
           <p class="muted small" style="margin-top:10px">{noFloor ? 'No minimum: walk at whatever pace feels steady; the only rule is to slow down if the heart rate climbs past the ceiling. On the flat it drifts up slowly over the walk and may stay in zone 1 the whole way, and that is the walk done right.' : <>{b.zoneLow >= 2.5 ? 'Purposeful: arms swinging, breathing noticeably but still able to talk in short sentences.' : 'Talk-in-full-sentences effort.'} Walks go by heart rate rather than power. Speed and grade are what get the heart rate up, far more than a heavier pack: walk faster or find a hill (or raise the treadmill's grade) until it settles in the band, and back off if it drifts higher.</>}</p>
         </section>
@@ -211,7 +215,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
                 <tr key={key}>
                   <td style="white-space:nowrap">{label}</td><td class="num" style="white-space:nowrap">{n > 1 && key.endsWith('w') ? `${n} × ` : ''}{timeWords(sec)}</td><td>{bandZoneWords(b)}</td>
                   <td class="r num">{bpm ? `${hasNoFloor(b) ? 'up to ' : `${bpm.low}–`}${bpm.high}` : '–'}</td>
-                  {thresholdPace ? <td class="r num">{paceHint(bandKeyOf(b), thresholdPace, units === 'imperial') ?? '–'}</td> : null}
+                  {thresholdPace ? <td class="r num">{paceHint(bandKeyOf(b), thresholdPace, milesOn) ?? '–'}</td> : null}
                 </tr>
                 );
               };
@@ -270,7 +274,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, basis,
       {planned && (
         <section class="section">
           <h2>{planned.status === 'completed' ? 'Done' : 'Or log it by hand'}</h2>
-          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} recording={recording} units={units} history={history} /></div>
+          <div style="margin-top:8px"><SessionLog planned={planned} workout={w} defaultMinutes={minutes} recording={recording} units={units} miles={milesOn} history={history} /></div>
         </section>
       )}
 

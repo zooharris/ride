@@ -60,7 +60,12 @@ export interface Profile {
    */
   preferBreath?: boolean;
   masters: boolean;     // masters recovery ratios in the plan builder
+  /** The older single setting; kept in step with the two below. Read distance and weight through engine/units. */
   units: 'imperial' | 'metric';
+  /** Distance, speed, pace and climbing (12 Nov 2026); absent for a rider set up before, who keeps `units`. */
+  distUnits?: 'mi' | 'km';
+  /** Weight (12 Nov 2026); absent for a rider set up before, who keeps `units`. */
+  weightUnits?: 'lb' | 'kg';
   /** First day of the week on calendars, lists and printouts: 0 = Sunday, 1 = Monday. */
   weekStartsOn?: 0 | 1;
   rideDays: number[];   // 0 = Sunday .. 6 = Saturday

@@ -32,6 +32,8 @@ import { breathBlocked, chooseBreathMode, chooseFreeMode, chooseMode } from '../
 import { breathZones } from '../../engine/zones';
 import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
 import { toast } from '../Toast';
+import { miles } from '../../engine/units';
+import { sameSessionName } from '../../engine/units';
 
 /** The connected sensors, redrawn as readings arrive and once a second so a sensor that falls silent shows it. */
 export function useSensors(): { sensors: SensorState[]; now: number } {
@@ -142,7 +144,7 @@ function NoBluetooth() {
 function rideHistory(data: AppData, w: Workout): string[] {
   const since = addDays(today(), -21);
   const lines = data.rides.filter((r) => r.date >= since).slice(0, 12).map((r) => `${r.date}: ${r.name}, ${Math.round(r.seconds / 60)} min${r.tss ? `, training load ${Math.round(r.tss)}` : ''}`);
-  const last = data.planned.filter((p) => p.status === 'completed' && (p.workoutId === w.id || findWorkout(data.mine, p.workoutId)?.name === w.name)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const last = data.planned.filter((p) => p.status === 'completed' && (p.workoutId === w.id || sameSessionName(findWorkout(data.mine, p.workoutId)?.name ?? '', w.name))).sort((a, b) => b.date.localeCompare(a.date))[0];
   if (last) lines.unshift(`Last rode this same workout on ${last.date}.`);
   return lines;
 }
@@ -644,12 +646,12 @@ function copyDetails(id: string): void {
 
 function fmtValue(m: Metric, v: number, profile: Profile): string {
   if (m === 'br') return brShown(v);
-  if (m === 'speedKmh') return profile.units === 'imperial' ? (v / 1.609344).toFixed(1) : v.toFixed(1);
+  if (m === 'speedKmh') return miles(profile) ? (v / 1.609344).toFixed(1) : v.toFixed(1);
   return String(Math.round(v));
 }
 
 function unitOf(m: Metric, profile: Profile): string {
-  return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : m === 've' ? 'L/min' : m === 'br' ? 'a minute' : m === 'tv' ? 'L' : profile.units === 'imperial' ? 'mph' : 'km/h';
+  return m === 'watts' ? 'W' : m === 'bpm' ? 'bpm' : m === 'cadence' ? 'rpm' : m === 've' ? 'L/min' : m === 'br' ? 'a minute' : m === 'tv' ? 'L' : miles(profile) ? 'mph' : 'km/h';
 }
 
 

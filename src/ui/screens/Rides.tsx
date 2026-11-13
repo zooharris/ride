@@ -47,6 +47,7 @@ import { rampContextFor } from '../maxHrSeen';
 import { TestResults } from '../TestResults';
 import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
+import { fahrenheit, miles, weightSystem } from '../../engine/units';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -63,7 +64,7 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
       </div>
     );
   }
-  const mph = (ms?: number) => ms ? (profile.units === 'imperial' ? `${(ms * 2.237).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : '';
+  const mph = (ms?: number) => ms ? (miles(profile) ? `${(ms * 2.237).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : '';
   return <RideList data={data} mph={mph} />;
 }
 
@@ -247,7 +248,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const breathStop = shown?.frozenAt != null ? { at: shown.frozenAt, garmin: !data.edits.find((e) => e.id === r.id)?.breathSensor } : undefined;
   const hasRoute = samples.filter((x) => typeof x.lat === 'number' && typeof x.lng === 'number').length > 1;
   const [hover, setHover] = useState<number | null>(null);
-  const tempF = r.averageTempC != null ? (profile.units === 'imperial' ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
+  const tempF = r.averageTempC != null ? (fahrenheit(profile) ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
   const items = [...activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind), ...breathNumbers(shown)];
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];
@@ -330,13 +331,13 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       {!p && (r.sport === 'strength' || r.sport === 'mobility' || r.sport === 'walk') && (
         <section class="section">
           <h2>What you did</h2>
-          <div style="margin-top:8px"><ActivityWhatYouDid ride={r} edit={data.edits.find((e) => e.id === r.id)} units={profile.units ?? 'imperial'} history={doneHistory(data.planned, data.edits)} /></div>
+          <div style="margin-top:8px"><ActivityWhatYouDid ride={r} edit={data.edits.find((e) => e.id === r.id)} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {w && p && !isRide && w.kind !== 'ride' && (
         <section class="section">
           <h2>What you did</h2>
-          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={profile.units ?? 'imperial'} history={doneHistory(data.planned, data.edits)} /></div>
+          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {w && p && (
@@ -427,7 +428,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
           <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold, and each move into position, in order, with heart rate.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
           {lapNames && !lapNames.matched && w && <p class="faint small" style="margin:-4px 0 10px">The laps don't line up with the {lapSteps!.length} steps of {w.name} (a lap press missed or extra), so they're numbered rather than named.</p>}
-          <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={profile.units === 'imperial'} /></div>
+          <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={miles(profile)} /></div>
         </section>
       ) : null}
       <section class="section">
@@ -568,10 +569,10 @@ function isIndoor(r: Ride): boolean { return /Virtual|Treadmill|Indoor/i.test(r.
 function showPace(r: Ride): boolean { return (r.distanceM ?? 0) >= 805 && !isIndoor(r); }
 
 /** Pace for a walk or run, as minutes per mile or kilometre. */
-function pace(speedMs: number | undefined, profile: { units?: string }): string | undefined {
+function pace(speedMs: number | undefined, profile: Parameters<typeof miles>[0]): string | undefined {
   if (!speedMs || speedMs <= 0) return undefined;
-  const secs = Math.round((profile.units === 'imperial' ? 1609.344 : 1000) / speedMs);
-  return `${clock(secs)} per ${profile.units === 'imperial' ? 'mile' : 'km'}`;
+  const secs = Math.round((miles(profile) ? 1609.344 : 1000) / speedMs);
+  return `${clock(secs)} per ${miles(profile) ? 'mile' : 'km'}`;
 }
 
 /**
@@ -586,8 +587,8 @@ function activityNumbers(r: Ride, profile: NonNullable<AppData['profile']>, temp
     ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
   ];
   // More per activity (11 Nov 2026): each shows only when the data service carried it for this activity.
-  const imperial = profile.units === 'imperial';
-  const temp = (c?: number) => (c == null ? undefined : imperial ? `${Math.round(c * 1.8 + 32)}°F` : `${Math.round(c)}°C`);
+  const imperial = miles(profile);
+  const temp = (c?: number) => (c == null ? undefined : fahrenheit(profile) ? `${Math.round(c * 1.8 + 32)}°F` : `${Math.round(c)}°C`);
   const speed = (ms?: number) => (ms ? (imperial ? `${(ms * 2.23694).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : undefined);
   const energy: Array<[string, string | number | undefined, string?]> = [
     ['Energy burned', r.calories ? `${Math.round(r.calories).toLocaleString()} kcal` : undefined, 'As your device or Intervals.icu worked it out'],

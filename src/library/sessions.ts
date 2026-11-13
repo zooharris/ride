@@ -4,6 +4,7 @@ import { exercisesFor, firstFirst, lightLoad, type Pattern } from './strength';
 import { MOBILITY } from './mobility';
 import { STRENGTH_SESSIONS, hasNeeds, strengthWorkout } from './strengthSessions';
 import { withTags } from './tags';
+import { packWords } from '../engine/units';
 
 /** Load estimate for a strength session of these minutes and effort. */
 export const strengthTss = (minutes: number, effort: number) => estimateSessionTss({ kind: 'strength', minutes, effort });
@@ -148,7 +149,7 @@ export function readyMadeSessions(equipment: Equipment[]): Workout[] {
   walk('lib-walk-20-recovery', generateWalk({ minutes: 20, where, reason: 'The day after the long ride: a stroll with the legs moving and nothing asked of them.', band: { zoneLow: 0, zoneHigh: 2 } }), { name: 'Recovery stroll 20 min' });
   walk('lib-walk-hills-30', generateWalk({ minutes: 30, where: 'outdoor', band: { zoneLow: 2, zoneHigh: 3.5 }, reason: 'Thirty minutes with real climbs; the heart rate reaches zone 2 on the way up and is allowed into low zone 3 near the top.' }), { name: 'Hill walk 30 min' });
   walk('lib-walk-hills', generateWalk({ minutes: 45, where: 'outdoor', band: { zoneLow: 2, zoneHigh: 3.5 }, reason: 'Find the hills: forty-five minutes with real climbs, the heart rate allowed into low zone 3 on the way up.' }), { name: 'Hill walk 45 min' });
-  walk('lib-walk-ruck-60', generateWalk({ minutes: 60, packKg: 9, where, reason: 'An hour under a 20 lb (9 kg) pack: posture, trunk and legs working together like a long seated climb, without the impact of a run.' }), { name: 'Ruck 60 min, 20 lb pack' });
+  walk('lib-walk-ruck-60', generateWalk({ minutes: 60, packKg: 9, where, reason: 'An hour under a 20 lb (9 kg) pack: posture, trunk and legs working together like a long seated climb, without the impact of a run.' }), { name: `Ruck 60 min, ${packWords(9)} pack` });
   if (where === 'treadmill') walk('lib-walk-incline-30', generateWalk({ minutes: 30, where, band: zone2, reason: 'Half an hour on a steady 8–12% grade: the quads and glutes at a climbing angle, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 30 min' });
   if (where === 'treadmill') walk('lib-walk-incline-45', generateWalk({ minutes: 45, where, band: zone2, reason: 'Forty-five minutes on a steady 8–12% grade: the grade, not a heavier pack, is what brings the heart rate into zone 2. Walk without holding on.' }), { name: 'Incline treadmill 45 min' });
   if (where === 'treadmill') walk('lib-walk-incline-60', generateWalk({ minutes: 60, where, band: zone2, reason: 'An hour on a steady 8–12% grade: a long climb on foot, heart rate held in zone 2. Walk without holding on.' }), { name: 'Incline treadmill 60 min' });

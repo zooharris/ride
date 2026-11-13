@@ -13,6 +13,7 @@ import { movePlanned, removePlanned, replacePlanned } from './planService';
 import { toast } from './Toast';
 import { applyFilters, FilterBar, SortLine, useFilters } from './LibraryFilters';
 import { useMine } from './favorites';
+import { packWords } from '../engine/units';
 
 /**
  * Move a session to another day and say so. If the day already has a session of
@@ -126,7 +127,7 @@ export function WorkoutPicker({ data, title, onPick, onClose, onBack, startKind 
             return (
               <button class="cal-item" key={w.id} onClick={() => onPick(w)} style="cursor:pointer;text-align:left">
                 {w.kind === 'ride' ? <WorkoutProfile blocks={w.blocks} height={28} ratio={2.2} /> : <KindDot kind={w.kind} big />}
-                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : PURPOSE_LABEL[tagsOf(w).purpose] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${Math.round(w.walk.packKg * 2.2)} lb pack` : ''}` : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w, data.profile ?? undefined)}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`}</span></div>
+                <div class="t"><b>{w.name}</b><span>{w.kind === 'ride' ? `${w.subtitle ? `${w.subtitle} · ` : PURPOSE_LABEL[tagsOf(w).purpose] + ' · '}${clock(s.seconds)} · ${s.tss} TSS` : w.kind === 'walk' ? `${w.walk?.minutes ?? w.minutes} min${w.walk?.packKg ? ` · ${packWords(w.walk.packKg)} pack` : ''}` : w.kind === 'run' ? `${w.minutes ?? '–'} min · ${runBandText(w, data.profile ?? undefined)}` : `${w.minutes ?? '–'} min · ${n} ${w.kind === 'strength' ? 'exercises' : 'stretches'}`}</span></div>
               </button>
             );
           })}

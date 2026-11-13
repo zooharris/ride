@@ -190,8 +190,9 @@ export const DEFAULT_PROFILE: Profile = {
   restingHr: 55,
   weightKg: 75,
   basis: 'power',
-  masters: true,
-  units: 'imperial',
+  // A new rider's masters recovery and units are set in the first-run setup, from their birth year and region.
+  masters: false,
+  units: 'metric',
   rideDays: [0, 2, 4, 6],
   hoursPerWeek: 7,
 };

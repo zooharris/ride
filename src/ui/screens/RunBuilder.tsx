@@ -14,6 +14,7 @@ import { go, goBack } from '../router';
 import { deleteWorkoutEverywhere } from '../planService';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
+import { miles } from '../../engine/units';
 
 /** A step as the builder edits it: minutes and seconds, a band by name, an optional repeat with its recovery. */
 interface Row { min: number; sec: number; band: RunBandKey; label: string; repeat: number; recMin: number; recSec: number; recBand: RunBandKey }
@@ -44,7 +45,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
   const [rows, setRows] = useState<Row[]>(source?.run?.steps.length ? source.run.steps.map(toRow) : DEFAULT_ROWS);
   const [date, setDate] = useState(today());
   const profile = data.profile!;
-  const imperial = profile.units === 'imperial';
+  const imperial = miles(profile);
 
   const snapshot = () => JSON.stringify({ name, purpose, where, rows });
   const initial = useRef(snapshot());

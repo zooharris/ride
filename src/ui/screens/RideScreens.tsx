@@ -24,6 +24,7 @@ import { keepVeloiqInstead, KEPT_GARMIN } from '../../player/garmin';
 import { plannedSeconds, TRIVIAL_SECONDS } from '../../sync/syncService';
 import type { Recording, Sample } from '../../player/types';
 import type { TrainerMode } from '../../player/engine';
+import { miles } from '../../engine/units';
 import {
   answerBreath, answerHr, carryOnWithout, clearRide, nudgeBreath, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
 } from '../rideController';
@@ -36,9 +37,9 @@ export function useRide(): ActiveRide | undefined {
 
 const mmss = (s: number) => clock(Math.max(0, Math.round(s)));
 const pct = (x: number) => `${Math.round(x * 100)}%`;
-const mph = (kmh: number, p: Profile) => (p.units === 'imperial' ? `${(kmh / 1.609344).toFixed(1)}` : kmh.toFixed(1));
-const speedUnit = (p: Profile) => (p.units === 'imperial' ? 'mph' : 'km/h');
-const distText = (m: number, p: Profile) => (p.units === 'imperial' ? `${(m / 1609.344).toFixed(1)} mi` : `${(m / 1000).toFixed(1)} km`);
+const mph = (kmh: number, p: Profile) => (miles(p) ? `${(kmh / 1.609344).toFixed(1)}` : kmh.toFixed(1));
+const speedUnit = (p: Profile) => (miles(p) ? 'mph' : 'km/h');
+const distText = (m: number, p: Profile) => (miles(p) ? `${(m / 1609.344).toFixed(1)} mi` : `${(m / 1000).toFixed(1)} km`);
 
 function fullScreen() {
   if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -139,7 +140,7 @@ export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }
             <div><span class="caption">Average heart rate</span><div><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></div></div>
             <div><span class="caption">Training load so far</span><div><b class="num">{t.tss}</b><small>{planned ? ` of ${planned.tss} planned` : ' TSS'}</small></div></div>
             {hasPower && <div><span class="caption">Average power</span><div><b class="num">{t.avgPower}</b><small> W</small></div></div>}
-            <div><span class="caption">Distance</span><div><b class="num">{distText(t.distanceM, profile).split(' ')[0]}</b><small> {profile.units === 'imperial' ? 'mi' : 'km'}</small></div></div>
+            <div><span class="caption">Distance</span><div><b class="num">{distText(t.distanceM, profile).split(' ')[0]}</b><small> {miles(profile) ? 'mi' : 'km'}</small></div></div>
             {veCell}{cadenceCell}
           </section>
         ) : (

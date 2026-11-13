@@ -8,6 +8,7 @@ import { findWorkout, useSyncState, type AppData } from './store';
 import { weekSummary, plannedMinutes } from './week';
 import { getActivePlan, type ActivePlan } from './planService';
 import { Icon } from './icons';
+import { miles } from '../engine/units';
 
 /**
  * The sidebar's blocks under the navigation (11 Nov 2026). Each shows a live fact the page in
@@ -223,7 +224,7 @@ function GoalBlock({ plan, date, ftp }: { plan: ActivePlan; date: string; ftp: n
 function LastBlock({ ride, data }: { ride: Ride; data: AppData }) {
   const wd = DAY_SHORT[new Date(ride.date + 'T00:00:00').getDay()];
   const bits = [ride.distanceM ? distance(ride.distanceM, data.profile!) : '', minutesWords(Math.round(ride.seconds / 60))];
-  if (ride.elevationM && ride.elevationM >= 10) bits.push(data.profile?.units === 'imperial' ? `${Math.round(ride.elevationM * 3.28084).toLocaleString()} ft` : `${Math.round(ride.elevationM).toLocaleString()} m`);
+  if (ride.elevationM && ride.elevationM >= 10) bits.push(miles(data.profile) ? `${Math.round(ride.elevationM * 3.28084).toLocaleString()} ft` : `${Math.round(ride.elevationM).toLocaleString()} m`);
   return (
     <a class="side-card" href={`#/rides/${ride.id}`}>
       <div class="side-cap">Last activity · {wd}</div>

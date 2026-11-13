@@ -41,6 +41,7 @@ import { go } from '../router';
 import { ProgressCoach, CardCoachLine, useProgressCoach, type ProgressCoachState } from '../ProgressCoach';
 import { Measures } from '../../engine/measures';
 import { LargeView, URL_KEYS, type LargeRange, type LargeTarget } from '../LargeView';
+import { miles, pounds } from '../../engine/units';
 
 const KINDS: Array<{ k: SessionKind; name: string; color: string }> = [
   { k: 'ride', name: 'Rides', color: 'var(--ride)' },
@@ -107,8 +108,8 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   const projEnd = lastPlannedDate(data.planned, t);
   const projection = last && projEnd ? projectFitness(last, data.planned, data.mine, projEnd > addDays(t, 180) ? addDays(t, 180) : projEnd) : [];
   const events = active && active.goal.kind === 'event' ? [{ date: active.goalDate, label: 'event' }] : [];
-  const imperial = profile.units === 'imperial';
-  const overlayData: OverlayData = { rides: data.rides, wellness: data.wellness, planned: data.planned, mine: data.mine, lthr: profile.lthr, hr: hrNumbers(profile), imperial };
+  const imperial = miles(profile);
+  const overlayData: OverlayData = { rides: data.rides, wellness: data.wellness, planned: data.planned, mine: data.mine, lthr: profile.lthr, hr: hrNumbers(profile), imperial: pounds(profile) };
   const available = useMemo(() => overlayAvailability(data, from, t), [data, from, t]);
   const curvesState = useCurves(data);
   const tests = useTests(data);
@@ -122,7 +123,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     breath: curvesState.curves.filter((c) => c.breathAtPower?.length),
     isEndurance: (r) => { const p = data.planned.find((x) => x.activityId === r.id); const w = p ? findWorkout(data.mine, p.workoutId) : undefined; return w ? (w.family === 'endurance' || w.family === 'recovery') : undefined; },
     hrZones: hrNumbers(profile).ladders?.hr,
-    weightUnit: profile.units === 'imperial' ? 'lb' : 'kg', distUnit: profile.units === 'imperial' ? 'mi' : 'km',
+    weightUnit: pounds(profile) ? 'lb' : 'kg', distUnit: miles(profile) ? 'mi' : 'km',
     readiness: () => new Map(readinessSeries(data.wellness, series, data.rides, data.wellness.reduce((m, w) => (!m || w.date < m ? w.date : m), t), t).map((x) => [x.date, x.score])),
   }), [data.rides, data.wellness, series, profile, t, curvesState.curves.length, data.planned, data.mine]);
   const hardDays = useMemo(() => {
@@ -164,7 +165,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     { id: 'consistency', el: (wide) => <ConsistencyCard key="consistency" rides={data.rides} from={from} to={t} readout={facts.readouts.consistency} coach={coach} /> },
     { id: 'totals', el: (wide) => <TotalsCard key="totals" wide={wide} rides={data.rides} imperial={imperial} readout={facts.readouts.totals} coach={coach} /> },
   ];
-  if (facts.hasWeight) cards.push({ id: 'weight', el: (wide) => <WeightCard key="weight" wide={wide} data={data} from={from} to={t} imperial={imperial} readout={facts.readouts.weight} coach={coach} /> });
+  if (facts.hasWeight) cards.push({ id: 'weight', el: (wide) => <WeightCard key="weight" wide={wide} data={data} from={from} to={t} imperial={pounds(profile)} readout={facts.readouts.weight} coach={coach} /> });
   cards.push({ id: 'tests', el: (wide) => <TestsCard key="tests" data={data} tests={tests} from={from} to={t} plan={active} series={series} readout={facts.readouts.tests} coach={coach} /> });
   if (facts.hasBody) cards.push({ id: 'body', el: (wide) => <BodyCard key="body" data={data} from={from} to={t} readout={facts.readouts.body} coach={coach} /> });
   if (facts.hasBreathing) cards.push({ id: 'breathing', el: (wide) => <BreathingCard key="breathing" data={data} curves={curvesState.curves} tests={tests} from={from} to={t} readout={facts.readouts.breathing} coach={coach} /> });
@@ -447,14 +448,15 @@ function pageFacts({ data, from, to, range, series, curves, tests, plan, earlies
   data: AppData; from: string; to: string; range: RangeKey; series: Fitness[]; curves: PowerCurve[]; tests: TestEntry[]; plan: ActivePlan | null; earliest: string;
 }): PageFacts {
   const profile = data.profile!;
-  const imperial = profile.units === 'imperial';
+  const imperial = miles(profile);
+  const lb = pounds(profile);
   const ago = addDays(to, -28);
   const rides = data.rides.filter((r) => r.date >= from && r.date <= to);
   const readouts: Record<string, string> = {};
   const ticker: Cell[] = [];
   const key: KeyRow[] = [];
-  const kgShow = (v: number) => (imperial ? v * 2.20462 : v);
-  const kgUnit = imperial ? 'lb' : 'kg';
+  const kgShow = (v: number) => (lb ? v * 2.20462 : v);
+  const kgUnit = lb ? 'lb' : 'kg';
 
   // fitness, fatigue, form
   const f0 = fitnessOnDay(series, from), f1 = fitnessOnDay(series, to), fA = fitnessOnDay(series, ago);
@@ -704,7 +706,7 @@ function FitnessCard({ data, series, projection, events, range, on, available, o
       case 'hrv': return w?.hrv ? `${Math.round(w.hrv)} ms` : '–';
       case 'sleep': return w?.sleepSeconds ? hm(w.sleepSeconds / 3600) : '–';
       case 'restinghr': return w?.restingHr ? `${Math.round(w.restingHr)} bpm` : '–';
-      case 'weight': return w?.weightKg ? `${(data.profile?.units === 'imperial' ? w.weightKg * 2.20462 : w.weightKg).toFixed(1)}` : '–';
+      case 'weight': return w?.weightKg ? `${(pounds(data.profile) ? w.weightKg * 2.20462 : w.weightKg).toFixed(1)}` : '–';
       default: return null;
     }
   };
@@ -1150,7 +1152,7 @@ function overlayAvailability(data: AppData, from: string, to: string): Record<Ov
 /** What the chart shows, in words, for the coach: one line per visible series, and the sessions in the range. */
 export function chartFacts(on: OverlayKey[], from: string, to: string, series: Fitness[], data: AppData): ChartContext {
   const lthr = data.profile?.lthr ?? 0;
-  const imperial = data.profile?.units === 'imperial';
+  const imperial = pounds(data.profile);
   const ridesOn = new Map<string, Ride[]>();
   for (const r of data.rides) { const l = ridesOn.get(r.date) ?? []; l.push(r); ridesOn.set(r.date, l); }
   const after = (d: string) => DAY_KIND_PHRASE[dayKind(ridesOn.get(addDays(d, -1)) ?? [], lthr, hrNumbers(data.profile))];
@@ -1380,7 +1382,7 @@ function TestsCard({ data, tests, from, to, plan, series, readout, coach }: { da
       return { words: `target ${g.targetHours} h of riding a week · last whole week ${weeks.length > 1 ? Math.round(weeks[weeks.length - 2].h * 10) / 10 : '–'} h`, chart: (h: number) => <LineChart series={[{ name: 'hours a week', color: 'var(--ride)', values: weeks.map((x) => Math.round(x.h * 10) / 10), width: 2 }]} xLabels={weeks.map((x) => x.w)} xTick={(d, i) => (i === 0 || i === weeks.length - 1) ? short(d) : null} yTitle="hours" height={h} refLines={[{ value: g.targetHours, label: `target ${g.targetHours} h`, color: 'var(--today)' }]} onPick={(i) => go(`calendar?v=list&w=${weeks[i].w}`)} pickLabel={() => 'open the week'} /> };
     }
     if (g.kind === 'weight' && g.targetKg) {
-      const imperial = profile.units === 'imperial';
+      const imperial = pounds(profile);
       const show = (v: number) => Math.round((imperial ? v * 2.20462 : v) * 10) / 10;
       const ws = wellnessDays(data.wellness, from, to);
       const avg = rollingDays(ws.map((d) => d.date), ws.map((d) => d.w?.weightKg ?? null), 7);

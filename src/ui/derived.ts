@@ -1,6 +1,7 @@
 import type { Fitness, PlannedWorkout, Profile, Ride, Wellness } from '../engine/types';
 import { addDays, fitnessSeries, historyStart, isoDate, today } from '../engine/load';
 import { BASELINE_DAYS, readiness, type Readiness, type ReadinessInput } from '../engine/readiness';
+import { miles } from '../engine/units';
 
 /** Fitness series from stored activities, from the start of the history (see historyStart) to today. */
 export function fitnessFromRides(rides: Ride[], to = today()): Fitness[] {
@@ -96,12 +97,12 @@ export function fmtDate(date: string, opts: Intl.DateTimeFormatOptions = { weekd
 
 export function distance(m: number | undefined, profile: Profile): string {
   if (!m) return '';
-  return profile.units === 'imperial' ? `${(m / 1609.344).toFixed(1)} mi` : `${(m / 1000).toFixed(1)} km`;
+  return miles(profile) ? `${(m / 1609.344).toFixed(1)} mi` : `${(m / 1000).toFixed(1)} km`;
 }
 
 export function elevation(m: number | undefined, profile: Profile): string {
   if (!m) return '';
-  return profile.units === 'imperial' ? `${Math.round(m * 3.281)} ft` : `${Math.round(m)} m`;
+  return miles(profile) ? `${Math.round(m * 3.281)} ft` : `${Math.round(m)} m`;
 }
 
 

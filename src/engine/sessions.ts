@@ -3,6 +3,7 @@ import { runMinutes, runSeconds } from './run';
 import { EASY_WALK, bandKeyOf, bandTssPerHour, recoveryBand, stepBand, walkBand, type FootBand } from './foot';
 import { newId } from './workout';
 import { mobilityFor, type Target } from '../library/mobility';
+import { packWords } from './units';
 
 /**
  * Generators for the non-riding sessions. Like ride generation, each returns a
@@ -62,9 +63,9 @@ export interface WalkIntent {
   band?: FootBand;
 }
 
-/** "Easy walk 30 min with a 15 lb pack": the name of a walk in the default band. */
+/** "Easy walk 30 min with a 15 lb pack" (or "a 7 kg pack", as the rider's weight setting says): the name of a walk in the default band. */
 export function easyWalkName(minutes: number, packKg?: number): string {
-  return `Easy walk ${minutes} min${packKg ? ` with a ${Math.round(packKg * 2.2)} lb pack` : ''}`;
+  return `Easy walk ${minutes} min${packKg ? ` with a ${packWords(packKg)} pack` : ''}`;
 }
 
 export const EASY_WALK_PHYSIOLOGY = "Easy aerobic work on foot, with the impact and bone loading cycling does not give. A walk on the flat rarely reaches a cyclist's zone 2 and does not need to: the heart rate drifts up over the walk while the legs, hips and back do the work. Far less fatigue than a ride of the same length.";

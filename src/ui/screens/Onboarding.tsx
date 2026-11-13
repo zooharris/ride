@@ -8,6 +8,8 @@ import { TAGLINE } from '../../appName';
 import { applyAthleteNumbers, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
 import { fetchAutoBackup, restoreBackup } from '../../data/backup';
+import { today } from '../../engine/load';
+import { deviceRegion, distUnitsOf, legacyUnits, mastersFor, miles, pounds, unitsForRegion, weightUnitsOf, type DistUnits, type WeightUnits } from '../../engine/units';
 
 /**
  * First run. Step 1 connects Intervals.icu, which already knows the rider's FTP,
@@ -21,7 +23,10 @@ export function Onboarding() {
   const [err, setErr] = useState<string | null>(null);
   const [found, setFound] = useState<AthleteNumbers | null>(null);
   const [backup, setBackup] = useState<{ text: string; exportedAt: string } | null>(null);
-  const [p, setP] = useState<Profile>({ ...DEFAULT_PROFILE });
+  // The starting guess for units comes from the device's region; the rider chooses distance and weight separately.
+  const [p, setP] = useState<Profile>(() => { const u = unitsForRegion(deviceRegion()); return { ...DEFAULT_PROFILE, ...u, units: legacyUnits(u.distUnits, u.weightUnits) }; });
+  const setUnits = (d: DistUnits, w: WeightUnits) => setP({ ...p, distUnits: d, weightUnits: w, units: legacyUnits(d, w) });
+  const thisYear = Number(today().slice(0, 4));
   const upd = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
   const num = (k: keyof Profile) => (e: Event) => upd(k, Number((e.target as HTMLInputElement).value) as never);
 
@@ -41,7 +46,8 @@ export function Onboarding() {
   }
 
   async function start() {
-    await saveProfile(p);
+    // Masters recovery from the birth year: on from 40, off when younger or not given.
+    await saveProfile({ ...p, masters: mastersFor(p.birthYear, today()) });
     notify();
     location.hash = '/today';
     if (found) syncAll().then(notify).catch(() => { /* Today shows the sync state; a failed first pull is retried from the Sync button */ });
@@ -98,16 +104,23 @@ export function Onboarding() {
             <div class="field"><label>FTP (watts)</label><input type="number" value={p.ftp} onInput={num('ftp')} /></div>
             <div class="field"><label>Threshold heart rate (bpm)</label><input type="number" value={p.lthr} onInput={num('lthr')} /></div>
             <div class="field"><label>Max heart rate</label><input type="number" value={p.maxHr} onInput={num('maxHr')} /></div>
-            <div class="field"><label>Weight ({p.units === 'imperial' ? 'lb' : 'kg'})</label>
-              <input type="number" value={p.units === 'imperial' ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('weightKg', p.units === 'imperial' ? v / 2.2046 : v); }} /></div>
+            <div class="field"><label>Weight ({pounds(p) ? 'lb' : 'kg'})</label>
+              <input type="number" value={pounds(p) ? Math.round(p.weightKg * 2.2046) : Math.round(p.weightKg)} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('weightKg', pounds(p) ? v / 2.2046 : v); }} /></div>
+            <div class="field"><label>Birth year (optional)</label>
+              <input type="number" inputMode="numeric" placeholder="e.g. 1975" value={p.birthYear ?? ''} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('birthYear', v >= 1920 && v <= thisYear - 10 ? v : undefined); }} /></div>
             <div class="field"><label>Hours per week you can train</label><NumberBox decimals value={p.hoursPerWeek} onValue={(v) => upd('hoursPerWeek', v ?? 0)} /></div>
           </div>
           <div class="row wrap" style="margin-top:16px;gap:18px">
             <div class="field"><label>Targets sent to Garmin</label>
               <div class="seg"><button class={p.basis === 'power' ? 'on' : ''} onClick={() => upd('basis', 'power' as Basis)}>Power</button><button class={p.basis === 'hr' ? 'on' : ''} onClick={() => upd('basis', 'hr' as Basis)}>Heart rate</button></div></div>
-            <div class="field"><label>Units</label>
-              <div class="seg"><button class={p.units === 'imperial' ? 'on' : ''} onClick={() => upd('units', 'imperial')}>Miles, lb, °F</button><button class={p.units === 'metric' ? 'on' : ''} onClick={() => upd('units', 'metric')}>km, kg, °C</button></div></div>
+            <div class="field"><label>Distance</label>
+              <div class="seg"><button class={miles(p) ? 'on' : ''} aria-pressed={miles(p)} onClick={() => setUnits('mi', weightUnitsOf(p))}>Miles</button><button class={!miles(p) ? 'on' : ''} aria-pressed={!miles(p)} onClick={() => setUnits('km', weightUnitsOf(p))}>Kilometres</button></div></div>
+            <div class="field"><label>Weight</label>
+              <div class="seg"><button class={pounds(p) ? 'on' : ''} aria-pressed={pounds(p)} onClick={() => setUnits(distUnitsOf(p), 'lb')}>Pounds</button><button class={!pounds(p) ? 'on' : ''} aria-pressed={!pounds(p)} onClick={() => setUnits(distUnitsOf(p), 'kg')}>Kilograms</button></div></div>
           </div>
+          <p class="faint small" style="margin:10px 0 0">{p.birthYear
+            ? (mastersFor(p.birthYear, today()) ? 'Masters recovery will be on: from 40, plans give you a lighter week every third week. You can turn it off in Settings.' : 'Masters recovery will be off: it is for riders of 40 and over. You can turn it on in Settings.')
+            : 'Masters recovery, a lighter week every third week for riders of 40 and over, starts off. Turn it on in Settings, under You, if you want it.'}</p>
           <button class="btn primary block" style="margin-top:26px" onClick={start} disabled={!p.ftp || !p.lthr}>{found ? 'Start and pull my rides' : 'Start'}</button>
           {!found && <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('connect')}>Back to connecting Intervals.icu</button>}
         </div>

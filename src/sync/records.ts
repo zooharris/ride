@@ -4,6 +4,7 @@ import { buildDoneRecord, recordTss } from '../engine/record';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Ride, SessionKind, Workout } from '../engine/types';
 import { deleteActivity, durationFor, sportOf, updateActivityName, updateActivityType } from './intervals';
 import { applyLoadEdits, credentials, recheckMatches, scoreActivity, writeRecord } from './syncService';
+import { weightSystem } from '../engine/units';
 
 /**
  * What the screens do with the record of a done session. Each saves locally
@@ -37,7 +38,7 @@ async function pushToActivity(p: PlannedWorkout, w: Workout): Promise<void> {
   const c = await credentials();
   if (!ride || !c) return;
   const profile = await db.profile.get('me');
-  await writeRecord(c, ride, w.name, p.done, p.rpe, profile?.units);
+  await writeRecord(c, ride, w.name, p.done, p.rpe, weightSystem(profile));
   await db.rides.update(ride.id, { description: ride.description });
 }
 
@@ -157,7 +158,7 @@ export async function saveActivityRecord(r: Ride, rec: DoneRecord): Promise<void
   const e = await upsertEdit(r.id, r.date, { done: { ...rec, editedAt: new Date().toISOString() } });
   const c = await credentials();
   const profile = await db.profile.get('me');
-  if (c && e.done) { await writeRecord(c, r, r.name, e.done, e.rpe, profile?.units); await db.rides.update(r.id, { description: r.description }); }
+  if (c && e.done) { await writeRecord(c, r, r.name, e.done, e.rpe, weightSystem(profile)); await db.rides.update(r.id, { description: r.description }); }
 }
 
 /** Effort for an activity no planned session covers; for strength it sets the load. */
@@ -166,7 +167,7 @@ export async function saveActivityEffort(r: Ride, rpe: number): Promise<void> {
   await reapply(r.id);
   const c = await credentials();
   const profile = await db.profile.get('me');
-  if (c && e.done) { const fresh = (await db.rides.get(r.id)) ?? r; await writeRecord(c, fresh, r.name, e.done, rpe, profile?.units); await db.rides.update(r.id, { description: fresh.description }); }
+  if (c && e.done) { const fresh = (await db.rides.get(r.id)) ?? r; await writeRecord(c, fresh, r.name, e.done, rpe, weightSystem(profile)); await db.rides.update(r.id, { description: fresh.description }); }
 }
 
 /**

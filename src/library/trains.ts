@@ -114,7 +114,10 @@ export function trainsOf(w: Pick<Workout, 'blocks' | 'family' | 'skills'>): Trai
     if (WARM_COOL.test(st.label ?? '')) return;
     if (sys === 'endurance') {
       // Easy spells never count: a recovery inside a set of efforts, one named as easy, or a short one between efforts.
-      if (x.inWorkSet || EASY_LABEL.test(st.label ?? '')) return;
+      // A spell named as easy, or a short one inside a set of efforts, is a rest. Five minutes or more of zone 2 is
+      // endurance riding wherever it sits: in a set with sprints or tempo efforts as much as on its own (13 Nov 2026).
+      if (EASY_LABEL.test(st.label ?? '')) return;
+      if (x.inWorkSet && st.seconds < 300) return;
       if (anyWork && (k < firstWork || k > lastWork) && x.top && st.seconds <= 900 && (k === 0 || k === steps.length - 1)) return;
       if (anyWork && k > firstWork && k < lastWork && st.seconds < 300) return;
     }

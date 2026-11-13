@@ -117,7 +117,8 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
     getSetting<Record<string, string[]>>('largeOver', {}).then((all) => setSetting('largeOver', { ...all, [target.id]: over }));
   };
   const setStacked = (stacked: boolean) => { set({ stacked }); setSetting('largeShow', stacked ? 'stacked' : 'together'); };
-  const stacked = v.stacked || v.over.length >= 2;
+  // Together or Stacked is the rider's choice, however many measures are laid over (13 Nov 2026).
+  const stacked = v.stacked;
 
   // Escape closes; focus moves into the view and back to what opened it.
   const box = useRef<HTMLDivElement>(null);
@@ -216,10 +217,10 @@ export function LargeView({ measures: M, target, pageFrom, pageTo, pageRange, ri
             <div class="lv-row" role="group" aria-label="Show">
               <span class="lv-lab">Show</span>
               <div class="seg range sm">
-                <button class={!stacked ? 'on' : ''} aria-pressed={!stacked} disabled={v.over.length >= 2} title={v.over.length >= 2 ? 'Together takes one measure laid over; with more, each has its own lane' : undefined} onClick={() => setStacked(false)}>Together</button>
+                <button class={!stacked ? 'on' : ''} aria-pressed={!stacked} onClick={() => setStacked(false)}>Together</button>
                 <button class={stacked ? 'on' : ''} aria-pressed={stacked} onClick={() => setStacked(true)}>Stacked</button>
               </div>
-              {v.over.length >= 2 && <span class="faint small">Together takes one measure laid over.</span>}
+              {!stacked && v.over.length >= 2 && <span class="faint small">Each measure has its own scale, in its own colour.</span>}
             </div>
           )}
         </div>
@@ -328,8 +329,10 @@ function Chart({ defs, vals, M, from, to, stacked, width, phone, height, marks, 
 }) {
   const N = Math.max(1, daysBetween(from, to) + 1);
   const lanes = stacked ? defs.map((_, i) => [i]) : [defs.map((_, i) => i)];
-  const together = !stacked && defs.length === 2;
-  const padL = 46, padR = together ? 46 : 12, padT = 8, padB = 22, gap = 18;
+  const together = !stacked && defs.length >= 2;
+  // Together: the measure viewed has its scale on the left; each one laid over has its own column of numbers on the right.
+  const col = phone ? 38 : 46;
+  const padL = 46, padR = together ? col * (defs.length - 1) : 12, padT = 8, padB = 22, gap = 18;
   const room = height > 0 ? height - padT - padB - (lanes.length - 1) * gap : phone ? 250 : 330;
   const laneH = Math.max(phone ? 110 : 90, Math.round(room / lanes.length));
   const H = padT + padB + lanes.length * laneH + (lanes.length - 1) * gap;
@@ -477,7 +480,7 @@ function Chart({ defs, vals, M, from, to, stacked, width, phone, height, marks, 
             <line x1={padL} x2={padL + plotW} y1={yOf(i, tv)} y2={yOf(i, tv)} stroke="var(--line)" stroke-dasharray="2 4" />
             <text x={padL - 5} y={yOf(i, tv) + 3} text-anchor="end" font-size="10" fill={COLORS[i]}>{fmtValue(defs[i], tv, false)}</text>
           </g>))}
-          {together && ids.includes(1) && ticks(1).map((tv, k) => <text key={`r${k}`} x={padL + plotW + 5} y={yOf(1, tv) + 3} font-size="10" fill={COLORS[1]}>{fmtValue(defs[1], tv, false)}</text>)}
+          {together && ids.filter((i) => i > 0).map((i) => ticks(i).map((tv, k) => <text key={`r${i}-${k}`} x={padL + plotW + 5 + (i - 1) * col} y={yOf(i, tv) + 3} font-size="10" fill={COLORS[i]}>{fmtValue(defs[i], tv, false)}</text>))}
           {stacked && <text x={padL + 6} y={top + 13} font-size="11" font-weight="600" fill={COLORS[ids[0]]}>{defs[ids[0]].name}{defs[ids[0]].unit ? ` (${defs[ids[0]].unit})` : ''}</text>}
           {/* the normal band, under the measure viewed */}
           {ids.includes(0) && normal && (() => {

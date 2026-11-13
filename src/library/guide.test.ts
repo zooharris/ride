@@ -116,3 +116,13 @@ describe('families: each level differs from the last by one thing', () => {
     }
   });
 });
+
+describe('zone 2 inside a repeated set is endurance, not a rest (13 Nov 2026)', () => {
+  it('Aquia: six sprints and 54 minutes of endurance; Appomattox: 24 minutes of tempo and 80 of endurance', async () => {
+    const { LIBRARY } = await import('./workouts');
+    const of = (id: string) => Object.fromEntries(trainsOf(LIBRARY.find((w) => w.id === id)!).parts.map((p) => [p.sys, p.amount]));
+    expect(of('b2-z2-sprints-70')).toEqual({ sprint: 6, endurance: 54 * 60 });
+    expect(of('b1-z2-hilltempo-135')).toEqual({ tempo: 24 * 60, endurance: 80 * 60 });
+    expect(trainsOf(LIBRARY.find((w) => w.id === 'b1-z2-hilltempo-135')!).label).toBe('Tempo and endurance');
+  });
+});

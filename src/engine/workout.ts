@@ -88,6 +88,8 @@ export function renderIntervalsText(workout: Workout, basis: Basis, ladders?: La
 export const NO_FLOOR: Record<Basis, number> = { power: 0.1, hr: 0.2 };
 
 function renderStep(step: WorkoutStep, basis: Basis, ladders?: Ladders): string {
+  // An all-out step has no target: Intervals.icu's "freeride" step, which reaches a bike computer as an open step.
+  if (step.allOut) return `- Sprint, all out ${formatDuration(step.seconds)} freeride`;
   const lo = step.noFloor ? NO_FLOOR[basis] : basis === 'power' ? step.intensity : powerToHrFraction(step.intensity, ladders?.hr, ladders?.power);
   const hi = step.intensityHigh
     ? (basis === 'power' ? step.intensityHigh : powerToHrFraction(step.intensityHigh, ladders?.hr, ladders?.power))
@@ -125,6 +127,7 @@ export function stepTargets(step: WorkoutStep, profile: Profile): { watts: strin
   const w = (f: number) => Math.round(f * profile.ftp);
   const l = rideLadders(profile);
   const b = (f: number) => Math.round(powerToHrFraction(f, l.hr, l.power) * profile.lthr);
+  if (step.allOut) return { watts: 'All out', bpm: 'All out' };
   if (step.noFloor) {
     const top = step.intensityHigh ?? step.intensity;
     return { watts: `up to ${w(top)}`, bpm: `up to ${b(top)}` };
@@ -140,12 +143,14 @@ export function stepTargets(step: WorkoutStep, profile: Profile): { watts: strin
  * tables, or undefined when the rider has no breathing zones. A single value is a band of 5% either side, as in the player.
  */
 export function stepBreath(step: WorkoutStep, profile: Profile): BreathTarget | undefined {
+  if (step.allOut) return undefined;
   const hi = step.intensityHigh ?? step.intensity;
   return step.intensityHigh || step.noFloor ? breathTargetOf(step.intensity, hi, !!step.noFloor, profile) : breathTargetOf(step.intensity * 0.97, step.intensity * 1.03, false, profile);
 }
 
 /** A step's share of FTP, as the steps table and the diagram's label both show it: "88–93%", "up to 55%". */
 export function stepShare(step: WorkoutStep): string {
+  if (step.allOut) return 'all out';
   const pct = (f: number) => Math.round(f * 100);
   return step.noFloor ? `up to ${pct(step.intensityHigh ?? step.intensity)}%` : step.intensityHigh ? `${pct(step.intensity)}–${pct(step.intensityHigh)}%` : `${pct(step.intensity)}%`;
 }
@@ -173,7 +178,7 @@ export function stepTip(step: WorkoutStep, set: StepSet | undefined, profile: Pr
   // A step with no name of its own inside a set takes the set's name: "Sweet spot · set 2 of 3".
   const title = `${step.label ?? set?.label ?? `Zone ${zone}`}${set ? ` · set ${set.rep} of ${set.times}` : ''}${step.cadence ? ` · ${step.cadence} rpm` : ''}`;
   const t = stepTargets(step, profile);
-  return { title, time: formatDuration(step.seconds), share: stepShare(step), watts: `${t.watts} W`, bpm: `${t.bpm} bpm`, zone };
+  return { title, time: formatDuration(step.seconds), share: stepShare(step), watts: step.allOut ? 'All out, no target' : `${t.watts} W`, bpm: step.allOut ? 'no target' : `${t.bpm} bpm`, zone };
 }
 
 export function newId(): string {

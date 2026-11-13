@@ -61,7 +61,7 @@ export function workoutOffers(w: Workout, basis: SendBasis = 'power'): Array<Off
     if (w.kind !== 'ride') return { format: f, ok: false, why: 'Trainer workout files are for rides only.' };
     if (!w.bases.includes('power') && basis !== 'breath') return { format: f, ok: false, why: 'This ride works by heart rate only, and this format holds power only.' };
     if (basis === 'hr') return { format: f, ok: false, why: 'This format holds power only. For heart-rate targets, use the Garmin workout file.' };
-    if ((f === 'mrc' || f === 'erg') && hasOpenEffort(w)) return { format: f, ok: false, why: 'This format needs a set power for every step, and a trainer holding a set wattage would spoil the test’s free effort.' };
+    if ((f === 'mrc' || f === 'erg') && hasOpenEffort(w)) return { format: f, ok: false, why: w.family === 'test' ? 'This format needs a set power for every step, and a trainer holding a set wattage would spoil the test’s free effort.' : 'This format needs a set power for every step, and this ride’s all-out sprints have none. The .fit and .zwo files carry them as free steps.' };
     return { format: f, ok: true };
   };
   return [{ format: 'fit', ok: fitWorkoutKind(w) }, powerOnly('zwo'), powerOnly('mrc'), powerOnly('erg')];

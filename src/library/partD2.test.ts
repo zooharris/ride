@@ -87,7 +87,7 @@ describe('the Includes filter', () => {
     const f = { ...NO_FILTERS, includes: ['trunk', 'push'] as const };
     const q = new URLSearchParams(Object.entries(filtersToQuery({ ...f, includes: [...f.includes] })).filter(([, v]) => v != null) as Array<[string, string]>);
     expect(filtersFromQuery(q).includes).toEqual(['trunk', 'push']);
-    expect(filtersSrc).toMatch(/f\.includes\.length > 0, f\.show/);
+    expect(filtersSrc).toMatch(/f\.includes\.length > 0, f\.trains\.length > 0, f\.show/);
     expect(filtersSrc).toMatch(/posterior: 'Posterior chain'/);
   });
 });

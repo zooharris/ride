@@ -100,6 +100,8 @@ export function ergWatts(s: TimelineStep, ftp: number, scale = 1): number {
 
 /** The band shown around a target, in watts or bpm: the range itself, or 5% either side of a single value. */
 export function targetBand(s: TimelineStep, basis: Basis, profile: Profile, scale = 1): { low: number; high: number; mid: number; text: string } {
+  // All out: no target, in any mode (12 Nov 2026).
+  if (s.step.allOut) return { low: 0, high: 0, mid: 0, text: 'All out' };
   if (basis === 'power') {
     const lo = s.low * profile.ftp * scale, hi = s.high * profile.ftp * scale;
     const mid = ergWatts(s, profile.ftp, scale);

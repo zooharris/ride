@@ -87,7 +87,7 @@ const asQuery = (f: Filters) => { const q = new URLSearchParams(); for (const [k
 
 describe('the Library keeps its filters in its address (8 Nov 2026)', () => {
   it('filters survive the round trip through the address', () => {
-    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, hrOnly: true, focus: 'all', includes: [], show: 'favorites', duration: '90-120', sort: 'tss', desc: true };
+    const f: Filters = { query: 'hill & dale', purpose: 'endurance', intensity: 'moderate', outdoor: true, hrOnly: true, focus: 'all', includes: [], trains: [], show: 'favorites', duration: '90-120', sort: 'tss', desc: true };
     expect(filtersFromQuery(asQuery(f))).toEqual(f);
     const s: Filters = { ...NO_FILTERS, focus: 'upper', includes: ['push', 'pull'], show: 'recent' };
     expect(filtersFromQuery(asQuery(s))).toEqual(s);

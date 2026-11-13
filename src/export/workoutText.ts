@@ -9,8 +9,9 @@ import type { Exercise, Workout, WorkoutStep } from '../engine/types';
  * and the threshold heart-rate test's. A file leaves it free ("open"), because a trainer holding a set wattage
  * would spoil the test.
  */
-export function isOpenEffort(w: Pick<Workout, 'family'>, s: Pick<WorkoutStep, 'label'>): boolean {
-  return w.family === 'test' && /^test\b/i.test(s.label ?? '');
+export function isOpenEffort(w: Pick<Workout, 'family'>, s: Pick<WorkoutStep, 'label' | 'allOut'>): boolean {
+  // An all-out sprint (12 Nov 2026) has no target either: an open step.
+  return !!s.allOut || (w.family === 'test' && /^test\b/i.test(s.label ?? ''));
 }
 
 /** Whether a ride has a step a file must leave free. */

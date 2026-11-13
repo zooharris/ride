@@ -7,6 +7,13 @@ import { flattenStepsWithSets } from '../engine/workout';
 import { buildTimeline, cueAt } from '../player/timeline';
 import type { Profile } from '../engine/types';
 
+/**
+ * Where a ride is filed for plans (its family), in the words the depth sweep used. Since 12 Nov 2026 a ride's purpose
+ * is what its steps train (library/trains), which can differ from its family; the sweep's targets were set by family.
+ */
+const FILED: Record<string, string> = { recovery: 'recovery', endurance: 'endurance', tempo: 'tempo', sweetspot: 'sweetspot', threshold: 'threshold', vo2max: 'vo2', anaerobic: 'anaerobic', test: 'test' };
+const filedAs = (w: { family: string; tags?: { purpose?: string } }) => (w.tags?.purpose === 'mixed' ? 'mixed' : FILED[w.family]);
+
 const steps = (w: (typeof LIBRARY)[number]) => flattenStepsWithSets(w.blocks).map((x) => x.step);
 const byName = (n: string) => BATCH2.find((w) => w.name === n)!;
 
@@ -48,13 +55,13 @@ describe('the Library grows up, Part C, batch 2 (10 Nov 2026)', () => {
     expect(has(/Torque|Big gear|Low-cadence/)).toBeGreaterThanOrEqual(3);
     expect(has(/Standing starts|Flying sprints|Tabata|Micro-bursts|20\/40/)).toBe(5);
     // Sweet spot by heart rate in 45 to 60 minutes, and easy rides of 65 to 80 minutes.
-    const ssHr = BATCH2.filter((w) => tagsOf(w).purpose === 'sweetspot' && w.bases.includes('hr') && bandOf(tagsOf(w).minutes) === '45–60 min');
+    const ssHr = BATCH2.filter((w) => filedAs(w) === 'sweetspot' && w.bases.includes('hr') && bandOf(tagsOf(w).minutes) === '45–60 min');
     expect(ssHr.length).toBeGreaterThanOrEqual(4);
-    const easy = BATCH2.filter((w) => tagsOf(w).purpose === 'endurance' && tagsOf(w).minutes >= 65 && tagsOf(w).minutes <= 80);
+    const easy = BATCH2.filter((w) => filedAs(w) === 'endurance' && tagsOf(w).minutes >= 65 && tagsOf(w).minutes <= 80);
     expect(easy.length).toBeGreaterThanOrEqual(7);
     // The sweep's shopping list: endurance of 1½–2 h and sweet spot of 3–4 h, both ways.
-    expect(BATCH2.some((w) => tagsOf(w).purpose === 'endurance' && bandOf(tagsOf(w).minutes) === '1½–2 h' && w.bases.includes('hr'))).toBe(true);
-    expect(BATCH2.some((w) => tagsOf(w).purpose === 'sweetspot' && bandOf(tagsOf(w).minutes) === '3–4 h' && w.bases.includes('hr'))).toBe(true);
+    expect(BATCH2.some((w) => filedAs(w) === 'endurance' && bandOf(tagsOf(w).minutes) === '1½–2 h' && w.bases.includes('hr'))).toBe(true);
+    expect(BATCH2.some((w) => filedAs(w) === 'sweetspot' && bandOf(tagsOf(w).minutes) === '3–4 h' && w.bases.includes('hr'))).toBe(true);
   });
 
   it('fast on/off work is for the trainer; long rides for the road ride well outdoors', () => {
@@ -74,7 +81,7 @@ describe('the Library grows up, Part C, batch 2 (10 Nov 2026)', () => {
 describe('every Library ride speaks in the player (10 Nov 2026)', () => {
   const profile: Profile = { name: 'T', ftp: 250, lthr: 160, maxHr: 180, restingHr: 50, weightKg: 75, basis: 'power', masters: false, units: 'imperial', rideDays: [], hoursPerWeek: 6 };
   it('every Library ride has cues, and every step of the first 96 rides has one', () => {
-    const batches = new Set(LIBRARY.filter((w) => /^b[12]-/.test(w.id)).map((w) => w.id));
+    const batches = new Set(LIBRARY.filter((w) => /^(b[12]|g)-/.test(w.id)).map((w) => w.id));
     for (const w of LIBRARY.filter((x) => x.kind === 'ride')) {
       expect(steps(w).some((s) => s.cues?.length), w.name).toBe(true);
       if (!batches.has(w.id)) expect(steps(w).filter((s) => !s.cues?.length).length, w.name).toBe(0);

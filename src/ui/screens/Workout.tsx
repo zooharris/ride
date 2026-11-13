@@ -1,3 +1,4 @@
+import { RideTrains } from '../RideTrains';
 import { canSendByBreath, shapedForSend } from '../../library/breathSend';
 import { breathZones } from '../../engine/zones';
 import { footLthr } from '../../engine/zones';
@@ -96,6 +97,7 @@ export function WorkoutScreen({ data, id, params }: { data: AppData; id: string;
       <p style="margin:16px 0 6px;font-size:15px;line-height:1.6">{w.purpose}</p>
       {w.physiology && <p class="faint small">{w.physiology}</p>}
       <OutdoorNote w={w} />
+      <RideTrains w={w} />
 
       <div class="row wrap" style="margin:18px 0;gap:8px">
         {w.trainerOnly && playerOffered() && <a class="btn primary" href={plannedEntry && plannedEntry.status !== 'completed' ? `#/play/planned/${plannedEntry.id}` : `#/play/workout/${w.id}`}>Ride indoors on the trainer</a>}
@@ -298,6 +300,7 @@ function OutdoorNote({ w }: { w: Workout }) {
     return <p class="faint small" style="margin-top:6px">This ride has an outdoor version for the Garmin: {note.replace(/^Adjusted for riding outdoors: /, '')} You choose it or the ride as written when you send it; the ride player on the trainer always keeps the steps as written.</p>;
   }
   if (t.outdoor !== 'indoor') return null;
+  if (w.indoorWhy) return <p class="faint small" style="margin-top:6px"><b>Trainer only:</b> {w.indoorWhy}</p>;
   const alt = LIBRARY.filter((x) => x.id !== w.id && tagsOf(x).purpose === t.purpose && tagsOf(x).outdoor === 'well' && w.bases.some((b) => x.bases.includes(b)))
     .sort((a, b) => Math.abs(tagsOf(a).minutes - t.minutes) - Math.abs(tagsOf(b).minutes - t.minutes))[0];
   return <p class="faint small" style="margin-top:6px"><b>Best on the trainer:</b> its quick changes can't be followed on an open road.{alt ? <> For a road ride, <a href={`#/workout/${alt.id}?from=library`}>{alt.name}</a> ({alt.subtitle ?? PURPOSE_LABEL[t.purpose]}) does a similar job.</> : null}</p>;

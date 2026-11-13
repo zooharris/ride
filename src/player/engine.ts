@@ -11,6 +11,10 @@ import { guardStep, type GuardState } from './erg';
 import type { Lap, RideEvent, Sample } from './types';
 import type { TrainerCommand } from './hub';
 
+/** After an all-out step, the trainer eases back to the next target over this many seconds, starting from this share of it. */
+export const EASE_IN_S = 8;
+export const EASE_IN_FROM = 0.5;
+
 export type Phase = 'countdown' | 'riding' | 'paused' | 'finished';
 /** ERG: the trainer holds the watts. Resistance: a road of a set gradient. Free: a flat road. Self: no trainer control at all. */
 export type TrainerMode = 'erg' | 'resistance' | 'free' | 'self';
@@ -118,8 +122,16 @@ export class RideEngine {
     if (this.phase === 'paused' || this.phase === 'countdown' || this.phase === 'finished') return { grade: 0 };
     if (this.mode === 'free') return { grade: 0 };
     if (this.mode === 'resistance') return { grade: this.level };
+    // An all-out sprint (12 Nov 2026): the trainer lets go, as on a flat road, and the rider pushes freely.
+    const s = this.step;
+    if (s?.step.allOut) return { grade: 0 };
     const t = this.ergTarget();
-    return t != null ? { erg: t } : { grade: 0 };
+    if (t == null) return { grade: 0 };
+    // After an all-out step the trainer takes the resistance back gently over the first seconds, never as a wall.
+    const prev = s ? this.o.timeline[s.index - 1] : undefined;
+    const into = s ? this.position - s.start : EASE_IN_S;
+    if (prev?.step.allOut && into < EASE_IN_S) return { erg: Math.round(t * (EASE_IN_FROM + (1 - EASE_IN_FROM) * (into / EASE_IN_S))) };
+    return { erg: t };
   }
 
   private send(now: number, cadence?: number): TickOut['command'] {
@@ -199,7 +211,7 @@ export class RideEngine {
     }
 
     this.distanceM += ((live.speedKmh ?? 0) / 3.6);
-    const tgt = step ? (this.o.targetOf ? this.o.targetOf(step, this.scale) : ergWatts(step, this.o.ftp, this.scale)) : undefined;
+    const tgt = step && !step.step.allOut ? (this.o.targetOf ? this.o.targetOf(step, this.scale) : ergWatts(step, this.o.ftp, this.scale)) : undefined;
     this.samples.push({
       t,
       w: live.watts != null ? Math.round(live.watts) : undefined,

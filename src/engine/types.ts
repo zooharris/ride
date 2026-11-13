@@ -89,8 +89,20 @@ export interface WorkoutStep {
    * the step's end. `rep` limits a line in a repeated set to one repetition ('last' for the final one).
    * Not sent to the Garmin, which shows the step's label as it always has.
    */
-  cues?: Array<{ at: number; text: string; rep?: number | 'last' }>;
+  cues?: Array<{ at: number; text: string; rep?: number | 'last'; kind?: CueKind }>;
+  /**
+   * All out (12 Nov 2026, the ride design guide, section 6): no target. The player lets go of the trainer and the
+   * rider pushes freely; a bike computer gets an open step. `intensity` is then only the stand-in a load estimate
+   * uses (library/trains ALL_OUT_STANDIN), never shown or held as a target.
+   */
+  allOut?: boolean;
 }
+
+/**
+ * The five kinds of written cue (12 Nov 2026, the ride design guide, section 11): why this effort matters, what to
+ * focus on, a word at the hard point, what comes next, and a short lesson in an easy spell.
+ */
+export type CueKind = 'why' | 'focus' | 'hard' | 'next' | 'lesson';
 
 export interface WorkoutRepeat {
   kind: 'repeat';
@@ -198,6 +210,14 @@ export interface Workout {
   libraryId?: string;
   /** What it is for, how long, how hard, and how it rides outdoors (9 Nov 2026): set on every Library workout; see library/tags.ts. */
   tags?: import('../library/tags').WorkoutTags;
+  /** Skills the ride teaches (12 Nov 2026, the ride design guide, section 12). */
+  skills?: import('../library/trains').Skill[];
+  /** One or two sentences on why its efforts come in the order they do (the guide, section 5). */
+  why?: string;
+  /** In a family: what this level changes from the one before ("one more VO2max effort"). */
+  levelChange?: string;
+  /** Why a ride has no outdoor version, in plain words (its drills are not safe or not possible on a road). */
+  indoorWhy?: string;
 }
 
 export interface WorkoutStats {

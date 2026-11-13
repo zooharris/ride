@@ -7,6 +7,8 @@ import { withTags } from './tags';
 import { BATCH1 } from './batch1';
 import { BATCH2 } from './batch2';
 import { withAutoCues } from './autoCues';
+import { GUIDE_RIDES } from './guide';
+import { ALL_OUT_STANDIN } from './trains';
 
 // Small helpers so the library reads like a training plan, not JSON.
 const m = (minutes: number) => Math.round(minutes * 60);
@@ -215,10 +217,27 @@ const CORE: Workout[] = [
 ];
 
 /** The whole library: core sessions, trail-shaped outdoor rides, indoor short forms (every step given a cue), and the two batches of 9–10 Nov. */
-export const LIBRARY: Workout[] = [...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
+export const LIBRARY: Workout[] = [...[...[...CORE, ...OUTDOOR, ...INDOOR].map((w) => {
   const place = RIDE_NAMES[w.id];
   return withAutoCues(withTags(place ? { ...w, name: place, subtitle: w.name } : w));
-}), ...BATCH1, ...BATCH2];
+}), ...BATCH1, ...BATCH2].map(sprintsAllOut), ...GUIDE_RIDES];
+
+/**
+ * Sprints are all out (12 Nov 2026, brief B3): a Library sprint that had a percentage target (150 to 180% of FTP)
+ * becomes an all-out step with no target. A step is a sprint when it is named one (or is in the sprint ride
+ * itself), very hard, and 30 seconds or shorter. Its load estimate uses the guide's stand-in.
+ */
+export function isPercentSprint(w: Workout, s: WorkoutStep): boolean {
+  return !s.allOut && s.intensity >= 1.5 && s.seconds <= 30 && (/sprint|standing start/i.test(s.label ?? '') || w.id === 'lib-sprints');
+}
+function sprintsAllOut(w: Workout): Workout {
+  if (w.kind !== 'ride') return w;
+  const conv = (s: WorkoutStep): WorkoutStep => (isPercentSprint(w, s) ? { ...s, allOut: true, intensity: ALL_OUT_STANDIN, intensityHigh: undefined, label: /all out/i.test(s.label ?? '') ? s.label : `${s.label ?? 'Sprint'}, all out` } : s);
+  if (!w.blocks.some((b) => (b.kind === 'step' ? isPercentSprint(w, b) : b.steps.some((s) => isPercentSprint(w, s))))) return w;
+  const blocks = w.blocks.map((b): WorkoutBlock => (b.kind === 'step' ? conv(b) : { ...b, steps: b.steps.map(conv) }));
+  // The tags were worked out from the old steps: work them out again, keeping what the ride stated about itself.
+  return withTags({ ...w, blocks, tags: undefined }, w.tags?.series ? { series: w.tags.series } : undefined);
+}
 
 export function libraryById(id: string): Workout | undefined {
   return LIBRARY.find((w) => w.id === id);

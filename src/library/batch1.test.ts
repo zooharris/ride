@@ -7,6 +7,13 @@ import { flattenStepsWithSets } from '../engine/workout';
 import { buildTimeline, cueAt } from '../player/timeline';
 import type { Profile } from '../engine/types';
 
+/**
+ * Where a ride is filed for plans (its family), in the words the depth sweep used. Since 12 Nov 2026 a ride's purpose
+ * is what its steps train (library/trains), which can differ from its family; the sweep's targets were set by family.
+ */
+const FILED: Record<string, string> = { recovery: 'recovery', endurance: 'endurance', tempo: 'tempo', sweetspot: 'sweetspot', threshold: 'threshold', vo2max: 'vo2', anaerobic: 'anaerobic', test: 'test' };
+const filedAs = (w: { family: string; tags?: { purpose?: string } }) => (w.tags?.purpose === 'mixed' ? 'mixed' : FILED[w.family]);
+
 /** What the depth sweep asked for (docs/library-depth.md, 9 Nov): purpose, length band, and how many must work by heart rate. */
 const WANTED: Array<{ purpose: string; band: string; n: number; hr: number }> = [
   { purpose: 'endurance', band: '45–60 min', n: 7, hr: 7 }, { purpose: 'endurance', band: '1–1½ h', n: 4, hr: 4 },
@@ -24,7 +31,7 @@ describe('the Library grows up, Part C, batch 1 (9 Nov 2026)', () => {
   it('is the 52 rides the depth sweep asked for, each in its purpose and length', () => {
     expect(BATCH1).toHaveLength(52);
     for (const want of WANTED) {
-      const got = BATCH1.filter((w) => tagsOf(w).purpose === want.purpose && bandOf(tagsOf(w).minutes) === want.band);
+      const got = BATCH1.filter((w) => filedAs(w) === want.purpose && bandOf(tagsOf(w).minutes) === want.band);
       expect(got.length, `${want.purpose} ${want.band}`).toBe(want.n);
       expect(got.filter((w) => w.bases.includes('hr')).length, `${want.purpose} ${want.band} by heart rate`).toBeGreaterThanOrEqual(want.hr);
     }

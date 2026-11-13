@@ -12,7 +12,7 @@ import { withTags, type WorkoutTags } from './tags';
  * signature rides. Intensities are shares of FTP, as everywhere in the Library.
  */
 
-export type Cue = { at: number; text: string; rep?: number | 'last' };
+export type Cue = { at: number; text: string; rep?: number | 'last'; kind?: import('../engine/types').CueKind };
 export type Opts = { label?: string; cadence?: number; cues?: Cue[] };
 export const m = (minutes: number) => Math.round(minutes * 60);
 export const st = (minutes: number, lo: number, hi?: number, o: Opts = {}): WorkoutStep =>

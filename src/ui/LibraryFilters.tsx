@@ -7,6 +7,7 @@ import { PURPOSE_LABEL, tagsOf, type Intensity, type Purpose } from '../library/
 import { FOCUS_WORDS } from '../library/strengthSessions';
 import { readQuery, useUrlSync } from './router';
 import { libraryKey } from './favorites';
+import { SYSTEMS, trainsOf, type System } from '../library/trains';
 
 /**
  * The Library's filters, shared with every place a workout is chosen from a list: the Library
@@ -63,6 +64,8 @@ export interface Filters {
   focus: StrengthFocus | 'all';
   /** Strength only (Part D batch 2, 11 Nov 2026): sessions that include all of these kinds of movement. */
   includes: Includes[];
+  /** Rides only (12 Nov 2026, brief B2): rides that count toward all of these systems; 'skill' for skill rides. */
+  trains: TrainsKey[];
   show: Show;
   duration: Duration;
   /** 'default': the kind's own default (rides A to Z). */
@@ -70,7 +73,12 @@ export interface Filters {
   /** The sort's direction flipped (the arrow). */
   desc: boolean;
 }
-export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', includes: [], show: 'all', duration: 'all', sort: 'default', desc: false };
+export type TrainsKey = System | 'skill';
+export const TRAINS_KEYS: TrainsKey[] = [...SYSTEMS.map((s) => s.id), 'skill'];
+export const TRAINS_LABEL: Record<TrainsKey, string> = { ...Object.fromEntries(SYSTEMS.map((s) => [s.id, s.name])) as Record<System, string>, skill: 'Skill' };
+/** Whether a ride counts toward a system (or teaches a skill), as its page shows it. */
+export const rideTrains = (w: Workout, k: TrainsKey): boolean => (k === 'skill' ? !!w.skills?.length : trainsOf(w).counted.includes(k));
+export const NO_FILTERS: Filters = { query: '', purpose: 'all', intensity: 'all', outdoor: false, hrOnly: false, focus: 'all', includes: [], trains: [], show: 'all', duration: 'all', sort: 'default', desc: false };
 
 /**
  * What a strength session works (Part D batch 2, 11 Nov 2026), from its exercises' movement patterns: push, pull,
@@ -125,6 +133,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
     if (f.intensity !== 'all' && t.intensity !== f.intensity) return false;
     if (kind === 'ride' && f.outdoor && t.outdoor !== 'well') return false;
     if (kind === 'ride' && f.hrOnly && !w.bases.includes('hr')) return false;
+    if (kind === 'ride' && f.trains.length && !f.trains.every((x) => rideTrains(w, x))) return false;
     if (kind === 'strength' && f.focus !== 'all' && w.strength?.focus !== f.focus) return false;
     if (kind === 'strength' && f.includes.length && !f.includes.every((x) => sessionIncludes(w, x))) return false;
     return !q || `${w.name} ${w.subtitle ?? ''} ${PURPOSE_LABEL[t.purpose]} ${w.purpose}`.toLowerCase().includes(q);
@@ -141,7 +150,7 @@ export function applyFilters(list: Workout[], f: Filters, kind: string, mine: Mi
 }
 
 /** Whether any filter narrows the list (Clear shows only then). */
-export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.hrOnly || f.focus !== 'all' || f.includes.length > 0 || f.show !== 'all' || f.duration !== 'all';
+export const narrowed = (f: Filters) => !!f.query.trim() || f.purpose !== 'all' || f.intensity !== 'all' || f.outdoor || f.hrOnly || f.focus !== 'all' || f.includes.length > 0 || f.trains.length > 0 || f.show !== 'all' || f.duration !== 'all';
 
 /** The filters as the Library's address carries them; defaults left out. */
 export function filtersToQuery(f: Filters): Record<string, string | undefined> {
@@ -153,6 +162,7 @@ export function filtersToQuery(f: Filters): Record<string, string | undefined> {
     hr: f.hrOnly ? '1' : undefined,
     focus: f.focus !== 'all' ? f.focus : undefined,
     has: f.includes.length ? f.includes.join(',') : undefined,
+    tr: f.trains.length ? f.trains.join(',') : undefined,
     show: f.show !== 'all' ? f.show : undefined,
     len: f.duration !== 'all' ? f.duration : undefined,
     sort: f.sort !== 'default' ? f.sort : undefined,
@@ -174,6 +184,7 @@ export function filtersFromQuery(q: URLSearchParams): Filters {
     hrOnly: q.get('hr') === '1',
     focus: FOCI.find((x) => x === q.get('focus')) ?? 'all',
     includes: (q.get('has') ?? '').split(',').filter((x): x is Includes => (INCLUDES as string[]).includes(x)),
+    trains: (q.get('tr') ?? '').split(',').filter((x): x is TrainsKey => (TRAINS_KEYS as string[]).includes(x)),
     show: (['favorites', 'recent'] as Show[]).find((x) => x === q.get('show')) ?? 'all',
     duration: DURATIONS.find((d) => d[0] === q.get('len'))?.[0] ?? 'all',
     // An address saved with the old order (Shortest first, Longest first) opens as Length, the same way round.
@@ -209,6 +220,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
     if (kind !== 'ride' && (f.purpose !== 'all' || f.outdoor || f.hrOnly)) Object.assign(clear, { purpose: 'all', outdoor: false, hrOnly: false });
     if (kind !== 'strength' && f.focus !== 'all') clear.focus = 'all';
     if (kind !== 'strength' && f.includes.length) clear.includes = [];
+    if (kind !== 'ride' && f.trains.length) clear.trains = [];
     if (f.sort !== 'default' && !sortsFor(kind).includes(f.sort)) Object.assign(clear, { sort: 'default', desc: false });
     if (Object.keys(clear).length) set(clear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,6 +261,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
           options={DURATIONS.map(([d, l]) => [d, l] as [string, string])} value={f.duration} onPick={(v) => set({ duration: v as Duration })} />
         {kind === 'strength' && <Menu label={f.focus === 'all' ? 'Whole body or part' : cap(FOCUS_WORDS[f.focus])} active={f.focus !== 'all'} open={menu === 'focus'} onOpen={open('focus')} onClose={close} title="Body focus"
           options={[['all', 'Any focus'], ...FOCI.map((x) => [x, cap(FOCUS_WORDS[x])] as [string, string])]} value={f.focus} onPick={(v) => set({ focus: v as StrengthFocus | 'all' })} />}
+        {kind === 'ride' && <span class="chips includes-chips" role="group" aria-label="Trains: choosing two shows rides that count toward both"><span class="faint small">Trains</span>{TRAINS_KEYS.map((x) => { const on = f.trains.includes(x); return <button key={x} class={`chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => set({ trains: on ? f.trains.filter((y) => y !== x) : [...f.trains, x] })}>{TRAINS_LABEL[x]}</button>; })}</span>}
         {kind === 'strength' && <span class="chips includes-chips" role="group" aria-label="Includes"><span class="faint small">Includes</span>{INCLUDES.map((x) => { const on = f.includes.includes(x); return <button key={x} class={`chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => set({ includes: on ? f.includes.filter((y) => y !== x) : [...f.includes, x] })}>{INCLUDES_LABEL[x]}</button>; })}</span>}
         <Menu label={SHOW_LABEL[f.show]} active={f.show !== 'all'} open={menu === 'show'} onOpen={open('show')} onClose={close} title="Show"
           options={(Object.keys(SHOW_LABEL) as Show[]).map((x) => [x, SHOW_LABEL[x]] as [string, string])} value={f.show} onPick={(v) => set({ show: v as Show })} />
@@ -261,7 +274,7 @@ export function FilterBar({ kind, f, set }: { kind: string; f: Filters; set: (ne
 }
 
 /** How many filters narrow the list, besides the search (which shows on its own), for the folded button's count. */
-const activeCount = (f: Filters) => [f.purpose !== 'all', f.duration !== 'all', f.focus !== 'all', f.includes.length > 0, f.show !== 'all', f.outdoor, f.hrOnly].filter(Boolean).length;
+const activeCount = (f: Filters) => [f.purpose !== 'all', f.duration !== 'all', f.focus !== 'all', f.includes.length > 0, f.trains.length > 0, f.show !== 'all', f.outdoor, f.hrOnly].filter(Boolean).length;
 
 /** The empty list, saying why in words that fit the filter that emptied it. */
 export function NothingMatches({ f }: { f: Filters }) {

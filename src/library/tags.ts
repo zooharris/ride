@@ -1,5 +1,6 @@
 import type { Workout, WorkoutBlock, WorkoutStep } from '../engine/types';
 import { workoutStats } from '../engine/workout';
+import { trainsOf } from './trains';
 
 /**
  * The Library's tags (9 Nov 2026, "the Library grows up", Part A). Every Library workout
@@ -60,6 +61,21 @@ const OVERRIDES: Record<string, Partial<WorkoutTags>> = {
   'lib-lthr-30': { outdoor: 'well' },
   'trail-20min-test': { outdoor: 'well' },
 };
+
+/**
+ * A ride's purpose is what it trains (12 Nov 2026, brief B1: one way of describing a ride, not two): the hardest
+ * system that counts in its steps (library/trains), sprints filed with anaerobic. A ride where nothing counts keeps
+ * its family's purpose (recovery, or easy riding), and so does an easy-day ride whose only work is a few short
+ * sprints: they keep the top end awake but do not make it a hard ride. Tests are tests.
+ */
+function purposeOf(w: Workout): Purpose {
+  if (w.family === 'test') return 'test';
+  const t = trainsOf(w);
+  const top = t.counted[0];
+  const easyFamily = w.family === 'endurance' || w.family === 'recovery';
+  if (!top || (easyFamily && top === 'sprint')) return RIDE_PURPOSE[w.family];
+  return top === 'sprint' || top === 'anaerobic' ? 'anaerobic' : top;
+}
 
 const RIDE_PURPOSE: Record<Workout['family'], Purpose> = {
   recovery: 'recovery', endurance: 'endurance', tempo: 'tempo', sweetspot: 'sweetspot',
@@ -185,7 +201,7 @@ function rideIntensity(w: Workout, purpose: Purpose): Intensity {
 function compute(w: Workout, given: Partial<WorkoutTags> = {}): WorkoutTags {
   if (w.kind === 'ride') {
     const o = { ...(OVERRIDES[w.id] ?? {}), ...given };
-    const purpose = o.purpose ?? RIDE_PURPOSE[w.family];
+    const purpose = o.purpose ?? purposeOf(w);
     return {
       purpose,
       minutes: Math.round(workoutStats(w.blocks).seconds / 60),

@@ -1972,3 +1972,23 @@ body.lv-open { overflow: hidden; }
   .lv-lab { min-width: 0; flex-basis: 100%; }
   .lv-tools .seg { flex-wrap: wrap; }
 }
+
+/* ---------- What a ride trains, its family (12 Nov 2026) ---------- */
+.trains { display: flex; flex-direction: column; gap: 6px; }
+.trains-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 82px 70px; gap: 8px; align-items: center; font-size: 14px; }
+.trains-bar { position: relative; height: 10px; border-radius: 5px; background: var(--soft); overflow: visible; }
+.trains-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--ink-3); opacity: .55; }
+.trains-row.counts .trains-bar i { background: var(--accent); opacity: 1; }
+.trains-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); border-radius: 1px; }
+.trains-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.chip.static { cursor: default; }
+.fam { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fam-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.fam-row.on { border-color: var(--accent); }
+.fam-l { color: inherit; }
+@media (max-width: 520px) {
+  .trains-row { grid-template-columns: 78px minmax(0, 1fr) 66px; }
+  .trains-says { grid-column: 2 / -1; margin-top: -4px; font-size: 12px; }
+  .fam-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .fam-what { grid-column: 1 / -1; order: 3; }
+}

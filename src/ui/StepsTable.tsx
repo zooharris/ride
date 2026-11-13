@@ -36,8 +36,8 @@ export function StepsTable({ blocks, profile, breath = true }: { blocks: Workout
               <td>{stepName(step, z, setLabel)}{step.cadence ? <span class="faint"> · {step.cadence} rpm</span> : null}</td>
               <td class="r muted">{formatDuration(step.seconds)}</td>
               <td class="r num muted share-col">{share}</td>
-              <td class="r num">{t.watts}<span class="u"> W</span></td>
-              <td class="r num">{t.bpm}<span class="u"> bpm</span></td>
+              {step.allOut ? <td class="r" colSpan={2}><b>All out</b> <span class="faint small">no target</span></td> : <><td class="r num">{t.watts}<span class="u"> W</span></td>
+              <td class="r num">{t.bpm}<span class="u"> bpm</span></td></>}
               {showBreath && <td class="r num breath-col">{(() => { const b = stepBreath(step, profile); if (!b) return ''; const [share, litres] = breathTargetWords(b).split(' · '); return <><span>{share}</span><span class="breath-l">{litres}</span></>; })()}</td>}
             </tr>
           </>

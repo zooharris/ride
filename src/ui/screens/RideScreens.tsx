@@ -230,10 +230,13 @@ function nudge(r: ActiveRide, dir: 1 | -1) {
 }
 
 /** Riding by heart rate (spec screen 3): heart rate is the big number, against the step's zone, with the cue when you drift out of it. */
+/** What the player says in place of a target during an all-out step (12 Nov 2026). */
+const ALL_OUT_WORDS = <><b>All out.</b> No number to hit: everything you have until the step ends.</>;
+
 function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
   const e = ride.engine;
   const step = e.step;
-  const band = step ? targetBand(step, 'hr', profile) : undefined;
+  const band = step && !step.step.allOut ? targetBand(step, 'hr', profile) : undefined;
   const bpm = ride.shownBpm;
   const mb = ride.markerBpm ?? bpm;
   const state = band && mb != null ? ride.band.state : undefined;
@@ -260,7 +263,7 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
           </div>
           <div class="rd-band-words"><span>Too easy</span><span>{band && mb != null ? zoneWords(mb, band, !adjusting && ride.cueState.closing) : ''}</span><span>Too hard</span></div>
         </>
-      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : 'Free ride: no target.'}</span></div>}
       {/* One message slot (10 Nov 2026): an instruction, the trainer's account of itself, or nothing; its space is always kept, so nothing below moves. */}
       {(() => {
         const slot = hrSlot({ adjusting, status: ride.hr?.status, cue: step && band ? ride.cue : undefined });
@@ -306,7 +309,7 @@ function HrHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profi
 function BreathHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
   const e = ride.engine;
   const step = e.step;
-  const b = step ? breathBand(step, profile, e.scale) : undefined;
+  const b = step && !step.step.allOut ? breathBand(step, profile, e.scale) : undefined;
   const ve = ride.veNow;
   const mv = ride.markerVe ?? ve;
   const lowShown = b && step?.noFloor ? 0 : b?.low ?? 0;
@@ -338,7 +341,7 @@ function BreathHero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: P
           </div>
           <div class="rd-band-words"><span>Too easy</span><span>{words}</span><span>Too hard</span></div>
         </>
-      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'No target.'}</span></div>}
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : 'No target.'}</span></div>}
       {ride.breathStopped ? (
         <div class="rd-ask" role="group" aria-label="Breathing has stopped arriving">
           <span>Breathing has stopped arriving.{adjusting ? ' The trainer is holding these watts.' : ''}</span>
@@ -450,7 +453,7 @@ function FreeCard({ ride, trainerOk }: { ride: ActiveRide; trainerOk: boolean })
 function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile; trainerOk: boolean }) {
   const e = ride.engine;
   const step = e.step ?? (e.workoutDone ? undefined : undefined);
-  const band = step ? targetBand(step, 'power', profile, e.scale) : undefined;
+  const band = step && !step.step.allOut ? targetBand(step, 'power', profile, e.scale) : undefined;
   const w = ride.shownWatts;
   // The marker and the label use the calmer reading (smooth.ts); the big number stays the rider's chosen average.
   const mw = ride.markerWatts ?? w;
@@ -475,7 +478,7 @@ function Hero({ ride, profile, trainerOk }: { ride: ActiveRide; profile: Profile
           </div>
           <div class="rd-band-words"><span>Too easy</span><span>{mw != null ? (state === 'on' ? 'In the band' : `${Math.abs(Math.round(mw - band.mid))} W ${mw < band.mid ? 'under' : 'over'} the target`) : ''}</span><span>Too hard</span></div>
         </>
-      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : 'Free ride: no target.'}</span></div>}
+      ) : <div class="rd-target"><span class="muted">{e.workoutDone && ride.timeline.length ? 'Workout complete: ride on, or end the ride.' : step?.step.allOut ? ALL_OUT_WORDS : 'Free ride: no target.'}</span></div>}
       <div class="rd-grow" />
       <div class="rd-controls">
         {trainerOk ? (

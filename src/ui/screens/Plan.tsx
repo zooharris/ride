@@ -4,8 +4,9 @@ import { acceptRecommended } from '../judgeService';
 import type { AppData } from '../store';
 import { setCurrentEquipment } from '../store';
 
-import { assess, LIMITER_LABEL, type Evidence, type PowerCurve } from '../../engine/assessment';
-import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, type Recommended, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
+import { assess, LIMITER_LABEL, type Assessment, type PowerCurve } from '../../engine/assessment';
+import { changedSince, findingsOf, limiterChanged, pastTense, type Finding, type PlanFindings } from '../../engine/findings';
+import { applyPlan, buildPlan, cancelPlan, changeSig, defaultPlanName, ensureFindings, type Recommended, freshData, getActivePlan, getPlans, markChecked, overlapping, rejectChanges, renamePlan, replan, type ActivePlan } from '../planService';
 import { changeKey, type Change, type Replan } from '../../engine/adapt';
 import type { Availability, Plan as GeneratedPlan } from '../../engine/planner';
 import type { Goal } from '../../engine/goals';
@@ -71,6 +72,16 @@ export function Plan({ data }: { data: AppData }) {
   }, []);
 
   const assessment = useMemo(() => assess({ today: today(), profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }), [data.rides, data.wellness, data.planned, curve, profile]);
+  // B4 (22 Nov 2026): the plan that covers today, and the findings it was built on (worked out once for an older plan).
+  const covering = active && active.start <= today() && active.goalDate >= today() ? active : null;
+  const [savedFindings, setSavedFindings] = useState<PlanFindings | undefined>(undefined);
+  useEffect(() => {
+    if (!covering) { setSavedFindings(undefined); return; }
+    let alive = true;
+    void ensureFindings(data, covering).then((p) => { if (alive) setSavedFindings(p.findings); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [covering?.id, covering?.findings?.date, covering?.appliedAt]);
 
   async function build() {
     const p = await buildPlan(data, goal, av, masters, startDate, undefined, away);
@@ -91,7 +102,7 @@ export function Plan({ data }: { data: AppData }) {
     if (!plan || clash) return;
     setBusy(true);
     try {
-      await applyPlan(data, plan, goal, av, masters, undefined, { name: name.trim() || defaultPlanName(goal), away });
+      await applyPlan(data, plan, goal, av, masters, undefined, { name: name.trim() || defaultPlanName(goal), away, saveFindings: true });
       go('calendar');
     } finally { setBusy(false); }
   }
@@ -176,19 +187,7 @@ export function Plan({ data }: { data: AppData }) {
         </section>
       )}
 
-      <section>
-        <h2>What your data say</h2>
-        <p class="faint small" style="margin:4px 0 10px">The plan is built on these. Green: well supported by your data; amber: thin evidence; grey: a guess with no data behind it yet. They firm up as rides and wellness come in.</p>
-        <div class="panel"><div class="stack" style="gap:6px">
-          {([assessment.weeklyHours, assessment.longestRide, assessment.decoupling, assessment.efficiencyTrend, assessment.powerProfile, assessment.ftpStatus, assessment.afterStrength, assessment.afterLongRide, assessment.afterHardRide, assessment.compliance, assessment.rampRate] as Evidence<unknown>[]).map((e, i) => (
-            <div class="row" key={i} style="align-items:flex-start;gap:10px">
-              <span class="dot" style={`margin-top:7px;width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${e.confidence === 'good' ? 'var(--good)' : e.confidence === 'thin' ? 'var(--warn)' : 'var(--ink-3)'}`} />
-              <span class="small muted">{e.note}</span>
-            </div>
-          ))}
-        </div>
-        <p class="small" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p></div>
-      </section>
+      <DataSay assessment={assessment} covering={covering} saved={savedFindings} />
 
       {active && !showForm && !plan && (
         <div class="row" style="margin-top:20px">
@@ -411,3 +410,62 @@ export function ReplanView({ check, rec, onAccept, onReject, busy }: { check: Re
 
 function verdictColor(v: string) { return { 'on-track': 'var(--good)', close: 'var(--warn)', short: 'var(--bad)' }[v] ?? 'var(--line-2)'; }
 function verdictLabel(v: string) { return { 'on-track': 'On track', close: 'Close', short: 'Short of the goal', 'no-target': 'No single number to hit' }[v] ?? v; }
+
+const dotColour = (c: Finding['confidence']) => (c === 'good' ? 'var(--good)' : c === 'thin' ? 'var(--warn)' : 'var(--ink-3)');
+const monthDay = (d: string) => fmtDate(d, { month: 'short', day: 'numeric' });
+
+/**
+ * "What your data say" (22 Nov 2026, brief Part B): today's list, said to be today's, worked out afresh each time
+ * the page opens. With a plan covering today, a line that has moved since the plan was built says what it was
+ * then, a changed first limiter says so, and the list the plan was built on is kept folded away underneath.
+ */
+function DataSay({ assessment, covering, saved }: { assessment: Assessment; covering: ActivePlan | null; saved?: PlanFindings }) {
+  const now = findingsOf(assessment);
+  const then = covering ? saved : undefined;
+  const changed = then ? changedSince(then, now) : new Map();
+  const wasFirst = then ? limiterChanged(then, now) : undefined;
+  const builtOn = then ? monthDay(then.date) : '';
+  return (
+    <section>
+      <div class="row wrap" style="gap:4px 10px;align-items:baseline">
+        <h2>What your data say</h2>
+        <span class="faint small">As of today, {fmtDate(now.date, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+      </div>
+      <p class="faint small" style="margin:4px 0 10px">Worked out from your rides and wellness as they stand today. The daily re-check uses these. Green: well supported by your data; amber: thin evidence; grey: a guess with no data behind it yet.</p>
+      <div class="panel"><div class="stack" style="gap:6px">
+        {now.lines.map((e) => {
+          const was = changed.get(e.key);
+          return (
+            <div class="row" key={e.key} style="align-items:flex-start;gap:10px">
+              <span class="dot" style={`margin-top:7px;width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${dotColour(e.confidence)}`} />
+              <span class="small">
+                <span class="muted">{e.note}</span>
+                {was && <span class="faint finding-was">When the plan was built ({builtOn}): {pastTense(was.note)}</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+        <p class="small" style="margin:0">Limiter to work on first: <b>{LIMITER_LABEL[assessment.limiters[0]]}</b>{assessment.limiters[1] ? <span class="muted">, then {LIMITER_LABEL[assessment.limiters[1]]}</span> : null}.</p>
+        {wasFirst && <p class="small faint" style="margin:4px 0 0">When the plan was built, the first limiter was {LIMITER_LABEL[wasFirst]}. Check the plan to see whether it should change.</p>}
+      </div>
+      {then && (
+        <details class="planned-fold built-on">
+          <summary class="small">What this plan was built on, {builtOn}{then.afterwards ? <span class="faint"> · worked out afterwards from your history</span> : null}</summary>
+          <div class="stack" style="gap:6px;margin-top:10px">
+            {then.lines.map((e) => (
+              <div class="row" key={e.key} style="align-items:flex-start;gap:10px">
+                <span class="dot" style={`margin-top:7px;width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${dotColour(e.confidence)}`} />
+                <span class="small muted">{pastTense(e.note)}</span>
+              </div>
+            ))}
+            {then.limiters?.length ? <p class="small muted" style="margin:4px 0 0">Limiter worked on first: <b>{LIMITER_LABEL[then.limiters[0]]}</b>{then.limiters[1] ? `, then ${LIMITER_LABEL[then.limiters[1]]}` : ''}.</p> : null}
+            {then.afterwards && <p class="faint small" style="margin:4px 0 0">This plan was built before plans kept what they were built on, so this was worked out afterwards from your history as it stood when the plan started. Lines that could not honestly be worked out for that day are left out.</p>}
+          </div>
+        </details>
+      )}
+      </div>
+    </section>
+  );
+}

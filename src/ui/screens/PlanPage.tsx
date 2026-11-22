@@ -240,7 +240,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
 
   /** Save the settings and make the accepted changes; declined ones are turned down so the re-check does not bring them back. */
   async function apply(built: GeneratedPlan, accepted: Change[], declined: Change[]) {
-    await applyPlan(data, built, goal, av, masters, new Set(accepted.flatMap(changeKeys)), { planId: plan.id, away });
+    await applyPlan(data, built, goal, av, masters, new Set(accepted.flatMap(changeKeys)), { planId: plan.id, away, saveFindings: true });
     // The settings are kept whatever was accepted, so tomorrow's re-check works from them.
     const saved = (await getPlans()).find((p) => p.id === plan.id);
     if (saved) await putPlan({ ...saved, goal, availability: av, masters, away, start: upcoming ? (built.weeks[0]?.sessions[0]?.date ?? startDate) : saved.start, goalDate: built.goalDate, projection: built.projection, requiredCtl: built.requiredCtl });

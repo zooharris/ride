@@ -6,6 +6,12 @@ import { getSetting, setSetting } from '../data/db';
 import { deliver } from '../export/deliver';
 import { safeName } from '../export/names';
 import { useWidth } from './useWidth';
+import { indexAt, namesThatFit, partNumbers, partZoneTime, readyQuestions, smoothedAt, SMOOTHING, type LapMark, type Smoothing, type TargetBands, type ZoneBand } from '../engine/activityParts';
+import { breathZoneVar, ZONE_VAR } from './Profile';
+import { clock } from '../engine/workout';
+import { coachConfig } from './coachConfig';
+import { askPart, lastPartAnswer, type PartAnswer } from './partCoach';
+import type { Profile } from '../engine/types';
 
 /**
  * One chart of a recording opened large (13 Nov 2026), on the pattern of the large Progress charts: the measure
@@ -36,9 +42,42 @@ export function partSummary(samples: Sample[], get: (p: Sample) => number | unde
   return n ? { low, high, avg: s / n, n } : undefined;
 }
 
-export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistance, onClose }: {
-  name: string; samples: Sample[]; panels: PanelDef[]; open: string; xOf: (p: Sample) => number; fmtX: (v: number) => string; byDistance: boolean; onClose: () => void;
+/**
+ * What the large view adds for an activity (22 Nov 2026, brief Part C): its laps, the planned target, the rider's
+ * zones as of the ride, the recording second by second (for smoothing and the part's numbers), and what the coach
+ * is told. Each is optional; a chip appears only when the activity has what it needs.
+ */
+export interface LargeExtras {
+  id: string;
+  raw?: { time: number[]; watts?: Array<number | null>; heartrate?: Array<number | null>; distance?: Array<number | null>; altitude?: Array<number | null> };
+  laps?: LapMark[];
+  target?: TargetBands;
+  zones?: Partial<Record<'watts' | 'hr' | 've', ZoneBand[]>>;
+  test?: boolean;
+  imperial: boolean;
+  profile?: Profile;
+  /** "Saturday Nov 21: Long ride (a ride)", for the coach. */
+  activity: string;
+}
+
+/** What is shown on the large chart, remembered on the device. Laps and the target start on, zones off. */
+export interface ShowChoice { laps: boolean; target: boolean; zones: boolean }
+export const SHOW_DEFAULT: ShowChoice = { laps: true, target: true, zones: false };
+
+export function ActivityLarge({ name, samples: rawSamples, panels, open, xOf, fmtX, byDistance, onClose, extras }: {
+  name: string; samples: Sample[]; panels: PanelDef[]; open: string; xOf: (p: Sample) => number; fmtX: (v: number) => string; byDistance: boolean; onClose: () => void; extras?: LargeExtras;
 }) {
+  // Smoothing for power (C4): the line and the pointer's reading from the recording's trailing average.
+  const [smooth, setSmooth0] = useState<Smoothing>(0);
+  const [show, setShow0] = useState<ShowChoice>(SHOW_DEFAULT);
+  useEffect(() => { void Promise.all([getSetting<number>('activitySmoothing', 0), getSetting<ShowChoice>('activityShow', SHOW_DEFAULT)]).then(([sm, sh]) => { setSmooth0((SMOOTHING as readonly number[]).includes(sm) ? sm as Smoothing : 0); setShow0({ ...SHOW_DEFAULT, ...sh }); }); }, []);
+  const setSmooth = (v: Smoothing) => { setSmooth0(v); void setSetting('activitySmoothing', v); };
+  const setShow = (k: keyof ShowChoice, v: boolean) => { const next = { ...show, [k]: v }; setShow0(next); void setSetting('activityShow', next); };
+  const raw = extras?.raw;
+  const canSmooth = !!raw?.watts?.some((w) => w != null && w > 0) && rawSamples.some((x) => x.watts != null);
+  const smoothed = useMemo(() => (canSmooth && smooth ? smoothedAt(rawSamples.map((x) => x.t), raw!.time, raw!.watts!, smooth) : undefined), [canSmooth, smooth, rawSamples, raw]);
+  const samples = useMemo(() => (smoothed ? rawSamples.map((x, i) => (x.watts == null ? x : { ...x, watts: smoothed[i] ?? x.watts })) : rawSamples), [rawSamples, smoothed]);
+  const ts = useMemo(() => rawSamples.map((x) => x.t), [rawSamples]);
   const channels = useMemo(() => channelsOf(panels, samples), [panels, samples]);
   const view = channels.find((c) => c.key === open) ?? channels[0];
   const others = channels.filter((c) => c.key !== view.key);
@@ -63,6 +102,19 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
   const [lo, hi] = [Math.max(0, Math.min(win[0], last)), Math.max(0, Math.min(win[1], last))];
   const [at0, setAt] = useState<number | null>(null);
   const at = at0 != null && at0 >= lo && at0 <= hi ? at0 : hi;
+  // Laps and steps (C1): the lap being looked at, while the window is still on it.
+  const laps = extras?.laps && extras.laps.length >= 2 ? extras.laps : undefined;
+  const lapIdx = useMemo(() => (laps ?? []).map((l) => [Math.min(last, indexAt(ts, l.start)), Math.min(last, indexAt(ts, l.end))] as [number, number]), [laps, ts, last]);
+  const [lapPicked, setLapPicked] = useState<number | null>(null);
+  const lapOn = lapPicked != null && lapIdx[lapPicked] && lapIdx[lapPicked][0] === lo && lapIdx[lapPicked][1] === hi ? lapPicked : null;
+  const pickLap = (k: number) => { setLapPicked(k); setWin([lapIdx[k][0], Math.max(lapIdx[k][0] + 1, lapIdx[k][1])]); setAt(null); };
+  const showLaps = !!laps && show.laps;
+  const target = extras?.target;
+  const targetOk = target && 'bands' in target ? target : undefined;
+  const showTarget = !!targetOk && show.target;
+  const zoneSet = extras?.zones?.[view.key as 'watts' | 'hr' | 've'];
+  const showZones = !!zoneSet?.length && show.zones;
+  const zoneColour = (n: number) => (view.key === 've' ? breathZoneVar(n) : ZONE_VAR[Math.min(6, n - 1)]);
 
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -88,10 +140,24 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
   const x0 = xOf(samples[lo]), x1 = Math.max(x0 + 1e-9, xOf(samples[hi]));
   const X = (i: number) => padL + ((xOf(samples[i]) - x0) / (x1 - x0)) * plotW;
   const sums = defs.map((d) => partSummary(samples, d.get, lo, hi));
-  const scale = (i: number) => { const s = sums[i]; if (!s) return { a: 0, b: 1 }; const pad = (s.high - s.low || 1) * 0.08; return { a: defs[i].key === 'watts' ? 0 : s.low - pad, b: s.high + pad }; };
+  // A measure's scale takes in its planned target over the part shown, so a band above or below what was ridden is still seen.
+  const bandRange = (i: number): [number, number] | undefined => {
+    if (!showTarget || defs[i].key !== targetOk!.measure) return undefined;
+    let a = Infinity, b = -Infinity;
+    for (const x of targetOk!.bands) { const i0 = indexAt(ts, x.start), i1 = indexAt(ts, x.end); if (i1 < lo || i0 > hi) continue; a = Math.min(a, x.low); b = Math.max(b, x.high); }
+    return isFinite(a) ? [a, b] : undefined;
+  };
+  const scale = (i: number) => {
+    const s = sums[i]; if (!s) return { a: 0, b: 1 };
+    const br = bandRange(i);
+    const low = br ? Math.min(s.low, br[0]) : s.low, high = br ? Math.max(s.high, br[1]) : s.high;
+    const pad = (high - low || 1) * 0.08;
+    return { a: defs[i].key === 'watts' ? 0 : low - pad, b: high + pad };
+  };
   const scales = defs.map((_, i) => scale(i));
   const laneTop = (l: number) => padT + l * (laneH + gap);
   const Y = (i: number, v: number) => { const s = scales[i]; return laneTop(stacked ? i : 0) + laneH - ((v - s.a) / (s.b - s.a)) * laneH; };
+  const clampY = (l: number, y: number) => Math.max(laneTop(l), Math.min(laneTop(l) + laneH, y));
   const path = (i: number) => { let d = '', prev = false; for (let k = lo; k <= hi; k++) { const v = defs[i].get(samples[k]); if (v == null || !isFinite(v)) { prev = false; continue; } d += `${prev ? 'L' : 'M'}${X(k).toFixed(1)},${Y(i, v).toFixed(1)}`; prev = true; } return d; };
   const ticks = (i: number) => { const s = scales[i]; return [s.a + (s.b - s.a) * 0.1, (s.a + s.b) / 2, s.b - (s.b - s.a) * 0.1]; };
   const svg = useRef<SVGSVGElement>(null);
@@ -120,6 +186,31 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
     void deliver([{ name: safeName(`${name} ${view.title}`, 'csv'), data: rows.join('\r\n') + '\r\n', mime: 'text/csv' }]);
   };
   const whole = lo === 0 && hi === last;
+  // The power average is always from the recording, whatever the smoothing (C4).
+  const recAvg = useMemo(() => partSummary(rawSamples, (p) => p.watts, lo, hi)?.avg, [rawSamples, lo, hi]);
+  // Time in each zone for the part (C3).
+  const zoneTime = useMemo(() => (showZones ? partZoneTime(ts, samples.map(view.get), lo, hi, zoneSet!) : undefined), [showZones, ts, samples, view.key, lo, hi, zoneSet]);
+  const zoneTotal = zoneTime ? Math.max(1, zoneTime.reduce((a, b) => a + b, 0)) : 1;
+  // More numbers for the part (C5), from the recording second by second.
+  const t0 = lo === 0 && raw?.time.length ? raw.time[0] : ts[lo], t1 = ts[hi];
+  const more = useMemo(() => (raw ? partNumbers(raw, t0, t1, { test: extras?.test }) : {}), [raw, t0, t1, extras?.test]);
+  const imperial = !!extras?.imperial;
+  const moreRows: Array<[string, string]> = [
+    more.np != null ? ['Normalized power', `${Math.round(more.np)} W`] : null,
+    more.workKj != null ? ['Work done', `${Math.round(more.workKj).toLocaleString()} kJ`] : null,
+    more.wattsPerBeat != null ? ['Watts per heartbeat', more.wattsPerBeat.toFixed(2)] : null,
+    more.driftPct != null ? ['Heart-rate drift', `${more.driftPct.toFixed(1)}%`] : null,
+    more.distanceM != null ? ['Distance', imperial ? `${(more.distanceM / 1609.344).toFixed(2)} mi` : `${(more.distanceM / 1000).toFixed(2)} km`] : null,
+    more.climbM != null ? ['Climb', imperial ? `${Math.round(more.climbM * 3.28084)} ft` : `${Math.round(more.climbM)} m`] : null,
+  ].filter((x): x is [string, string] => !!x);
+  const partWords = whole ? 'the whole activity' : lapOn != null ? `the lap ${laps![lapOn].name}, ${fmtX(x0)} to ${fmtX(x1)}` : `${fmtX(x0)} to ${fmtX(x1)}`;
+  const coachLines = [
+    ...defs.map((d, i) => { const sm = sums[i]; return sm ? `${d.title}${d.key === 'watts' && smooth ? ` (${smooth}-second power for low and high)` : ''}: low ${num(d, sm.low)} ${d.unit}, high ${num(d, sm.high)} ${d.unit}, average ${num(d, d.key === 'watts' && smooth && recAvg != null ? recAvg : sm.avg)} ${d.unit}` : `${d.title}: no values`; }),
+    ...moreRows.map(([k, v]) => `${k}: ${v}`),
+    ...(zoneTime ? [`Time in ${view.title.toLowerCase()} zones: ${zoneSet!.map((z, k) => (zoneTime[k] >= 1 ? `Z${z.n} ${z.name} ${clock(Math.round(zoneTime[k]))}` : '')).filter(Boolean).join(', ')}`] : []),
+    ...(showTarget ? targetWords(targetOk!, samples, ts, lo, hi, channels) : []),
+    ...(showLaps && laps ? [`Laps in view: ${laps.filter((_, k) => lapIdx[k][1] >= lo && lapIdx[k][0] <= hi).map((l) => l.name).join(', ')}`] : []),
+  ];
 
   return (
     <div class="lv-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -129,8 +220,8 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
           <button class="btn sm lv-close" onClick={onClose} aria-label={`Close ${view.title}`}>Close</button>
         </div>
         <div class="lv-tools">
-          <span class="small muted">{whole ? 'The whole activity' : `${fmtX(x0)} to ${fmtX(x1)}`}</span>
-          {!whole && <button class="btn sm" onClick={() => setWin([0, last])}>Show the whole activity</button>}
+          <span class="small muted">{whole ? 'The whole activity' : lapOn != null ? `${laps![lapOn].name}: ${fmtX(x0)} to ${fmtX(x1)}` : `${fmtX(x0)} to ${fmtX(x1)}`}</span>
+          {!whole && <button class="btn sm" onClick={() => { setWin([0, last]); setLapPicked(null); }}>Whole activity</button>}
           <button class="btn sm" onClick={download}>Download these numbers</button>
         </div>
         <div class="lv-ctl">
@@ -141,9 +232,19 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
               {full && <span class="faint small">Three at once is the most.</span>}
             </div>
           )}
-          {over.length > 0 && (
+          {(laps || target || zoneSet?.length) && (
             <div class="lv-row" role="group" aria-label="Show">
               <span class="lv-lab">Show</span>
+              {laps && <button class={`chip sm${show.laps ? ' on' : ''}`} aria-pressed={show.laps} onClick={() => setShow('laps', !show.laps)}>Laps and steps</button>}
+              {target && <button class={`chip sm${showTarget ? ' on' : ''}`} aria-pressed={showTarget} disabled={!targetOk} onClick={() => setShow('target', !show.target)}>Planned target</button>}
+              {zoneSet?.length ? <button class={`chip sm${show.zones ? ' on' : ''}`} aria-pressed={show.zones} onClick={() => setShow('zones', !show.zones)}>Zones</button> : null}
+              {target && 'unavailable' in target && <span class="faint small">{target.unavailable}</span>}
+              {targetOk && show.target && !defs.some((d) => d.key === targetOk.measure) && <span class="faint small">The target was set in {channels.find((c) => c.key === targetOk.measure)?.title.toLowerCase() ?? 'a measure not on the chart'}; lay it over to see it.</span>}
+            </div>
+          )}
+          {over.length > 0 && (
+            <div class="lv-row" role="group" aria-label="Arrange">
+              <span class="lv-lab">Arrange</span>
               <div class="seg range sm">
                 <button class={!stacked ? 'on' : ''} aria-pressed={!stacked} onClick={() => setStacked(false)}>Together</button>
                 <button class={stacked ? 'on' : ''} aria-pressed={stacked} onClick={() => setStacked(true)}>Stacked</button>
@@ -158,6 +259,13 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
               <b>{fmtX(xOf(samples[at]))}</b>
               {defs.map((d, i) => <span key={d.key} class="pr-item"><LineKey i={i} />{d.title} <b>{fmt(d, d.get(samples[at]))}</b></span>)}
             </div>
+            {canSmooth && defs.some((d) => d.key === 'watts') && (
+              <div class="lv-row lv-smooth" role="group" aria-label="Power smoothing">
+                <span class="faint small">Power</span>
+                <div class="seg range sm">{SMOOTHING.map((v) => <button key={v} class={smooth === v ? 'on' : ''} aria-pressed={smooth === v} onClick={() => setSmooth(v)}>{v ? `${v} seconds` : 'As recorded'}</button>)}</div>
+              </div>
+            )}
+            {showLaps && <LapStrip laps={laps!} idx={lapIdx} lo={lo} hi={hi} X={X} padL={padL} plotW={plotW} width={W} on={lapOn} onPick={pickLap} />}
             <svg ref={svg} class="lv-svg" width={W} height={H} viewBox={`0 0 ${W} ${H}`} tabIndex={0} role="img" style="touch-action:pan-y"
               aria-label={`${view.title}${defs.length > 1 ? ` with ${defs.slice(1).map((d) => d.title.toLowerCase()).join(', ')}` : ''}. Arrow keys move the pointer.`}
               onPointerMove={(e) => pick(e.clientX)} onPointerDown={(e) => pick(e.clientX)}
@@ -165,6 +273,9 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
               {lanes.map((ids, l) => (
                 <g key={l}>
                   <rect x={padL} y={laneTop(l)} width={plotW} height={laneH} fill="none" stroke="var(--line)" />
+                  {showZones && ids.includes(0) && zoneSet!.map((z) => { const top = clampY(l, Y(0, Math.min(z.high, scales[0].b))), bot = clampY(l, Y(0, Math.max(z.low, scales[0].a))); return bot - top > 0.5 ? <g key={`z${z.n}`} class="lv-zone"><rect x={padL} y={top} width={plotW} height={bot - top} fill={zoneColour(z.n)} fill-opacity="0.1" />{bot - top >= 12 && <text x={padL + 4} y={top + 10} font-size="9" fill="var(--ink-3)">Z{z.n}</text>}</g> : null; })}
+                  {showTarget && ids.map((i) => defs[i].key === targetOk!.measure ? targetOk!.bands.map((b, k) => { const i0 = indexAt(ts, b.start), i1 = Math.min(last, indexAt(ts, b.end)); if (i1 < lo || i0 > hi) return null; const xa = X(Math.max(lo, i0)), xb = X(Math.min(hi, i1)); const top = clampY(l, Y(i, b.high)), bot = clampY(l, Y(i, b.low)); return <rect key={`t${k}`} class="lv-target" x={xa} y={top} width={Math.max(1, xb - xa)} height={Math.max(2, bot - top)} fill={COLORS[i]} fill-opacity="0.16" stroke={COLORS[i]} stroke-opacity="0.45" stroke-width="0.8" />; }) : null)}
+                  {showLaps && lapIdx.map(([a], k) => (a > lo && a <= hi ? <line key={`l${k}`} x1={X(a)} x2={X(a)} y1={laneTop(l)} y2={laneTop(l) + laneH} stroke="var(--ink-3)" stroke-opacity="0.55" stroke-width="0.8" /> : null))}
                   {ids.filter((i) => stacked || i === 0).map((i) => ticks(i).map((tv, k) => <g key={`${i}-${k}`}>
                     <line x1={padL} x2={padL + plotW} y1={Y(i, tv)} y2={Y(i, tv)} stroke="var(--line)" stroke-dasharray="2 4" />
                     <text x={padL - 5} y={Y(i, tv) + 3} text-anchor="end" font-size="10" fill={COLORS[i]}>{num(defs[i], tv)}</text>
@@ -186,9 +297,23 @@ export function ActivityLarge({ name, samples, panels, open, xOf, fmtX, byDistan
               <h3>{whole ? 'Over the whole activity' : 'Over this part'}</h3>
               <table class="lv-t small">
                 <thead><tr><th /><th class="r">Low</th><th class="r">High</th><th class="r">Average</th></tr></thead>
-                <tbody>{defs.map((d, i) => { const s = sums[i]; return <tr key={d.key}><td><LineKey i={i} /> {d.title} <span class="faint">({d.unit})</span></td>{s ? <><td class="r">{num(d, s.low)}</td><td class="r">{num(d, s.high)}</td><td class="r">{num(d, s.avg)}</td></> : <td class="r faint" colSpan={3}>no values</td>}</tr>; })}</tbody>
+                <tbody>{defs.map((d, i) => { const s = sums[i]; const avg = d.key === 'watts' && smooth ? recAvg : s?.avg; return <tr key={d.key}><td><LineKey i={i} /> {d.title} <span class="faint">({d.unit})</span></td>{s ? <><td class="r">{num(d, s.low)}</td><td class="r">{num(d, s.high)}</td><td class="r">{avg != null ? num(d, avg) : '–'}</td></> : <td class="r faint" colSpan={3}>no values</td>}</tr>; })}</tbody>
               </table>
+              {canSmooth && defs.some((d) => d.key === 'watts') && <p class="faint small lv-foot">Power's low and high are {smooth ? `from ${smooth}-second power` : 'as recorded'}; its average is always from the recording.</p>}
             </section>
+            {showZones && zoneTime && (
+              <section class="lv-p">
+                <h3>Time in {view.title.toLowerCase()} zones{whole ? '' : ', this part'}</h3>
+                <table class="lv-t small"><tbody>{zoneSet!.map((z, k) => zoneTime[k] >= 1 ? <tr key={z.n}><td><span class="z" style={`background:${zoneColour(z.n)}`} /> Z{z.n} {z.name}</td><td class="r">{clock(Math.round(zoneTime[k]))}</td><td class="r faint">{Math.round((zoneTime[k] / zoneTotal) * 100)}%</td></tr> : null)}</tbody></table>
+              </section>
+            )}
+            {moreRows.length > 0 && (
+              <section class="lv-p">
+                <h3>More for {whole ? 'the whole activity' : 'this part'}</h3>
+                <table class="lv-t small"><tbody>{moreRows.map(([k, v]) => <tr key={k}><td>{k}</td><td class="r">{v}</td></tr>)}</tbody></table>
+              </section>
+            )}
+            {extras && extras.profile && <PartCoach extras={extras} lines={coachLines} part={partWords} over={defs.slice(1).map((d) => d.title)} view={view.title} lap={lapOn != null ? laps![lapOn].name : undefined} target={showTarget} whole={whole} />}
             {other && (
               <section class="lv-p">
                 <h3>Do they move together?</h3>
@@ -273,5 +398,78 @@ function PartStrip({ samples, get, lo, hi, width, onChange }: { samples: Sample[
       <rect x={X(lo) - 3} y={8} width={6} height={H - 16} rx="2" fill="var(--ink-2)" style="cursor:ew-resize" />
       <rect x={X(hi) - 3} y={8} width={6} height={H - 16} rx="2" fill="var(--ink-2)" style="cursor:ew-resize" />
     </svg>
+  );
+}
+
+/** The planned target against what was done in each step in view, for the coach. */
+function targetWords(t: Extract<TargetBands, { bands: unknown }>, samples: Sample[], ts: number[], lo: number, hi: number, channels: Channel[]): string[] {
+  const c = channels.find((x) => x.key === t.measure);
+  if (!c) return [];
+  const rows = t.bands.map((b) => {
+    const i0 = Math.max(lo, indexAt(ts, b.start)), i1 = Math.min(hi, indexAt(ts, b.end));
+    if (i1 <= i0) return '';
+    const s = partSummary(samples, c.get, i0, i1);
+    return s ? `${clock(Math.round(b.start))} to ${clock(Math.round(b.end))}: target ${num(c, b.low)}${b.high !== b.low ? ` to ${num(c, b.high)}` : ''} ${c.unit}, done ${num(c, s.avg)} ${c.unit}` : '';
+  }).filter(Boolean);
+  return rows.length ? [`Planned target, by step (${c.title.toLowerCase()}): ${rows.slice(0, 24).join('; ')}`] : [];
+}
+
+/**
+ * The laps along the top of the chart (C1): a thin target per lap, its name shown where it fits (dropped, never
+ * overlapped, where it does not; the tap target stays). Tapping one looks at just that lap.
+ */
+function LapStrip({ laps, idx, lo, hi, X, padL, plotW, width, on, onPick }: { laps: LapMark[]; idx: Array<[number, number]>; lo: number; hi: number; X: (i: number) => number; padL: number; plotW: number; width: number; on: number | null; onPick: (k: number) => void }) {
+  const spans = laps.map((l, k) => { const [a, b] = idx[k]; const x0 = Math.max(padL, X(Math.max(lo, a))), x1 = Math.min(padL + plotW, X(Math.min(hi, b))); return { x0, x1, name: l.name, inView: b > lo && a < hi && x1 - x0 >= 1 }; });
+  const fits = namesThatFit(spans);
+  return (
+    <div class="lv-laps" style={`width:${width}px`} role="group" aria-label="Laps: tap one to look at just that lap">
+      {spans.map((sp, k) => sp.inView ? (
+        <button key={k} class={`lv-lap${on === k ? ' on' : ''}`} style={`left:${sp.x0}px;width:${Math.max(6, sp.x1 - sp.x0)}px`} title={sp.name} aria-label={`Look at just ${laps[k].name}`} aria-pressed={on === k} onClick={() => onPick(k)}>
+          {fits[k] ? sp.name : ''}
+        </button>
+      ) : null)}
+    </div>
+  );
+}
+
+/**
+ * The coach on the part selected (C6): only with an AI connected, and nothing at all without one. Opening the
+ * chart sends nothing: it only shows the last answer kept with the activity. One request per question.
+ */
+function PartCoach({ extras, lines, part, over, view, lap, target, whole }: { extras: LargeExtras; lines: string[]; part: string; over: string[]; view: string; lap?: string; target: boolean; whole: boolean }) {
+  const [on, setOn] = useState(false);
+  const [last, setLast] = useState<PartAnswer | null>(null);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void coachConfig().then((c) => { if (alive) setOn(!!c); });
+    void lastPartAnswer(extras.id).then((a) => { if (alive) setLast(a); });
+    return () => { alive = false; };
+  }, [extras.id]);
+  if (!on || !extras.profile) return null;
+  const ask = async (text: string) => {
+    if (!text.trim() || busy) return;
+    const cfg = await coachConfig();
+    if (!cfg) return;
+    setBusy(true); setErr(null);
+    try { setLast(await askPart(extras.id, cfg, { profile: extras.profile!, activity: extras.activity, part, lines, over: over.length ? over.join(', ') : 'nothing' }, text)); setQ(''); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  const ready = readyQuestions({ view, over, lap, target, whole });
+  return (
+    <section class="lv-p lv-coach" aria-live="polite">
+      <h3><b class="coach-mark">Coach</b></h3>
+      <div class="lv-row" style="margin-bottom:6px">{ready.map((r) => <button key={r} class="chip sm" disabled={busy} onClick={() => void ask(r)}>{r}</button>)}</div>
+      <div class="row" style="gap:6px">
+        <input value={q} aria-label="Ask the coach about the part selected" placeholder="Ask about what is showing" onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Enter') void ask(q); }} style="flex:1;min-width:0" disabled={busy} />
+        <button class={`btn sm${q.trim() ? ' primary' : ''}`} onClick={() => void ask(q)} disabled={busy || !q.trim()}>{busy ? 'Asking…' : 'Ask'}</button>
+      </div>
+      {busy && <p class="small muted" style="margin:6px 0 0">The coach is reading this part…</p>}
+      {err && <p class="small" style="margin:6px 0 0;color:var(--bad)">No answer came: {err}</p>}
+      {last && !busy && !err && <div class="coach-line small" style="margin-top:6px"><div class="faint" style="margin-bottom:2px">You asked about {last.part}: {last.q}</div><div>{last.a}</div></div>}
+    </section>
   );
 }

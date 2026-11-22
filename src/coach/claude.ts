@@ -505,3 +505,29 @@ export function coachWords(text: string, profile: Pick<Profile, 'name'>): string
   }
   return out.replace(/\s{2,}/g, ' ').trim();
 }
+
+/**
+ * A question about part of an activity, in its chart opened large (22 Nov 2026, brief Part C6). The coach is sent
+ * the numbers for the part selected and what is laid over it, never the raw recording.
+ */
+export interface ActivityPartFacts {
+  profile: Profile;
+  /** "Saturday Nov 21: Long ride (a ride)". */
+  activity: string;
+  /** "the whole activity", "the lap Hard effort 2 of 3, 32:10 to 37:10", "32:10 to 41:00". */
+  part: string;
+  lines: string[];
+  over: string;
+}
+export function activityPartSystem(f: ActivityPartFacts): string {
+  return `You are the rider's cycling coach, looking at one of their activities with them, its chart opened large. ${nameRule(f.profile)} Units: ${unitsWords(f.profile)}. ${PAGE_RULES} ${ANSWER_RULES} ${MEDICAL_RULE}
+When you mention a session, name it by its day and its name (for example "Saturday's long ride"), never by a code.
+
+The activity: ${f.activity}.
+The part the rider has selected: ${f.part}.
+Laid over the chart: ${f.over}.
+${f.lines.map((l) => '- ' + l).join('\n')}`;
+}
+export async function askActivityPart(key: CoachKey, f: ActivityPartFacts, question: string): Promise<string> {
+  return coachWords(await callCoach(key, { maxTokens: 5000, system: activityPartSystem(f), messages: [{ role: 'user', content: question }] }), f.profile);
+}

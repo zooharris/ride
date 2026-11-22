@@ -20,7 +20,9 @@ export interface Assessment {
   asOf: string;
   fitness: Fitness;                                  // today
   rampRate: Evidence<number>;                        // fitness points per week over the last 6 weeks
-  weeklyHours: Evidence<number>;                     // average over the last 4 weeks
+  weeklyHours: Evidence<number>;                     // riding, average over the last 4 weeks
+  /** Every recorded activity, over the same weeks as the riding hours (22 Nov 2026): said beside them, never planned from. */
+  trainingHours: number;
   weeklyTss: Evidence<number>;
   longestRide: Evidence<number>;                     // seconds, last 8 weeks
   decoupling: Evidence<number>;                      // % on rides over 2 h, last 8 weeks
@@ -30,7 +32,7 @@ export interface Assessment {
   afterLongRide: Evidence<number>;                   // same, the day after a ride over 2.5 h
   afterHardRide: Evidence<number>;                   // same, the day after a ride at IF 0.85 or more
   ftpStatus: Evidence<'fresh' | 'stale' | 'likely-higher' | 'likely-lower'>;   // whether the FTP in use looks right
-  compliance: Evidence<number>;                      // share of planned rides completed, last 6 weeks
+  compliance: Evidence<number>;                      // share of planned sessions (every kind) completed, last 6 weeks
   limiters: Limiter[];                               // ordered, strongest first
   summary: string[];                                 // sentences for the screen
 }
@@ -71,9 +73,21 @@ export function assess(inp: AssessmentInput): Assessment {
   const weeks = Math.max(1, coveredDays / 7);
   const span = coveredDays >= 28 ? 'over the last four weeks' : `over the last ${coveredDays} days (all the history synced so far)`;
   const hours = last4.reduce((s, r) => s + r.seconds, 0) / 3600 / weeks;
-  const weeklyHours = ev(round1(hours), last4.length, 8, last4.length ? `About ${round1(hours)} hours a week ${span}.` : 'No rides in the last four weeks.');
+  // All training (every recorded activity) over the same days, said beside the riding (22 Nov 2026): the figure the
+  // plan uses is the riding alone, so the sentence says so. With no riding, over the days the other activities cover.
+  const others = allActs.filter((r) => r.date >= addDays(today, -28) && (last4.length ? r.date >= oldest : true));
+  const oldestAll = others.reduce((m, r) => (r.date < m ? r.date : m), today);
+  const allWeeks = last4.length ? weeks : Math.max(1, Math.min(28, Math.max(1, Math.round((Date.parse(today) - Date.parse(oldestAll)) / 864e5) + 1)) / 7);
+  const trainingHours = round1(others.reduce((s, r) => s + r.seconds, 0) / 3600 / allWeeks);
+  const allSpan = last4.length ? span : (Math.round((Date.parse(today) - Date.parse(oldestAll)) / 864e5) + 1 >= 28 ? 'over the last four weeks' : `over the last ${Math.round((Date.parse(today) - Date.parse(oldestAll)) / 864e5) + 1} days`);
+  const hoursWord = (h: number) => `${h} hour${h === 1 ? '' : 's'}`;
+  const weeklyHours = ev(round1(hours), last4.length, 8, last4.length
+    ? (trainingHours > round1(hours)
+      ? `About ${hoursWord(round1(hours))} of riding a week (${hoursWord(trainingHours)} of training in all) ${span}.`
+      : `About ${hoursWord(round1(hours))} of riding a week ${span}.`)
+    : others.length ? `No rides in the last four weeks (about ${hoursWord(trainingHours)} of other training a week ${allSpan}).` : 'No rides in the last four weeks.');
   const tssWeek = Math.round(last4.reduce((s, r) => s + (r.tss ?? 0), 0) / weeks);
-  const weeklyTss = ev(tssWeek, last4.length, 8, `About ${tssWeek} TSS a week ${span}.`);
+  const weeklyTss = ev(tssWeek, last4.length, 8, `About ${tssWeek} TSS a week from riding ${span}.`);
 
   // Longest ride, last eight weeks.
   const last8 = rides.filter((r) => r.date >= addDays(today, -56));
@@ -149,7 +163,7 @@ export function assess(inp: AssessmentInput): Assessment {
   // Compliance over the last six weeks.
   const past = inp.planned.filter((p) => p.date >= addDays(today, -42) && p.date < today);
   const done = past.filter((p) => p.status === 'completed').length;
-  const compliance = ev(past.length ? round2(done / past.length) : 1, past.length, 6, past.length ? `${done} of ${past.length} planned rides completed in six weeks.` : 'No planned rides in the record yet.');
+  const compliance = ev(past.length ? round2(done / past.length) : 1, past.length, 6, past.length ? `${done} of ${past.length} planned sessions completed in six weeks.` : 'No planned sessions in the record yet.');
 
   // Limiters, strongest first, from the evidence above.
   const limiters: Limiter[] = [];
@@ -163,7 +177,7 @@ export function assess(inp: AssessmentInput): Assessment {
   if (limiters.length === 0) limiters.push(decoupling.confidence === 'none' ? 'base' : 'threshold');
 
   const summary = [weeklyHours, longestRide, decoupling, efficiencyTrend, powerProfile, ftpStatus, afterStrength, afterLongRide, afterHardRide, compliance, rampRate].map((e) => e.note);
-  return { asOf: today, fitness, rampRate, weeklyHours, weeklyTss, longestRide, decoupling, efficiencyTrend, powerProfile, afterStrength, afterLongRide, afterHardRide, ftpStatus, compliance, limiters, summary };
+  return { asOf: today, fitness, rampRate, weeklyHours, trainingHours, weeklyTss, longestRide, decoupling, efficiencyTrend, powerProfile, afterStrength, afterLongRide, afterHardRide, ftpStatus, compliance, limiters, summary };
 }
 
 export const LIMITER_LABEL: Record<Limiter, string> = {

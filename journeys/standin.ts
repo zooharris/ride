@@ -29,6 +29,11 @@ function activities(days: number, withPower: boolean): Array<Record<string, unkn
       ...(withPower ? { icu_average_watts: hard ? 215 : 165, icu_weighted_avg_watts: hard ? 238 : 172, icu_ftp: 255, icu_intensity: hard ? 93 : 67, icu_eftp: hard ? 250 + (n % 6) : undefined } : {}),
     });
   }
+  // The last two weeks also have a walk and a strength session, so an activity of each kind is on record.
+  for (const [back, type, name, secs] of [[3, 'Walk', 'Evening walk', 2700], [5, 'WeightTraining', 'Strength', 2400], [10, 'Walk', 'Lunch walk', 1800]] as const) {
+    const d = new Date(); d.setDate(d.getDate() - back);
+    out.push({ id: `i${9000 + back}`, start_date_local: `${d.toISOString().slice(0, 10)}T18:00:00`, name, type, moving_time: secs, elapsed_time: secs + 60, distance: type === 'Walk' ? secs * 1.4 : 0, total_elevation_gain: type === 'Walk' ? 30 : 0, icu_training_load: type === 'Walk' ? 15 : 25, average_heartrate: type === 'Walk' ? 98 : 112, max_heartrate: type === 'Walk' ? 112 : 141, calories: type === 'Walk' ? 210 : 260, average_speed: type === 'Walk' ? 1.4 : 0 });
+  }
   return out;
 }
 
@@ -55,6 +60,29 @@ export function rider(kind: Exclude<RiderKind, 'new'>): Rider {
     connections: { garmin_training_connected: true, garmin_health_connected: true, wahoo_connected: true, coros_connected: true },
     activities: activities(365, true), wellness: wellness(365),
   };
+}
+
+/** A made-up recording for an activity: power (when it has power), heart rate, cadence, distance and elevation. */
+function streamsOf(a: Record<string, unknown>): Array<{ type: string; data: number[] }> {
+  const secs = Math.max(60, Number(a.moving_time ?? 600));
+  const t = Array.from({ length: secs }, (_, i) => i);
+  const hard = a.name === 'Intervals';
+  const base = Number(a.icu_average_watts ?? 0);
+  const out: Array<{ type: string; data: number[] }> = [
+    { type: 'time', data: t },
+    { type: 'heartrate', data: t.map((i) => Math.round(118 + Math.min(30, i / 90) + (hard && Math.floor(i / 300) % 2 === 1 ? 18 : 0))) },
+    { type: 'cadence', data: t.map((i) => 84 + (i % 7)) },
+    { type: 'distance', data: t.map((i) => i * 8) },
+    { type: 'altitude', data: t.map((i) => Math.round((100 + 25 * Math.sin(i / 400)) * 10) / 10) },
+  ];
+  if (base) out.push({ type: 'watts', data: t.map((i) => Math.round(base * (hard && Math.floor(i / 300) % 2 === 1 ? 1.4 : 0.9) + 15 * Math.sin(i / 17))) });
+  return out;
+}
+function lapsOf(a: Record<string, unknown>): Array<Record<string, unknown>> {
+  const secs = Math.max(60, Number(a.moving_time ?? 600));
+  const out: Array<Record<string, unknown>> = [];
+  for (let s = 0, n = 1; s < secs; s += 600, n++) out.push({ type: 'WORK', label: `Lap ${n}`, start_time: s, end_time: Math.min(secs, s + 600) });
+  return out;
 }
 
 /** What the stand-in has been sent, for checks. */
@@ -106,8 +134,11 @@ export async function standIn(page: Page, kind: RiderKind): Promise<Ledger> {
       if (method === 'PUT') { const body = JSON.parse(req.postData() ?? '{}'); const i = ledger.events.findIndex((e) => e.id === id); if (i >= 0) ledger.events[i] = { ...ledger.events[i], ...body }; return json(route, ledger.events[i] ?? {}); }
       return json(route, { ...(ledger.events.find((e) => e.id === id) ?? { id }), push_errors: null });
     }
-    if (/streams/.test(path)) return json(route, []);
-    if (/\/intervals$/.test(path)) return json(route, { icu_intervals: [] });
+    // An activity's recording (22 Nov 2026): second by second, made up from its summary, with laps every ten minutes.
+    const act = (p: string) => r.activities.find((a) => p.includes(`/activity/${String(a.id)}/`));
+    // A ride the player uploaded is read from its recording on this machine, as when Intervals.icu can't give its streams.
+    if (/streams/.test(path)) { const a = act(path); if (a && String(a.id).startsWith('iUP')) return json(route, { error: 'not yet processed' }, 404); return json(route, a ? streamsOf(a) : []); }
+    if (/\/intervals$/.test(path)) { const a = act(path); return json(route, { icu_intervals: a ? lapsOf(a) : [] }); }
     if (/power-curves/.test(path)) return json(route, { list: [] });
     if (/\/activity\/[^/]+$/.test(path)) return json(route, r.activities.find((a) => path.endsWith(String(a.id))) ?? {});
     if (/\/file$/.test(path)) return route.fulfill({ status: 404, body: '' });

@@ -8,7 +8,7 @@ import { ZONE_VAR } from './Profile';
 import { footHrZones, footLthr, hrZone, powerZone, rideHrZones, ridePowerZones, type Zone } from '../engine/zones';
 import { clock } from '../engine/workout';
 import { fahrenheit, miles } from '../engine/units';
-import { ActivityLarge } from './ActivityLarge';
+import { ActivityLarge, type LargeExtras } from './ActivityLarge';
 import { createPortal } from 'preact/compat';
 
 /** One evenly spaced sample of the recording, so every chart and the map share an index. */
@@ -73,7 +73,7 @@ export type PanelDef = { key: string; title: string; unit: string; color: string
  * and a readout of every value under the cursor. The same cursor index drives
  * the route map, so the parent owns it.
  */
-export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false, breathStop, name = 'This activity' }: { /** The activity's name, for the head of a chart opened large. */ name?: string; samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean;
+export function ActivityCharts({ samples, targets, profile, hover, onHover, kind = 'ride', indoor = false, breathStop, name = 'This activity', extras }: { /** The activity's name, for the head of a chart opened large. */ name?: string; /** What the chart opened large adds (22 Nov 2026). */ extras?: LargeExtras; samples: Sample[]; targets?: { watts?: Analysis; hr?: Analysis }; profile: Profile; hover: number | null; onHover: (i: number | null) => void; kind?: SessionKind; indoor?: boolean;
   /** Where the breathing strap froze (2E): the second, and whether the link was to a Garmin. */
   breathStop?: { at: number; garmin: boolean } }) {
   const ride = kind === 'ride';
@@ -148,7 +148,7 @@ export function ActivityCharts({ samples, targets, profile, hover, onHover, kind
         ))}
       </div>
       {/* Drawn at the top of the page, so it sits over the map, the readout and the navigation. */}
-      {large && createPortal(<ActivityLarge name={name} samples={samples} panels={panels} open={large} xOf={xOf} fmtX={fmtX} byDistance={axis === 'distance' && hasDist} onClose={() => setLarge(null)} />, document.body)}
+      {large && createPortal(<ActivityLarge name={name} samples={samples} panels={panels} open={large} xOf={xOf} fmtX={fmtX} byDistance={axis === 'distance' && hasDist} onClose={() => setLarge(null)} extras={extras} />, document.body)}
     </div>
   );
 }

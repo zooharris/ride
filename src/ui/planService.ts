@@ -4,6 +4,7 @@ import { basisFor, defaultWhere, hasTwoVersions, onGarmin, sendDefault, type Sen
 import { rideLadders } from '../engine/zones';
 import { db, getSetting, setSetting, untracked } from '../data/db';
 import { assess, type PowerCurve } from '../engine/assessment';
+import { findingsAsOf, findingsOf, type PlanFindings } from '../engine/findings';
 import { describeSession, type CoachPlan } from '../coach/claude';
 import { workoutStats } from '../engine/workout';
 import { diffPlan, reviewLastWeek, splitByHorizon, summarize, type Change, type Replan } from '../engine/adapt';
@@ -46,6 +47,12 @@ export interface ActivePlan {
   weeks?: PlanWeekSummary[];
   /** What decided the quality sessions when the plan was made; a re-check keeps them unless these move (Batch 6, C3). Plans made before have none until their first re-check. */
   qualityScores?: QualityScores;
+  /**
+   * "What your data say" as the plan was built on it (22 Nov 2026, brief Part B3): saved when the plan is built and
+   * again whenever an edit rebuilds it, never by the daily re-check. Travels with the plan to the rider's other
+   * devices and into the backup. A plan built before this has none until it is worked out once afterwards (B5).
+   */
+  findings?: PlanFindings;
 }
 
 type PlanRequestKeep = { scores: QualityScores; byWeek: Record<string, SessionType[]> };
@@ -159,6 +166,27 @@ async function recoverPlans(plans: ActivePlan[]): Promise<ActivePlan[]> {
     out.push(plan);
   }
   return out;
+}
+
+/** Today's "What your data say", as the page shows it and as a plan keeps it. */
+export async function currentFindings(data: AppData): Promise<PlanFindings> {
+  const curve = (await getSetting<{ curve: PowerCurve } | null>('powerCurve', null))?.curve;
+  return findingsOf(assess({ today: today(), profile: data.profile as Profile, rides: data.rides, wellness: data.wellness, planned: data.planned, powerCurve: curve }));
+}
+
+/**
+ * B5 (22 Nov 2026): a plan built before plans kept their findings gets them once, worked out from the history as it
+ * stood on the day it started (the day it was built is not on record), marked as worked out afterwards, and saved
+ * so it travels like any other. The history this device holds starts at its oldest synced activity or morning.
+ */
+export async function ensureFindings(data: AppData, plan: ActivePlan): Promise<ActivePlan> {
+  if (plan.findings) return plan;
+  const dates = [...data.ridesAll.map((r) => r.date), ...data.wellness.map((w) => w.date)];
+  const from = dates.reduce((m, d) => (d < m ? d : m), today());
+  const findings = findingsAsOf({ profile: data.profile as Profile, rides: data.rides, wellness: data.wellness, planned: data.planned }, plan.start, from);
+  const next = { ...plan, findings };
+  await putPlan(next);
+  return next;
 }
 
 /** The plan that covers today, else the next one to start, else null. */
@@ -289,7 +317,7 @@ async function planLayout(data: AppData, active: ActivePlan): Promise<Array<{ st
  * plan keeps (same date, kind and name) are left alone, so a ride already on
  * the Garmin is not deleted and re-sent for nothing.
  */
-export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>, opts: { name?: string; planId?: string; away?: AwayRange[] } = {}): Promise<{ added: number; removed: number; kept: number }> {
+export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availability: Availability, masters: boolean, accept?: Set<string>, opts: { name?: string; planId?: string; away?: AwayRange[]; /** Built or rebuilt by the rider: keep today's findings with it (B3). */ saveFindings?: boolean } = {}): Promise<{ added: number; removed: number; kept: number }> {
   const from = today();
   const profile = data.profile as Profile;
   const plans = await getPlans();
@@ -349,7 +377,8 @@ export async function applyPlan(data: AppData, plan: Plan, goal: Goal, availabil
   await pruneOrphanWorkouts();
   const newWeeks: PlanWeekSummary[] = plan.weeks.map((w) => ({ start: w.start, phase: w.phase, label: w.label, tss: Math.round(w.tss), budget: w.targetTss, ...(w.summary ? { summary: w.summary.replace(/^Week \d+: /, '') } : {}) }));
   const weeks = [...(existingPlan?.weeks ?? []).filter((w) => w.start < (newWeeks[0]?.start ?? '9999')), ...newWeeks];
-  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks, qualityScores: existingPlan?.qualityScores ?? plan.qualityScores };
+  const active: ActivePlan = { id: planId, name, goal, availability, masters, away: opts.away ?? existingPlan?.away, start: existingPlan?.start ?? planStart, goalDate: plan.goalDate, requiredCtl: plan.requiredCtl, projection: mergeProjection(existingPlan?.projection, plan.projection), appliedAt: new Date().toISOString(), lastCheck: from, weeks, qualityScores: existingPlan?.qualityScores ?? plan.qualityScores,
+    ...(opts.saveFindings ? { findings: await currentFindings(data) } : existingPlan?.findings ? { findings: existingPlan.findings } : {}) };
   await putPlan(active);
   notify();
   if (c) autoBackup(c, true);

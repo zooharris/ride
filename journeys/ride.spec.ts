@@ -6,8 +6,8 @@ import { go, looksRight, makePlan, setUp, simulatedTrainer } from './rider';
  * The clock is run forward so an hour's ride takes seconds.
  */
 test('ride the day\'s session on the simulated trainer, save it, see it done', async ({ page }, info) => {
-  // The slowest journey: run on a phone at night and a laptop by day only.
-  test.skip(!['phone-night', 'laptop-day'].includes(info.project.name), 'ridden on two sizes only');
+  // The slowest journey: run on a phone at night, a tablet and a laptop by day only.
+  test.skip(!['phone-night', 'tablet-day', 'laptop-day'].includes(info.project.name), 'ridden on three sizes only');
   test.setTimeout(240_000);
   page.on('dialog', (d) => void d.accept());
   const s = await setUp(page, 'power');
@@ -41,10 +41,24 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   // The ride is on today, done.
   await page.clock.resume();
   await go(page, '#/calendar');
-  await expect(page.locator('main')).toContainText(rideName);
+  // The month view shortens a long name ("Paeonian Spri…"), so the start of it is enough.
+  await expect(page.locator('main')).toContainText(rideName.slice(0, 12));
   await go(page, '#/today');
   await expect(page.locator('main')).toContainText(/Done/);
   await looksRight(s, info, 'Today, done');
+  // 22 Nov 2026: the ride's chart opened large shows the planned target, from the player's own record of each step.
+  await go(page, '#/rides');
+  await page.locator('a[href*="#/rides/"]').filter({ hasText: rideName }).first().click();
+  await page.getByRole('button', { name: 'Open power large' }).click();
+  const large = page.getByRole('dialog');
+  const target = large.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Planned target' });
+  await expect(target).toHaveAttribute('aria-pressed', 'true');
+  await expect(large.locator('.lv-target').first()).toBeAttached();
+  await looksRight(s, info, 'Large, the planned target');
+  await target.click();
+  await expect(large.locator('.lv-target')).toHaveCount(0);
+  await target.click();
+  await expect(large.locator('.lv-target').first()).toBeAttached();
 });
 
 /** The riding screen, paused, fits a phone: Resume is wider than Pause. */

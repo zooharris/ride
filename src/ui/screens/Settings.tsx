@@ -10,7 +10,7 @@ import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
 import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
-import { importBatches, undoImport, watchImport, type ImportBatch } from '../../import/importer';
+import { importBatches, mergeFileCopies, undoImport, watchImport, type ImportBatch } from '../../import/importer';
 import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
@@ -608,6 +608,7 @@ function HistoryLoader() {
           <p class="faint small" style="margin:0 0 8px">From any device or app: .fit, .tcx or .gpx, a folder of them, or your device maker's whole-account export (activities and daily wellness together). Nothing already here is added twice. Antogo works out every activity's numbers itself from its recording.</p>
           <AddFilesButton />
           <ChangeOverLine />
+          <SecondCopies />
           <ImportsList />
         </div>
         <KeepingLine />
@@ -663,6 +664,32 @@ function KeepSafeLine() {
   return s.kept
     ? <p class="faint small keep-safe" style="margin:6px 0 0">This browser has agreed to keep it: it won't be cleared to make room, or for going unused.</p>
     : <p class="small keep-safe" style="margin:6px 0 0;color:var(--warn)">This browser hasn't agreed to keep it for good, so it may clear it if the device runs short of room or the app goes unused for some weeks. Add {APP_SHORT_NAME} to your home screen or install it as an app (browsers then keep its data), and use Back up everything now and then.</p>;
+}
+
+/**
+ * Activities brought in from files that are second copies of ones already here (22 Nov 2026). The app makes them one by
+ * itself when it opens and after a sync; this says how many it has found, and lets the rider do it now and see it done.
+ */
+function SecondCopies() {
+  const [n, setN] = useState<number | null>(null);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const count = () => void mergeFileCopies({ countOnly: true }).then(setN).catch(() => setN(null));
+  useEffect(() => { count(); return watchImport((st) => { if (!st.running) count(); }); }, []);
+  const go = async () => {
+    setBusy(true);
+    try { const done = await mergeFileCopies(); notify(); setMsg(`${done} made one with the ${done === 1 ? 'activity' : 'activities'} already here.`); }
+    catch (e) { setMsg(`Stopped: ${(e as Error).message}`); }
+    finally { setBusy(false); count(); }
+  };
+  if (!n && !msg) return null;
+  return (
+    <div class="second-copies" style="margin-top:10px">
+      {n ? <p class="small" style="margin:0 0 6px;color:var(--warn)"><b>{n}</b> {n === 1 ? 'activity' : 'activities'} brought in from files {n === 1 ? 'is a second copy of one' : 'are second copies of ones'} already here.</p> : null}
+      {n ? <button class="btn sm" disabled={busy} onClick={go}>{busy ? 'Working…' : 'Make them one'}</button> : null}
+      {msg && <p class="small muted" style="margin:6px 0 0" aria-live="polite">{msg}</p>}
+    </div>
+  );
 }
 
 /** The runs of bringing files in, each of which can be undone (22 Nov 2026). */

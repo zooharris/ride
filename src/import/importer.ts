@@ -268,13 +268,15 @@ async function sendOn(r: Ride, bytes: Uint8Array, name: string): Promise<void> {
  * carries the id the rider's other devices and the calendar know), with the kept file, the planned session it was
  * matched to and the rider's edits moved over to it.
  */
-export async function mergeFileCopies(): Promise<number> {
+export async function mergeFileCopies(opts: { countOnly?: boolean } = {}): Promise<number> {
   const fileRides = (await db.rides.toArray()).filter((r) => r.source === 'file');
   let merged = 0;
   for (const f of fileRides) {
+    try {
     const near = await withStarts((await db.rides.where('date').between(prevDay(f.date), nextDay(f.date), true, true).toArray()).filter((x) => x.source !== 'file'));
     const twin = near.find((x) => sameActivity(x, f));
     if (!twin) continue;
+    if (opts.countOnly) { merged++; continue; }
     const kept = await db.files.get(f.id);
     const twinFile = await db.files.get(twin.id);
     if (kept?.status === 'kept' && twinFile?.status !== 'kept') await db.files.put({ ...kept, id: twin.id, date: twin.date });
@@ -284,6 +286,7 @@ export async function mergeFileCopies(): Promise<number> {
     await db.activityEdits.delete(f.id);
     await Promise.all([db.rides.delete(f.id), db.files.delete(f.id), db.own.delete(f.id), db.powerCurves.delete(f.id), db.streams.delete(f.id), db.thumbs.delete(f.id), db.reads.delete(f.id)]);
     merged++;
+    } catch { /* one that can't be made one now is left for the next time; the rest carry on */ }
   }
   return merged;
 }

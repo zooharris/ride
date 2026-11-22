@@ -1,7 +1,7 @@
 import { db, getSetting, type KeptFile } from '../data/db';
 import type { Profile, Ride, Wellness } from '../engine/types';
 import { durationFor, sportOf, uploadActivityFile } from '../sync/intervals';
-import { readActivityFile, type ParsedActivity } from './readers';
+import { NOT_ACTIVITY, readActivityFile, type ParsedActivity } from './readers';
 import { zipEntries, zipRead, type ZipEntry } from './zip';
 import { fillDays, wellnessFile, wellnessFromJson } from './wellnessExport';
 import { withOwn } from '../engine/ownNumbers';
@@ -17,12 +17,27 @@ import { workOut } from '../sync/ownService';
 export const UPLOAD_IMPORTS = 'uploadImports';
 
 /** The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. */
-export function sameActivity(a: Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'>, b: Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'>): boolean {
+type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & Partial<Pick<Ride, 'startUtc' | 'distanceM'>>;
+/**
+ * The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. The start is compared
+ * as a moment in time where both say it. Where one gives only a clock time (an older activity, or a file that names no
+ * time zone, read on a device in another zone than the ride), the clocks may differ by a whole time-zone step; then the
+ * two are the same only if they also last the same (within 1%) and went as far (within 1%).
+ */
+export function sameActivity(a: Same, b: Same): boolean {
   if (a.sport !== b.sport) return false;
-  const ta = Date.parse(a.startTime), tb = Date.parse(b.startTime);
-  if (!isFinite(ta) || !isFinite(tb) || Math.abs(ta - tb) > 120_000) return false;
   const da = a.elapsedSeconds || a.seconds, dbb = b.elapsedSeconds || b.seconds;
-  return Math.abs(da - dbb) <= Math.max(da, dbb) * 0.1;
+  const within = (f: number) => Math.abs(da - dbb) <= Math.max(da, dbb) * f;
+  if (a.startUtc && b.startUtc) return Math.abs(Date.parse(a.startUtc) - Date.parse(b.startUtc)) <= 120_000 && within(0.1);
+  const ta = Date.parse(a.startTime), tb = Date.parse(b.startTime);
+  if (!isFinite(ta) || !isFinite(tb)) return false;
+  const diff = Math.abs(ta - tb);
+  if (diff <= 120_000) return within(0.1);
+  // A whole time-zone step apart (zones are quarter-hours), up to 14 hours.
+  const step = 900_000, off = Math.abs(diff - Math.round(diff / step) * step);
+  if (diff > 14 * 3600_000 + 60_000 || off > 60_000 || !within(0.01)) return false;
+  if (a.distanceM && b.distanceM) return Math.abs(a.distanceM - b.distanceM) <= Math.max(a.distanceM, b.distanceM) * 0.01;
+  return !a.distanceM && !b.distanceM && Math.abs(da - dbb) <= 2;
 }
 
 const PART: Array<[number, string]> = [[5, 'Night'], [12, 'Morning'], [17, 'Afternoon'], [21, 'Evening'], [24, 'Night']];
@@ -36,16 +51,28 @@ export function rideFromParsed(p: ParsedActivity): Ride {
   const hour = Number(p.startLocal.slice(11, 13));
   const part = PART.find(([h]) => hour < h)?.[1] ?? 'Morning';
   return {
-    id: `file-${p.startUnix}-${type}`, date: p.startLocal.slice(0, 10), startTime: p.startLocal,
+    id: `file-${p.startUnix}-${type}`, date: p.startLocal.slice(0, 10), startTime: p.startLocal, startUtc: new Date(p.startUnix * 1000).toISOString(),
     name: `${part} ${NOUN[sport]}`, type, sport,
     seconds: durationFor(sport, p.movingS, p.elapsedS), movingSeconds: p.movingS, elapsedSeconds: p.elapsedS,
     distanceM: p.distanceM, elevationM: p.ascentM != null ? Math.round(p.ascentM) : undefined, elevationLossM: p.descentM != null ? Math.round(p.descentM) : undefined,
-    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file',
+    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file', ...(p.ftp ? { ftpAtRide: p.ftp } : {}),
   };
 }
 
 export interface ImportItem { name: string; read: () => Promise<Uint8Array> }
-export interface ImportResult { added: number; already: number; wellnessDays: number; unreadable: Array<{ name: string; why: string }>; notRead: string[] }
+export interface ImportResult {
+  added: number; already: number; wellnessDays: number; unreadable: Array<{ name: string; why: string }>; notRead: string[];
+  /** Device files that are not activities (daily monitoring, settings and the like): counted, not listed. */
+  notActivities: number;
+  /** This run's record, when it added anything, so it can be undone. */
+  batchId?: string;
+}
+
+/**
+ * One run of bringing files in, as it can be undone (22 Nov 2026): the activities it added, and for each day of
+ * wellness the measures it added (and whether the day itself was new).
+ */
+export interface ImportBatch { id: string; at: string; label: string; rides: string[]; wellness: Array<{ date: string; keys: string[]; newDay: boolean }> }
 export interface ImportState { running: boolean; done: number; total: number; result?: ImportResult; error?: string }
 
 let state: ImportState = { running: false, done: 0, total: 0 };
@@ -88,7 +115,8 @@ export async function itemsOf(files: File[]): Promise<{ activities: ImportItem[]
 export async function importFiles(files: File[], onChanged: () => void): Promise<ImportResult> {
   if (state.running) throw new Error('An import is already running.');
   cancelled = false;
-  const result: ImportResult = { added: 0, already: 0, wellnessDays: 0, unreadable: [], notRead: [] };
+  const result: ImportResult = { added: 0, already: 0, wellnessDays: 0, unreadable: [], notRead: [], notActivities: 0 };
+  const batch: ImportBatch = { id: `imp-${Date.now()}`, at: new Date().toISOString(), label: files.length === 1 ? files[0].name : `${files.length} files`, rides: [], wellness: [] };
   emit({ running: true, done: 0, total: 0, result: undefined, error: undefined });
   try {
     const { activities, wellness, skipped } = await itemsOf(files);
@@ -103,10 +131,13 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
       try {
         const bytes = await item.read();
         const parsed = await readActivityFile(item.name, bytes);
-        if (!parsed) { result.unreadable.push({ name: item.name, why: 'not an activity file this app can read' }); continue; }
-        const r = await addActivity(parsed, bytes, p ?? undefined);
-        if (r === 'already') result.already++;
-        else { result.added++; fresh.push(r); if (upload) await sendOn(r, bytes, item.name); }
+        if (parsed === NOT_ACTIVITY) result.notActivities++;
+        else if (!parsed) result.unreadable.push({ name: item.name, why: 'not an activity file this app can read' });
+        else {
+          const r = await addActivity(parsed, bytes, p ?? undefined);
+          if (r === 'already') result.already++;
+          else { result.added++; fresh.push(r); batch.rides.push(r.id); if (upload) await sendOn(r, bytes, item.name); }
+        }
       } catch (e) { result.unreadable.push({ name: item.name, why: (e as Error).message }); }
       emit({ done: ++n });
       if (n % 20 === 0) { onChanged(); await new Promise((res) => setTimeout(res, 0)); }
@@ -126,9 +157,14 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
     if (found.size) {
       const have = new Map((await db.wellness.toArray()).map((w) => [w.date, w]));
       const add = fillDays(have, found);
+      for (const day of add) {
+        const cur = have.get(day.date) as Record<string, unknown> | undefined;
+        batch.wellness.push({ date: day.date, newDay: !cur, keys: Object.keys(day).filter((k) => k !== 'date' && (day as unknown as Record<string, unknown>)[k] != null && cur?.[k] == null) });
+      }
       await db.wellness.bulkPut(add);
       result.wellnessDays = add.length;
     }
+    if (batch.rides.length || batch.wellness.length) { await db.imports.put(batch); result.batchId = batch.id; }
     if (fresh.length) await pairNew(fresh, p ?? undefined);
     onChanged();
     emit({ running: false, result });
@@ -152,6 +188,14 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
     return 'already';
   }
   await db.files.put(file(ride.id, ride.date));
+  // The FTP of its day, kept with the activity so a later change of FTP does not rescore it: the file's own where it
+  // says, else the nearest known before it (or, failing that, after), else today's.
+  if (!ride.ftpAtRide && ride.sport === 'ride') {
+    const known = (x: Ride) => !!x.ftpAtRide;
+    const near = (await db.rides.where('date').belowOrEqual(day).reverse().filter(known).first()) ?? (await db.rides.where('date').above(day).filter(known).first());
+    const ftp = near?.ftpAtRide ?? p?.ftp;
+    if (ftp) ride.ftpAtRide = ftp;
+  }
   let out = ride;
   if (p) {
     const rec = await workOut(ride, p, parsed.streams ? { ...parsed.streams, id: ride.id } : undefined);
@@ -209,4 +253,42 @@ export async function mergeFileCopies(): Promise<number> {
     merged++;
   }
   return merged;
+}
+
+/** The runs of bringing files in that can still be undone, newest first. */
+export async function importBatches(): Promise<ImportBatch[]> {
+  return (await db.imports.toArray()).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/**
+ * Undo one run: the activities it added are removed from this device with everything kept for them (a planned session
+ * one had completed goes back to to-do), and the wellness it added is taken out again, measure by measure. What was
+ * here before the run is untouched. An activity that has since arrived from the data service as well is the data
+ * service's now, and stays.
+ */
+export async function undoImport(id: string): Promise<{ rides: number; days: number }> {
+  const b = await db.imports.get(id);
+  if (!b) return { rides: 0, days: 0 };
+  let rides = 0, days = 0;
+  const planned = await db.planned.toArray();
+  for (const rid of b.rides) {
+    const r = await db.rides.get(rid);
+    if (!r || r.source !== 'file') continue;
+    for (const pl of planned.filter((x) => x.activityId === rid)) {
+      await db.planned.update(pl.id, { status: pl.date < new Date().toISOString().slice(0, 10) ? 'missed' : pl.icuEventId ? 'sent' : 'planned', activityId: undefined, relabelled: undefined, done: undefined, rpe: undefined });
+    }
+    await Promise.all([db.rides.delete(rid), db.files.delete(rid), db.own.delete(rid), db.activityEdits.delete(rid), db.powerCurves.delete(rid), db.streams.delete(rid), db.thumbs.delete(rid), db.reads.delete(rid)]);
+    rides++;
+  }
+  for (const w of b.wellness) {
+    const cur = await db.wellness.get(w.date);
+    if (!cur) continue;
+    const next = { ...cur } as Record<string, unknown>;
+    for (const k of w.keys) delete next[k];
+    if (w.newDay && Object.keys(next).every((k) => k === 'date' || next[k] == null)) await db.wellness.delete(w.date);
+    else await db.wellness.put(next as unknown as Wellness);
+    days++;
+  }
+  await db.imports.delete(id);
+  return { rides, days };
 }

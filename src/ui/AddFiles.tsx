@@ -66,6 +66,8 @@ export function AddFilesSheet({ onClose }: { onClose: () => void }) {
         {r && !st.running && (
           <div class="panel import-result" style="margin-top:12px" aria-live="polite">
             <p class="small" style="margin:0"><b>{r.added}</b> new {r.added === 1 ? 'activity' : 'activities'}{r.already ? `, ${r.already} already here (their files are now kept with them)` : ''}{r.wellnessDays ? `, ${r.wellnessDays} ${r.wellnessDays === 1 ? 'day' : 'days'} of wellness added or filled in` : ''}.</p>
+            {r.notActivities > 0 && <p class="faint small" style="margin:4px 0 0">{r.notActivities.toLocaleString()} other device {r.notActivities === 1 ? 'file was' : 'files were'} passed over: the device's own records that aren't activities (daily monitoring, settings and the like).</p>}
+            {r.batchId && <p class="faint small" style="margin:4px 0 0">Not what you expected? Settings, History lists this under "Brought in from files", with Undo.</p>}
             {r.unreadable.length > 0 && (
               <details style="margin-top:6px"><summary class="small">{r.unreadable.length} couldn't be read</summary>
                 <ul class="faint small" style="margin:4px 0 0;padding-left:18px">{r.unreadable.slice(0, 50).map((u) => <li key={u.name}>{u.name}: {u.why}</li>)}</ul></details>

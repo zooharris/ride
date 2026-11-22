@@ -42,6 +42,7 @@ export const GROUP_OF: Record<string, GroupName> = {
   Wind: 'Conditions',
   'Energy burned': 'Energy',
   'Carbohydrate used': 'Energy',
+  'Power recorded for': 'Power',
   'Recorded on': 'About this recording',
   Numbers: 'About this recording',
 };

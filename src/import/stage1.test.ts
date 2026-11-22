@@ -54,11 +54,13 @@ function garminFit(): Uint8Array {
   return enc.close();
 }
 
+const readAct = async (n: string, b: Uint8Array) => (await readActivityFile(n, b)) as import('./readers').ParsedActivity;
+
 beforeEach(async () => { await db.delete(); await db.open(); await db.profile.put({ id: 'me', ...profile }); });
 
 describe('reading activity files of any maker', () => {
   it('a FIT file from Garmin\'s own SDK: summary, local time from the file, and the recording', async () => {
-    const p = (await readActivityFile('a.fit', garminFit()))!;
+    const p = (await readAct('a.fit', garminFit()))!;
     expect(p.type).toBe('Ride');
     expect(p.startLocal).toBe('2026-11-18T02:30:00');   // the file's own local time (five hours behind)
     expect(p.elapsedS).toBe(1800);
@@ -72,7 +74,7 @@ describe('reading activity files of any maker', () => {
     const f = appFit();
     const gz = new Uint8Array(await new Response(new Blob([f as unknown as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
     for (const b of [f, gz, zip([['ride.fit', f]])]) {
-      const p = (await readActivityFile('x', b))!;
+      const p = (await readAct('x', b))!;
       expect(p.streams!.heartrate![10]).toBe(140);
       expect(p.elapsedS).toBeGreaterThanOrEqual(3599);
     }
@@ -162,7 +164,7 @@ describe('bringing files in', () => {
     expect((await db.files.get('i555'))?.status).toBe('kept');
   });
   it('a file brought in first, and the same activity later from the data service, become one', async () => {
-    const added = await addActivity((await readActivityFile('a.fit', appFit()))!, appFit(), profile);
+    const added = await addActivity((await readAct('a.fit', appFit()))!, appFit(), profile);
     expect(added).not.toBe('already');
     const fileId = (added as Ride).id;
     await db.planned.put({ id: 'p1', date: '2026-11-20', workoutId: 'w', basis: 'power', status: 'completed', activityId: fileId });

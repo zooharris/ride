@@ -7,6 +7,7 @@ import { arrival, useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect, useRef } from 'preact/hooks';
 import { startChangeOver } from '../sync/syncService';
+import { askToKeep } from '../data/keepSafe';
 import { syncDevices } from '../data/devicesync';
 import { autoSync, credentials, matchHistory, onHistoryMatched, onSyncRunning, syncRunning } from '../sync/syncService';
 import { fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
@@ -57,6 +58,8 @@ export function App() {
   const data = useAppData();
   // Merge with the rider's other devices on launch and whenever the app comes back to the front (at most once a minute),
   // then bring this device's history level with theirs.
+  // The rider's record lives on this device, so the browser is asked to keep it for good (22 Nov 2026).
+  useEffect(() => { void askToKeep(); }, []);
   useEffect(() => {
     let last = 0;
     const run = async () => {

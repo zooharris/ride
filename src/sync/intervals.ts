@@ -235,6 +235,8 @@ export async function pushAthleteNumbers(c: IntervalsCredentials, n: { ftp?: num
 export interface IcuActivity {
   id: string;
   start_date_local: string;
+  /** The start as a moment in time (UTC). */
+  start_date?: string;
   name?: string;
   type?: string;
   moving_time?: number;
@@ -325,12 +327,13 @@ export async function fetchRides(c: IntervalsCredentials, oldest: string, newest
   return list.map(toRide);
 }
 
-function toRide(a: IcuActivity): Ride {
+export function toRide(a: IcuActivity): Ride {
   const sport = sportOf(a.type ?? 'Ride', a.average_speed);
   return {
     id: String(a.id),
     date: a.start_date_local.slice(0, 10),
     startTime: a.start_date_local,
+    ...(a.start_date && isFinite(Date.parse(a.start_date)) ? { startUtc: new Date(a.start_date).toISOString() } : {}),
     name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
     sport,
@@ -349,7 +352,9 @@ function toRide(a: IcuActivity): Ride {
     averageSpeedMs: a.average_speed,
     averageTempC: a.average_temp,
     efficiencyFactor: a.icu_efficiency_factor,
-    decoupling: a.decoupling,
+    // Intervals.icu's figure is second half against first (negative when heart rate rose for the same power); the app's
+    // drift is the other way up, so it is turned over here (22 Nov 2026, found from a ride's own file).
+    decoupling: a.decoupling != null && isFinite(a.decoupling) ? -a.decoupling || 0 : undefined,
     powerZoneSeconds: zoneSeconds(a.icu_zone_times),
     sweetSpotSeconds: sweetSpotSeconds(a.icu_zone_times),
     hrZoneSeconds: a.icu_hr_zone_times,

@@ -35,6 +35,8 @@ export interface StreamSet {
   br?: number[];
   tv?: number[];
   intervals?: Array<{ label?: string; type?: string; start: number; end: number; avgWatts?: number; avgHr?: number }>;
+  /** The device's own pauses (timer stopped to timer started), seconds from the start, when the file records them. */
+  pauses?: Array<[number, number]>;
 }
 /**
  * 3 (30 Oct 2026): breathing read for player rides with a strap. 4 (31 Oct): breathing asked for on every
@@ -99,7 +101,7 @@ export interface SyncState {
 export interface KeptFile { id: string; date: string; status: 'kept' | 'none'; bytes?: Uint8Array; size?: number; at: string; why?: string }
 
 /** Antogo's numbers for one activity, the thresholds they used, and what the activity came with before them. */
-export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; at: string }
+export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; /** 2 when `came` was taken with drift already the app's way up. */ cameV?: number; at: string }
 
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;
@@ -131,6 +133,8 @@ class RideDb extends Dexie {
    * came with (for the one-time check against the data service). This device only; worked out again from the file.
    */
   own!: Table<OwnRecord, string>;
+  /** Each run of bringing files in, so it can be undone (22 Nov 2026): this device only. */
+  imports!: Table<import('../import/importer').ImportBatch, string>;
 
   constructor() {
     super('ride');
@@ -168,6 +172,7 @@ class RideDb extends Dexie {
     this.version(12).stores({ reads: 'id, date' });
     this.version(13).stores({ files: 'id, date, status' });
     this.version(14).stores({ own: 'id' });
+    this.version(15).stores({ imports: 'id' });
   }
 }
 

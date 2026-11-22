@@ -4,7 +4,7 @@ import type { Profile, Ride } from '../engine/types';
 import { footHrZones, footLthr, rideHrZones, ridePowerZones } from '../engine/zones';
 import { readFitRecording } from '../player/fitRecording';
 import { maybeGunzip } from '../player/fitRead';
-import { isFit, readActivityFile } from '../import/readers';
+import { isFit, NOT_ACTIVITY, readActivityFile } from '../import/readers';
 import type { StreamSet } from '../data/db';
 
 /**
@@ -40,7 +40,8 @@ export async function recordingOf(id: string): Promise<StreamSet | undefined> {
   if (f?.status !== 'kept' || !f.bytes) return undefined;
   const bytes = await maybeGunzip(f.bytes);
   if (isFit(bytes)) return readFitRecording(bytes, id);
-  return (await readActivityFile(id, bytes))?.streams;
+  const parsed = await readActivityFile(id, bytes);
+  return parsed && parsed !== NOT_ACTIVITY ? parsed.streams : undefined;
 }
 
 /** Work out one activity's numbers from its recording, and keep them. Undefined when it has no recording. */
@@ -50,8 +51,12 @@ export async function workOut(r: Ride, p: Profile, streams?: StreamSet): Promise
   const t = thresholdsFor(r, p);
   const before = await db.own.get(r.id);
   const came = before?.came ?? (r.ownNumbers ? undefined : cameWith(r));
-  const nums = ownNumbers(s, { sport: r.sport, ftp: t.ftp, lthr: t.lthr, powerZones: t.powerZones, hrZones: t.hrZones, has: { calories: r.calories, carbsUsedG: before?.nums.carbsEstimated ? undefined : r.carbsUsedG, elevationM: r.elevationM, elevationLossM: r.elevationLossM } });
-  const rec: OwnRecord = { id: r.id, v: OWN_VERSION, ftp: t.ftp, lthr: t.lthr, nums, ...(came ? { came } : {}), at: new Date().toISOString() };
+  // The device's own energy figure, as the activity came (an earlier working-out may have laid Antogo's over it).
+  const deviceKcal = (before?.came ?? came)?.calories ?? (r.ownNumbers ? undefined : r.calories);
+  const nums = ownNumbers(s, { sport: r.sport, ftp: t.ftp, lthr: t.lthr, powerZones: t.powerZones, hrZones: t.hrZones, has: { calories: deviceKcal, carbsUsedG: before?.nums.carbsEstimated ? undefined : r.carbsUsedG, elevationM: r.elevationM, elevationLossM: r.elevationLossM } });
+  if (deviceKcal != null) nums.calories = deviceKcal;
+  const cameV = before?.came ? before.cameV : came ? 2 : undefined;
+  const rec: OwnRecord = { id: r.id, v: OWN_VERSION, ftp: t.ftp, lthr: t.lthr, nums, ...(came ? { came } : {}), ...(cameV ? { cameV } : {}), at: new Date().toISOString() };
   await db.own.put(rec);
   return rec;
 }
@@ -75,7 +80,7 @@ export async function applyOwnTo(rides: Ride[]): Promise<Ride[]> {
     const rec = recs.get(r.id);
     if (!rec) { out.push(r); continue; }
     // The data service's figures, fresh, are what the activity came with.
-    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r) });
+    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r), cameV: 2 });
     out.push(withOwn(r, rec.nums));
   }
   return out;
@@ -106,11 +111,12 @@ export function changeOver(score: (r: Ride, p: Profile) => void, onChanged: () =
     emit({ running: true, done: 0, total: todo.length });
     let changed = 0;
     for (let i = 0; i < todo.length; i++) {
-      const r = todo[i];
       try {
+        // Read again at the moment of writing: a sync or the rider may have changed the activity since the list was made.
+        const r = (await db.rides.get(todo[i].id)) ?? todo[i];
         const rec = current(recs.get(r.id), r, p) ? recs.get(r.id) : await workOut(r, p);
         if (rec) {
-          const next = withOwn(r, rec.nums);
+          const next = withOwn((await db.rides.get(r.id)) ?? r, rec.nums);
           score(next, p);
           await db.rides.put(next);
           changed++;

@@ -9,7 +9,9 @@ import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
-import { autoBackup, backupSummary, downloadBackup, restoreBackup } from '../../data/backup';
+import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
+import { importBatches, undoImport, watchImport, type ImportBatch } from '../../import/importer';
+import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
 import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { breathZones, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, standardBreathPcts, tableOf, validBreathTops, validTops, type Zone, type ZoneMode } from '../../engine/zones';
@@ -197,13 +199,12 @@ export function Settings({ data }: { data: AppData }) {
     const f = input.files?.[0];
     if (!f) return;
     try {
-      const text = await f.text();
       // Restoring replaces this device's own data, so it asks first and says what (12 Nov 2026).
-      const sum = backupSummary(text);
+      const sum = await backupSummaryOf(f);
       if (!sum.ok) { setMsg({ ok: false, text: sum.words }); input.value = ''; return; }
       const made = sum.exportedAt ? ` made ${new Date(sum.exportedAt).toLocaleString()}` : '';
-      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nYour profile, settings, calendar, workouts, plans and day notes on this device are replaced with the backup's. Activities and wellness come back from your account on the next sync. Ride recordings already on this device are kept. Your other devices follow at their next merge.`)) { input.value = ''; return; }
-      const r = await restoreBackup(text);
+      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nYour profile, settings, calendar, workouts, plans and day notes on this device are replaced with the backup's. Activities, wellness and original activity files in the backup are added where this device lacks them. Ride recordings already on this device are kept. Your other devices follow at their next merge.`)) { input.value = ''; return; }
+      const r = await restoreBackupFile(f);
       notify();
       setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
       setTimeout(() => location.reload(), 800);
@@ -386,10 +387,10 @@ export function Settings({ data }: { data: AppData }) {
           <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
         </div>
         <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
-        <p class="muted small" style="margin:16px 0 8px">A file copy of everything as well, for moving {APP_SHORT_NAME} to another device or keeping it safe: plans, calendar, workouts, settings, favourites, what the app has learned about you (such as the watts that hold each heart-rate zone), notes and efforts, and ride recordings still on this device. Unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
+        <p class="muted small" style="margin:16px 0 8px">A file copy of everything as well, for moving {APP_SHORT_NAME} to another device or keeping it safe: plans, calendar, workouts, settings, favourites, what the app has learned about you (such as the watts that hold each heart-rate zone), notes and efforts, ride recordings still on this device, and your whole history with each activity's original file. It is a .zip you can open to see them. Unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
           <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Back up everything</button>
-          <label class="btn" style="position:relative;overflow:hidden">Restore from a backup<input type="file" accept="application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
+          <label class="btn" style="position:relative;overflow:hidden">Restore from a backup<input type="file" accept="application/zip,.zip,application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
         </div>
         <p class="faint small" style="margin:8px 0 0">To take rides and workouts to other apps instead, use <a href="#/export">Export</a>.</p>
       </Fold>
@@ -607,6 +608,7 @@ function HistoryLoader() {
           <p class="faint small" style="margin:0 0 8px">From any device or app: .fit, .tcx or .gpx, a folder of them, or your device maker's whole-account export (activities and daily wellness together). Nothing already here is added twice. Antogo works out every activity's numbers itself from its recording.</p>
           <AddFilesButton />
           <ChangeOverLine />
+          <ImportsList />
         </div>
         <KeepingLine />
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
@@ -643,8 +645,48 @@ function KeepingLine() {
       </p>
       {doing && <p class="faint small" style="margin:4px 0 0">{doing}</p>}
       {k.total > 0 && <div class="ws-track" style="margin-top:6px"><div class="ws-fill" style={`width:${((k.kept + k.none) / k.total) * 100}%`} /></div>}
+      <KeepSafeLine />
       <p class="faint small" style="margin:6px 0 0">Back up everything now includes all of it, so it is not tied to this browser. A Garmin rider can also ask Garmin for a copy of everything: in Garmin's account settings, under data management, request an export.</p>
       <p class="small" style="margin:8px 0 0"><a href="#/garmin-key">Test a Garmin personal key</a> <span class="faint">· see what Garmin's own key can read, and keep the key where you can copy it again</span></p>
+    </div>
+  );
+}
+
+/**
+ * Whether the browser has agreed to keep this device's data for good (22 Nov 2026), said plainly, with what to do when
+ * it has not: the record is only as safe as the place it is kept.
+ */
+function KeepSafeLine() {
+  const [s, setS] = useState<KeepSafe | null>(null);
+  useEffect(() => { void askToKeep().then(() => keepSafeState()).then(setS); }, []);
+  if (!s || s.kept === undefined) return null;
+  return s.kept
+    ? <p class="faint small keep-safe" style="margin:6px 0 0">This browser has agreed to keep it: it won't be cleared to make room, or for going unused.</p>
+    : <p class="small keep-safe" style="margin:6px 0 0;color:var(--warn)">This browser hasn't agreed to keep it for good, so it may clear it if the device runs short of room or the app goes unused for some weeks. Add {APP_SHORT_NAME} to your home screen or install it as an app (browsers then keep its data), and use Back up everything now and then.</p>;
+}
+
+/** The runs of bringing files in, each of which can be undone (22 Nov 2026). */
+function ImportsList() {
+  const [list, setList] = useState<ImportBatch[]>([]);
+  const [busy, setBusy] = useState(false);
+  const load = () => void importBatches().then(setList);
+  useEffect(() => { load(); return watchImport((st) => { if (!st.running) load(); }); }, []);
+  if (!list.length) return null;
+  const words = (b: ImportBatch) => [b.rides.length ? `${b.rides.length} ${b.rides.length === 1 ? 'activity' : 'activities'}` : '', b.wellness.length ? `${b.wellness.length} ${b.wellness.length === 1 ? 'day' : 'days'} of wellness` : ''].filter(Boolean).join(' and ');
+  const undo = async (b: ImportBatch) => {
+    if (!confirm(`Undo this?\n\nIt takes out the ${words(b)} that were added from ${b.label} on ${new Date(b.at).toLocaleDateString()}. Everything that was here before stays. This can't be reversed, though you can bring the files in again.`)) return;
+    setBusy(true);
+    try { await undoImport(b.id); notify(); } finally { setBusy(false); load(); }
+  };
+  return (
+    <div class="imports-list" style="margin-top:10px">
+      <p class="small" style="margin:0 0 4px"><b>Brought in from files</b></p>
+      {list.slice(0, 8).map((b) => (
+        <div class="row small" key={b.id} style="gap:8px;justify-content:space-between;align-items:center;padding:3px 0">
+          <span class="muted">{new Date(b.at).toLocaleDateString()} · {words(b)} <span class="faint">from {b.label}</span></span>
+          <button class="btn quiet sm" disabled={busy} aria-label={`Undo bringing in ${b.label}`} onClick={() => undo(b)}>Undo</button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -32,6 +32,10 @@ export interface FitSummary {
   sport?: number; subSport?: number;
   elapsedS?: number; timerS?: number; distanceM?: number; ascentM?: number; descentM?: number; calories?: number;
   manufacturer?: number; product?: string;
+  /** The file's kind, from its file id (4 is an activity; monitoring, settings and the rest are not). */
+  fileType?: number;
+  /** The FTP set on the device the day of the activity, when the file says (its session's threshold power). */
+  thresholdPower?: number;
 }
 
 /** FIT time starts on 31 Dec 1989. */
@@ -55,6 +59,9 @@ export function readFitRecording(file: Uint8Array, id = '', summary?: FitSummary
   type Rec = { ts: number; w?: number; hr?: number; cad?: number; d?: number; spd?: number; alt?: number; temp?: number; lat?: number; lng?: number };
   const recs: Rec[] = [];
   const laps: Array<{ start: number; end: number }> = [];
+  // The timer's own stops and starts (22 Nov 2026): a pause is what the device says was one, not a guess from a gap.
+  const stops: Array<[number, number]> = [];
+  let stoppedAt: number | undefined, sawTimer = false;
   let lastTs = 0;
   let p = headerSize;
   try {
@@ -108,6 +115,7 @@ export function readFitRecording(file: Uint8Array, id = '', summary?: FitSummary
     altitude: col('alt', (x) => x / 5 - 500), temp: col('temp'),
     lat: col('lat', (x) => x * SEMI), lng: col('lng', (x) => x * SEMI),
     intervals: laps.filter((l) => l.end > l.start).map((l) => ({ start: l.start - t0, end: l.end - t0 })),
+    ...(sawTimer ? { pauses: stops.filter(([a, b]) => b > a).map(([a, b]) => [a - t0, b - t0] as [number, number]) } : {}),
   };
   for (const k of Object.keys(set) as Array<keyof StreamSet>) if (set[k] === undefined) delete set[k];
   // Breathing, from Tymewear's fields, when the file has them.
@@ -126,6 +134,14 @@ export function readFitRecording(file: Uint8Array, id = '', summary?: FitSummary
       const alt = num(78) ?? num(2);
       const spd = num(73) ?? num(6);
       recs.push({ ts: ts ?? lastTs, w: num(7), hr: num(3), cad: num(4), d: num(5), spd, alt, temp: num(13), lat: num(0), lng: num(1) });
+    } else if (d.global === 21) {
+      // event: the timer (event 0) starting (type 0) or stopping (types 1, 4, 8 and 9)
+      if (num(0) === 0 && ts != null) {
+        const type = num(1);
+        sawTimer = true;
+        if (type === 0) { if (stoppedAt != null) stops.push([stoppedAt, ts]); stoppedAt = undefined; }
+        else if (type === 1 || type === 4 || type === 8 || type === 9) stoppedAt ??= ts;
+      }
     } else if (d.global === 19) {
       const start = num(2), stop = ts;
       if (start != null && stop != null) laps.push({ start, end: stop });
@@ -141,12 +157,15 @@ export function readFitRecording(file: Uint8Array, id = '', summary?: FitSummary
       if (up != null) summary.ascentM = (summary.ascentM ?? 0) + up;
       if (down != null) summary.descentM = (summary.descentM ?? 0) + down;
       if (kcal != null) summary.calories = (summary.calories ?? 0) + kcal;
+      const tp = num(45);
+      if (tp != null && tp > 0) summary.thresholdPower ??= tp;
     } else if (d.global === 34 && summary) {
       // activity: its local timestamp gives the rider's time zone at the time
       const local = num(5);
       if (local != null && ts != null) summary.localOffset = local - ts;
     } else if (d.global === 0 && summary) {
       summary.manufacturer ??= num(1);
+      summary.fileType ??= num(0);
       const pn = vals.get(8);
       if (pn && (pn.type & 0x1f) === 0x07) { let e = pn.at; while (e < pn.at + pn.size && file[e] !== 0) e++; const name = new TextDecoder().decode(file.subarray(pn.at, e)); if (name) summary.product = name; }
     }

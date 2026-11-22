@@ -7,6 +7,7 @@ import { LOCAL_ONLY, localDoc, readRemote, SECRET_SETTINGS, syncDevices, type Sy
 import { untracked } from './db';
 import type { IntervalsCredentials } from '../sync/intervals';
 import type { Recording } from '../player/types';
+import { zipEntries, zipRead, zipStore } from '../import/zip';
 
 /**
  * A backup file: the document the sync across devices keeps, plus what only this device holds that is still the
@@ -54,7 +55,8 @@ export const BACKUP_ALSO = new Set(['coachChat', 'chartChat', 'coachRecheck', 'p
  * included so a restore is a one-step job; keep the file where you keep
  * passwords. The sync note never carries the keys.
  */
-export async function makeBackup(): Promise<Backup> {
+export async function makeBackup(opts: { files?: boolean } = {}): Promise<Backup> {
+  const inline = opts.files !== false;
   const doc = await localDoc({ withSecrets: true });
   const extra = (await db.settings.toArray()).filter((x) => BACKUP_ALSO.has(x.key));
   const have = new Set(doc.settings.map((x) => x.key));
@@ -62,7 +64,7 @@ export async function makeBackup(): Promise<Backup> {
   const history: BackupHistory = {
     rides: await db.rides.toArray(),
     wellness: await db.wellness.toArray(),
-    files: (await db.files.toArray()).map((f) => ({ id: f.id, date: f.date, status: f.status, at: f.at, ...(f.why ? { why: f.why } : {}), ...(f.bytes ? { b64: toB64(f.bytes) } : {}) })),
+    files: (await db.files.toArray()).map((f) => ({ id: f.id, date: f.date, status: f.status, at: f.at, ...(f.why ? { why: f.why } : {}), ...(inline && f.bytes ? { b64: toB64(f.bytes) } : {}) })),
   };
   return { ...doc, settings: [...doc.settings, ...extra.filter((x) => !have.has(x.key))], recordings, history };
 }
@@ -81,13 +83,66 @@ export function backupSummary(text: string): { ok: boolean; words: string; expor
 }
 
 export function backupFileName(): string {
-  return `${BACKUP_FILE_PREFIX}-backup-${today()}.json`;
+  return `${BACKUP_FILE_PREFIX}-backup-${today()}.zip`;
+}
+
+/** The backup's own document inside the archive, and the folder its original activity files sit in. */
+export const BACKUP_DOC = 'backup.json';
+const FILES_DIR = 'activity-files/';
+/** An activity's original file as it is named in the archive: its day and id, so the folder reads in order. */
+const fileEntry = (f: Pick<KeptFile, 'id' | 'date'>, bytes: Uint8Array) => `${FILES_DIR}${f.date}_${encodeURIComponent(f.id)}.${bytes[0] === 0x1f && bytes[1] === 0x8b ? 'fit.gz' : bytes[8] === 0x2e && bytes[9] === 0x46 ? 'fit' : 'bin'}`;
+const entryId = (name: string) => { const m = /^activity-files\/\d{4}-\d{2}-\d{2}_(.+?)\.(?:fit\.gz|fit|bin)$/.exec(name); return m ? decodeURIComponent(m[1]) : undefined; };
+
+/**
+ * The backup as one archive (22 Nov 2026): the document, and each activity's original file beside it as the file it
+ * is, not as text inside the document. So a history of any size the device can hold backs up (one document with years
+ * of files in it passes what a browser can hold as text), and the rider can open the archive and find their files.
+ */
+export async function makeBackupArchive(): Promise<Blob> {
+  const doc = await makeBackup({ files: false });
+  const entries: Array<{ name: string; data: Uint8Array }> = [{ name: BACKUP_DOC, data: new TextEncoder().encode(JSON.stringify(doc)) }];
+  await db.files.each((f) => { if (f.status === 'kept' && f.bytes) entries.push({ name: fileEntry(f, f.bytes), data: f.bytes }); });
+  return zipStore(entries);
+}
+
+const isZip = async (b: Blob) => { const h = new Uint8Array(await b.slice(0, 2).arrayBuffer()); return h[0] === 0x50 && h[1] === 0x4b; };
+
+/** What a backup file holds, in words: an archive (since 22 Nov 2026) or the single document earlier backups were. */
+export async function backupSummaryOf(file: Blob): Promise<{ ok: boolean; words: string; exportedAt?: string }> {
+  if (!(await isZip(file))) return backupSummary(await file.text());
+  try {
+    const entries = await zipEntries(file);
+    const doc = entries.find((e) => e.name === BACKUP_DOC);
+    if (!doc) return { ok: false, words: 'This is not a backup file this app can read.' };
+    const sum = backupSummary(new TextDecoder().decode(await zipRead(file, doc)));
+    const n = entries.filter((e) => entryId(e.name)).length;
+    return sum.ok && n ? { ...sum, words: `${sum.words}, ${n} original activity ${n === 1 ? 'file' : 'files'}` } : sum;
+  } catch { return { ok: false, words: 'This is not a backup file this app can read.' }; }
+}
+
+/** Restore from a backup file of either kind. The archive's activity files are added one at a time where this device lacks them. */
+export async function restoreBackupFile(file: Blob): Promise<{ workouts: number; planned: number }> {
+  if (!(await isZip(file))) return restoreBackup(await file.text());
+  const entries = await zipEntries(file);
+  const doc = entries.find((e) => e.name === BACKUP_DOC);
+  if (!doc) throw new Error('This is not a backup file this app can read.');
+  const text = new TextDecoder().decode(await zipRead(file, doc));
+  const out = await restoreBackup(text);
+  const meta = new Map(((JSON.parse(text) as Backup).history?.files ?? []).map((f) => [f.id, f]));
+  const have = new Set((await db.files.where('status').equals('kept').primaryKeys()) as string[]);
+  for (const e of entries) {
+    const id = entryId(e.name);
+    if (!id || have.has(id)) continue;
+    const bytes = await zipRead(file, e);
+    const m = meta.get(id);
+    await db.files.put({ id, date: m?.date ?? e.name.slice(FILES_DIR.length, FILES_DIR.length + 10), status: 'kept', at: m?.at ?? new Date().toISOString(), bytes, size: bytes.byteLength });
+  }
+  return out;
 }
 
 export async function downloadBackup(): Promise<void> {
-  const data = await makeBackup();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const file = new File([blob], backupFileName(), { type: 'application/json' });
+  const blob = await makeBackupArchive();
+  const file = new File([blob], backupFileName(), { type: 'application/zip' });
   // On iOS the share sheet is the way into iCloud Drive; elsewhere a download.
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   if (nav.canShare && nav.canShare({ files: [file] })) {
@@ -162,7 +217,8 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
     const haveW = new Set((await db.wellness.toCollection().primaryKeys()) as string[]);
     await db.wellness.bulkPut(h.wellness.filter((w) => !haveW.has(w.date)));
     const haveF = new Set((await db.files.where('status').equals('kept').primaryKeys()) as string[]);
-    await db.files.bulkPut(h.files.filter((f) => !haveF.has(f.id)).map((f) => {
+    // A file listed as kept whose bytes are not in this document sits beside it in the archive and is added from there.
+    await db.files.bulkPut(h.files.filter((f) => !haveF.has(f.id) && (f.b64 || f.status !== 'kept')).map((f) => {
       const bytes = f.b64 ? fromB64(f.b64) : undefined;
       return { id: f.id, date: f.date, status: f.status, at: f.at, ...(f.why ? { why: f.why } : {}), ...(bytes ? { bytes, size: bytes.byteLength } : {}) };
     }));

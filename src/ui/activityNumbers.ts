@@ -37,7 +37,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
   const temp = (c?: number) => (c == null ? undefined : fahrenheit(profile) ? `${Math.round(c * 1.8 + 32)}°F` : `${Math.round(c)}°C`);
   const speed = (ms?: number) => (ms ? (imperial ? `${(ms * 2.23694).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : undefined);
   const energy: Array<[string, string | number | undefined, string?]> = [
-    ['Energy burned', r.calories ? `${Math.round(r.calories).toLocaleString()} kcal` : undefined, 'As your device or Intervals.icu worked it out'],
+    ['Energy burned', r.calories ? `${Math.round(r.calories).toLocaleString()} kcal` : undefined, 'As your device worked it out; from the work done at the pedals when it gave no figure'],
     ['Carbohydrate used', r.carbsUsedG ? `${Math.round(r.carbsUsedG)} g` : undefined, r.carbsEstimated ? "Antogo's estimate, from the work done and how hard it was: what a long ride takes out of you" : 'An estimate from your power and FTP: what a long ride takes out of you'],
   ];
   const weather: Array<[string, string | number | undefined, string?]> = [
@@ -55,9 +55,10 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
     ['Elapsed time', r.elapsedSeconds && r.elapsedSeconds - r.seconds >= 60 ? clock(r.elapsedSeconds) : undefined, 'Start to finish, stops included'],
     ['Distance', distance(r.distanceM, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],
-    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (no power was recorded). An hour flat out at threshold is 100' : GLOSSARY.tss.short],
+    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (' + (r.powerCoverage != null && r.powerCoverage < 0.8 ? 'the power meter recorded only part of the ride' : 'no power was recorded') + '). An hour flat out at threshold is 100' : GLOSSARY.tss.short],
     ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, GLOSSARY.np.short],
     ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
+    ['Power recorded for', r.powerCoverage != null && r.powerCoverage < 0.95 ? `${Math.round(r.powerCoverage * 100)}% of the ride` : undefined, r.powerCoverage != null && r.powerCoverage < 0.8 ? 'The power meter gave no reading for the rest. The power numbers describe only the part it recorded, so this ride’s training load is from heart rate.' : 'The power meter gave no reading for the rest. The power numbers describe the part it recorded.'],
     ['Intensity', r.intensityFactor?.toFixed(2), GLOSSARY.intensity.short],
     ['Steadiness', r.variabilityIndex ? r.variabilityIndex.toFixed(2) : undefined, 'Normalized power divided by average power. 1.00 is perfectly even; 1.05 or less is a steady ride; a hilly or stop-start ride runs higher'],
     ['Work done', r.workKj ? `${Math.round(r.workKj).toLocaleString()} kJ` : undefined, 'The energy you put through the pedals'],

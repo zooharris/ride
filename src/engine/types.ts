@@ -435,6 +435,10 @@ export interface Ride {
   carbsEstimated?: boolean;
   /** Where the activity came from when it is not the data service: a file the rider brought in. */
   source?: 'file';
+  /** The start as a moment in time (UTC, ISO), when known: what tells one activity from another across time zones. */
+  startUtc?: string;
+  /** The share of the time ridden that has power (0 to 1), from the recording: under 1 when the power meter dropped out. */
+  powerCoverage?: number;
 }
 
 export interface Wellness {

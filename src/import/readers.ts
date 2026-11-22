@@ -22,8 +22,13 @@ export interface ParsedActivity {
   descentM?: number;
   calories?: number;
   device?: string;
+  /** The FTP set on the device that day, when the file says. */
+  ftp?: number;
   format: 'fit' | 'tcx' | 'gpx';
 }
+
+/** A file that is the device's own but not an activity (daily monitoring, settings, sleep and the like). */
+export const NOT_ACTIVITY = 'not-activity' as const;
 
 /** FIT sport and sub-sport to the data service's activity types. */
 export function fitType(sport?: number, sub?: number): string {
@@ -51,7 +56,7 @@ export function localIso(unix: number, offsetS: number): string {
 const deviceOffset = (unix: number) => -new Date(unix * 1000).getTimezoneOffset() * 60;
 
 /** Read one file, whatever its format; undefined when it is not an activity. */
-export async function readActivityFile(name: string, bytes0: Uint8Array): Promise<ParsedActivity | undefined> {
+export async function readActivityFile(name: string, bytes0: Uint8Array): Promise<ParsedActivity | typeof NOT_ACTIVITY | undefined> {
   let bytes = await maybeGunzip(bytes0);
   if (bytes[0] === 0x50 && bytes[1] === 0x4b) { const inner = await unzipFirst(bytes); if (!inner) return undefined; bytes = await maybeGunzip(inner); }
   if (isFit(bytes)) return fromFit(bytes);
@@ -64,8 +69,10 @@ export async function readActivityFile(name: string, bytes0: Uint8Array): Promis
 
 export const isFit = (b: Uint8Array) => b.length >= 12 && b[8] === 0x2e && b[9] === 0x46 && b[10] === 0x49 && b[11] === 0x54;
 
-function fromFit(bytes: Uint8Array): ParsedActivity | undefined {
+function fromFit(bytes: Uint8Array): ParsedActivity | typeof NOT_ACTIVITY | undefined {
   const { streams, summary: s } = readFitActivity(bytes);
+  // The file says what kind it is; one that is not an activity and holds no recording is not a failed read.
+  if (s.fileType != null && s.fileType !== 4 && !streams) return NOT_ACTIVITY;
   return fitParsed(streams, s);
 }
 
@@ -79,7 +86,8 @@ export function fitParsed(streams: StreamSet | undefined, s: FitSummary): Parsed
     streams, startUnix: s.startUnix, startLocal: localIso(s.startUnix, offset), type: fitType(s.sport, s.subSport),
     elapsedS, movingS: s.timerS != null ? Math.round(s.timerS) : undefined,
     distanceM: s.distanceM ?? lastOf(streams?.distance), ascentM: s.ascentM, descentM: s.descentM, calories: s.calories,
-    device: s.product || (s.manufacturer != null ? MAKERS[s.manufacturer] : undefined), format: 'fit',
+    device: s.product || (s.manufacturer != null ? MAKERS[s.manufacturer] : undefined),
+    ...(s.thresholdPower && s.thresholdPower >= 50 && s.thresholdPower <= 600 ? { ftp: s.thresholdPower } : {}), format: 'fit',
   };
 }
 

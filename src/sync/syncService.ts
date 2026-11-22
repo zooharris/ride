@@ -375,6 +375,9 @@ export function isTrivialRecording(r: Pick<Ride, 'seconds' | 'elapsedSeconds'>):
  * heart rate gets a duration estimate rather than 0, so a forgotten strap does
  * not read as a rest day. A drive or a tiny recording counts 0 and is hidden.
  */
+/** The least share of a ride that must have power for the ride to be scored by power. */
+export const POWER_ENOUGH = 0.8;
+
 export function scoreActivity(r: Ride, profile: Pick<Profile, 'ftp' | 'lthr'> & Partial<Profile> | undefined | null, opts: { handMatched?: boolean } = {}): void {
   r.notTraining = looksLikeADrive(r) ? 'drive' : !opts.handMatched && isTrivialRecording(r) ? 'trivial' : undefined;
   if (r.notTraining) { r.tss = 0; r.tssBasis = undefined; return; }
@@ -385,7 +388,10 @@ export function scoreActivity(r: Ride, profile: Pick<Profile, 'ftp' | 'lthr'> & 
   const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, lthr, ladder) : 0;
   const set = (tss: number, basis: Ride['tssBasis']) => { r.tss = tss; r.tssBasis = basis; };
   if (r.sport === 'ride') {
-    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0, ladder), 'power');
+    // A power meter that dropped out for a good part of the ride (22 Nov 2026): the power recorded is not the whole
+    // ride's, so heart rate, which was there throughout, scores it.
+    const partial = r.powerCoverage != null && r.powerCoverage < POWER_ENOUGH;
+    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp) && !(partial && hrOnly)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0, ladder), 'power');
     else if (hrOnly) set(hrOnly, 'heart-rate');
     else if (r.icuLoad) set(r.icuLoad, 'intervals');
     else set(estimatedRideTss(r.seconds), 'estimate');

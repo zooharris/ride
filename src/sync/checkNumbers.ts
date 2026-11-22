@@ -52,8 +52,10 @@ export function checkNumbers(rides: Ride[], recs: OwnRecord[], limit = 200): Met
         for (let i = 0; i < Math.min(a.length, b.length); i++) { if (!within(a[i], b[i], m.tol, total)) ok = false; worst = Math.max(worst, Math.abs(a[i] - b[i])); }
         rows.push({ r, came: total, own: worst, ok, pct: (worst / total) * 100 });
       } else {
-        const a = came[m.key], b = own[m.key];
-        if (typeof a !== 'number' || typeof b !== 'number') continue;
+        const a0 = came[m.key], b = own[m.key];
+        if (typeof a0 !== 'number' || typeof b !== 'number') continue;
+        // Intervals.icu's drift runs the other way up; figures remembered before that was known are turned over here.
+        const a = m.key === 'decoupling' && rec.cameV !== 2 ? -a0 : a0;
         rows.push({ r, came: a, own: b, ok: within(a, b, m.tol), pct: pctOf(a, b) });
       }
     }

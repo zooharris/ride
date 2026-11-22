@@ -64,6 +64,18 @@ test('bring in activity files: a new one, the same again, and an export with wel
   await looksRight(s, info, 'An activity brought in from its file');
   await go(page, '#/progress');
   await looksRight(s, info, 'Progress with activities brought in');
+  // Each run is listed in Settings and can be undone: the export's activity and its day of wellness go, the first file's stays.
+  page.on('dialog', (d) => void d.accept());
+  await go(page, '#/settings');
+  await page.getByRole('button', { name: /^History/ }).click();
+  const list = page.locator('.imports-list');
+  await expect(list).toContainText('1 activity and 1 day of wellness');
+  await expect(page.locator('.keep-safe')).toBeVisible();
+  await looksRight(s, info, 'Files brought in, listed with Undo');
+  await list.getByRole('button', { name: 'Undo bringing in my export.zip' }).click();
+  await expect(list).not.toContainText('my export.zip');
+  await go(page, '#/rides');
+  await expect(page.locator('a[href*="#/rides/file-"]')).toHaveCount(1);
 });
 
 test('an activity from the data service, with its numbers worked out by Antogo from the kept file', async ({ page }, info) => {

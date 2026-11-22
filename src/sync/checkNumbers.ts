@@ -6,7 +6,7 @@ import type { Ride } from '../engine/types';
  * Intervals.icu's on the rider's own history, run on their device, with results to copy. Not linked from anywhere in
  * the app; removed in the follow-up build once the results are in.
  */
-export interface MetricCheck { key: string; label: string; n: number; within: number; medianPct?: number; worst: Array<{ id: string; date: string; name: string; came: string; own: string }> }
+export interface MetricCheck { key: string; label: string; n: number; within: number; medianPct?: number; /** Drift only: how many point the same way (both up, both down, or both under a point). */ sameWay?: number; worst: Array<{ id: string; date: string; name: string; came: string; own: string }> }
 
 type Tol = { abs?: number; pct?: number };
 const METRICS: Array<{ key: string; label: string; tol: Tol; unit?: string; zone?: boolean }> = [
@@ -54,8 +54,8 @@ export function checkNumbers(rides: Ride[], recs: OwnRecord[], limit = 200): Met
       } else {
         const a0 = came[m.key], b = own[m.key];
         if (typeof a0 !== 'number' || typeof b !== 'number') continue;
-        // Intervals.icu's drift runs the other way up; figures remembered before that was known are turned over here.
-        const a = m.key === 'decoupling' && rec.cameV !== 2 ? -a0 : a0;
+        // Drift remembered during the hour it was wrongly turned over (marked 2) is turned back.
+        const a = m.key === 'decoupling' && rec.cameV === 2 ? -a0 : a0;
         rows.push({ r, came: a, own: b, ok: within(a, b, m.tol), pct: pctOf(a, b) });
       }
     }
@@ -63,6 +63,7 @@ export function checkNumbers(rides: Ride[], recs: OwnRecord[], limit = 200): Met
     const fmt = (v: number) => (m.zone ? '' : `${Math.round(v * 100) / 100}${m.unit ? ` ${m.unit}` : ''}`);
     return {
       key: m.key, label: m.label, n: rows.length, within: rows.filter((x) => x.ok).length,
+      ...(m.key === 'decoupling' ? { sameWay: rows.filter((x) => x.came * x.own > 0 || (Math.abs(x.came) < 1 && Math.abs(x.own) < 1)).length } : {}),
       medianPct: pcts.length ? Math.round(pcts[Math.floor(pcts.length / 2)] * 10) / 10 : undefined,
       worst: rows.filter((x) => !x.ok).sort((a, b) => b.pct - a.pct).slice(0, 3).map((x) => ({ id: x.r.id, date: x.r.date, name: x.r.name, came: m.zone ? `${Math.round(x.came / 60)} min in all` : fmt(x.came), own: m.zone ? `off by up to ${Math.round(x.own / 60)} min in one zone` : fmt(x.own) })),
     };
@@ -72,5 +73,5 @@ const pctOf = (a: number, b: number) => (Math.max(Math.abs(a), Math.abs(b)) ? (M
 
 export function checkText(cs: MetricCheck[], activities: number): string {
   return [`Antogo's numbers against Intervals.icu's, ${new Date().toLocaleString()}, over ${activities} activities`,
-    ...cs.map((c) => `${c.label}: ${c.n ? `${c.within} of ${c.n} agree${c.medianPct != null ? ` (median difference ${c.medianPct}%)` : ''}` : 'none to compare'}${c.worst.length ? `; most different: ${c.worst.map((w) => `${w.date} ${w.name} (Intervals.icu ${w.came}, Antogo ${w.own})`).join('; ')}` : ''}`)].join('\n');
+    ...cs.map((c) => `${c.label}: ${c.n ? `${c.within} of ${c.n} agree${c.medianPct != null ? ` (median difference ${c.medianPct}%)` : ''}${c.sameWay != null ? `, ${c.sameWay} point the same way` : ''}` : 'none to compare'}${c.worst.length ? `; most different: ${c.worst.map((w) => `${w.date} ${w.name} (Intervals.icu ${w.came}, Antogo ${w.own})`).join('; ')}` : ''}`)].join('\n');
 }

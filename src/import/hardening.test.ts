@@ -105,9 +105,9 @@ describe('the other numbers put right', () => {
     const cad = T.map((i) => (i < 100 ? 0 : 90)), w = T.map((i) => (i < 150 ? 0 : 200)), spd = T.map((i) => (i < 20 ? 0 : 8));
     expect(ownNumbers({ time: T, cadence: cad, watts: w, velocity: spd }, ctx).coastingSeconds).toBe(130);
   });
-  it('drift from Intervals.icu is turned the app\'s way up: positive when heart rate rose for the same power', () => {
+  it('drift from Intervals.icu is kept as it came, and the start is kept as a moment in time', () => {
     const r = toRide({ id: 'i9', start_date_local: '2026-07-22T08:00:00', start_date: '2026-07-22T12:00:00Z', type: 'Ride', moving_time: 3600, decoupling: -20.2 } as never);
-    expect(r.decoupling).toBe(20.2);
+    expect(r.decoupling).toBe(-20.2);
     expect(r.startUtc).toBe('2026-07-22T12:00:00.000Z');
   });
 });

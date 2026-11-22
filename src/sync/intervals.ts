@@ -352,9 +352,9 @@ export function toRide(a: IcuActivity): Ride {
     averageSpeedMs: a.average_speed,
     averageTempC: a.average_temp,
     efficiencyFactor: a.icu_efficiency_factor,
-    // Intervals.icu's figure is second half against first (negative when heart rate rose for the same power); the app's
-    // drift is the other way up, so it is turned over here (22 Nov 2026, found from a ride's own file).
-    decoupling: a.decoupling != null && isFinite(a.decoupling) ? -a.decoupling || 0 : undefined,
+    // Positive when heart rate rose for the same power, as the app means it. (Turned over for an hour on 22 Nov 2026 on
+    // the evidence of one ride; the check over a whole history showed the two agree in direction, so it is as it came.)
+    decoupling: a.decoupling,
     powerZoneSeconds: zoneSeconds(a.icu_zone_times),
     sweetSpotSeconds: sweetSpotSeconds(a.icu_zone_times),
     hrZoneSeconds: a.icu_hr_zone_times,

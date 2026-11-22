@@ -55,7 +55,7 @@ export async function workOut(r: Ride, p: Profile, streams?: StreamSet): Promise
   const deviceKcal = (before?.came ?? came)?.calories ?? (r.ownNumbers ? undefined : r.calories);
   const nums = ownNumbers(s, { sport: r.sport, ftp: t.ftp, lthr: t.lthr, powerZones: t.powerZones, hrZones: t.hrZones, has: { calories: deviceKcal, carbsUsedG: before?.nums.carbsEstimated ? undefined : r.carbsUsedG, elevationM: r.elevationM, elevationLossM: r.elevationLossM } });
   if (deviceKcal != null) nums.calories = deviceKcal;
-  const cameV = before?.came ? before.cameV : came ? 2 : undefined;
+  const cameV = before?.came ? before.cameV : undefined;
   const rec: OwnRecord = { id: r.id, v: OWN_VERSION, ftp: t.ftp, lthr: t.lthr, nums, ...(came ? { came } : {}), ...(cameV ? { cameV } : {}), at: new Date().toISOString() };
   await db.own.put(rec);
   return rec;
@@ -80,7 +80,7 @@ export async function applyOwnTo(rides: Ride[]): Promise<Ride[]> {
     const rec = recs.get(r.id);
     if (!rec) { out.push(r); continue; }
     // The data service's figures, fresh, are what the activity came with.
-    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r), cameV: 2 });
+    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r), cameV: 3 });
     out.push(withOwn(r, rec.nums));
   }
   return out;

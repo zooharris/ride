@@ -4,8 +4,7 @@ import { powerZone } from './zones';
 
 /**
  * Heart-rate drift is positive when heart rate rose for the same power in the second half (the app's meaning
- * everywhere). Intervals.icu's own figure runs the other way: on a ride checked from its file, power per heartbeat fell
- * by 23% and Intervals.icu gave -20.2.
+ * everywhere, and Intervals.icu's on all but a few rides, where its method differs).
  *
  * Stage 1 (22 Nov 2026): Antogo works out an activity's numbers from its own recording, for every rider and every
  * activity that has one, however it arrived. The methods are the field's standard ones, said here so they can be

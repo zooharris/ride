@@ -157,6 +157,15 @@ export function ActivityLarge({ name, samples: rawSamples, panels, open, xOf, fm
   const scales = defs.map((_, i) => scale(i));
   const laneTop = (l: number) => padT + l * (laneH + gap);
   const Y = (i: number, v: number) => { const s = scales[i]; return laneTop(stacked ? i : 0) + laneH - ((v - s.a) / (s.b - s.a)) * laneH; };
+  // The planned target at the pointer (22 Nov 2026): said in words, so the band is never mistaken for a zone.
+  const targetAt = (() => {
+    if (!showTarget) return undefined;
+    const c = channels.find((x) => x.key === targetOk!.measure);
+    const t = ts[at];
+    const b = targetOk!.bands.find((x) => t >= x.start && t < x.end);
+    if (!c || !b) return undefined;
+    return `${num(c, b.low)}${Math.round(b.high) !== Math.round(b.low) ? ` to ${num(c, b.high)}` : ''} ${c.unit}${defs.some((d) => d.key === c.key) ? '' : ` (${c.title.toLowerCase()})`}`;
+  })();
   const clampY = (l: number, y: number) => Math.max(laneTop(l), Math.min(laneTop(l) + laneH, y));
   const path = (i: number) => { let d = '', prev = false; for (let k = lo; k <= hi; k++) { const v = defs[i].get(samples[k]); if (v == null || !isFinite(v)) { prev = false; continue; } d += `${prev ? 'L' : 'M'}${X(k).toFixed(1)},${Y(i, v).toFixed(1)}`; prev = true; } return d; };
   const ticks = (i: number) => { const s = scales[i]; return [s.a + (s.b - s.a) * 0.1, (s.a + s.b) / 2, s.b - (s.b - s.a) * 0.1]; };
@@ -238,8 +247,10 @@ export function ActivityLarge({ name, samples: rawSamples, panels, open, xOf, fm
               {laps && <button class={`chip sm${show.laps ? ' on' : ''}`} aria-pressed={show.laps} onClick={() => setShow('laps', !show.laps)}>Laps and steps</button>}
               {target && <button class={`chip sm${showTarget ? ' on' : ''}`} aria-pressed={showTarget} disabled={!targetOk} onClick={() => setShow('target', !show.target)}>Planned target</button>}
               {zoneSet?.length ? <button class={`chip sm${show.zones ? ' on' : ''}`} aria-pressed={show.zones} onClick={() => setShow('zones', !show.zones)}>Zones</button> : null}
-              {target && 'unavailable' in target && <span class="faint small">{target.unavailable}</span>}
-              {targetOk && show.target && !defs.some((d) => d.key === targetOk.measure) && <span class="faint small">The target was set in {channels.find((c) => c.key === targetOk.measure)?.title.toLowerCase() ?? 'a measure not on the chart'}; lay it over to see it.</span>}
+              {target && 'unavailable' in target && <span class="small muted">{target.unavailable}</span>}
+              {targetOk && show.target && !defs.some((d) => d.key === targetOk.measure) && (channels.some((c) => c.key === targetOk.measure)
+                ? <span class="small muted">The target was set in {channels.find((c) => c.key === targetOk.measure)!.title.toLowerCase()}. <button class="btn sm" disabled={full} onClick={() => toggle(targetOk.measure)}>Lay {channels.find((c) => c.key === targetOk.measure)!.title.toLowerCase()} over</button></span>
+                : <span class="small muted">The target was set in a measure this recording doesn't have.</span>)}
             </div>
           )}
           {over.length > 0 && (
@@ -258,6 +269,7 @@ export function ActivityLarge({ name, samples: rawSamples, panels, open, xOf, fm
             <div class="lv-read small" aria-live="polite">
               <b>{fmtX(xOf(samples[at]))}</b>
               {defs.map((d, i) => <span key={d.key} class="pr-item"><LineKey i={i} />{d.title} <b>{fmt(d, d.get(samples[at]))}</b></span>)}
+              {targetAt && <span class="pr-item lv-target-read">Target <b>{targetAt}</b></span>}
             </div>
             {canSmooth && defs.some((d) => d.key === 'watts') && (
               <div class="lv-row lv-smooth" role="group" aria-label="Power smoothing">
@@ -270,19 +282,20 @@ export function ActivityLarge({ name, samples: rawSamples, panels, open, xOf, fm
               aria-label={`${view.title}${defs.length > 1 ? ` with ${defs.slice(1).map((d) => d.title.toLowerCase()).join(', ')}` : ''}. Arrow keys move the pointer.`}
               onPointerMove={(e) => pick(e.clientX)} onPointerDown={(e) => pick(e.clientX)}
               onKeyDown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setAt(Math.max(lo, Math.min(hi, at + (e.key === 'ArrowLeft' ? -1 : 1)))); } }}>
+              <defs><pattern id="lv-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--ink)" fill-opacity="0.05" /><line x1="0" y1="0" x2="0" y2="6" stroke="var(--ink-2)" stroke-opacity="0.35" stroke-width="1.5" /></pattern></defs>
               {lanes.map((ids, l) => (
                 <g key={l}>
                   <rect x={padL} y={laneTop(l)} width={plotW} height={laneH} fill="none" stroke="var(--line)" />
-                  {showZones && ids.includes(0) && zoneSet!.map((z) => { const top = clampY(l, Y(0, Math.min(z.high, scales[0].b))), bot = clampY(l, Y(0, Math.max(z.low, scales[0].a))); return bot - top > 0.5 ? <g key={`z${z.n}`} class="lv-zone"><rect x={padL} y={top} width={plotW} height={bot - top} fill={zoneColour(z.n)} fill-opacity="0.1" />{bot - top >= 12 && <text x={padL + 4} y={top + 10} font-size="9" fill="var(--ink-3)">Z{z.n}</text>}</g> : null; })}
-                  {showTarget && ids.map((i) => defs[i].key === targetOk!.measure ? targetOk!.bands.map((b, k) => { const i0 = indexAt(ts, b.start), i1 = Math.min(last, indexAt(ts, b.end)); if (i1 < lo || i0 > hi) return null; const xa = X(Math.max(lo, i0)), xb = X(Math.min(hi, i1)); const top = clampY(l, Y(i, b.high)), bot = clampY(l, Y(i, b.low)); return <rect key={`t${k}`} class="lv-target" x={xa} y={top} width={Math.max(1, xb - xa)} height={Math.max(2, bot - top)} fill={COLORS[i]} fill-opacity="0.16" stroke={COLORS[i]} stroke-opacity="0.45" stroke-width="0.8" />; }) : null)}
+                  {showZones && ids.includes(0) && zoneSet!.map((z) => { const top = clampY(l, Y(0, Math.min(z.high, scales[0].b))), bot = clampY(l, Y(0, Math.max(z.low, scales[0].a))); return bot - top > 0.5 ? <g key={`z${z.n}`} class="lv-zone"><rect x={padL} y={top} width={plotW} height={bot - top} fill={zoneColour(z.n)} fill-opacity="0.1" />{bot - top >= 12 && <text x={padL + plotW - 4} y={top + 10} text-anchor="end" font-size="9" fill="var(--ink-3)" stroke="var(--bg-2)" stroke-width="3" paint-order="stroke">Z{z.n}</text>}</g> : null; })}
+                  {showTarget && ids.map((i) => defs[i].key === targetOk!.measure ? targetOk!.bands.map((b, k) => { const i0 = indexAt(ts, b.start), i1 = Math.min(last, indexAt(ts, b.end)); if (i1 < lo || i0 > hi) return null; const xa = X(Math.max(lo, i0)), xb = X(Math.min(hi, i1)); const top = clampY(l, Y(i, b.high)), bot = clampY(l, Y(i, b.low)); return <g key={`t${k}`} class="lv-target"><rect x={xa} y={top} width={Math.max(1, xb - xa)} height={Math.max(2, bot - top)} fill="url(#lv-hatch)" /><line x1={xa} x2={xb} y1={top} y2={top} stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="5 3" /><line x1={xa} x2={xb} y1={bot} y2={bot} stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="5 3" /></g>; }) : null)}
                   {showLaps && lapIdx.map(([a], k) => (a > lo && a <= hi ? <line key={`l${k}`} x1={X(a)} x2={X(a)} y1={laneTop(l)} y2={laneTop(l) + laneH} stroke="var(--ink-3)" stroke-opacity="0.55" stroke-width="0.8" /> : null))}
                   {ids.filter((i) => stacked || i === 0).map((i) => ticks(i).map((tv, k) => <g key={`${i}-${k}`}>
                     <line x1={padL} x2={padL + plotW} y1={Y(i, tv)} y2={Y(i, tv)} stroke="var(--line)" stroke-dasharray="2 4" />
                     <text x={padL - 5} y={Y(i, tv) + 3} text-anchor="end" font-size="10" fill={COLORS[i]}>{num(defs[i], tv)}</text>
                   </g>))}
                   {together && ids.filter((i) => i > 0).map((i) => ticks(i).map((tv, k) => <text key={`r${i}-${k}`} x={padL + plotW + 5 + (i - 1) * col} y={Y(i, tv) + 3} font-size="10" fill={COLORS[i]}>{num(defs[i], tv)}</text>))}
-                  {stacked && <text x={padL + 6} y={laneTop(l) + 13} font-size="11" font-weight="600" fill={COLORS[ids[0]]}>{defs[ids[0]].title} ({defs[ids[0]].unit})</text>}
                   {ids.map((i) => <path key={defs[i].key} d={path(i)} fill="none" stroke={COLORS[i]} stroke-width={i === 0 ? 2 : 1.6} stroke-dasharray={DASH[i]} stroke-linejoin="round" />)}
+                  {stacked && <text x={padL + 6} y={laneTop(l) + 13} font-size="11" font-weight="600" fill={COLORS[ids[0]]} stroke="var(--bg-2)" stroke-width="4" stroke-linejoin="round" paint-order="stroke">{defs[ids[0]].title} ({defs[ids[0]].unit})</text>}
                   <line x1={X(at)} x2={X(at)} y1={laneTop(l)} y2={laneTop(l) + laneH} stroke="var(--ink-2)" />
                   {ids.map((i) => { const v = defs[i].get(samples[at]); return v == null || !isFinite(v) ? null : <circle key={`p${i}`} cx={X(at)} cy={Y(i, v)} r="3.6" fill={COLORS[i]} stroke="var(--bg-2)" stroke-width="1.5" />; })}
                 </g>

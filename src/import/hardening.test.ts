@@ -190,3 +190,25 @@ describe('the backup as an archive', () => {
     expect((await db.files.get('i2'))?.status).toBe('none');
   });
 });
+
+describe('a real export\'s wellness, by the shapes seen in one', () => {
+  it('a night: sleep, score, breathing, and the blood oxygen and heart rate in its own summary', async () => {
+    const { wellnessFromJson } = await import('./wellnessExport');
+    const d = wellnessFromJson([{ calendarDate: '2026-07-14', deepSleepSeconds: 4000, lightSleepSeconds: 15000, remSleepSeconds: 6000, averageRespiration: 13.2, spo2SleepSummary: { averageSPO2: 95.7, averageHR: 60, lowestSPO2: 90 }, sleepScores: { overallScore: 76 } }]).get('2026-07-14');
+    expect(d).toEqual({ sleepSeconds: 25000, sleepScore: 76, respiration: 13.2, avgSleepingHr: 60, spO2: 95.7 });
+  });
+  it('the health-status list: a 0 is no reading, and its "HR" is the night\'s, not the resting one', async () => {
+    const { wellnessFromJson } = await import('./wellnessExport');
+    const j = [{ calendarDate: '2026-07-14', metrics: [{ type: 'HRV', value: 33 }, { type: 'HR', value: 59 }, { type: 'SPO2', value: 0 }, { type: 'RESPIRATION', value: 14.3 }, { type: 'SKIN_TEMP_C', value: 0.2 }] },
+      { calendarDate: '2026-07-15', metrics: [{ type: 'HRV', value: 0 }, { type: 'HR', value: 0 }] }];
+    const d = wellnessFromJson(j);
+    expect(d.get('2026-07-14')).toEqual({ hrv: 33, avgSleepingHr: 59, respiration: 14.3 });
+    expect(d.has('2026-07-15')).toBe(false);
+  });
+  it('weight in its own record, dated in the record\'s details, in grams', async () => {
+    const { wellnessFromJson } = await import('./wellnessExport');
+    const d = wellnessFromJson([{ metaData: { calendarDate: '2026-07-14T00:00:00.0', sequence: 1 }, height: 180, weight: { weight: 81500, sourceType: 'x' } }, { metaData: { calendarDate: '2026-07-15T00:00:00.0' }, height: 180 }]);
+    expect(d.get('2026-07-14')).toEqual({ weightKg: 81.5 });
+    expect(d.has('2026-07-15')).toBe(false);
+  });
+});

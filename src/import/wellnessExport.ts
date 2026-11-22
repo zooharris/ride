@@ -29,14 +29,16 @@ export function measuresOf(o: Record<string, unknown>): Partial<Wellness> {
   const score = pick(o, 'overallSleepScore', 'sleepScore') ?? (scores ? pick(scores, 'overallScore') ?? num((scores.overall as Record<string, unknown> | undefined)?.value) : undefined);
   if (score != null) w.sleepScore = score;
   const resp = pick(o, 'averageRespiration', 'avgSleepRespirationValue', 'respirationAverage');
-  if (resp != null) w.respiration = resp;
-  const sleepHr = pick(o, 'avgSleepHeartRate', 'averageSleepHeartRate');
-  if (sleepHr != null) w.avgSleepingHr = sleepHr;
+  if (resp != null && resp >= 4 && resp <= 40) w.respiration = resp;
+  // A night's record carries its blood oxygen and heart rate in a summary of its own (seen in a real export, 22 Nov 2026).
+  const night = o.spo2SleepSummary as Record<string, unknown> | undefined;
+  const sleepHr = pick(o, 'avgSleepHeartRate', 'averageSleepHeartRate') ?? (night ? pick(night, 'averageHR') : undefined);
+  if (sleepHr != null && sleepHr > 20 && sleepHr < 150) w.avgSleepingHr = sleepHr;
   const rhr = pick(o, 'restingHeartRate', 'restingHeartRateValue', 'currentDayRestingHeartRate');
   if (rhr != null && rhr > 20 && rhr < 150) w.restingHr = rhr;
   const steps = pick(o, 'totalSteps', 'steps');
-  if (steps != null && steps >= 0) w.steps = steps;
-  const spo2 = pick(o, 'averageSpo2', 'avgSpo2', 'averageSpO2Value');
+  if (steps != null && steps > 0) w.steps = steps;
+  const spo2 = pick(o, 'averageSpo2', 'avgSpo2', 'averageSpO2Value') ?? (night ? pick(night, 'averageSPO2') : undefined);
   if (spo2 != null && spo2 > 50 && spo2 <= 100) w.spO2 = spo2;
   const vo2 = pick(o, 'vo2MaxValue', 'vo2Max', 'generic');
   if (vo2 != null && vo2 > 10 && vo2 < 100 && ('vo2MaxValue' in o || 'vo2Max' in o)) w.vo2max = vo2;
@@ -47,15 +49,18 @@ export function measuresOf(o: Record<string, unknown>): Partial<Wellness> {
   // Health-status style: a list of metrics, each with a type and a value.
   if (Array.isArray(o.metrics)) for (const m of o.metrics as Array<Record<string, unknown>>) {
     const type = String(m.type ?? m.metricType ?? '').toUpperCase(), v = num(m.value);
-    if (v == null) continue;
-    if (type === 'HRV' && w.hrv == null) w.hrv = v;
-    else if ((type === 'HR' || type === 'RESTING_HR') && w.restingHr == null) w.restingHr = v;
-    else if (type === 'RESPIRATION' && w.respiration == null) w.respiration = v;
-    else if (type === 'SPO2' && w.spO2 == null) w.spO2 = v;
+    // A night with no reading is written as 0: that is no value, not a value. "HR" here is the night's heart rate, not the resting one.
+    if (v == null || v <= 0) continue;
+    if (type === 'HRV' && w.hrv == null && v < 300) w.hrv = v;
+    else if (type === 'RESTING_HR' && w.restingHr == null && v > 20 && v < 150) w.restingHr = v;
+    else if (type === 'HR' && w.avgSleepingHr == null && v > 20 && v < 150) w.avgSleepingHr = v;
+    else if (type === 'RESPIRATION' && w.respiration == null && v >= 4 && v <= 40) w.respiration = v;
+    else if (type === 'SPO2' && w.spO2 == null && v > 50 && v <= 100) w.spO2 = v;
   }
   // Weight: grams in the export.
-  const wt = pick(o, 'weight');
-  if (wt != null) w.weightKg = wt > 1000 ? Math.round(wt / 100) / 10 : wt;
+  // Weight: grams in the export, as a number or inside a small record of its own.
+  const wt = pick(o, 'weight') ?? (o.weight && typeof o.weight === 'object' ? pick(o.weight as Record<string, unknown>, 'weight') : undefined);
+  if (wt != null && wt > 0) { const kg = wt > 1000 ? Math.round(wt / 100) / 10 : wt; if (kg >= 25 && kg <= 300) w.weightKg = kg; }
   return w;
 }
 
@@ -67,7 +72,7 @@ export function wellnessFromJson(json: unknown): Map<string, Partial<Wellness>> 
     if (Array.isArray(x)) { for (const y of x) visit(y, depth + 1); return; }
     if (typeof x !== 'object') return;
     const o = x as Record<string, unknown>;
-    const day = dayOf(o.calendarDate) ?? dayOf(o.summaryDate) ?? dayOf(o.date);
+    const day = dayOf(o.calendarDate) ?? dayOf(o.summaryDate) ?? dayOf(o.date) ?? dayOf((o.metaData as Record<string, unknown> | undefined)?.calendarDate);
     if (day) {
       const m = measuresOf(o);
       if (Object.keys(m).length) out.set(day, { ...(out.get(day) ?? {}), ...Object.fromEntries(Object.entries(m).filter(([k]) => out.get(day)?.[k as keyof Wellness] == null)) });

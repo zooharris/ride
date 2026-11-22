@@ -260,3 +260,14 @@ describe('a start that came from somewhere other than the file, and is an hour o
     expect(left[0]).toMatchObject({ startFromFile: true, startUtc: new Date(START * 1000).toISOString() });
   });
 });
+
+describe('lasting the same, like with like', () => {
+  // A ride with long stops: 49:40 moving, 60:35 start to finish. The copy already here carries only its moving time.
+  const here = { sport: 'ride' as const, startTime: '2026-07-24T16:47:13', seconds: 2978, movingSeconds: 2978 };
+  const file = { sport: 'ride' as const, startTime: '2026-07-24T16:47:13', seconds: 2980, movingSeconds: 2980, elapsedSeconds: 3635 };
+  it('moving time is set against moving time, not against start-to-finish time', () => {
+    expect(sameActivity(here, file)).toBe(true);
+    expect(sameActivity(file, here)).toBe(true);
+    expect(sameActivity(here, { ...file, seconds: 4000, movingSeconds: 4000, elapsedSeconds: 4100 })).toBe(false);
+  });
+});

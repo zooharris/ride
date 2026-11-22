@@ -17,7 +17,7 @@ import { workOut } from '../sync/ownService';
 export const UPLOAD_IMPORTS = 'uploadImports';
 
 /** The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. */
-type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & Partial<Pick<Ride, 'startUtc' | 'startFromFile' | 'distanceM'>>;
+type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & Partial<Pick<Ride, 'startUtc' | 'startFromFile' | 'distanceM' | 'movingSeconds'>>;
 /**
  * The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. The start is compared
  * as a moment in time where both say it. Where one gives only a clock time (an older activity, or a file that names no
@@ -25,13 +25,17 @@ type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & P
  * two are the same only if they also last the same (within 1%) and went as far (within 1%).
  */
 export function sameActivity(a: Same, b: Same): boolean {
+  // Lasting the same, like with like: start to finish against start to finish, or time moving against time moving. One
+  // copy may carry only its moving time and the other both (22 Nov 2026: on a real history, moving time set against
+  // start-to-finish time on rides with long stops left second copies), so any like pair that agrees will do.
+  const pairs: Array<[number | undefined, number | undefined]> = [[a.elapsedSeconds, b.elapsedSeconds], [a.movingSeconds, b.movingSeconds], [a.seconds, b.seconds], [a.seconds, b.movingSeconds], [a.movingSeconds, b.seconds]];
+  const within = (f: number) => pairs.some(([x, y]) => !!x && !!y && Math.abs(x - y) <= Math.max(x, y) * f);
   const da = a.elapsedSeconds || a.seconds, dbb = b.elapsedSeconds || b.seconds;
-  const within = (f: number) => Math.abs(da - dbb) <= Math.max(da, dbb) * f;
   if (a.startUtc && b.startUtc) {
     const d = Math.abs(Date.parse(a.startUtc) - Date.parse(b.startUtc));
-    // Starting at the very same moment and lasting the same, it is the same recording, whatever kind each copy is now
-    // called (the rider may have changed an activity's kind since; seen on a real history, 22 Nov 2026).
-    if (d <= 5_000 && within(0.1)) return true;
+    // Two files that begin at the very same moment are the same recording, whatever kind each copy is now called and
+    // however each counts its length.
+    if (d <= 5_000 && (within(0.1) || (a.startFromFile && b.startFromFile))) return true;
     if (a.sport === b.sport && d <= 120_000 && within(0.1)) return true;
     // Both read from the activities' own files: they are different moments, and that settles it. A start from anywhere
     // else is only a hint (22 Nov 2026: trusting one that was off left second copies on a real history), so the clocks decide.

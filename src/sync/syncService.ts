@@ -513,6 +513,8 @@ function refreshSoon(): void {
 
 /** Stage 1: change activities over to Antogo's own numbers, in the background; the screens refresh as it goes. */
 export function startChangeOver(): Promise<number> {
+  // Second copies of one recording (brought in from a file, and here already) are made one, here as after every sync.
+  void mergeFileCopies().then((n) => { if (n) void import('../ui/store').then((m) => m.notify()); }).catch(() => {});
   return changeOver(scoreActivity, () => { void import('../ui/store').then((m) => m.notify()); });
 }
 

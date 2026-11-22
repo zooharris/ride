@@ -212,3 +212,27 @@ describe('a real export\'s wellness, by the shapes seen in one', () => {
     expect(d.has('2026-07-15')).toBe(false);
   });
 });
+
+describe('a second copy of one recording, whatever each is called', () => {
+  const ride = fit({ start: START, records: every(1800, () => ({ w: 180, hr: 130, cad: 85, spd: 8 })), events: [{ t: 0, type: 'start' }] });
+  it('the same moment and the same length is the same recording, even when the kinds differ', () => {
+    const a = { sport: 'ride' as const, startTime: '2026-07-24T09:00:00', seconds: 1800, startUtc: '2026-07-24T13:00:00.000Z' };
+    expect(sameActivity(a, { ...a, sport: 'strength' })).toBe(true);
+    expect(sameActivity(a, { ...a, sport: 'strength', startUtc: '2026-07-24T13:01:00.000Z' })).toBe(false);
+  });
+  it('a file for an activity already here under another kind is kept with it, not added: the kept file says when it began', async () => {
+    await db.rides.put({ id: 'i7', date: '2026-07-24', startTime: '2026-07-24T09:00:00', name: 'Strength', type: 'WeightTraining', sport: 'strength', seconds: 1799, elapsedSeconds: 1799 });
+    await db.files.put({ id: 'i7', date: '2026-07-24', status: 'kept', bytes: ride, size: ride.byteLength, at: 'x' });
+    const r = await importFiles([fileOf('a.fit', ride)], () => {});
+    expect(r).toMatchObject({ added: 0, already: 1 });
+    expect((await db.rides.get('i7'))?.startUtc).toBe(new Date(START * 1000).toISOString());
+  });
+  it('one that slipped in before is made one with the activity already here, which stays as it was', async () => {
+    await db.rides.put({ id: 'i7', date: '2026-07-24', startTime: '2026-07-24T09:00:00', name: 'Strength', type: 'WeightTraining', sport: 'strength', seconds: 1799, elapsedSeconds: 1799 });
+    await db.files.put({ id: 'i7', date: '2026-07-24', status: 'kept', bytes: ride, size: ride.byteLength, at: 'x' });
+    await db.rides.put({ id: 'file-1-Ride', date: '2026-07-24', startTime: '2026-07-24T09:00:00', startUtc: new Date(START * 1000).toISOString(), name: 'Morning ride', type: 'Ride', sport: 'ride', seconds: 1799, elapsedSeconds: 1799, source: 'file' });
+    const { mergeFileCopies } = await import('./importer');
+    expect(await mergeFileCopies()).toBe(1);
+    expect((await db.rides.toArray()).map((x) => [x.id, x.sport])).toEqual([['i7', 'strength']]);
+  });
+});

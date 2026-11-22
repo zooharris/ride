@@ -25,10 +25,16 @@ type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & P
  * two are the same only if they also last the same (within 1%) and went as far (within 1%).
  */
 export function sameActivity(a: Same, b: Same): boolean {
-  if (a.sport !== b.sport) return false;
   const da = a.elapsedSeconds || a.seconds, dbb = b.elapsedSeconds || b.seconds;
   const within = (f: number) => Math.abs(da - dbb) <= Math.max(da, dbb) * f;
-  if (a.startUtc && b.startUtc) return Math.abs(Date.parse(a.startUtc) - Date.parse(b.startUtc)) <= 120_000 && within(0.1);
+  if (a.startUtc && b.startUtc) {
+    const d = Math.abs(Date.parse(a.startUtc) - Date.parse(b.startUtc));
+    // Starting at the very same moment and lasting the same, it is the same recording, whatever kind each copy is now
+    // called (the rider may have changed an activity's kind since; seen on a real history, 22 Nov 2026).
+    if (d <= 5_000 && within(0.1)) return true;
+    return a.sport === b.sport && d <= 120_000 && within(0.1);
+  }
+  if (a.sport !== b.sport) return false;
   const ta = Date.parse(a.startTime), tb = Date.parse(b.startTime);
   if (!isFinite(ta) || !isFinite(tb)) return false;
   const diff = Math.abs(ta - tb);
@@ -166,6 +172,8 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
     }
     if (batch.rides.length || batch.wellness.length) { await db.imports.put(batch); result.batchId = batch.id; }
     if (fresh.length) await pairNew(fresh, p ?? undefined);
+    // A second copy that slipped in (an activity whose kind was changed here) becomes one with the one already here.
+    try { const merged = await mergeFileCopies(); if (merged) { result.added -= merged; result.already += merged; } } catch { /* the next sync does it */ }
     onChanged();
     emit({ running: false, result });
     return result;
@@ -179,7 +187,7 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
 export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: Profile | undefined): Promise<Ride | 'already'> {
   const ride = rideFromParsed(parsed);
   const day = ride.date;
-  const near = await db.rides.where('date').between(prevDay(day), nextDay(day), true, true).toArray();
+  const near = await withStarts(await db.rides.where('date').between(prevDay(day), nextDay(day), true, true).toArray());
   const same = near.find((x) => sameActivity(x, ride));
   const file = (id: string, date: string): KeptFile => ({ id, date, status: 'kept', bytes, size: bytes.byteLength, at: new Date().toISOString() });
   if (same) {
@@ -205,6 +213,25 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
   }
   await db.rides.put(out);
   return out;
+}
+
+/**
+ * Activities with their start as a moment in time filled in where it is missing and their original file is kept: the
+ * file says exactly when it began, which is what tells a second copy of the same recording from another activity.
+ */
+async function withStarts(rides: Ride[]): Promise<Ride[]> {
+  for (const r of rides) {
+    if (r.startUtc) continue;
+    try {
+      const f = await db.files.get(r.id);
+      if (f?.status !== 'kept' || !f.bytes) continue;
+      const parsed = await readActivityFile(r.id, f.bytes);
+      if (!parsed || parsed === NOT_ACTIVITY) continue;
+      r.startUtc = new Date(parsed.startUnix * 1000).toISOString();
+      await db.rides.update(r.id, { startUtc: r.startUtc });
+    } catch { /* an unreadable file: the clock time still serves */ }
+  }
+  return rides;
 }
 
 const prevDay = (d: string) => new Date(Date.parse(d) - 864e5).toISOString().slice(0, 10);
@@ -239,8 +266,8 @@ export async function mergeFileCopies(): Promise<number> {
   const fileRides = (await db.rides.toArray()).filter((r) => r.source === 'file');
   let merged = 0;
   for (const f of fileRides) {
-    const near = await db.rides.where('date').between(prevDay(f.date), nextDay(f.date), true, true).toArray();
-    const twin = near.find((x) => x.source !== 'file' && sameActivity(x, f));
+    const near = await withStarts((await db.rides.where('date').between(prevDay(f.date), nextDay(f.date), true, true).toArray()).filter((x) => x.source !== 'file'));
+    const twin = near.find((x) => sameActivity(x, f));
     if (!twin) continue;
     const kept = await db.files.get(f.id);
     const twinFile = await db.files.get(twin.id);

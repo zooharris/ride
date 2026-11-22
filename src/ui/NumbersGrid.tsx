@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { NumberRow } from './activityNumbers';
 import { columnsFor, groupNumbers, placeCells, type NumberCell } from './numberGroups';
 import { useWidth } from './useWidth';
@@ -35,7 +35,8 @@ export function NumbersGrid({ rows }: { rows: NumberRow[] }) {
 function Cell({ cell, span, top, left, right, open, setOpen }: { cell: NumberCell; span: number; top: boolean; left: boolean; right: boolean; open: boolean; setOpen: (k: string | null) => void }) {
   const btn = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  // Listened for before the pop-up is painted, so an Escape or a tap straight after opening it is never missed.
+  useLayoutEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(null); btn.current?.focus(); } };
     const click = (e: Event) => { const el = e.target as Node; if (pop.current?.contains(el) || btn.current?.contains(el)) return; setOpen(null); };

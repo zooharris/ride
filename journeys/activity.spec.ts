@@ -68,9 +68,11 @@ test('an activity\'s Numbers, for a ride, a walk and a strength session; an "i" 
   await i.click();
   await expect(page.getByRole('note')).toHaveCount(0);
   await i.click();
+  await expect(page.getByRole('note')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('note')).toHaveCount(0);
   await i.click();
+  await expect(page.getByRole('note')).toBeVisible();
   await page.getByRole('heading', { name: 'Numbers' }).click();
   await expect(page.getByRole('note')).toHaveCount(0);
   await openActivity(page, /walk/i);

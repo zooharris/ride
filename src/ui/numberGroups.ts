@@ -43,6 +43,7 @@ export const GROUP_OF: Record<string, GroupName> = {
   'Energy burned': 'Energy',
   'Carbohydrate used': 'Energy',
   'Recorded on': 'About this recording',
+  Numbers: 'About this recording',
 };
 
 /** A value longer than this many characters takes two cells' width, so it is never cut short or shrunk. */

@@ -98,6 +98,9 @@ export interface SyncState {
  */
 export interface KeptFile { id: string; date: string; status: 'kept' | 'none'; bytes?: Uint8Array; size?: number; at: string; why?: string }
 
+/** Antogo's numbers for one activity, the thresholds they used, and what the activity came with before them. */
+export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; at: string }
+
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;
   settings!: Table<Settings, string>;
@@ -123,6 +126,11 @@ class RideDb extends Dexie {
    * 2026, Stage 0). Never in the sync note; in Back up everything.
    */
   files!: Table<KeptFile, string>;
+  /**
+   * Stage 1 (22 Nov 2026): the numbers Antogo worked out for each activity from its recording, and what the activity
+   * came with (for the one-time check against the data service). This device only; worked out again from the file.
+   */
+  own!: Table<OwnRecord, string>;
 
   constructor() {
     super('ride');
@@ -159,6 +167,7 @@ class RideDb extends Dexie {
     this.version(11).stores({ thumbs: 'id' });
     this.version(12).stores({ reads: 'id, date' });
     this.version(13).stores({ files: 'id, date, status' });
+    this.version(14).stores({ own: 'id' });
   }
 }
 

@@ -52,10 +52,9 @@ import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
 import { fahrenheit, miles, weightSystem } from '../../engine/units';
 import { activityNumbers, isIndoor, KIND_NOUN } from '../activityNumbers';
-import { keptFile } from '../../sync/keeper';
-import { readFitRecording } from '../../player/fitRecording';
-import { maybeGunzip } from '../../player/fitRead';
+import { recordingOf } from '../../sync/ownService';
 import { NumbersGrid } from '../NumbersGrid';
+import { AddFilesButton } from '../AddFiles';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -68,7 +67,7 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
     return (
       <div>
         <PageHead title="Activities" help="activities" />
-        <Empty title="No activities yet."><span>Connect Intervals.icu in Settings, then press Sync on Today. Your last 120 days of activities arrive on the first sync.</span></Empty>
+        <Empty title="No activities yet." action={<AddFilesButton primary />}><span>Connect Intervals.icu in Settings and press Sync on Today, or bring in your activities from their files.</span></Empty>
       </div>
     );
   }
@@ -93,6 +92,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   return (
     <div>
       <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities" help="activities">
+        <AddFilesButton label="Add files" />
         <a class="btn sm" href="#/export">Export</a>
         <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
       </PageHead>
@@ -156,14 +156,12 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
  * Stage 0 (22 Nov 2026): what the page says when an activity arrives with no detail and no copy of its file is kept
  * here. One sentence on why, and the way round it.
  */
-export const NO_DETAIL = 'Intervals.icu sent this activity without its detail. Garmin now limits what Intervals.icu may pass on to other apps, and no copy of its original file was kept on this device in time. The original is still in Garmin Connect (open the activity there and choose Export Original); bringing files straight into Antogo is the next stage of this work.';
+export const NO_DETAIL = 'Intervals.icu sent this activity without its detail. Garmin now limits what Intervals.icu may pass on to other apps, and no copy of its original file was kept on this device in time. The original is still in Garmin Connect: open the activity there, choose Export Original, and bring the file in with Add activity files on Activities.';
 
 /** An activity's recording from its original file kept on this device, if one is. */
 async function fromKeptFile(id: string): Promise<StreamSet | undefined> {
-  const bytes = await keptFile(id);
-  if (!bytes) return undefined;
-  const set = readFitRecording(await maybeGunzip(bytes), id);
-  return set ? { ...set, v: STREAMS_VERSION } : undefined;
+  const set = await recordingOf(id);
+  return set ? { ...set, id, v: STREAMS_VERSION } : undefined;
 }
 
 export function streamsFromRecording(id: string, rec: Recording): StreamSet {
@@ -211,8 +209,10 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       const cached = await db.streams.get(r.id);
       const firstBreathingDate = await getSetting<string | undefined>(FIRST_BREATHING_KEY, undefined);
       if (cached && cachedStreamsUsable(cached, { playerBreathing: breathing, date: r.date, firstBreathingDate })) { if (alive) setStreams(cached); return; }
+      // Stage 1: an activity brought in as a file is read from its file; the data service never had it.
+      if (r.source === 'file') { const kept = await fromKeptFile(r.id); if (alive) setStreams(kept ?? null); return; }
       const cred = await credentials();
-      if (!cred) { if (alive) setStreams(cached ?? null); return; }
+      if (!cred) { const kept = await fromKeptFile(r.id); if (alive) setStreams(kept ?? cached ?? null); return; }
       try {
         const st = await fetchStreams(cred, r.id);
         // Stage 0 (22 Nov 2026): an activity that comes back with no detail (Garmin's limit on what Intervals.icu may

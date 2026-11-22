@@ -1,3 +1,4 @@
+import { CheckNumbers } from './screens/CheckNumbers';
 import { GarminKey } from './screens/GarminKey';
 import { db, loadProfile, saveProfile } from '../data/db';
 import { isUnknown, markMine } from '../engine/known';
@@ -5,6 +6,7 @@ import { maxHrSeen } from './maxHrSeen';
 import { arrival, useRoute } from './router';
 import { loadAppData, notify, useAppData } from './store';
 import { useEffect, useRef } from 'preact/hooks';
+import { startChangeOver } from '../sync/syncService';
 import { syncDevices } from '../data/devicesync';
 import { autoSync, credentials, matchHistory, onHistoryMatched, onSyncRunning, syncRunning } from '../sync/syncService';
 import { fillPlanReasons, moveSessionsToLibrary, nameRideSessions, retargetFootSessions, retireCreatedWorkouts } from './planService';
@@ -62,6 +64,8 @@ export function App() {
       last = Date.now();
       const c = await credentials();
       if (c) { await syncDevices(c); void matchHistory(); }
+      // Stage 1 (22 Nov 2026): activities not yet on Antogo's own numbers change over, in the background.
+      void startChangeOver();
       // Batch 6: walks and runs on the calendar move to their new targets once, after the merge, so a
       // device that already has another device's conversion does nothing.
       try {
@@ -186,10 +190,12 @@ export function App() {
     case 'settings': screen = <Settings data={data} />; break;
     case 'export': screen = <Export data={data} />; break;
     case 'garmin-key': screen = <GarminKey />; break;
+    // TEMPORARY (22 Nov 2026): the one-time check of Antogo's numbers; not linked, removed in the follow-up.
+    case 'check-numbers': screen = <CheckNumbers />; break;
     case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key') ? 'settings' : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key' || root === 'check-numbers') ? 'settings' : root || 'today';
 
   return (
     <div class="shell">

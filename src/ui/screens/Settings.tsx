@@ -26,6 +26,8 @@ import { breathHistory, type BreathHistory } from '../../engine/breathHistory';
 import { applyNumbers } from '../testService';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
 import { keepCounts, keepState, watchKeeping, type KeepState } from '../../sync/keeper';
+import { watchChangeOver, type ChangeOverState } from '../../sync/ownService';
+import { AddFilesButton } from '../AddFiles';
 import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
 import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
@@ -600,6 +602,12 @@ function HistoryLoader() {
         </div>
         {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}
         {reread && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${(reread.done / reread.total) * 100}%`} /></div><p class="faint small">Updating your ride history: {reread.done} of {reread.total}</p></div>}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+          <p class="small" style="margin:0 0 4px"><b>Bring in activity files</b></p>
+          <p class="faint small" style="margin:0 0 8px">From any device or app: .fit, .tcx or .gpx, a folder of them, or your device maker's whole-account export (activities and daily wellness together). Nothing already here is added twice. Antogo works out every activity's numbers itself from its recording.</p>
+          <AddFilesButton />
+          <ChangeOverLine />
+        </div>
         <KeepingLine />
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. If your device is a Garmin: Intervals.icu's Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
@@ -639,6 +647,14 @@ function KeepingLine() {
       <p class="small" style="margin:8px 0 0"><a href="#/garmin-key">Test a Garmin personal key</a> <span class="faint">· see what Garmin's own key can read, and keep the key where you can copy it again</span></p>
     </div>
   );
+}
+
+/** Stage 1: how far the change-over to Antogo's own numbers has got, while it runs. */
+function ChangeOverLine() {
+  const [s, setS] = useState<ChangeOverState>({ running: false, done: 0, total: 0 });
+  useEffect(() => watchChangeOver(setS), []);
+  if (!s.running || !s.total) return null;
+  return <p class="faint small" style="margin:8px 0 0">Working out your activities' numbers from their recordings: {s.done} of {s.total}.</p>;
 }
 
 /** Which build this is, and a button to look for a newer one now. */

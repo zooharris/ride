@@ -1,3 +1,5 @@
+import { applyOwnTo, changeOne, changeOver } from './ownService';
+import { mergeFileCopies } from '../import/importer';
 import { keepHistory } from './keeper';
 import { db, getSetting, saveProfile, setSetting } from '../data/db';
 import { addDays, estimatedRideTss, hrTss, looksLikeADrive, rideTss, today } from '../engine/load';
@@ -113,8 +115,10 @@ async function pullAll(): Promise<SyncResult> {
     if (JSON.stringify(next) !== JSON.stringify(profile)) { await saveProfile(next); profile = (await db.profile.get('me')) ?? next; }
   }
 
-  const rides = await fetchRides(c, oldest, newest);
-  const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).map((r) => r.id));
+  // Stage 1 (22 Nov 2026): Antogo's own numbers laid over what the data service sent, where they are kept.
+  const rides = await applyOwnTo(await fetchRides(c, oldest, newest));
+  // Activities brought in as files are this device's own: the data service not having them says nothing.
+  const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).filter((r) => r.source !== 'file').map((r) => r.id));
   // An activity deleted in Intervals.icu (or on another device) goes from this one too.
   const gone = [...known].filter((id) => !rides.some((r) => r.id === id));
   if (gone.length) { await db.rides.bulkDelete(gone); await db.streams.bulkDelete(gone); await db.powerCurves.bulkDelete(gone); await db.thumbs.bulkDelete(gone); await db.reads.bulkDelete(gone); }
@@ -139,6 +143,8 @@ async function pullAll(): Promise<SyncResult> {
   await applyPairing(rides, planned, await workoutLookup(), c, profile, { markMissed: true, gone: new Set(gone) });
   applyLoadEdits(rides, edits, planned);
   await db.rides.bulkPut(rides);
+  // A file brought in earlier that is now also here from the data service becomes one activity (Stage 1).
+  await mergeFileCopies();
   await markMissedAll();
 
   // Power curve over the last 90 days feeds the limiter assessment; a failure here is not a failed sync.
@@ -161,11 +167,12 @@ async function pullAll(): Promise<SyncResult> {
   void matchHistory();
   // Stage 0 (22 Nov 2026): keep the whole history and each activity's original file on this device, in the
   // background, a little after the sync so the app is quick to use first.
-  setTimeout(() => { void keepHistory(c, { loadHistory: (back) => loadHistory(back, () => {}) }); }, KEEP_DELAY_MS);
+  setTimeout(() => { void keepHistory(c, { loadHistory: (back) => loadHistory(back, () => {}), onKept: (id) => changeOne(id, scoreActivity, refreshSoon) }).then(() => startChangeOver()); }, KEEP_DELAY_MS);
   return { rides: rides.length, wellness: wellness.length, newIds };
 }
 
 /** The workout behind a calendar entry: the rider's and generated copies first, then the ride library. */
+export async function workoutLookupFor(): Promise<(id: string) => Workout | undefined> { return workoutLookup(); }
 async function workoutLookup(): Promise<(id: string) => Workout | undefined> {
   const workouts = await db.workouts.toArray();
   return (id: string) => workouts.find((w) => w.id === id) ?? LIBRARY.find((w) => w.id === id);
@@ -491,6 +498,18 @@ export async function historyCoverage(): Promise<{ from?: string; wellnessFrom?:
  * The fitness history and the long Progress ranges use it at once; the power
  * curve reads the new rides the next time Progress opens.
  */
+/** The screens told that activities changed, at most every few seconds while files are being kept one by one. */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+function refreshSoon(): void {
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; void import('../ui/store').then((m) => m.notify()); }, 3000);
+}
+
+/** Stage 1: change activities over to Antogo's own numbers, in the background; the screens refresh as it goes. */
+export function startChangeOver(): Promise<number> {
+  return changeOver(scoreActivity, () => { void import('../ui/store').then((m) => m.notify()); });
+}
+
 /** How long after a sync the keeping starts. */
 export const KEEP_DELAY_MS = 10_000;
 
@@ -511,7 +530,7 @@ export async function loadHistory(back: string, onProgress: (done: number, total
     const [from, to] = pieces[i];
     const rides = await fetchRides(c, from, to);
     const existing = new Set((await db.rides.where('date').between(from, to, true, true).primaryKeys()) as string[]);
-    const fresh = rides.filter((r) => !existing.has(r.id));
+    const fresh = await applyOwnTo(rides.filter((r) => !existing.has(r.id)));
     fresh.forEach((r) => scoreActivity(r, profile));
     const edits = await db.activityEdits.toArray();
     applyKindEdits(fresh, edits, profile);

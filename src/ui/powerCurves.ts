@@ -13,6 +13,7 @@ import { patchRecording } from '../player/rides';
 import { upsertEdit } from '../sync/records';
 import { getSetting, setSetting, STREAMS_VERSION } from '../data/db';
 import { credentials } from '../sync/syncService';
+import { recordingOf } from '../sync/ownService';
 import { bestMean } from '../engine/rampJudge';
 import { lateEfforts, LATE_VERSION } from '../engine/progressMore';
 
@@ -90,8 +91,11 @@ async function run(rides: Ride[], ctx0?: CurveContext): Promise<void> {
       const full = await db.streams.get(r.id);
       // The cached recording is used when it is current or already has breathing; otherwise power, heart rate and breathing are read.
       const fresh = !!full?.watts && (full.v === STREAMS_VERSION || hasBreathing(full));
+      // Stage 1: the activity's own file kept on this device comes before asking the data service.
+      const kept = fresh ? undefined : await recordingOf(r.id);
       let s: StreamsIn | null = fresh ? { time: full!.time, watts: full!.watts, heartrate: full!.heartrate, ve: full!.ve, br: full!.br, tv: full!.tv }
-        : c ? await fetchPowerStream(c, r.id) : full?.watts ? { time: full.time, watts: full.watts, heartrate: full.heartrate } : null;
+        : kept?.watts ? { time: kept.time, watts: kept.watts, heartrate: kept.heartrate, ve: kept.ve, br: kept.br, tv: kept.tv }
+        : c && r.source !== 'file' ? await fetchPowerStream(c, r.id) : full?.watts ? { time: full.time, watts: full.watts, heartrate: full.heartrate } : null;
       if (!s) { emit({ done, total: todo.length, rebuilding, error: 'Connect Intervals.icu to read your rides.' }); return; }
       // A player ride's breathing comes from its recording on this computer when Intervals.icu has none of it.
       const local = recordings.find((x) => x.activityId === r.id);

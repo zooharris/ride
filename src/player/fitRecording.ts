@@ -23,8 +23,29 @@ function readAny(v: DataView, at: number, size: number, type: number, little: bo
 
 const SEMI = 180 / 2 ** 31;
 
+/** What a FIT file says about the activity as a whole (its session, file id and activity messages). */
+export interface FitSummary {
+  /** Start, Unix seconds. */
+  startUnix?: number;
+  /** Local time minus UTC, seconds, when the file says (its activity message's local timestamp). */
+  localOffset?: number;
+  sport?: number; subSport?: number;
+  elapsedS?: number; timerS?: number; distanceM?: number; ascentM?: number; descentM?: number; calories?: number;
+  manufacturer?: number; product?: string;
+}
+
+/** FIT time starts on 31 Dec 1989. */
+export const FIT_EPOCH = 631065600;
+
+/** The recording and the summary of a FIT file. */
+export function readFitActivity(file: Uint8Array, id = ''): { streams?: StreamSet; summary: FitSummary } {
+  const summary: FitSummary = {};
+  const streams = readFitRecording(file, id, summary);
+  return { streams, summary };
+}
+
 /** The recording in a FIT file as the app's streams; undefined when the file holds no records. */
-export function readFitRecording(file: Uint8Array, id = ''): StreamSet | undefined {
+export function readFitRecording(file: Uint8Array, id = '', summary?: FitSummary): StreamSet | undefined {
   if (file.length < 12) return undefined;
   const v = new DataView(file.buffer, file.byteOffset, file.byteLength);
   const headerSize = file[0];
@@ -66,6 +87,7 @@ export function readFitRecording(file: Uint8Array, id = ''): StreamSet | undefin
       p = readData(d, p);
     }
   } catch { /* a damaged end of file: keep what was read */ }
+  if (summary && summary.startUnix == null && recs.length) summary.startUnix = recs[0].ts + FIT_EPOCH;
   if (recs.length < 2) return undefined;
 
   const t0 = recs[0].ts;
@@ -107,6 +129,26 @@ export function readFitRecording(file: Uint8Array, id = ''): StreamSet | undefin
     } else if (d.global === 19) {
       const start = num(2), stop = ts;
       if (start != null && stop != null) laps.push({ start, end: stop });
+    } else if (d.global === 18 && summary) {
+      // session: the activity's own totals
+      summary.startUnix ??= num(2) != null ? num(2)! + FIT_EPOCH : undefined;
+      summary.sport ??= num(5); summary.subSport ??= num(6);
+      const el = num(7), tm = num(8), di = num(9);
+      if (el != null) summary.elapsedS = (summary.elapsedS ?? 0) + el / 1000;
+      if (tm != null) summary.timerS = (summary.timerS ?? 0) + tm / 1000;
+      if (di != null) summary.distanceM = (summary.distanceM ?? 0) + di / 100;
+      const up = num(22), down = num(23), kcal = num(11);
+      if (up != null) summary.ascentM = (summary.ascentM ?? 0) + up;
+      if (down != null) summary.descentM = (summary.descentM ?? 0) + down;
+      if (kcal != null) summary.calories = (summary.calories ?? 0) + kcal;
+    } else if (d.global === 34 && summary) {
+      // activity: its local timestamp gives the rider's time zone at the time
+      const local = num(5);
+      if (local != null && ts != null) summary.localOffset = local - ts;
+    } else if (d.global === 0 && summary) {
+      summary.manufacturer ??= num(1);
+      const pn = vals.get(8);
+      if (pn && (pn.type & 0x1f) === 0x07) { let e = pn.at; while (e < pn.at + pn.size && file[e] !== 0) e++; const name = new TextDecoder().decode(file.subarray(pn.at, e)); if (name) summary.product = name; }
     }
     return at;
   }

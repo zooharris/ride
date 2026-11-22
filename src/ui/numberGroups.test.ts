@@ -55,9 +55,10 @@ describe('Numbers as compact cells', () => {
 
   it('joins a group left with one cell to the group above it', () => {
     const g = groupNumbers(activityNumbers(full('strength'), profile, undefined, 7));
-    // Strength: time and load, heart rate, energy burned (one), effort and device: energy burned joins heart rate; "recorded on" joins too.
-    expect(g.map((x) => x.name)).toEqual(['Time and distance', 'Heart rate']);
-    expect(g[1].cells.map((c) => c.label)).toEqual(['Average heart rate', 'Max heart rate', 'Energy burned', 'Recorded on']);
+    // Strength: time and load, heart rate, energy burned (one: joins heart rate), and the device with where the numbers came from.
+    expect(g.map((x) => x.name)).toEqual(['Time and distance', 'Heart rate', 'About this recording']);
+    expect(g[1].cells.map((c) => c.label)).toEqual(['Average heart rate', 'Max heart rate', 'Energy burned']);
+    expect(g[2].cells.map((c) => c.label)).toEqual(['Recorded on', 'Numbers']);
   });
 
   it('gives a long value two cells, and never cuts it', () => {

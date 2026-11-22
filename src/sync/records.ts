@@ -79,7 +79,9 @@ export async function undoHandLog(p: PlannedWorkout): Promise<{ deletedRemote: b
  */
 export async function deleteRecording(rideId: string): Promise<void> {
   const c = await credentials();
-  if (c) await deleteActivity(c, rideId);   // throws, with the reason, if Intervals.icu refuses
+  // An activity brought in as a file is this device's own: nothing to delete at the data service (Stage 1).
+  const own = await db.rides.get(rideId);
+  if (c && own?.source !== 'file') await deleteActivity(c, rideId);   // throws, with the reason, if Intervals.icu refuses
   const planned = (await db.planned.toArray()).filter((p) => p.activityId === rideId || p.manualActivityId === rideId);
   for (const p of planned) {
     if (p.manualActivityId === rideId) { await undoHandLog({ ...p, manualActivityId: undefined }); continue; }
@@ -89,6 +91,8 @@ export async function deleteRecording(rideId: string): Promise<void> {
     });
   }
   await db.rides.delete(rideId);
+  await db.files.delete(rideId);
+  await db.own.delete(rideId);
   await db.activityEdits.delete(rideId);
   await db.streams.delete(rideId);
   await db.powerCurves.delete(rideId);

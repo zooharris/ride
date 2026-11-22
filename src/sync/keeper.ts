@@ -75,7 +75,7 @@ export function fileRefusal(e: unknown): { kind: 'none' | 'slow' | 'stop'; why: 
 let running: Promise<void> | null = null;
 
 /** Keep the whole history, then every activity's file. One run at a time; safe to call after every sync. */
-export function keepHistory(c: IntervalsCredentials, deps: { loadHistory: (back: string) => Promise<unknown>; gapMs?: number } ): Promise<void> {
+export function keepHistory(c: IntervalsCredentials, deps: { loadHistory: (back: string) => Promise<unknown>; gapMs?: number; /** Stage 1: an activity's file was just kept. */ onKept?: (id: string) => Promise<unknown> } ): Promise<void> {
   if (running) return running;
   running = (async () => {
     try {
@@ -102,6 +102,7 @@ export function keepHistory(c: IntervalsCredentials, deps: { loadHistory: (back:
           const f: KeptFile = { id: r.id, date: r.date, status: 'kept', bytes, size: bytes.byteLength, at: new Date().toISOString() };
           await db.files.put(f);
           emit({ kept: state.kept + 1, bytes: state.bytes + bytes.byteLength });
+          if (deps.onKept) await deps.onKept(r.id).catch(() => {});
         } catch (e) {
           const why = fileRefusal(e);
           if (why.kind === 'none') { await db.files.put({ id: r.id, date: r.date, status: 'none', at: new Date().toISOString(), why: why.why }); emit({ none: state.none + 1 }); }

@@ -429,6 +429,12 @@ export interface Ride {
   headwindPct?: number;
   /** What recorded it. */
   device?: string;
+  /** Stage 1 (22 Nov 2026): the numbers were worked out by Antogo from the recording. */
+  ownNumbers?: boolean;
+  /** Carbohydrate used is Antogo's own estimate, not the data service's. */
+  carbsEstimated?: boolean;
+  /** Where the activity came from when it is not the data service: a file the rider brought in. */
+  source?: 'file';
 }
 
 export interface Wellness {

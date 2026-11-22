@@ -38,7 +38,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
   const speed = (ms?: number) => (ms ? (imperial ? `${(ms * 2.23694).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`) : undefined);
   const energy: Array<[string, string | number | undefined, string?]> = [
     ['Energy burned', r.calories ? `${Math.round(r.calories).toLocaleString()} kcal` : undefined, 'As your device or Intervals.icu worked it out'],
-    ['Carbohydrate used', r.carbsUsedG ? `${Math.round(r.carbsUsedG)} g` : undefined, 'An estimate from your power and FTP: what a long ride takes out of you'],
+    ['Carbohydrate used', r.carbsUsedG ? `${Math.round(r.carbsUsedG)} g` : undefined, r.carbsEstimated ? "Antogo's estimate, from the work done and how hard it was: what a long ride takes out of you" : 'An estimate from your power and FTP: what a long ride takes out of you'],
   ];
   const weather: Array<[string, string | number | undefined, string?]> = [
     ['Weather', r.weatherTempC != null ? `${temp(r.weatherTempC)}${r.feelsLikeC != null && Math.abs(r.feelsLikeC - r.weatherTempC) >= 2 ? `, felt like ${temp(r.feelsLikeC)}` : ''}` : undefined, 'The air temperature along the route, from the weather record (your device\'s own reading is "Average temperature")'],
@@ -47,6 +47,8 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
   const tail: Array<[string, string | number | undefined, string?]> = [
     ['Effort you rated', r.rpe ? `${Math.round(r.rpe)} of 10` : undefined, 'The effort you gave this in Intervals.icu'],
     ['Recorded on', r.device],
+    // Stage 1 (22 Nov 2026): where the numbers came from, in one line.
+    ['Numbers', r.ownNumbers ? 'Worked out by Antogo' : r.source === 'file' ? 'From the file’s summary' : 'From Intervals.icu', r.ownNumbers ? 'Antogo worked these out from the recording itself. They can differ a little from other apps’ figures for the same activity.' : r.source === 'file' ? 'The file had no second-by-second recording to work from, so these are the totals it carried.' : 'Antogo hasn’t worked these out from the recording yet (it does once the activity’s original file is kept on this device), so they are Intervals.icu’s.'],
   ];
   if (r.sport === 'ride') return [
     ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],

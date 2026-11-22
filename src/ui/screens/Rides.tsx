@@ -52,6 +52,9 @@ import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
 import { fahrenheit, miles, weightSystem } from '../../engine/units';
 import { activityNumbers, isIndoor, KIND_NOUN } from '../activityNumbers';
+import { keptFile } from '../../sync/keeper';
+import { readFitRecording } from '../../player/fitRecording';
+import { maybeGunzip } from '../../player/fitRead';
 import { NumbersGrid } from '../NumbersGrid';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
@@ -149,6 +152,20 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
 }
 
 /** A player ride's streams from its recording on this computer (Part A8): one reading a second, laps as its intervals. */
+/**
+ * Stage 0 (22 Nov 2026): what the page says when an activity arrives with no detail and no copy of its file is kept
+ * here. One sentence on why, and the way round it.
+ */
+export const NO_DETAIL = 'Intervals.icu sent this activity without its detail. Garmin now limits what Intervals.icu may pass on to other apps, and no copy of its original file was kept on this device in time. The original is still in Garmin Connect (open the activity there and choose Export Original); bringing files straight into Antogo is the next stage of this work.';
+
+/** An activity's recording from its original file kept on this device, if one is. */
+async function fromKeptFile(id: string): Promise<StreamSet | undefined> {
+  const bytes = await keptFile(id);
+  if (!bytes) return undefined;
+  const set = readFitRecording(await maybeGunzip(bytes), id);
+  return set ? { ...set, v: STREAMS_VERSION } : undefined;
+}
+
 export function streamsFromRecording(id: string, rec: Recording): StreamSet {
   const ss = rec.samples;
   const pick = (f: (x: Recording['samples'][number]) => number | undefined) => ss.map((x) => f(x) ?? NaN);
@@ -172,6 +189,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
   const [streams, setStreams] = useState<StreamSet | null | undefined>(undefined);
   const [streamErr, setStreamErr] = useState<string | null>(null);
+  // Shown from the original file kept on this device (Stage 0), not from the data service.
+  const [fromFile, setFromFile] = useState(false);
   // A player ride's own laps, which know their step, when its recording is on this device.
   const [playerLaps, setPlayerLaps] = useState<RideLap[] | undefined>(undefined);
   // The threshold heart rate a player ride was ridden with, when its recording is on this device (22 Nov 2026).
@@ -196,6 +215,13 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       if (!cred) { if (alive) setStreams(cached ?? null); return; }
       try {
         const st = await fetchStreams(cred, r.id);
+        // Stage 0 (22 Nov 2026): an activity that comes back with no detail (Garmin's limit on what Intervals.icu may
+        // pass on) is read from its original file kept on this device; failing that, the page says why.
+        if (st.time.length < 2 && Math.max(r.seconds, r.elapsedSeconds ?? 0) >= 120) {
+          const kept = await fromKeptFile(r.id);
+          if (alive) { if (kept) { setFromFile(true); setStreams(kept); } else { setStreams(null); setStreamErr(NO_DETAIL); } }
+          return;
+        }
         let set: StreamSet = { id: r.id, v: STREAMS_VERSION, ...st };
         // The original file is read only for a player ride; a Garmin ride without the streams simply has no breathing.
         if (breathing) set = await fillBreathing(set, local, () => fetchActivityFile(cred, r.id));
@@ -206,7 +232,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
         // Part A8 (4 Nov 2026): a player ride always shows its charts: from its recording on this computer when Intervals.icu
         // can't give the streams (not cached, so Intervals.icu is asked again next time). The cause is for the coach, not the rider.
         const own = local?.samples.length ? streamsFromRecording(r.id, local) : undefined;
-        if (alive) { if (own) setStreams(own); else { setStreams(null); setStreamErr((e as Error).message); } }
+        const kept = own ? undefined : await fromKeptFile(r.id);
+        if (alive) { if (own) setStreams(own); else if (kept) { setFromFile(true); setStreams(kept); } else { setStreams(null); setStreamErr((e as Error).message); } }
         if (own) console.info('[Antogo] activity streams from the recording on this computer:', (e as Error).message);
       }
     })();
@@ -395,11 +422,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       )}
 
       {showRecording && streams === undefined && <section class="section" aria-busy="true"><div class="stack" style="gap:10px"><Skeleton h={12} w={160} /><Skeleton h={320} r={12} /><Skeleton h={140} r={12} /></div></section>}
-      {showRecording && streams === null && <section class="section"><div class="empty small">{streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
+      {showRecording && streams === null && <section class="section"><div class="empty small">{streamErr === NO_DETAIL ? NO_DETAIL : streamErr ? `Could not load the recording: ${streamErr}` : 'Connect Intervals.icu to see the recording: the route, and power, heart rate, cadence, speed and elevation through the activity.'}</div></section>}
       {showRecording && streams && samples.length > 1 && (
         <>
           <section class="section">
             <h2>The recording</h2>
+            {fromFile && <p class="small muted" style="margin:4px 0 0">Intervals.icu sent this activity without its detail, so it is shown from the original file kept on this device.</p>}
             <p class="faint small" style="margin:4px 0 10px">{hasRoute ? 'The orange marker on the map follows the charts; moving along the route, or tapping it, moves the charts. Green dot: start. Red: finish. ' : ''}{targets ? 'Shaded steps are what was planned; the lines are what you rode.' : r.sport === 'ride' ? 'Rides done from a plan show the planned steps under the lines, in their zone colours.' : ''}</p>
             <div class={`rec-layout${hasRoute ? ' with-map' : ''}`}>
               {hasRoute && <div class="rec-map"><RouteMap samples={samples} hover={hover} onHover={setHover} height="100%" /></div>}

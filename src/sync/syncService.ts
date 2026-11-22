@@ -1,3 +1,4 @@
+import { keepHistory } from './keeper';
 import { db, getSetting, saveProfile, setSetting } from '../data/db';
 import { addDays, estimatedRideTss, hrTss, looksLikeADrive, rideTss, today } from '../engine/load';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Profile, Ride, Wellness, Workout } from '../engine/types';
@@ -158,6 +159,9 @@ async function pullAll(): Promise<SyncResult> {
   await syncDevices(c);
   // A new device catches up to the history the rider's other devices hold, in the background.
   void matchHistory();
+  // Stage 0 (22 Nov 2026): keep the whole history and each activity's original file on this device, in the
+  // background, a little after the sync so the app is quick to use first.
+  setTimeout(() => { void keepHistory(c, { loadHistory: (back) => loadHistory(back, () => {}) }); }, KEEP_DELAY_MS);
   return { rides: rides.length, wellness: wellness.length, newIds };
 }
 
@@ -487,6 +491,9 @@ export async function historyCoverage(): Promise<{ from?: string; wellnessFrom?:
  * The fitness history and the long Progress ranges use it at once; the power
  * curve reads the new rides the next time Progress opens.
  */
+/** How long after a sync the keeping starts. */
+export const KEEP_DELAY_MS = 10_000;
+
 export async function loadHistory(back: string, onProgress: (done: number, total: number) => void): Promise<{ activities: number; wellness: number }> {
   const c = await credentials();
   if (!c) throw new Error('Connect Intervals.icu in Settings first.');

@@ -92,6 +92,12 @@ export interface SyncState {
  * Rides and wellness are a cache of Intervals.icu and can be re-pulled; the rest
  * is the app's own data and is what the backup file carries.
  */
+/**
+ * An activity's original file as the data service holds it (a FIT file, sometimes compressed): `kept` with its
+ * bytes, or `none` when there is no file to keep (entered by hand, or only shared by another service), with why.
+ */
+export interface KeptFile { id: string; date: string; status: 'kept' | 'none'; bytes?: Uint8Array; size?: number; at: string; why?: string }
+
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;
   settings!: Table<Settings, string>;
@@ -112,6 +118,11 @@ class RideDb extends Dexie {
   thumbs!: Table<Thumb, string>;
   /** What each activity of the last 12 weeks shows (the re-check thinks, 1 Nov 2026): this device only, rebuilt on demand. */
   reads!: Table<import('../engine/reads').ActivityRead, string>;
+  /**
+   * Each activity's original recording file, kept on this device while the data service can still send it (22 Nov
+   * 2026, Stage 0). Never in the sync note; in Back up everything.
+   */
+  files!: Table<KeptFile, string>;
 
   constructor() {
     super('ride');
@@ -147,6 +158,7 @@ class RideDb extends Dexie {
     this.version(10).stores({ recordings: 'id, status, startMs' });
     this.version(11).stores({ thumbs: 'id' });
     this.version(12).stores({ reads: 'id, date' });
+    this.version(13).stores({ files: 'id, date, status' });
   }
 }
 

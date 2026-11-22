@@ -1,5 +1,6 @@
 import { APP_NAME, BACKUP_FILE_PREFIX } from '../appName';
-import { db } from './db';
+import { db, type KeptFile } from './db';
+import type { Ride, Wellness } from '../engine/types';
 import { today } from '../engine/load';
 
 import { LOCAL_ONLY, localDoc, readRemote, SECRET_SETTINGS, syncDevices, type SyncDoc } from './devicesync';
@@ -12,7 +13,31 @@ import type { Recording } from '../player/types';
  * rider's (12 Nov 2026, "back up everything"): the ride player's recordings kept here, and this device's player
  * preferences and coach conversations. Older backups have neither and still restore.
  */
-export type Backup = SyncDoc & { recordings?: Recording[] };
+export type Backup = SyncDoc & { recordings?: Recording[]; history?: BackupHistory };
+
+/**
+ * Stage 0 (22 Nov 2026): the rider's whole history in the backup, so it is not tied to one browser or to the data
+ * service still being able to send it: every activity and day of wellness on this device, and each activity's
+ * original file (as base64 text). Older backups have none and still restore.
+ */
+export interface BackupHistory {
+  rides: Ride[];
+  wellness: Wellness[];
+  files: Array<{ id: string; date: string; status: KeptFile['status']; at: string; why?: string; b64?: string }>;
+}
+
+/** Bytes as base64 text, in pieces so a large file never overflows the call stack. */
+export function toB64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+export function fromB64(b64: string): Uint8Array {
+  const s = atob(b64);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
 
 /**
  * The device's own settings that are the rider's, not the device's, so a full backup carries them: the ride
@@ -23,9 +48,9 @@ export const BACKUP_ALSO = new Set(['coachChat', 'chartChat', 'coachRecheck', 'p
 
 /**
  * Everything the app alone owns, in one JSON file: the same document the sync
- * across devices keeps in Intervals.icu, with the additions above. Activities,
- * wellness and their second-by-second records are left out on purpose: they
- * come back from the data service on the next sync. The service's API key is
+ * across devices keeps in Intervals.icu, with the additions above and, since
+ * Stage 0 (22 Nov 2026), the whole history: activities, wellness and each
+ * activity's original file, which may not come back from the data service. The service's API key is
  * included so a restore is a one-step job; keep the file where you keep
  * passwords. The sync note never carries the keys.
  */
@@ -34,7 +59,12 @@ export async function makeBackup(): Promise<Backup> {
   const extra = (await db.settings.toArray()).filter((x) => BACKUP_ALSO.has(x.key));
   const have = new Set(doc.settings.map((x) => x.key));
   const recordings = (await db.recordings.toArray()).filter((r) => r.status !== 'discarded');
-  return { ...doc, settings: [...doc.settings, ...extra.filter((x) => !have.has(x.key))], recordings };
+  const history: BackupHistory = {
+    rides: await db.rides.toArray(),
+    wellness: await db.wellness.toArray(),
+    files: (await db.files.toArray()).map((f) => ({ id: f.id, date: f.date, status: f.status, at: f.at, ...(f.why ? { why: f.why } : {}), ...(f.bytes ? { b64: toB64(f.bytes) } : {}) })),
+  };
+  return { ...doc, settings: [...doc.settings, ...extra.filter((x) => !have.has(x.key))], recordings, history };
 }
 
 /** What a backup holds, in words, for the question before a restore. */
@@ -43,7 +73,10 @@ export function backupSummary(text: string): { ok: boolean; words: string; expor
     const d = JSON.parse(text) as Omit<Partial<Backup>, 'schema'> & { schema?: number };
     if ((d.schema !== 1 && d.schema !== 2) || !d.profile) return { ok: false, words: 'This is not a backup file this app can read.' };
     const n = (x: unknown[] | undefined, one: string, many: string) => `${x?.length ?? 0} ${(x?.length ?? 0) === 1 ? one : many}`;
-    return { ok: true, exportedAt: d.exportedAt, words: [n(d.planned, 'calendar entry', 'calendar entries'), n(d.workouts, 'workout', 'workouts'), n(d.plans, 'plan', 'plans'), ...(d.recordings?.length ? [n(d.recordings, 'ride recording', 'ride recordings')] : [])].join(', ') };
+    return { ok: true, exportedAt: d.exportedAt, words: [n(d.planned, 'calendar entry', 'calendar entries'), n(d.workouts, 'workout', 'workouts'), n(d.plans, 'plan', 'plans'), ...(d.recordings?.length ? [n(d.recordings, 'ride recording', 'ride recordings')] : []),
+      ...(d.history?.rides.length ? [n(d.history.rides, 'activity', 'activities')] : []),
+      ...(d.history?.wellness.length ? [n(d.history.wellness, 'day of wellness', 'days of wellness')] : []),
+      ...(d.history?.files.some((f) => f.b64) ? [n(d.history.files.filter((f) => f.b64), 'original activity file', 'original activity files')] : [])].join(', ') };
   } catch { return { ok: false, words: 'This is not a backup file this app can read.' }; }
 }
 
@@ -120,6 +153,19 @@ export async function restoreBackup(text: string): Promise<{ workouts: number; p
   if (data.recordings?.length) {
     const here = new Set((await db.recordings.toArray()).map((r) => r.id));
     await db.recordings.bulkPut(data.recordings.filter((r) => !here.has(r.id)));
+  }
+  // The history (Stage 0): activities, wellness and original files are added where this device lacks them; what is here stays.
+  if (data.history) {
+    const h = data.history;
+    const haveR = new Set((await db.rides.toCollection().primaryKeys()) as string[]);
+    await db.rides.bulkPut(h.rides.filter((r) => !haveR.has(r.id)));
+    const haveW = new Set((await db.wellness.toCollection().primaryKeys()) as string[]);
+    await db.wellness.bulkPut(h.wellness.filter((w) => !haveW.has(w.date)));
+    const haveF = new Set((await db.files.where('status').equals('kept').primaryKeys()) as string[]);
+    await db.files.bulkPut(h.files.filter((f) => !haveF.has(f.id)).map((f) => {
+      const bytes = f.b64 ? fromB64(f.b64) : undefined;
+      return { id: f.id, date: f.date, status: f.status, at: f.at, ...(f.why ? { why: f.why } : {}), ...(bytes ? { bytes, size: bytes.byteLength } : {}) };
+    }));
   }
   return { workouts: data.workouts.length, planned: data.planned.length };
 }

@@ -2081,3 +2081,5 @@ body.lv-open { overflow: hidden; }
 .lv-lap.on { background: color-mix(in srgb, var(--accent) 16%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; }
 .lv-lap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lv-smooth { margin: 0 0 4px; }
+/* The Garmin personal key, shown or masked (22 Nov 2026). */
+.garmin-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-3, var(--bg)); overflow-wrap: anywhere; user-select: all; }

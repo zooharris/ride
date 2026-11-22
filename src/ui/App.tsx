@@ -1,3 +1,4 @@
+import { GarminKey } from './screens/GarminKey';
 import { db, loadProfile, saveProfile } from '../data/db';
 import { isUnknown, markMine } from '../engine/known';
 import { maxHrSeen } from './maxHrSeen';
@@ -184,10 +185,11 @@ export function App() {
     case 'rides': screen = <Rides key={route.raw} data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     case 'export': screen = <Export data={data} />; break;
+    case 'garmin-key': screen = <GarminKey />; break;
     case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : root === 'export' ? 'settings' : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key') ? 'settings' : root || 'today';
 
   return (
     <div class="shell">

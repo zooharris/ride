@@ -1,3 +1,4 @@
+import { encodeFitActivity } from '../src/export/activityFiles';
 import type { Page, Route } from '@playwright/test';
 
 /**
@@ -85,6 +86,14 @@ function lapsOf(a: Record<string, unknown>): Array<Record<string, unknown>> {
   return out;
 }
 
+/** A FIT file for a walk, made by the app's own writer. */
+function walkFile(a: Record<string, unknown>): Uint8Array {
+  const secs = Number(a.moving_time ?? 600);
+  const t = Array.from({ length: secs }, (_, i) => i);
+  return encodeFitActivity({ id: String(a.id), date: String(a.start_date_local).slice(0, 10), startTime: String(a.start_date_local), name: String(a.name), type: 'Walk', sport: 'walk', seconds: secs } as never,
+    { time: t, heartrate: t.map((i) => 95 + (i % 20)), distance: t.map((i) => i * 1.4), altitude: t.map((i) => 100 + (i % 50) / 5) });
+}
+
 /** What the stand-in has been sent, for checks. */
 export interface Ledger { events: Array<Record<string, unknown>>; requests: string[] }
 
@@ -137,11 +146,22 @@ export async function standIn(page: Page, kind: RiderKind): Promise<Ledger> {
     // An activity's recording (22 Nov 2026): second by second, made up from its summary, with laps every ten minutes.
     const act = (p: string) => r.activities.find((a) => p.includes(`/activity/${String(a.id)}/`));
     // A ride the player uploaded is read from its recording on this machine, as when Intervals.icu can't give its streams.
-    if (/streams/.test(path)) { const a = act(path); if (a && String(a.id).startsWith('iUP')) return json(route, { error: 'not yet processed' }, 404); return json(route, a ? streamsOf(a) : []); }
+    if (/streams/.test(path)) {
+      const a = act(path);
+      if (a && String(a.id).startsWith('iUP')) return json(route, { error: 'not yet processed' }, 404);
+      // Stage 0 (22 Nov 2026): two activities come back with no detail, as Garmin's are expected to.
+      if (a && (a.name === 'Lunch walk' || a.name === 'Evening walk')) return json(route, []);
+      return json(route, a ? streamsOf(a) : []);
+    }
     if (/\/intervals$/.test(path)) { const a = act(path); return json(route, { icu_intervals: a ? lapsOf(a) : [] }); }
     if (/power-curves/.test(path)) return json(route, { list: [] });
     if (/\/activity\/[^/]+$/.test(path)) return json(route, r.activities.find((a) => path.endsWith(String(a.id))) ?? {});
-    if (/\/file$/.test(path)) return route.fulfill({ status: 404, body: '' });
+    // The original file: one activity has one (the evening walk); the rest have none.
+    if (/\/file$/.test(path)) {
+      const a = act(path);
+      if (a?.name === 'Evening walk') return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(walkFile(a)) });
+      return route.fulfill({ status: 404, body: '' });
+    }
     if (method !== 'GET') return json(route, {});
     return json(route, []);
   });

@@ -25,6 +25,7 @@ import { activeSeason, SEASON_NAME } from '../season';
 import { breathHistory, type BreathHistory } from '../../engine/breathHistory';
 import { applyNumbers } from '../testService';
 import { historyCoverage, loadHistory } from '../../sync/syncService';
+import { keepCounts, keepState, watchKeeping, type KeepState } from '../../sync/keeper';
 import { watchPowerCurves, type CurveProgress } from '../powerCurves';
 import { coachKey, FAILURES_SETTING, KEY_SETTING, MODEL_SETTING, PROVIDER_SETTING } from '../coachConfig';
 import { modelsFor, PROVIDERS, testCoach, type ModelChoice, type Provider } from '../../coach/llm';
@@ -599,10 +600,44 @@ function HistoryLoader() {
         </div>
         {busy && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${prog!.total ? (prog!.done / prog!.total) * 100 : 0}%`} /></div><p class="faint small">Loading… {prog!.done} of {prog!.total} two-month pieces. You can keep using the app.</p></div>}
         {reread && <div style="margin-top:12px"><div class="ws-track"><div class="ws-fill" style={`width:${(reread.done / reread.total) * 100}%`} /></div><p class="faint small">Updating your ride history: {reread.done} of {reread.total}</p></div>}
+        <KeepingLine />
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. If your device is a Garmin: Intervals.icu's Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>
       </div>
     </Fold>
+  );
+}
+
+/**
+ * Stage 0 (22 Nov 2026): how far this device has got keeping the whole history and each activity's original file,
+ * in plain words. The keeping runs by itself after a sync; nothing here needs pressing.
+ */
+function KeepingLine() {
+  const [k, setK] = useState<KeepState>(keepState());
+  useEffect(() => {
+    void keepCounts().then((c) => setK((x) => ({ ...x, ...c })));
+    void getSetting<{ from: string } | null>('historyWhole', null).then((w) => { if (w) setK((x) => ({ ...x, from: x.from ?? w.from })); });
+    return watchKeeping(setK);
+  }, []);
+  const mb = (b: number) => (b >= 1e6 ? `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+  const left = Math.max(0, k.total - k.kept - k.none);
+  const doing = k.phase === 'history' ? 'Finding where your history in Intervals.icu begins, and loading it.'
+    : k.phase === 'waiting' ? 'Intervals.icu asked to slow down; carrying on in a minute.'
+    : k.phase === 'files' ? `Keeping the rest in the background, one at a time${left ? `: ${left} to go` : ''}. You can keep using the app.`
+    : k.phase === 'stopped' ? `Stopped: ${k.error ?? 'something went wrong'} It carries on after the next sync.`
+    : left ? `${left} still to keep; it carries on after the next sync.` : k.total ? 'All kept.' : '';
+  return (
+    <div class="keeping" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <p class="small" style="margin:0 0 4px"><b>Kept on this device</b>, in case Intervals.icu stops passing on Garmin's detail</p>
+      <p class="small muted" style="margin:0">
+        {k.from ? <>Your whole history, back to <b>{fmtDate(k.from, { month: 'long', day: 'numeric', year: 'numeric' })}</b>. </> : 'Your whole history, once it has been found. '}
+        Original files: <b>{k.kept}</b> of <b>{k.total}</b> activities{k.kept ? ` (${mb(k.bytes)})` : ''}{k.none ? `; ${k.none} have no file at Intervals.icu (entered by hand, or shared only by another service)` : ''}.
+      </p>
+      {doing && <p class="faint small" style="margin:4px 0 0">{doing}</p>}
+      {k.total > 0 && <div class="ws-track" style="margin-top:6px"><div class="ws-fill" style={`width:${((k.kept + k.none) / k.total) * 100}%`} /></div>}
+      <p class="faint small" style="margin:6px 0 0">Back up everything now includes all of it, so it is not tied to this browser. A Garmin rider can also ask Garmin for a copy of everything: in Garmin's account settings, under data management, request an export.</p>
+      <p class="small" style="margin:8px 0 0"><a href="#/garmin-key">Test a Garmin personal key</a> <span class="faint">· see what Garmin's own key can read, and keep the key where you can copy it again</span></p>
+    </div>
   );
 }
 

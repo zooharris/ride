@@ -17,7 +17,7 @@ import { workOut } from '../sync/ownService';
 export const UPLOAD_IMPORTS = 'uploadImports';
 
 /** The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. */
-type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & Partial<Pick<Ride, 'startUtc' | 'distanceM'>>;
+type Same = Pick<Ride, 'sport' | 'startTime' | 'seconds' | 'elapsedSeconds'> & Partial<Pick<Ride, 'startUtc' | 'startFromFile' | 'distanceM'>>;
 /**
  * The duplicate rule: the same kind, starting within 2 minutes, lasting within 10% of each other. The start is compared
  * as a moment in time where both say it. Where one gives only a clock time (an older activity, or a file that names no
@@ -32,7 +32,10 @@ export function sameActivity(a: Same, b: Same): boolean {
     // Starting at the very same moment and lasting the same, it is the same recording, whatever kind each copy is now
     // called (the rider may have changed an activity's kind since; seen on a real history, 22 Nov 2026).
     if (d <= 5_000 && within(0.1)) return true;
-    return a.sport === b.sport && d <= 120_000 && within(0.1);
+    if (a.sport === b.sport && d <= 120_000 && within(0.1)) return true;
+    // Both read from the activities' own files: they are different moments, and that settles it. A start from anywhere
+    // else is only a hint (22 Nov 2026: trusting one that was off left second copies on a real history), so the clocks decide.
+    if (a.startFromFile && b.startFromFile) return false;
   }
   if (a.sport !== b.sport) return false;
   const ta = Date.parse(a.startTime), tb = Date.parse(b.startTime);
@@ -57,7 +60,7 @@ export function rideFromParsed(p: ParsedActivity): Ride {
   const hour = Number(p.startLocal.slice(11, 13));
   const part = PART.find(([h]) => hour < h)?.[1] ?? 'Morning';
   return {
-    id: `file-${p.startUnix}-${type}`, date: p.startLocal.slice(0, 10), startTime: p.startLocal, startUtc: new Date(p.startUnix * 1000).toISOString(),
+    id: `file-${p.startUnix}-${type}`, date: p.startLocal.slice(0, 10), startTime: p.startLocal, startUtc: new Date(p.startUnix * 1000).toISOString(), startFromFile: true,
     name: `${part} ${NOUN[sport]}`, type, sport,
     seconds: durationFor(sport, p.movingS, p.elapsedS), movingSeconds: p.movingS, elapsedSeconds: p.elapsedS,
     distanceM: p.distanceM, elevationM: p.ascentM != null ? Math.round(p.ascentM) : undefined, elevationLossM: p.descentM != null ? Math.round(p.descentM) : undefined,
@@ -221,15 +224,18 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
  */
 async function withStarts(rides: Ride[]): Promise<Ride[]> {
   for (const r of rides) {
-    if (r.startUtc) continue;
+    if (r.startFromFile) continue;
+    let exact: string | undefined;
     try {
       const f = await db.files.get(r.id);
-      if (f?.status !== 'kept' || !f.bytes) continue;
-      const parsed = await readActivityFile(r.id, f.bytes);
-      if (!parsed || parsed === NOT_ACTIVITY) continue;
-      r.startUtc = new Date(parsed.startUnix * 1000).toISOString();
-      await db.rides.update(r.id, { startUtc: r.startUtc });
+      if (f?.status === 'kept' && f.bytes) {
+        const parsed = await readActivityFile(r.id, f.bytes);
+        if (parsed && parsed !== NOT_ACTIVITY) exact = new Date(parsed.startUnix * 1000).toISOString();
+      }
     } catch { /* an unreadable file: the clock time still serves */ }
+    if (exact) { r.startUtc = exact; r.startFromFile = true; await db.rides.update(r.id, { startUtc: exact, startFromFile: true }); }
+    // A start that did not come from the activity's own file is not kept: it is not known to be exact.
+    else if (r.startUtc) { r.startUtc = undefined; await db.rides.update(r.id, { startUtc: undefined }); }
   }
   return rides;
 }

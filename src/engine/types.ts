@@ -437,6 +437,8 @@ export interface Ride {
   source?: 'file';
   /** The start as a moment in time (UTC, ISO), when known: what tells one activity from another across time zones. */
   startUtc?: string;
+  /** `startUtc` was read from the activity's own file, so it is exact. One from anywhere else is a hint only. */
+  startFromFile?: boolean;
   /** The share of the time ridden that has power (0 to 1), from the recording: under 1 when the power meter dropped out. */
   powerCoverage?: number;
 }

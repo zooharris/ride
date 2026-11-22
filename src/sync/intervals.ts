@@ -333,7 +333,6 @@ export function toRide(a: IcuActivity): Ride {
     id: String(a.id),
     date: a.start_date_local.slice(0, 10),
     startTime: a.start_date_local,
-    ...(a.start_date && isFinite(Date.parse(a.start_date)) ? { startUtc: new Date(a.start_date).toISOString() } : {}),
     name: a.name ?? 'Activity',
     type: a.type ?? 'Ride',
     sport,

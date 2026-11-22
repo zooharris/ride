@@ -105,10 +105,11 @@ describe('the other numbers put right', () => {
     const cad = T.map((i) => (i < 100 ? 0 : 90)), w = T.map((i) => (i < 150 ? 0 : 200)), spd = T.map((i) => (i < 20 ? 0 : 8));
     expect(ownNumbers({ time: T, cadence: cad, watts: w, velocity: spd }, ctx).coastingSeconds).toBe(130);
   });
-  it('drift from Intervals.icu is kept as it came, and the start is kept as a moment in time', () => {
+  it('drift from Intervals.icu is kept as it came', () => {
     const r = toRide({ id: 'i9', start_date_local: '2026-07-22T08:00:00', start_date: '2026-07-22T12:00:00Z', type: 'Ride', moving_time: 3600, decoupling: -20.2 } as never);
     expect(r.decoupling).toBe(-20.2);
-    expect(r.startUtc).toBe('2026-07-22T12:00:00.000Z');
+    // The data service's own "start as a moment" is not taken: only the activity's file is trusted for that.
+    expect(r.startUtc).toBeUndefined();
   });
 });
 
@@ -116,7 +117,10 @@ describe('one activity across time zones', () => {
   const a = { sport: 'ride' as const, startTime: '2026-05-01T09:00:00', seconds: 3600, distanceM: 30000 };
   it('the same moment in time, whatever the clocks say', () => {
     expect(sameActivity({ ...a, startUtc: '2026-05-01T07:00:00.000Z' }, { ...a, startTime: '2026-05-01T03:00:00', startUtc: '2026-05-01T07:01:00.000Z' })).toBe(true);
-    expect(sameActivity({ ...a, startUtc: '2026-05-01T07:00:00.000Z' }, { ...a, startUtc: '2026-05-01T13:00:00.000Z' })).toBe(false);
+    const exact = { startFromFile: true };
+    expect(sameActivity({ ...a, ...exact, startUtc: '2026-05-01T07:00:00.000Z' }, { ...a, ...exact, startUtc: '2026-05-01T13:00:00.000Z' })).toBe(false);
+    // A start that is not from the file is a hint only: the same clock time, kind and length is still the same activity.
+    expect(sameActivity({ ...a, ...exact, startUtc: '2026-05-01T07:00:00.000Z' }, { ...a, startUtc: '2026-05-01T08:00:00.000Z' })).toBe(true);
   });
   it('only clock times, a whole zone step apart: the same when they last the same and went as far', () => {
     const abroad = { ...a, startTime: '2026-05-01T15:00:20' };
@@ -234,5 +238,25 @@ describe('a second copy of one recording, whatever each is called', () => {
     const { mergeFileCopies } = await import('./importer');
     expect(await mergeFileCopies()).toBe(1);
     expect((await db.rides.toArray()).map((x) => [x.id, x.sport])).toEqual([['i7', 'strength']]);
+  });
+});
+
+describe('a start that came from somewhere other than the file, and is an hour out', () => {
+  const ride = fit({ start: START, records: every(1800, () => ({ w: 180, hr: 130, cad: 85, spd: 8 })), events: [{ t: 0, type: 'start' }] });
+  const here: Ride = { id: 'i8', date: '2026-07-24', startTime: '2026-07-24T09:00:00', startUtc: new Date((START + 3600) * 1000).toISOString(), name: 'Loudoun', type: 'Ride', sport: 'ride', seconds: 1798, elapsedSeconds: 1799 };
+  it('does not stop the file being recognised as already here', async () => {
+    await db.rides.put(here);
+    const r = await importFiles([fileOf('a.fit', ride)], () => {});
+    expect(r).toMatchObject({ added: 0, already: 1 });
+  });
+  it('and a second copy left by that mistake is made one with the original', async () => {
+    await db.rides.put(here);
+    await db.files.put({ id: 'i8', date: '2026-07-24', status: 'kept', bytes: ride, size: ride.byteLength, at: 'x' });
+    await db.rides.put({ ...here, id: 'file-1-Ride', name: 'Afternoon ride', startUtc: new Date(START * 1000).toISOString(), startFromFile: true, source: 'file' });
+    const { mergeFileCopies } = await import('./importer');
+    expect(await mergeFileCopies()).toBe(1);
+    const left = await db.rides.toArray();
+    expect(left.map((x) => x.name)).toEqual(['Loudoun']);
+    expect(left[0]).toMatchObject({ startFromFile: true, startUtc: new Date(START * 1000).toISOString() });
   });
 });

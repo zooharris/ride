@@ -33,6 +33,7 @@ import type { ReadinessDriver } from '../../engine/readiness';
 import { toast } from '../Toast';
 import { Empty, PageHead } from '../PageHead';
 import { RideNotices } from '../RideNotices';
+import { FtpSourceChoice } from '../FtpSource';
 import { Icon } from '../icons';
 import { ChangeSheet } from '../ChangeSheet';
 import { PictureStrip } from '../ExercisePictures';
@@ -186,6 +187,7 @@ export function Today({ data }: { data: AppData }) {
       </PageHead>
 
       <RideNotices />
+      <FtpSourceChoice mode="notice" />
 
       <WeekStrip week={weekSummary(weekStart(date), data.planned, data.rides, data.mine)} />
 

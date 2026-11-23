@@ -75,7 +75,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
     ['Average temperature', tempF],
     ...weather,
     ...energy,
-    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, 'The FTP on record the day you rode; TSS and intensity are relative to it'],
+    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, `${r.ftpFrom === 'device' ? 'As your device had it set the day you rode' : r.ftpFrom === 'service' ? 'As Intervals.icu had it on record the day you rode' : 'The FTP on record the day you rode'}; TSS and intensity are relative to it${r.ftpDevice && r.ftpService && r.ftpDevice !== r.ftpService ? `. Your device had ${r.ftpDevice} W and Intervals.icu ${r.ftpService} W; Settings, History is where you choose between them` : ''}`],
     ...tail,
   ];
   if (r.sport === 'walk') return [

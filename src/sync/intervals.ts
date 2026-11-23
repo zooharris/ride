@@ -358,6 +358,7 @@ export function toRide(a: IcuActivity): Ride {
     sweetSpotSeconds: sweetSpotSeconds(a.icu_zone_times),
     hrZoneSeconds: a.icu_hr_zone_times,
     ftpAtRide: a.icu_ftp,
+    ...(a.icu_ftp ? { ftpService: a.icu_ftp, ftpFrom: 'service' as const } : {}),
     eftp: a.icu_eftp,
     pairedEventId: a.paired_event_id,
     description: a.description ?? undefined,

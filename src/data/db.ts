@@ -101,7 +101,7 @@ export interface SyncState {
 export interface KeptFile { id: string; date: string; status: 'kept' | 'none'; bytes?: Uint8Array; size?: number; at: string; why?: string }
 
 /** Antogo's numbers for one activity, the thresholds they used, and what the activity came with before them. */
-export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; /** 2 when `came` was taken during the hour on 22 Nov 2026 when Intervals.icu's drift was wrongly turned over. */ cameV?: number; at: string }
+export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; /** The FTP of the activity's day as each source has it (22 Nov 2026), and which one `ftp` is. */ deviceFtp?: number; serviceFtp?: number; ftpFrom?: 'device' | 'service'; /** 2 when `came` was taken during the hour on 22 Nov 2026 when Intervals.icu's drift was wrongly turned over. */ cameV?: number; at: string }
 
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;

@@ -28,6 +28,9 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   test.skip(!['phone-night', 'tablet-day', 'laptop-day'].includes(info.project.name), 'ridden on three sizes only');
   test.setTimeout(240_000);
   page.on('dialog', (d) => void d.accept());
+  // The page's clock starts at midday, so the ride run forward below never crosses midnight whenever the journey runs (23 Nov 2026).
+  const noon = new Date(); noon.setHours(12, 0, 0, 0);
+  await page.clock.install({ time: noon });
   const s = await setUp(page, 'power');
   await makePlan(page);
   await simulatedTrainer(page);
@@ -44,7 +47,6 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   const rideName = (await page.locator('.pl-workout h1').innerText()).trim();
   const rideSeconds = await page.locator('.pl-figures .pl-fig').first().innerText().then((t) => t.split(':').map(Number).reduce((a, b) => a * 60 + b, 0));
   // From here the page's clock is ours to run forward.
-  await page.clock.install();
   await page.getByRole('button', { name: 'Start ride' }).click();
   await page.clock.runFor(3 * 60_000);
   await looksRight(s, info, 'Riding');

@@ -397,6 +397,12 @@ export interface Ride {
   sweetSpotSeconds?: number;
   hrZoneSeconds?: number[];
   ftpAtRide?: number;
+  /** The FTP set on the device the day of the activity, from its file, when the file says. */
+  ftpDevice?: number;
+  /** The FTP the data service had on record for the activity's day. */
+  ftpService?: number;
+  /** Which of the two `ftpAtRide` is, where it is one of them. */
+  ftpFrom?: 'device' | 'service';
   eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one
   pairedEventId?: number;
   /** Left out of training load by the rider: `tss` is 0 and this is what it would have been. */

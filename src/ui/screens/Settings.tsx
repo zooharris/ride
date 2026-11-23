@@ -9,6 +9,7 @@ import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
+import { FtpSourceChoice } from '../FtpSource';
 import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
 import { importBatches, mergeFileCopies, undoImport, watchImport, type ImportBatch } from '../../import/importer';
 import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
@@ -611,6 +612,7 @@ function HistoryLoader() {
           <SecondCopies />
           <ImportsList />
         </div>
+        <FtpSourceChoice mode="setting" />
         <KeepingLine />
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. If your device is a Garmin: Intervals.icu's Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>

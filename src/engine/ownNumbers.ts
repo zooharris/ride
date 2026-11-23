@@ -13,13 +13,17 @@ import { powerZone } from './zones';
  * normalized power per heartbeat; work as power times time. Pauses (gaps of more than 5 seconds) are not counted;
  * coasting (zero power) is, as a ride's real cost.
  */
-/**
+/*
  * 2 (22 Nov 2026, after the first check against a real history and two of its files): pauses are the device's own where the
  * file records them; energy burned is the device's figure when it gave one; coasting is moving without driving the
  * bike (no cadence or no power); max heart rate must be held for three seconds; and how much of the ride has power is
  * kept, so a ride whose power meter dropped out is not scored as if the part recorded were the whole.
  */
-export const OWN_VERSION = 2;
+/**
+ * 3 (22 Nov 2026): the FTP of the day is kept from both places that have one (the device's own setting in the file, and
+ * the data service's record), and the rider chooses which scores their rides.
+ */
+export const OWN_VERSION = 3;
 
 /** The numbers Antogo works out. Only those the recording can give are present. */
 export type OwnNumbers = Partial<Pick<Ride,

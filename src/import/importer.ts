@@ -4,8 +4,7 @@ import { durationFor, sportOf, uploadActivityFile } from '../sync/intervals';
 import { NOT_ACTIVITY, readActivityFile, type ParsedActivity } from './readers';
 import { zipEntries, zipRead, type ZipEntry } from './zip';
 import { fillDays, wellnessFile, wellnessFromJson } from './wellnessExport';
-import { withOwn } from '../engine/ownNumbers';
-import { workOut } from '../sync/ownService';
+import { applyRec, workOut } from '../sync/ownService';
 
 /**
  * Bringing activities and wellness in from files (Stage 1, 22 Nov 2026): one file, many, a folder, or a whole-account
@@ -68,7 +67,7 @@ export function rideFromParsed(p: ParsedActivity): Ride {
     name: `${part} ${NOUN[sport]}`, type, sport,
     seconds: durationFor(sport, p.movingS, p.elapsedS), movingSeconds: p.movingS, elapsedSeconds: p.elapsedS,
     distanceM: p.distanceM, elevationM: p.ascentM != null ? Math.round(p.ascentM) : undefined, elevationLossM: p.descentM != null ? Math.round(p.descentM) : undefined,
-    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file', ...(p.ftp ? { ftpAtRide: p.ftp } : {}),
+    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file', ...(p.ftp ? { ftpAtRide: p.ftp, ftpDevice: p.ftp, ftpFrom: 'device' as const } : {}),
   };
 }
 
@@ -213,8 +212,8 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
   }
   let out = ride;
   if (p) {
-    const rec = await workOut(ride, p, parsed.streams ? { ...parsed.streams, id: ride.id } : undefined);
-    if (rec) out = withOwn(ride, rec.nums);
+    const rec = await workOut(ride, p, parsed.streams ? { streams: { ...parsed.streams, id: ride.id }, ftp: parsed.ftp } : undefined);
+    if (rec) out = applyRec(ride, rec);
     const { scoreActivity } = await import('../sync/syncService');
     scoreActivity(out, p);
   }

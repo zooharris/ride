@@ -1,10 +1,8 @@
-import { db, type OwnRecord } from '../data/db';
+import { db, getSetting, type OwnRecord } from '../data/db';
 import { ownNumbers, OWN_VERSION, withOwn, type OwnNumbers } from '../engine/ownNumbers';
 import type { Profile, Ride } from '../engine/types';
 import { footHrZones, footLthr, rideHrZones, ridePowerZones } from '../engine/zones';
-import { readFitRecording } from '../player/fitRecording';
-import { maybeGunzip } from '../player/fitRead';
-import { isFit, NOT_ACTIVITY, readActivityFile } from '../import/readers';
+import { NOT_ACTIVITY, readActivityFile } from '../import/readers';
 import type { StreamSet } from '../data/db';
 
 /**
@@ -34,37 +32,69 @@ export function cameWith(r: Ride): OwnNumbers {
   return out as OwnNumbers;
 }
 
-/** An activity's recording from its kept file, any format. */
-export async function recordingOf(id: string): Promise<StreamSet | undefined> {
-  const f = await db.files.get(id);
-  if (f?.status !== 'kept' || !f.bytes) return undefined;
-  const bytes = await maybeGunzip(f.bytes);
-  if (isFit(bytes)) return readFitRecording(bytes, id);
-  const parsed = await readActivityFile(id, bytes);
-  return parsed && parsed !== NOT_ACTIVITY ? parsed.streams : undefined;
+/** The setting: which FTP of the day scores the rider's rides, where both the device and the data service have one. */
+export const FTP_SOURCE = 'ftpSource';
+export type FtpSource = 'device' | 'service';
+
+/**
+ * The FTP of an activity's day, from the two places that may have it. The rider's choice decides where both do; with
+ * no choice made, the data service's stands where there is one (as it always has), and the device's otherwise.
+ */
+export function chooseFtp(device: number | undefined, service: number | undefined, source: FtpSource | undefined): { ftp?: number; from?: FtpSource } {
+  const first: FtpSource = source ?? 'service';
+  const order: FtpSource[] = first === 'device' ? ['device', 'service'] : ['service', 'device'];
+  for (const k of order) { const v = k === 'device' ? device : service; if (v) return { ftp: v, from: k }; }
+  return {};
 }
 
+/** An activity's recording from its kept file, any format, and the FTP the device had set, when the file says. */
+export async function recordingAndFtp(id: string): Promise<{ streams?: StreamSet; ftp?: number }> {
+  const f = await db.files.get(id);
+  if (f?.status !== 'kept' || !f.bytes) return {};
+  const parsed = await readActivityFile(id, f.bytes);
+  return parsed && parsed !== NOT_ACTIVITY ? { streams: parsed.streams ? { ...parsed.streams, id } : undefined, ftp: parsed.ftp } : {};
+}
+export async function recordingOf(id: string): Promise<StreamSet | undefined> { return (await recordingAndFtp(id)).streams; }
+
+/** The data service's FTP for an activity's day: what it carries as such, or what it came with before the two were told apart. */
+const serviceFtpOf = (r: Ride, before?: OwnRecord) => r.ftpService ?? before?.serviceFtp ?? (r.source !== 'file' && r.ftpFrom !== 'device' ? r.ftpAtRide : undefined);
+
 /** Work out one activity's numbers from its recording, and keep them. Undefined when it has no recording. */
-export async function workOut(r: Ride, p: Profile, streams?: StreamSet): Promise<OwnRecord | undefined> {
-  const s = streams ?? (await recordingOf(r.id));
+export async function workOut(r: Ride, p: Profile, given?: { streams?: StreamSet; ftp?: number }, source?: FtpSource): Promise<OwnRecord | undefined> {
+  const got = given?.streams ? given : await recordingAndFtp(r.id);
+  const s = got.streams;
   if (!s || s.time.length < 2) return undefined;
-  const t = thresholdsFor(r, p);
   const before = await db.own.get(r.id);
+  const src = source ?? (await getSetting<FtpSource | undefined>(FTP_SOURCE, undefined));
+  const deviceFtp = got.ftp ?? before?.deviceFtp ?? r.ftpDevice, serviceFtp = serviceFtpOf(r, before);
+  const chosen = chooseFtp(deviceFtp, serviceFtp, src);
+  const t = thresholdsFor(chosen.ftp ? { ...r, ftpAtRide: chosen.ftp } : r, p);
   const came = before?.came ?? (r.ownNumbers ? undefined : cameWith(r));
   // The device's own energy figure, as the activity came (an earlier working-out may have laid Antogo's over it).
   const deviceKcal = (before?.came ?? came)?.calories ?? (r.ownNumbers ? undefined : r.calories);
   const nums = ownNumbers(s, { sport: r.sport, ftp: t.ftp, lthr: t.lthr, powerZones: t.powerZones, hrZones: t.hrZones, has: { calories: deviceKcal, carbsUsedG: before?.nums.carbsEstimated ? undefined : r.carbsUsedG, elevationM: r.elevationM, elevationLossM: r.elevationLossM } });
   if (deviceKcal != null) nums.calories = deviceKcal;
   const cameV = before?.came ? before.cameV : undefined;
-  const rec: OwnRecord = { id: r.id, v: OWN_VERSION, ftp: t.ftp, lthr: t.lthr, nums, ...(came ? { came } : {}), ...(cameV ? { cameV } : {}), at: new Date().toISOString() };
+  const rec: OwnRecord = { id: r.id, v: OWN_VERSION, ftp: t.ftp, lthr: t.lthr, nums, ...(came ? { came } : {}), ...(cameV ? { cameV } : {}),
+    ...(deviceFtp ? { deviceFtp } : {}), ...(serviceFtp ? { serviceFtp } : {}), ...(chosen.from ? { ftpFrom: chosen.from } : {}), at: new Date().toISOString() };
   await db.own.put(rec);
   return rec;
 }
 
+/** An activity with Antogo's numbers and the FTP of its day laid over it, as the record has them. */
+export function applyRec(r: Ride, rec: OwnRecord): Ride {
+  const next = withOwn(r, rec.nums);
+  if (rec.deviceFtp) next.ftpDevice = rec.deviceFtp;
+  if (rec.serviceFtp) next.ftpService = rec.serviceFtp;
+  if (rec.ftpFrom && rec.ftp) { next.ftpAtRide = rec.ftp; next.ftpFrom = rec.ftpFrom; }
+  return next;
+}
+
 /** Whether a kept record still holds for the thresholds the activity would be scored with now. */
-export function current(rec: OwnRecord | undefined, r: Ride, p: Profile): boolean {
+export function current(rec: OwnRecord | undefined, r: Ride, p: Profile, source?: FtpSource): boolean {
   if (!rec || rec.v !== OWN_VERSION) return false;
-  const t = thresholdsFor(r, p);
+  const chosen = chooseFtp(rec.deviceFtp, serviceFtpOf(r, rec), source);
+  const t = thresholdsFor(chosen.ftp ? { ...r, ftpAtRide: chosen.ftp } : r, p);
   return rec.ftp === t.ftp && rec.lthr === t.lthr;
 }
 
@@ -80,8 +110,9 @@ export async function applyOwnTo(rides: Ride[]): Promise<Ride[]> {
     const rec = recs.get(r.id);
     if (!rec) { out.push(r); continue; }
     // The data service's figures, fresh, are what the activity came with.
-    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r), cameV: 3 });
-    out.push(withOwn(r, rec.nums));
+    // What the data service says now is remembered: its figures, and the FTP it has for the day (which it may have changed).
+    if (!r.ownNumbers) await db.own.update(r.id, { came: cameWith(r), cameV: 3, ...(r.ftpService ? { serviceFtp: r.ftpService } : {}) });
+    out.push(applyRec(r, r.ftpService ? { ...rec, serviceFtp: r.ftpService } : rec));
   }
   return out;
 }
@@ -104,9 +135,10 @@ export function changeOver(score: (r: Ride, p: Profile) => void, onChanged: () =
   running = (async () => {
     const p = await db.profile.get('me');
     if (!p) return 0;
+    const source = await getSetting<FtpSource | undefined>(FTP_SOURCE, undefined);
     const kept = new Set((await db.files.where('status').equals('kept').primaryKeys()) as string[]);
     const recs = new Map((await db.own.toArray()).map((x) => [x.id, x]));
-    const todo = (await db.rides.toArray()).filter((r) => kept.has(r.id) && (!r.ownNumbers || !current(recs.get(r.id), r, p)))
+    const todo = (await db.rides.toArray()).filter((r) => kept.has(r.id) && (!r.ownNumbers || !current(recs.get(r.id), r, p, source)))
       .sort((a, b) => b.date.localeCompare(a.date));
     emit({ running: true, done: 0, total: todo.length });
     let changed = 0;
@@ -114,9 +146,9 @@ export function changeOver(score: (r: Ride, p: Profile) => void, onChanged: () =
       try {
         // Read again at the moment of writing: a sync or the rider may have changed the activity since the list was made.
         const r = (await db.rides.get(todo[i].id)) ?? todo[i];
-        const rec = current(recs.get(r.id), r, p) ? recs.get(r.id) : await workOut(r, p);
+        const rec = current(recs.get(r.id), r, p, source) ? recs.get(r.id) : await workOut(r, p, undefined, source);
         if (rec) {
-          const next = withOwn((await db.rides.get(r.id)) ?? r, rec.nums);
+          const next = applyRec((await db.rides.get(r.id)) ?? r, rec);
           score(next, p);
           await db.rides.put(next);
           changed++;
@@ -138,7 +170,7 @@ export async function changeOne(id: string, score: (r: Ride, p: Profile) => void
   if (!r || !p) return false;
   const rec = await workOut(r, p);
   if (!rec) return false;
-  const next = withOwn(r, rec.nums);
+  const next = applyRec(r, rec);
   score(next, p);
   await db.rides.put(next);
   onChanged();

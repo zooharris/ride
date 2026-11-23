@@ -90,11 +90,11 @@ describe('the other numbers put right', () => {
   it('the device\'s energy figure survives being worked out twice', async () => {
     const r: Ride = { id: 'i1', date: '2026-07-24', startTime: '2026-07-24T09:00:00', name: 'x', type: 'Ride', sport: 'ride', seconds: 600, calories: 274 };
     const s = { id: 'i1', time: T, watts: T.map(() => 200) };
-    const one = await workOut(r, profile, s);
+    const one = await workOut(r, profile, { streams: s });
     expect(one!.nums.calories).toBe(274);
     // As the first build left it: Antogo's work figure laid over the device's, the device's remembered.
     await db.own.update('i1', { nums: { ...one!.nums, calories: 120 } });
-    const two = await workOut({ ...r, calories: 120, ownNumbers: true }, profile, s);
+    const two = await workOut({ ...r, calories: 120, ownNumbers: true }, profile, { streams: s });
     expect(two!.nums.calories).toBe(274);
   });
   it('max heart rate must be held for three seconds', () => {
@@ -269,5 +269,53 @@ describe('lasting the same, like with like', () => {
     expect(sameActivity(here, file)).toBe(true);
     expect(sameActivity(file, here)).toBe(true);
     expect(sameActivity(here, { ...file, seconds: 4000, movingSeconds: 4000, elapsedSeconds: 4100 })).toBe(false);
+  });
+});
+
+describe('which FTP of the day scores a ride', () => {
+  const bytes = fit({ start: START, records: every(1800, () => ({ w: 200, hr: 130, cad: 85, spd: 8 })), events: [{ t: 0, type: 'start' }], ftp: 244 });
+  const fromService = (): Ride => ({ id: 'i5', date: '2026-07-24', startTime: '2026-07-24T09:00:00', name: 'Loudoun', type: 'Ride', sport: 'ride', seconds: 1800, elapsedSeconds: 1800, ftpAtRide: 222, ftpService: 222, ftpFrom: 'service' });
+  const setUp = async () => {
+    await db.rides.put(fromService());
+    await db.files.put({ id: 'i5', date: '2026-07-24', status: 'kept', bytes, size: bytes.byteLength, at: 'x' });
+  };
+  const run = async () => { const { changeOver } = await import('../sync/ownService'); await changeOver(scoreActivity, () => {}); return (await db.rides.get('i5'))!; };
+  it('with no choice made, the data service\'s stands, and both are kept with the ride', async () => {
+    const { chooseFtp } = await import('../sync/ownService');
+    expect(chooseFtp(244, 222, undefined)).toEqual({ ftp: 222, from: 'service' });
+    expect(chooseFtp(244, undefined, undefined)).toEqual({ ftp: 244, from: 'device' });
+    expect(chooseFtp(undefined, undefined, 'device')).toEqual({});
+    await setUp();
+    const r = await run();
+    expect(r).toMatchObject({ ftpAtRide: 222, ftpFrom: 'service', ftpDevice: 244, ftpService: 222, intensityFactor: 0.9 });
+  });
+  it('the rider chooses the device\'s: the ride is worked out again with it, and choosing back restores it', async () => {
+    const { setSetting } = await import('../data/db');
+    const { FTP_SOURCE } = await import('../sync/ownService');
+    await setUp();
+    const before = await run();
+    await setSetting(FTP_SOURCE, 'device');
+    const r = await run();
+    expect(r).toMatchObject({ ftpAtRide: 244, ftpFrom: 'device', ftpDevice: 244, ftpService: 222, intensityFactor: 0.82 });
+    expect(r.tss!).toBeLessThan(before.tss!);
+    await setSetting(FTP_SOURCE, 'service');
+    expect(await run()).toMatchObject({ ftpAtRide: 222, ftpFrom: 'service', tss: before.tss });
+  });
+  it('the next sync brings the data service\'s copy again, and the rider\'s choice still stands', async () => {
+    const { setSetting } = await import('../data/db');
+    const { FTP_SOURCE, applyOwnTo } = await import('../sync/ownService');
+    await setUp();
+    await setSetting(FTP_SOURCE, 'device');
+    await run();
+    const [r] = await applyOwnTo([fromService()]);
+    expect(r).toMatchObject({ ftpAtRide: 244, ftpFrom: 'device', ftpService: 222 });
+  });
+  it('says so when the two differ by more than a twentieth on recent rides, and not when they agree', async () => {
+    const { ftpStats } = await import('../ui/FtpSource');
+    await setUp();
+    await run();
+    expect(await ftpStats()).toEqual({ n: 1, device: 244, service: 222, differ: true });
+    await db.own.update('i5', { serviceFtp: 240 });
+    expect((await ftpStats())!.differ).toBe(false);
   });
 });

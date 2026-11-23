@@ -8,7 +8,7 @@ import { go, looksRight, makePlan, setUp, simulatedTrainer } from './rider';
 /**
  * Open the first session on the calendar that is a ride for the trainer. Which session comes first depends on the day
  * of the week the journey runs (on a Monday the plan opens with a mobility session), so the first link is not assumed
- * to be a ride (23 Nov 2026).
+ * to be a ride, nor the first ride to be an ordinary one (23 Nov 2026).
  */
 async function openFirstRide(page: Page, notDone: boolean): Promise<void> {
   const links = page.locator('a[href*="#/workout/"]');
@@ -18,7 +18,14 @@ async function openFirstRide(page: Page, notDone: boolean): Promise<void> {
   for (const h of hrefs.slice(0, 12)) {
     await go(page, h);
     const ride = page.getByRole('link', { name: 'Ride indoors on the trainer' }).first();
-    if (await ride.isVisible().catch(() => false)) return;
+    // Give the session's page time to appear: on a busy machine a ride's page that was slow to draw was passed over
+    // for a later session, which could be one the simulated trainer is not offered for (23 Nov 2026).
+    await ride.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
+    if (!(await ride.isVisible().catch(() => false))) continue;
+    // A test (the ramp test, say) is ridden differently and asks for a power meter by name: these journeys ride an
+    // ordinary session, so a test is passed over. On a Monday the plan's first ride is its test (23 Nov 2026).
+    if (/\btest\b/i.test(await page.getByRole('heading', { level: 1 }).first().innerText().catch(() => ''))) continue;
+    return;
   }
   throw new Error('No ride for the trainer among the first sessions on the calendar.');
 }

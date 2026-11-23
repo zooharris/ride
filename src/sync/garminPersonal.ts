@@ -18,10 +18,14 @@ export const GARMIN_KEY_SETTING = 'garminPersonalKey';
 export type StepResult = { name: string; ok: boolean; words: string; detail?: string };
 
 type Fetch = typeof fetch;
+/** Who is asking: a web page in a browser, or the installed app's own side. */
+export type From = 'page' | 'app';
 
 /** What a failed request means, in plain words. */
-export function failure(e: unknown, status?: number, body?: string): string {
-  if (status == null) return 'Garmin did not answer a request from a web page. Most likely Garmin does not allow its key to be used from a browser at all (the browser blocks the answer), so it could be used only from an installed app.';
+export function failure(e: unknown, status?: number, body?: string, from: From = 'page'): string {
+  if (status == null) return from === 'app'
+    ? `Garmin could not be reached. Check this computer's internet connection and try again.${e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : ''}`
+    : 'Garmin did not answer a request from a web page. Garmin does not allow its key to be used from a browser (the browser blocks the answer), so it can be used only from the installed app.';
   if (status === 401) return `Garmin refused the key (401). Check that it was copied whole and has not expired or been deleted.${body ? ` Garmin said: ${body.slice(0, 200)}` : ''}`;
   if (status === 403) return `Garmin refused this request (403).${body ? ` Garmin said: ${body.slice(0, 200)}` : ''}`;
   if (status === 429) return 'Garmin asked to slow down (429). Try again later.';
@@ -68,7 +72,7 @@ const count = (x: unknown): number => (Array.isArray(x) ? x.length : x && typeof
  * Run the test, step by step, reporting each as it finishes. Stops at the first step a web page cannot do, since the
  * rest would fail the same way. Never sends the key anywhere but Garmin; the token is kept only for this run.
  */
-export async function runGarminTest(key: string, onStep: (s: StepResult) => void, f: Fetch = fetch, now = new Date()): Promise<StepResult[]> {
+export async function runGarminTest(key: string, onStep: (s: StepResult) => void, f: Fetch = fetch, now = new Date(), from: From = 'page'): Promise<StepResult[]> {
   const out: StepResult[] = [];
   const step = (s: StepResult) => { out.push(s); onStep(s); return s; };
   // 1. The key for a token.
@@ -76,22 +80,22 @@ export async function runGarminTest(key: string, onStep: (s: StepResult) => void
   try {
     const res = await f(GARMIN_BASE + TOKEN_PATH, { method: 'POST', headers: { Accept: '*/*', Authorization: `ApiKey ${key.trim()}` } });
     const body = await res.text();
-    if (!res.ok) { step({ name: 'The key accepted', ok: false, words: failure(null, res.status, body) }); return out; }
+    if (!res.ok) { step({ name: 'The key accepted', ok: false, words: failure(null, res.status, body, from) }); return out; }
     token = body.trim().replace(/^"|"$/g, '');
     const exp = tokenExpiry(token);
-    step({ name: 'The key accepted', ok: true, words: `Garmin exchanged the key for a token${exp ? `, good until ${new Date(exp).toLocaleString()}` : ''}. A web page can reach Garmin with it.` });
+    step({ name: 'The key accepted', ok: true, words: `Garmin exchanged the key for a token${exp ? `, good until ${new Date(exp).toLocaleString()}` : ''}.${from === 'app' ? '' : ' A web page can reach Garmin with it.'}` });
   } catch (e) {
-    step({ name: 'The key accepted', ok: false, words: failure(e) });
+    step({ name: 'The key accepted', ok: false, words: failure(e, undefined, undefined, from) });
     return out;
   }
   const get = async (path: string): Promise<{ ok: true; json: unknown; bytes?: Uint8Array } | { ok: false; words: string }> => {
     try {
       const res = await f(GARMIN_BASE + path, { headers: { Accept: '*/*', Authorization: `Bearer ${token}` } });
-      if (!res.ok) return { ok: false, words: failure(null, res.status, await res.text().catch(() => '')) };
+      if (!res.ok) return { ok: false, words: failure(null, res.status, await res.text().catch(() => ''), from) };
       const type = res.headers.get('content-type') ?? '';
       if (/json/.test(type)) return { ok: true, json: await res.json() };
       return { ok: true, json: null, bytes: new Uint8Array(await res.arrayBuffer()) };
-    } catch (e) { return { ok: false, words: failure(e) }; }
+    } catch (e) { return { ok: false, words: failure(e, undefined, undefined, from) }; }
   };
   // 2. Who: the profile's settings.
   const prof = await get('/userprofile-service/userprofile/settings');
@@ -147,6 +151,6 @@ export async function runGarminTest(key: string, onStep: (s: StepResult) => void
 }
 
 /** The results as plain text, to paste into a message. Never includes the key or the token. */
-export function resultsText(steps: StepResult[], at = new Date()): string {
-  return [`Garmin personal key test, ${at.toLocaleString()}`, ...steps.map((s) => `${s.ok ? 'OK' : 'NO'} · ${s.name}: ${s.words}${s.detail ? ` (${s.detail})` : ''}`)].join('\n');
+export function resultsText(steps: StepResult[], at = new Date(), where = ''): string {
+  return [`Garmin personal key test${where ? `, ${where}` : ''}, ${at.toLocaleString()}`, ...steps.map((s) => `${s.ok ? 'OK' : 'NO'} · ${s.name}: ${s.words}${s.detail ? ` (${s.detail})` : ''}`)].join('\n');
 }

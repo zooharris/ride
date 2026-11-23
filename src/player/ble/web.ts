@@ -10,9 +10,12 @@ import {
   parseHeartRate, parseIndoorBikeData, parsePowerRange, WHEEL_M, type ControlResponse, type Range,
 } from './parse';
 import type { Reading, SensorKind, SensorStatus } from '../sources';
+import { inApp } from '../../shell';
 import { BREATH_BULK, BREATH_CMD, BREATH_DATA, BREATH_NAMES, BREATH_SERVICE, breathTimestamp, motionClock, parseBreathPacket, parseStrapReply, STRAP, tagOf, type StrapCommand, type StrapReply } from './breath';
 
-export const bluetoothAvailable = (): boolean => typeof navigator !== 'undefined' && 'bluetooth' in navigator && !!navigator.bluetooth;
+// The installed app has no list of its own for choosing a device yet (that is its next step), so until it does it
+// says plainly that it can't reach Bluetooth rather than connect to a device nobody chose.
+export const bluetoothAvailable = (): boolean => !inApp() && typeof navigator !== 'undefined' && 'bluetooth' in navigator && !!navigator.bluetooth;
 
 /** Remembering a device across visits needs getDevices(), which not every Chrome has switched on. */
 export const canRemember = (): boolean => bluetoothAvailable() && typeof navigator.bluetooth.getDevices === 'function';

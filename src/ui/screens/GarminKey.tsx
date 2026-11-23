@@ -4,11 +4,17 @@ import { GARMIN_KEY_SETTING, resultsText, runGarminTest, type SavedGarminKey, ty
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { fmtDate } from '../derived';
+import { appKey, garminFetch, inApp, MAC_DOWNLOAD } from '../../shell';
+import { APP_SHORT_NAME } from '../../appName';
 
 /**
  * Test a Garmin personal key (22 Nov 2026, Stage 0). Garmin shows a key once, when it is made, so the page keeps it
  * on this device where it can be shown and copied again later: in the app's own storage, in Back up everything
  * like the Intervals.icu key, never in the note to other devices, and sent nowhere but Garmin.
+ *
+ * In the installed app (23 Nov 2026) the key is kept by the app's own side, sealed by the computer's password store,
+ * and never in the app's data or a backup; and the test asks Garmin through the app's own side, which Garmin answers.
+ * A key that arrived in a restored backup from a browser is moved into the password store the first time this page opens.
  */
 export function GarminKey() {
   const [saved, setSaved] = useState<SavedGarminKey | null | undefined>(undefined);
@@ -17,31 +23,51 @@ export function GarminKey() {
   const [shown, setShown] = useState(false);
   const [steps, setSteps] = useState<StepResult[]>([]);
   const [running, setRunning] = useState(false);
-  useEffect(() => { void getSetting<SavedGarminKey | null>(GARMIN_KEY_SETTING, null).then(setSaved); }, []);
+  const app = inApp();
+  const [canSeal, setCanSeal] = useState(true);
+  useEffect(() => {
+    void (async () => {
+      const inData = await getSetting<SavedGarminKey | null>(GARMIN_KEY_SETTING, null);
+      if (!app) { setSaved(inData); return; }
+      const can = await appKey.can().catch(() => false);
+      setCanSeal(can);
+      let k = await appKey.read().catch(() => null);
+      if (!k && inData && can) {
+        k = await appKey.save(inData.key, inData.expires).catch(() => null);
+        if (k) await db.settings.delete(GARMIN_KEY_SETTING);
+      }
+      setSaved(k);
+    })();
+  }, []);
 
   const save = async () => {
     const key = typed.trim();
     if (!key) return;
-    const k: SavedGarminKey = { key, savedAt: new Date().toISOString(), ...(expires ? { expires } : {}) };
-    await setSetting(GARMIN_KEY_SETTING, k);
+    let k: SavedGarminKey = { key, savedAt: new Date().toISOString(), ...(expires ? { expires } : {}) };
+    if (app) {
+      try { k = await appKey.save(key, expires || undefined); }
+      catch { toast({ ok: false, text: "The key could not be saved: this computer's password store did not accept it." }); return; }
+    } else await setSetting(GARMIN_KEY_SETTING, k);
     setSaved(k); setTyped(''); setExpires('');
-    toast({ ok: true, text: 'Key saved on this device. You can show and copy it here any time.' });
+    toast({ ok: true, text: app ? "Key saved in this computer's password store. You can show and copy it here any time." : 'Key saved on this device. You can show and copy it here any time.' });
   };
   const copy = async (text: string, what: string) => {
     // A browser that never answers (a permission it is still asking about) falls back to a box to copy from.
     const wrote = await Promise.race([navigator.clipboard?.writeText(text).then(() => true, () => false) ?? Promise.resolve(false), new Promise<boolean>((r) => setTimeout(() => r(false), 2000))]);
     if (wrote) toast({ ok: true, text: `${what} copied.` });
+    else if (app) toast({ ok: false, text: `The ${what.toLowerCase()} could not be copied. Click in the app's window and try again.` });
     else window.prompt(`Copy the ${what.toLowerCase()}:`, text);
   };
   const forget = async () => {
     if (!confirm('Forget the Garmin key on this device?\n\nIt is removed from this app. Garmin will not show it again: unless you have it somewhere else, you would have to make a new one in Garmin Connect.')) return;
+    if (app) await appKey.forget();
     await db.settings.delete(GARMIN_KEY_SETTING);
     setSaved(null); setShown(false); setSteps([]);
   };
   const run = async () => {
     if (!saved) return;
     setRunning(true); setSteps([]);
-    try { await runGarminTest(saved.key, (s) => setSteps((x) => [...x, s])); }
+    try { await runGarminTest(saved.key, (s) => setSteps((x) => [...x, s]), app ? garminFetch : fetch, new Date(), app ? 'app' : 'page'); }
     finally { setRunning(false); }
   };
 
@@ -50,7 +76,11 @@ export function GarminKey() {
   return (
     <div>
       <PageHead back={{ label: 'Settings', href: '#/settings' }} title="Test a Garmin personal key" />
-      <p class="prose" style="margin-top:0">Garmin now lets anyone make a free personal key in Garmin Connect, which reads your own activities and health data (it can't send workouts to a device). This page finds out what it actually returns, how far back it reaches, and whether a web page may use it at all. Nothing in the app uses the key yet.</p>
+      <p class="prose" style="margin-top:0">Garmin now lets anyone make a free personal key in Garmin Connect, which reads your own activities and health data (it can't send workouts to a device). {app
+        ? <>This page finds out what it actually returns and how far back it reaches. Nothing else in the app uses the key yet.</>
+        : <>This page finds out what it actually returns, how far back it reaches, and whether a web page may use it at all. Nothing in the app uses the key yet.</>}</p>
+      {!app && <div class="panel" style="margin-bottom:14px"><p class="small" style="margin:0"><b>Garmin does not answer a browser.</b> <span class="muted">The test below will stop at its first step here. {APP_SHORT_NAME} for the Mac holds the same pages in an app you download, and Garmin answers it.</span> <a href={MAC_DOWNLOAD} target="_blank" rel="noopener">Download {APP_SHORT_NAME} for the Mac</a></p></div>}
+      {app && !canSeal && <div class="panel" style="margin-bottom:14px"><p class="small" style="margin:0"><b>This computer's password store isn't available to the app,</b> <span class="muted">so a key can't be kept here.</span></p></div>}
 
       <section class="section">
         <h2>Your key</h2>
@@ -63,14 +93,16 @@ export function GarminKey() {
               <button class="btn primary sm" onClick={() => copy(saved.key, 'Key')}>Copy the key</button>
               <button class="btn danger sm" onClick={forget}>Forget</button>
             </div>
-            <p class="faint small" style="margin:10px 0 0">Kept only in this app on this device, and in Back up everything (as your Intervals.icu key is). It never goes in the note your other devices share, and it is sent nowhere but Garmin. It's also worth keeping in your password manager, in case this browser's data is ever cleared.</p>
+            {app
+              ? <p class="faint small" style="margin:10px 0 0">Kept by the app, sealed by this computer's password store. It is not in the app's data, in a backup or in the note your other devices share, and it is sent nowhere but Garmin. It's also worth keeping in your password manager: a backup restored on another computer won't bring it.</p>
+              : <p class="faint small" style="margin:10px 0 0">Kept only in this app on this device, and in Back up everything (as your Intervals.icu key is). It never goes in the note your other devices share, and it is sent nowhere but Garmin. It's also worth keeping in your password manager, in case this browser's data is ever cleared.</p>}
           </div>
         ) : (
           <div class="panel"><div class="form">
             <p class="small muted" style="margin:0">In Garmin Connect on the web: Settings, then Personal API Key, then Create Key. Garmin shows the key only once: paste it here straight away and save it. You can show and copy it here again whenever you need it.</p>
             <div class="field"><label>Garmin personal key</label><input aria-label="Garmin personal key" type="password" autocomplete="off" spellcheck={false} value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} placeholder="Paste the key" /></div>
             <div class="field"><label>Expires on (optional, as you chose when making it)</label><input aria-label="Expires on" type="date" value={expires} onInput={(e) => setExpires((e.target as HTMLInputElement).value)} /></div>
-            <div class="row"><button class="btn primary" disabled={!typed.trim()} onClick={save}>Save on this device</button></div>
+            <div class="row"><button class="btn primary" disabled={!typed.trim() || (app && !canSeal)} onClick={save}>Save on this device</button></div>
           </div></div>
         )}
       </section>
@@ -90,7 +122,7 @@ export function GarminKey() {
               ))}
               {running && <p class="small muted" style="margin:0">Still testing…</p>}
             </div>
-            {!running && <button class="btn sm" style="margin-top:12px" onClick={() => copy(resultsText(steps), 'Results')}>Copy the results</button>}
+            {!running && <button class="btn sm" style="margin-top:12px" onClick={() => copy(resultsText(steps, new Date(), app ? 'from the Mac app' : 'from a browser'), 'Results')}>Copy the results</button>}
             {!running && <p class="faint small" style="margin:6px 0 0">The results never include your key. Paste them into a message to Claude.</p>}
             </div>
           )}

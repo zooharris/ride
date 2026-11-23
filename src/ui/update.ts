@@ -3,6 +3,8 @@
  * it until the rider says Reload, so a sync never runs half on old code
  * without the rider knowing a newer version is there.
  */
+import { inApp, MAC_DOWNLOAD, WEB_ADDRESS } from '../shell';
+
 let ready = false;
 const listeners = new Set<() => void>();
 
@@ -20,6 +22,8 @@ export function onUpdateReady(fn: () => void): () => void { listeners.add(fn); r
  */
 let applying = false;
 export async function applyUpdate(): Promise<void> {
+  // The installed app: the newest file opens in the rider's browser to download; nothing here changes by itself.
+  if (inApp()) { window.open(MAC_DOWNLOAD, '_blank'); return; }
   if (applying) return;
   applying = true;
   const reg = registration;
@@ -75,7 +79,8 @@ export async function checkForUpdate(force = false): Promise<boolean> {
 /** The build time of the newest published version, read past every cache; undefined offline. */
 async function publishedBuild(): Promise<string | undefined> {
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' });
+    // The installed app asks the published web version, which is always built from the same pages as the newest app.
+    const res = await fetch(`${inApp() ? WEB_ADDRESS : import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return undefined;
     return ((await res.json()) as { build?: string }).build;
   } catch { return undefined; }

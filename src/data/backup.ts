@@ -1,3 +1,4 @@
+import { inApp } from '../shell';
 import { APP_NAME, BACKUP_FILE_PREFIX } from '../appName';
 import { db, type KeptFile } from './db';
 import type { Ride, Wellness } from '../engine/types';
@@ -145,7 +146,8 @@ export async function downloadBackup(): Promise<void> {
   const file = new File([blob], backupFileName(), { type: 'application/zip' });
   // On iOS the share sheet is the way into iCloud Drive; elsewhere a download.
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-  if (nav.canShare && nav.canShare({ files: [file] })) {
+  // The installed app saves a file as a computer does.
+  if (!inApp() && nav.canShare && nav.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: `${APP_NAME} backup` });
       await db.settings.put({ key: 'lastBackup', value: new Date().toISOString() });

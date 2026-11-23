@@ -1,4 +1,4 @@
-name: Build and deploy to GitHub Pages
+name: Build, publish the web version, and make the Mac app
 
 on:
   push:
@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write: the Mac app's file is attached to a release, where its download link always gives the newest.
+  contents: write
   pages: write
   id-token: write
 
@@ -39,6 +40,22 @@ jobs:
           name: journeys-report
           path: journeys-report
           retention-days: 14
+      # The installed app's own journeys: the same built pages, run from inside the app.
+      - run: xvfb-run -a npx playwright test -c playwright.shell.config.ts
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: shell-report
+          path: shell-report
+          retention-days: 14
+      # The very pages that are published are the ones packed into the Mac app.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-built
+          path: dist
+          retention-days: 3
       - uses: actions/configure-pages@v5
         with:
           enablement: true
@@ -46,8 +63,64 @@ jobs:
         with:
           path: dist
 
-  deploy:
+  # The Mac app: one file, built on a Mac, holding the pages built above. Signed only "ad hoc" (no Apple developer
+  # account), so a Mac asks its owner to allow it the first time each download is opened.
+  mac:
     needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-built
+          path: dist
+      - run: npx electron-builder --mac --universal
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: What was built
+        run: |
+          ls -la dist-app
+          APP="dist-app/mac-universal/Antogo.app"
+          lipo -archs "$APP/Contents/MacOS/Antogo"
+          codesign -dv --verbose=2 "$APP" 2>&1 | head -20
+          codesign --verify --deep --strict --verbose=1 "$APP"
+          du -sh "$APP" dist-app/Antogo.dmg
+          # As a Mac sees a file that was downloaded: expected to be refused until its owner allows it.
+          spctl --assess --type execute -vv "$APP" 2>&1 || true
+          hdiutil attach dist-app/Antogo.dmg -nobrowse -mountpoint /tmp/antogo-dmg && ls /tmp/antogo-dmg && hdiutil detach /tmp/antogo-dmg
+      # The built app itself, opened and used on a Mac.
+      - name: Journeys in the built app
+        run: npx playwright test -c playwright.shell.config.ts
+        env:
+          CI: 'true'
+          ANTOGO_APP: ${{ github.workspace }}/dist-app/mac-universal/Antogo.app/Contents/MacOS/Antogo
+      # The Garmin journey with a Mac's real password store. Informative only: a publishing Mac has nobody to answer
+      # a question the password store may ask, so a failure here is read, not obeyed.
+      - name: Journeys before packing, with the Mac's password store
+        continue-on-error: true
+        timeout-minutes: 6
+        run: npx playwright test -c playwright.shell.config.ts
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shell-report-mac
+          path: shell-report
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: dist-app/Antogo.dmg
+          retention-days: 14
+
+  deploy:
+    needs: [build, mac]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -55,3 +128,16 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      # The Mac app's file, once the web version is out: the newest release's file is what the download link gives.
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-app
+          path: mac-app
+      - name: Release the Mac app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "mac-${{ github.run_number }}" mac-app/Antogo.dmg \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" --latest \
+            --title "Antogo for the Mac, build ${{ github.run_number }}" \
+            --notes "Open the file and drag Antogo into Applications. The first time you open each new download, the Mac says it could not verify the app: click Done, then open System Settings, Privacy & Security, scroll down, click Open Anyway and give your Mac password. Replacing an older Antogo in Applications keeps your data."

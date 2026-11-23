@@ -4,13 +4,14 @@
  * file that takes time to prepare is prepared first and then saved by a second tap.
  */
 import type { FileOut } from './formats';
+import { inApp } from '../shell';
 
 const blobPart = (d: Uint8Array | string): BlobPart => (typeof d === 'string' ? d : (d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) as ArrayBuffer));
 
 /** Whether this device saves files through its share sheet (phones and tablets) rather than downloading them. */
 export function sharesFiles(): boolean {
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-  if (typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
+  if (inApp() || typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
   // A computer's browser may offer sharing too; there a download is what the rider expects.
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 }

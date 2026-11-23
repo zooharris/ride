@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "journeys": "playwright test"
+    "journeys": "playwright test",
+    "app": "electron .",
+    "app:journeys": "playwright test -c playwright.shell.config.ts",
+    "app:mac": "electron-builder --mac --universal"
   },
   "dependencies": {
     "dexie": "^4.0.10",
@@ -17,16 +20,61 @@
     "preact": "^10.24.3"
   },
   "devDependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
     "@garmin/fitsdk": "^21.218.0",
     "@playwright/test": "^1.63.0",
     "@preact/preset-vite": "^2.9.1",
     "@types/leaflet": "^1.9.12",
     "@types/web-bluetooth": "^0.0.20",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
     "fake-indexeddb": "^6.2.6",
     "sharp": "^0.35.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vite-plugin-pwa": "^0.21.1",
     "vitest": "^2.1.5"
+  },
+  "main": "desktop/main.cjs",
+  "description": "Adaptive cycling training and fitness.",
+  "author": "Antogo",
+  "build": {
+    "appId": "cycling.antogo.app",
+    "productName": "Antogo",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "dist/**",
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "!**/node_modules/**"
+    ],
+    "npmRebuild": false,
+    "publish": null,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "category": "public.app-category.healthcare-fitness",
+      "icon": "desktop/icon.png",
+      "artifactName": "Antogo.${ext}"
+    },
+    "dmg": {
+      "sign": false,
+      "title": "Antogo"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "desktop/icon.png"
+    }
   }
 }

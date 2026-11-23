@@ -1,4 +1,5 @@
 import { goBack } from '../router';
+import { inApp } from '../../shell';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { brShown } from '../../engine/breathThresholds';
 import type { ComponentChildren } from 'preact';
@@ -122,7 +123,9 @@ function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }
 
 function NoBluetooth() {
   const where = platform();
-  const [head, text] = where === 'iphone'
+  const [head, text] = inApp()
+    ? ['Riding with a trainer is coming to the Mac app', <>The Mac app can't reach Bluetooth yet: that is its next step. Until then, to ride with a smart trainer or sensors, open {APP_SHORT_NAME} in <b>Chrome</b> or <b>Edge</b> on this computer.</>]
+    : where === 'iphone'
     ? ['Riding with a trainer needs a computer or an iPad', <>An iPhone's browsers can't reach Bluetooth, so they can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook), or in the free <b>Bluefy</b> browser on an iPad.</>]
     : where === 'ipad'
       ? ['Riding with a trainer on an iPad needs the Bluefy browser', <>Safari on an iPad can't reach Bluetooth, so it can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in the free <b>Bluefy</b> browser on this iPad, or in <b>Chrome</b> or <b>Edge</b> on a computer.</>]
@@ -239,7 +242,7 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
 
   return (
     <>
-      {!bt && <div class="pl-banner">This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer.</div>}
+      {!bt && <div class="pl-banner">{inApp() ? "The Mac app can't reach Bluetooth yet (that is its next step): only the simulated sensors are available. For real sensors, use Chrome or Edge on this computer." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
       <main class="pl-main pl-pre">
         <section class="pl-card pl-workout">
           <p class="eyebrow">{when}</p>
@@ -453,7 +456,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   });
   return (
     <>
-      {!bt && <div class="pl-banner">This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer.</div>}
+      {!bt && <div class="pl-banner">{inApp() ? "The Mac app can't reach Bluetooth yet (that is its next step): only the simulated sensors are available. For real sensors, use Chrome or Edge on this computer." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
       <main class="pl-main pl-pre">
         <section class="pl-card pl-workout pl-free">
           <p class="eyebrow">{`Today · ${fmtDate(today())}`}</p>

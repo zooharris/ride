@@ -56,6 +56,15 @@ describe('the Garmin personal key test', () => {
     expect(steps).toHaveLength(1);
     expect(steps[0].words).toMatch(/does not allow its key to be used from a browser/);
   });
+  it('the installed app, which Garmin does answer, never speaks of web pages; with no connection it says so', async () => {
+    const ok = await runGarminTest(KEY, () => {}, garmin(), new Date(), 'app');
+    expect(ok[0].ok).toBe(true);
+    expect(ok.map((s) => s.words).join(' ')).not.toMatch(/web page|browser/);
+    const off = await runGarminTest(KEY, () => {}, (async () => { throw new TypeError('net::ERR_INTERNET_DISCONNECTED'); }) as unknown as typeof fetch, new Date(), 'app');
+    expect(off).toHaveLength(1);
+    expect(off[0].words).toMatch(/could not be reached\. Check this computer's internet connection/);
+    expect(resultsText(ok, new Date(), 'from the Mac app')).toMatch(/^Garmin personal key test, from the Mac app,/);
+  });
   it('a refused key is said plainly', async () => {
     const steps = await runGarminTest(KEY, () => {}, garmin({ [TOKEN_PATH]: () => new Response('bad key', { status: 401 }) }));
     expect(steps[0].words).toMatch(/refused the key \(401\)/);

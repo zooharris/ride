@@ -105,7 +105,8 @@ export async function standIn(page: Page, kind: RiderKind): Promise<Ledger> {
   const r = kind === 'new' ? undefined : rider(kind);
   let nextId = 5000;
   // Registered first, so matched last: anything not served locally and not Intervals.icu is refused.
-  await page.route((url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname), (route) => route.abort('blockedbyclient'));
+  // (The installed app serves its own pages from inside itself, at app://.)
+  await page.route((url) => url.protocol !== 'app:' && !/^(localhost|127\.0\.0\.1)$/.test(url.hostname), (route) => route.abort('blockedbyclient'));
   await page.route('https://intervals.icu/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());

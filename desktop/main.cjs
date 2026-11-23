@@ -1,0 +1,84 @@
+// Antogo as an installed app (23 Nov 2026): every page is packed inside and served from the app itself, so nothing is
+// hosted and nothing is fetched to run. The app's own side does the few things a web page may not: it keeps the
+// Garmin personal key in the computer's password store, and asks Garmin on the pages' behalf. It reaches Garmin's
+// address only; it is not a general way out to the internet.
+const { app, BrowserWindow, protocol, net, ipcMain, shell, safeStorage, Menu, session } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { pathToFileURL } = require('url');
+
+const PAGES = path.join(__dirname, '..', 'dist');
+const HOME = 'app://antogo/ride/';
+const GARMIN = 'https://personal.connectapi.garmin.com/';
+// For the app's own tests only: Garmin's requests go to a stand-in (never in the built app), the data to a scratch
+// folder, and downloads into a folder without asking where.
+const garminBase = !app.isPackaged && process.env.ANTOGO_GARMIN_BASE ? process.env.ANTOGO_GARMIN_BASE : GARMIN;
+if (process.env.ANTOGO_DATA) app.setPath('userData', process.env.ANTOGO_DATA);
+const downloadsTo = process.env.ANTOGO_DOWNLOADS;
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+
+/** The packed file a page address stands for; anything unknown is the app's one page. Never outside the packed pages. */
+function fileFor(url) {
+  const u = new URL(url);
+  let p = decodeURIComponent(u.pathname).replace(/^\/ride(\/|$)/, '/');
+  const full = path.normalize(path.join(PAGES, p));
+  if (u.host !== 'antogo' || !full.startsWith(PAGES) || p === '/' || !fs.existsSync(full) || fs.statSync(full).isDirectory()) return path.join(PAGES, 'index.html');
+  return full;
+}
+
+// The Garmin key: encrypted with a secret the computer's own password store holds, in a file only this app reads.
+const keyFile = () => path.join(app.getPath('userData'), 'garmin-key');
+function readKey() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(keyFile(), 'utf8'));
+    return { key: safeStorage.decryptString(Buffer.from(saved.sealed, 'base64')), savedAt: saved.savedAt, expires: saved.expires };
+  } catch { return null; }
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1280, height: 860, minWidth: 380, minHeight: 560, backgroundColor: '#0B0E14', title: 'Antogo Cycling',
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  // A link to anywhere else opens in the rider's browser; the app's window only ever shows the app.
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://antogo/')) { e.preventDefault(); if (/^https?:\/\//.test(url)) void shell.openExternal(url); } });
+  void win.loadURL(HOME);
+  return win;
+}
+
+app.whenReady().then(() => {
+  // A test machine with no password store of its own may stand one in; the built app never does.
+  if (!app.isPackaged && process.env.ANTOGO_TEST_STORE && process.platform === 'linux') safeStorage.setUsePlainTextEncryption(true);
+  protocol.handle('app', (req) => net.fetch(pathToFileURL(fileFor(req.url)).toString()));
+
+  if (downloadsTo) session.defaultSession.on('will-download', (_e, item) => item.setSavePath(path.join(downloadsTo, item.getFilename())));
+
+  const fromApp = (e) => { if (!e.senderFrame || !e.senderFrame.url.startsWith('app://antogo/')) throw new Error('not from the app'); };
+  ipcMain.handle('garmin:fetch', async (e, url, init) => {
+    fromApp(e);
+    if (typeof url !== 'string' || !url.startsWith(GARMIN)) throw new Error('Only Garmin can be asked this way.');
+    const res = await net.fetch(garminBase + url.slice(GARMIN.length), { method: init?.method ?? 'GET', headers: init?.headers ?? {} });
+    return { status: res.status, type: res.headers.get('content-type') ?? '', body: new Uint8Array(await res.arrayBuffer()) };
+  });
+  ipcMain.handle('key:can', (e) => { fromApp(e); return safeStorage.isEncryptionAvailable(); });
+  ipcMain.handle('key:read', (e) => { fromApp(e); return readKey(); });
+  ipcMain.handle('key:save', (e, key, expires) => {
+    fromApp(e);
+    if (typeof key !== 'string' || !key.trim()) throw new Error('No key given.');
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('This computer has no password store the app can use.');
+    const saved = { sealed: safeStorage.encryptString(key.trim()).toString('base64'), savedAt: new Date().toISOString(), ...(expires ? { expires } : {}) };
+    fs.writeFileSync(keyFile(), JSON.stringify(saved), { mode: 0o600 });
+    return { key: key.trim(), savedAt: saved.savedAt, expires: saved.expires };
+  });
+  ipcMain.handle('key:forget', (e) => { fromApp(e); try { fs.unlinkSync(keyFile()); } catch { /* none kept */ } return true; });
+
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]));
+  }
+  createWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+});
+// Step one has no Bluetooth chooser of its own yet; without one the app says so rather than pick a device unasked.
+app.on('window-all-closed', () => app.quit());

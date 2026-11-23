@@ -138,7 +138,7 @@ export function ThresholdHistoryPanel({ kind, stamp, onChanged, open }: { kind: 
           </div>
           <p class="faint small" style="margin:6px 0 0">{scoring === 'antogo'
             ? <>Each ride uses the entry above in force on its day. A ride older than the first entry{first ? ` (${day(first.from)})` : ''} uses the FTP its own file says your device had set, and the first entry if its file has none.</>
-            : <>A ride whose file carries the FTP your device had set that day uses that. A ride whose file has none uses the history above. Choose this only if you kept your device's FTP up to date.</>} Each ride's page says what was used, under "FTP used for this ride".</p>
+            : <>A ride whose file carries the FTP your device had set that day uses that. A ride whose file has none uses the history above. Choose this only if you kept your device's FTP up to date.</>} Each ride's page lists the FTP it used; where it came from is under Correct this activity there.</p>
         </div>
       )}
       {kind === 'ftp' && waiting > 0 && !work.running && (

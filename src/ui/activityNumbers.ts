@@ -27,13 +27,13 @@ export function pace(speedMs: number | undefined, profile: Parameters<typeof mil
  * strength or mobility session gets its time, load and heart rate. Nothing
  * that only means something on a bike is shown for anything else.
  */
-export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effort?: number, test?: boolean, says: { ftp?: string; lthr?: string; edit?: { noPower?: boolean; noHr?: boolean; trim?: unknown } } = {}): Array<[string, string | number | undefined, string?]> {
+export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effort?: number, test?: boolean, says: { edit?: { noPower?: boolean; noHr?: boolean; trim?: unknown } } = {}): Array<[string, string | number | undefined, string?]> {
   // A measure the rider left out (22 Nov 2026): its numbers are hidden, with a line saying why.
   const leftOut: Array<[string, string | number | undefined, string?]> = [
     ['Power', says.edit?.noPower ? 'Left out by you' : undefined, 'You left this ride’s power out, under Correct this activity. Its power numbers are hidden, it is scored from heart rate, and it is kept out of your power curve and records. Take the correction away and they come back.'],
     ['Heart rate', says.edit?.noHr ? 'Left out by you' : undefined, 'You left this activity’s heart rate out, under Correct this activity. Its heart-rate numbers are hidden and it is kept out of your heart-rate records. Take the correction away and they come back.'],
   ];
-  const lthrUsed: [string, string | number | undefined, string?] = ['Threshold heart rate used', r.averageHr && (says.lthr || r.lthrAtRide) ? says.lthr ?? `${r.lthrAtRide} bpm` : undefined, 'Heart-rate zones and heart-rate load are measured against the threshold heart rate in force on the activity’s day, from your threshold heart-rate history in Settings. To change it for this activity alone, use Correct this activity.'];
+  const lthrUsed: [string, string | number | undefined, string?] = ['Threshold heart rate used', r.averageHr && r.lthrAtRide ? `${r.lthrAtRide} bpm` : undefined, 'Heart-rate zones and heart-rate load are measured against the threshold heart rate in force on the activity’s day, from your threshold heart-rate history in Settings. Correct this activity, further down this page, says where the figure came from, and lets you change it for this activity alone.'];
   const hr: Array<[string, string | number | undefined, string?]> = [
     ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, `Over the whole ${KIND_NOUN[r.sport]}`],
     ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
@@ -84,7 +84,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
     ['Average temperature', tempF],
     ...weather,
     ...energy,
-    ['FTP used for this ride', r.ftpAtRide && (r.normalizedPower || r.averagePower) ? says.ftp ?? `${r.ftpAtRide} W` : undefined, `Training load, intensity and time in power zones are measured against it. Settings, Thresholds and zones has the rule (your FTP history, or the FTP your device had set that day) and the history itself. To change it for this ride alone, use Correct this activity${r.ftpDevice && r.ftpDevice !== r.ftpAtRide ? `. This ride's own file says your device had ${r.ftpDevice} W set` : ''}`],
+    ['FTP used for this ride', r.ftpAtRide && (r.normalizedPower || r.averagePower) ? `${r.ftpAtRide} W` : undefined, `Training load, intensity and time in power zones are measured against it. Which figure a ride uses follows the setting in Settings, Thresholds and zones: your FTP history, or the FTP your device had set that day. Correct this activity, further down this page, says which it was for this ride, and lets you change it for this ride alone${r.ftpDevice && r.ftpDevice !== r.ftpAtRide ? `. This ride's own file says your device had ${r.ftpDevice} W set` : ''}`],
     ...tail,
   ];
   if (r.sport === 'walk') return [

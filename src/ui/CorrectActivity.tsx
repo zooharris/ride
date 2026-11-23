@@ -8,6 +8,7 @@ import { fixWords, validTrim, type Fix } from '../engine/corrections';
 import { getThresholdCtx, thresholdsOf } from '../engine/thresholdCtx';
 import { usedWords } from '../engine/thresholdHistory';
 import { today } from '../engine/load';
+import { isUnknown } from '../engine/known';
 import { renameActivity, saveActivityEffort, saveEffort, setActivityKind, setExcluded, setFix, setFromRideOnward } from '../sync/records';
 import { wholeRecordingOf } from '../sync/ownService';
 import { sportOf } from '../sync/intervals';
@@ -122,8 +123,12 @@ export function CorrectActivity({ ride: r, data, planned, workout, onDifferent, 
     const val = what === 'ftp' ? ftp : lthr, set = what === 'ftp' ? setFtp : setLthr, scope = what === 'ftp' ? ftpScope : lthrScope, setScope = what === 'ftp' ? setFtpScope : setLthrScope;
     const own = what === 'ftp' ? edit?.ftp : edit?.lthr;
     const unit = what === 'ftp' ? 'W' : 'bpm';
+    const u = what === 'ftp' ? used.ftp : used.lthr;
+    // Where the figure came from is said here, for the rider who opens this; the page's Numbers list the figure alone.
+    const standIn = what === 'ftp' && u?.why.kind === 'now' && isUnknown(profile, 'ftp');
     return (
       <>
+        {u && <p class="small fix-why" style="margin:0 0 6px">{standIn ? `${u.value} W · a stand-in until your FTP is known` : usedWords(u, unit, t, APP_SHORT_NAME)}</p>}
         <p class="faint small" style="margin:0 0 8px">{what === 'ftp' ? `Training load, intensity and time in power zones are measured against it. If the figure used for this ride is wrong, type the right one.` : `Heart-rate zones and heart-rate load are measured against it${onFoot ? ' (the one on foot, for a walk or run)' : ''}. If the figure used for this activity is wrong, type the right one.`}</p>
         <div class="row wrap" style="gap:8px;align-items:flex-end">
           <div class="field" style="width:130px"><label>{what === 'ftp' ? 'FTP (watts)' : 'Threshold (bpm)'}</label><input inputMode="numeric" value={val} placeholder={own ? String(own) : undefined} aria-label={what === 'ftp' ? 'FTP for this ride, in watts' : 'Threshold heart rate for this activity, in beats per minute'} onInput={(e) => set((e.target as HTMLInputElement).value.replace(/[^\d]/g, ''))} /></div>
@@ -152,8 +157,8 @@ export function CorrectActivity({ ride: r, data, planned, workout, onDifferent, 
       <h2>Correct this activity</h2>
       <p class="faint small" style="margin:4px 0 10px">The recording itself is never changed. Each correction is labelled on this page, can be undone on its own, and stays with the activity through a sync, a restore and a move to another device. Corrections stay in {APP_SHORT_NAME}: they are not sent to Intervals.icu, whose own pages keep showing the activity as recorded.</p>
       <div class="panel stack" style="gap:0">
-        {isRide && hadPower && <Item cls="fix-ftp" title="FTP used for this ride" state={used.ftp ? usedWords(used.ftp, 'W', t, APP_SHORT_NAME) : 'none'}>{thresholdBody('ftp')}</Item>}
-        {hadHr && <Item cls="fix-lthr" title="Threshold heart rate used for this activity" state={used.lthr ? usedWords(used.lthr, 'bpm', t, APP_SHORT_NAME) : 'none'}>{thresholdBody('lthr')}</Item>}
+        {isRide && hadPower && <Item cls="fix-ftp" title="FTP used for this ride" state={used.ftp ? `${used.ftp.value} W` : 'none'}>{thresholdBody('ftp')}</Item>}
+        {hadHr && <Item cls="fix-lthr" title="Threshold heart rate used for this activity" state={used.lthr ? `${used.lthr.value} bpm` : 'none'}>{thresholdBody('lthr')}</Item>}
         {(hadPower || hadHr) && (
           <Item cls="fix-leave" title="Leave out the power, or the heart rate" state={[edit?.noPower ? 'power left out' : '', edit?.noHr ? 'heart rate left out' : ''].filter(Boolean).join(', ') || 'both are used'}>
             {isRide && hadPower && (

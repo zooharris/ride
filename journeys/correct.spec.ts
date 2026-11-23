@@ -37,6 +37,8 @@ async function ftpHistory(page: Page) {
   await expect(box.locator('.th-list')).toBeVisible();
   return box;
 }
+/** Where the FTP used came from: said under Correct this activity, once "FTP used for this ride" is opened. */
+const why = (page: Page) => page.locator('.fix-ftp .fix-why');
 const cell = (page: Page, label: string) => page.locator('.ng-cell', { has: page.locator('.ng-label', { hasText: label }) }).locator('.ng-value');
 /** The newest hard ride of the made-up power rider: from Intervals.icu, with power, no file kept. */
 async function openIntervalsRide(page: Page) {
@@ -56,8 +58,11 @@ test('the FTP history: add an entry in the past, and a ride\'s numbers change; t
   await looksRight(s, info, 'Settings, the FTP history as filled in');
   // A ride of the last week, as scored now.
   await openIntervalsRide(page);
-  await expect(cell(page, 'FTP used for this ride')).toContainText("255 W · Antogo's history");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('255 W');
   await expect(cell(page, 'Intensity')).toHaveText('0.93');
+  // Why that figure is under Correct this activity, once opened.
+  await page.locator('details.fix-ftp > summary').click();
+  await expect(why(page)).toContainText("255 W · Antogo's history (filled in from your activities");
   const before = await cell(page, 'Training load (TSS)').innerText();
   // An entry in the past: from two months ago the FTP was 230.
   box = await ftpHistory(page);
@@ -73,23 +78,25 @@ test('the FTP history: add an entry in the past, and a ride\'s numbers change; t
   await expect(page.locator('.field', { hasText: 'FTP (watts)' }).first().locator('input')).toHaveValue('230');
   await looksRight(s, info, 'Settings, an entry added in the past');
   await openIntervalsRide(page);
-  await expect(cell(page, 'FTP used for this ride')).toContainText("230 W · Antogo's history (typed by you");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('230 W');
   await expect(cell(page, 'Intensity')).toHaveText('1.03');
   expect(await cell(page, 'Training load (TSS)').innerText()).not.toBe(before);
   await looksRight(s, info, 'A ride scored with the new entry');
   // Correct this ride's FTP, for this ride only.
   await page.locator('details.fix-ftp > summary').click();
+  await expect(why(page)).toContainText("230 W · Antogo's history (typed by you");
   await page.getByLabel('FTP for this ride, in watts').fill('240');
   await page.locator('.fix-ftp').getByRole('button', { name: 'Save', exact: true }).click();
   const fixes = page.locator('.fixes-on');
   await expect(fixes).toContainText('FTP for this ride set to 240 W by you');
-  await expect(cell(page, 'FTP used for this ride')).toHaveText('240 W · set by you for this ride');
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('240 W');
+  await expect(why(page)).toHaveText('240 W · set by you for this ride');
   await expect(cell(page, 'Intensity')).toHaveText('0.99');
   await looksRight(s, info, 'A ride with its own FTP');
   // Undo it, from the list at the top of the page.
   await fixes.getByRole('button', { name: /^Undo: FTP for this ride/ }).click();
   await expect(fixes).toHaveCount(0);
-  await expect(cell(page, 'FTP used for this ride')).toContainText('230 W');
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('230 W');
   await expect(cell(page, 'Intensity')).toHaveText('1.03');
   // The entry is removed again: the ride is back as it was.
   box = await ftpHistory(page);
@@ -118,20 +125,22 @@ test('files that carry FTP settings: the summary before scoring, the setting cha
   await sheet.getByRole('button', { name: 'Close' }).click();
   const openFileRide = async () => { await go(page, '#/rides'); await page.locator('a[href*="#/rides/file-"]').first().click(); await expect(page.getByRole('heading', { name: 'Numbers' })).toBeVisible(); };
   await openFileRide();
-  await expect(cell(page, 'FTP used for this ride')).toContainText("255 W · Antogo's history");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('255 W');
   // The setting: the FTP my device had set that day; and back.
   let box = await ftpHistory(page);
   await box.getByRole('radio', { name: 'The FTP my device had set that day' }).click();
   await expect(page.locator('.toast-text').filter({ hasText: /scored with the FTP your device had set that day\. 2 activities worked out again/ })).toBeVisible({ timeout: 30_000 });
   await looksRight(s, info, 'Settings, scoring by the device\'s FTP');
   await openFileRide();
-  await expect(cell(page, 'FTP used for this ride')).toHaveText("244 W · your device's setting that day");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('244 W');
+  await page.locator('details.fix-ftp > summary').click();
+  await expect(why(page)).toHaveText("244 W · your device's setting that day");
   await looksRight(s, info, 'A ride scored with its device\'s FTP');
   box = await ftpHistory(page);
   await box.getByRole('radio', { name: "Antogo's FTP history" }).click();
   await expect(page.locator('.toast-text').filter({ hasText: /scored with Antogo's FTP history\. 2 activities worked out again/ })).toBeVisible({ timeout: 30_000 });
   await openFileRide();
-  await expect(cell(page, 'FTP used for this ride')).toContainText("255 W · Antogo's history");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('255 W');
   // The device's figure, shown beside the history as a suggestion, used for its period.
   box = await ftpHistory(page);
   const device = box.locator('.th-device');
@@ -143,7 +152,9 @@ test('files that carry FTP settings: the summary before scoring, the setting cha
   await expect(box.locator('.th-device')).toHaveCount(0);
   await looksRight(s, info, "Settings, the device's figure used for its period");
   await openFileRide();
-  await expect(cell(page, 'FTP used for this ride')).toContainText("244 W · Antogo's history (from your device");
+  await expect(cell(page, 'FTP used for this ride')).toHaveText('244 W');
+  await page.locator('details.fix-ftp > summary').click();
+  await expect(why(page)).toContainText("244 W · Antogo's history (from your device");
 });
 
 test('correct an activity: leave out its power, trim it and restore it, move its start; each undone', async ({ page }, info) => {

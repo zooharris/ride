@@ -54,11 +54,7 @@ import { fahrenheit, miles, weightSystem } from '../../engine/units';
 import { activityNumbers, isIndoor, KIND_NOUN } from '../activityNumbers';
 import { wholeRecordingOf } from '../../sync/ownService';
 import { correctRecording, fixSig } from '../../engine/corrections';
-import { getThresholdCtx, thresholdsOf } from '../../engine/thresholdCtx';
-import { usedWords } from '../../engine/thresholdHistory';
 import { CorrectActivity, CorrectionsInForce } from '../CorrectActivity';
-import { isUnknown } from '../../engine/known';
-import { APP_SHORT_NAME } from '../../appName';
 import { NumbersGrid } from '../NumbersGrid';
 import { AddFilesButton } from '../AddFiles';
 
@@ -324,11 +320,9 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, profile, r.id, recLthr, playerLaps, analysis, judgedAs, testKind, lapNames?.matched]);
   const tempF = r.averageTempC != null ? (fahrenheit(profile) ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  // What each threshold used was, and why, in the words of the rule that scores every activity (22 Nov 2026).
-  const used = thresholdsOf(r, profile, getThresholdCtx());
-  // A rider whose FTP isn't known yet has a stand-in for the sums only: the page says so, and never calls it their setting.
-  const standIn = used.ftp?.why.kind === 'now' && isUnknown(profile, 'ftp');
-  const usedSays = { ftp: standIn ? `${r.ftpAtRide} W · a stand-in until your FTP is known` : used.ftp && used.ftp.value === r.ftpAtRide ? usedWords(used.ftp, 'W', today(), APP_SHORT_NAME) : undefined, lthr: used.lthr && used.lthr.value === r.lthrAtRide ? usedWords(used.lthr, 'bpm', today(), APP_SHORT_NAME) : undefined, edit };
+  // The FTP and threshold heart rate used are listed as plain figures (23 Nov 2026): why each was used is behind the
+  // "i" and under Correct this activity, for the rider who wants it.
+  const usedSays = { edit };
   const items = [...activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind, usedSays), ...breathNumbers(shown)];
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];

@@ -1,10 +1,28 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { go, looksRight, makePlan, setUp, simulatedTrainer } from './rider';
 
 /**
  * Journey 2: Today's session in the ride player on the simulated trainer, ridden to the end, saved, and done.
  * The clock is run forward so an hour's ride takes seconds.
  */
+/**
+ * Open the first session on the calendar that is a ride for the trainer. Which session comes first depends on the day
+ * of the week the journey runs (on a Monday the plan opens with a mobility session), so the first link is not assumed
+ * to be a ride (23 Nov 2026).
+ */
+async function openFirstRide(page: Page, notDone: boolean): Promise<void> {
+  const links = page.locator('a[href*="#/workout/"]');
+  await expect(links.first()).toBeVisible();
+  const all = notDone ? links.filter({ hasNot: page.locator('.done') }) : links;
+  const hrefs = [...new Set(await all.evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute('href') ?? '')))].filter(Boolean);
+  for (const h of hrefs.slice(0, 12)) {
+    await go(page, h);
+    const ride = page.getByRole('link', { name: 'Ride indoors on the trainer' }).first();
+    if (await ride.isVisible().catch(() => false)) return;
+  }
+  throw new Error('No ride for the trainer among the first sessions on the calendar.');
+}
+
 test('ride the day\'s session on the simulated trainer, save it, see it done', async ({ page }, info) => {
   // The slowest journey: run on a phone at night, a tablet and a laptop by day only.
   test.skip(!['phone-night', 'tablet-day', 'laptop-day'].includes(info.project.name), 'ridden on three sizes only');
@@ -17,7 +35,7 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await go(page, '#/calendar');
   const list = page.getByRole('button', { name: 'List', exact: true });
   if (await list.isVisible()) await list.click();
-  await page.locator('a[href*="#/workout/"]').filter({ hasNot: page.locator('.done') }).first().click();
+  await openFirstRide(page, true);
   await looksRight(s, info, 'A planned ride');
   await page.getByRole('link', { name: 'Ride indoors on the trainer' }).first().click();
   await page.getByRole('button', { name: 'Choose your trainer' }).click();
@@ -70,7 +88,7 @@ test('pause a ride on a phone', async ({ page }, info) => {
   await go(page, '#/calendar');
   const list = page.getByRole('button', { name: 'List', exact: true });
   if (await list.isVisible()) await list.click();
-  await page.locator('a[href*="#/workout/"]').first().click();
+  await openFirstRide(page, false);
   await page.getByRole('link', { name: 'Ride indoors on the trainer' }).first().click();
   await page.getByRole('button', { name: 'Choose your trainer' }).click();
   await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();

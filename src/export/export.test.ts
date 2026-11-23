@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { Decoder, Stream } from '@garmin/fitsdk';
 import type { Profile, Ride, Workout } from '../engine/types';

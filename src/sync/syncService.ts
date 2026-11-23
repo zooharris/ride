@@ -10,7 +10,9 @@ import { workoutStats } from '../engine/workout';
 import { footHrZones, footLthr, rideLadders, ridePowerZones } from '../engine/zones';
 import type { IntervalsCredentials } from './intervals';
 import { applyAthleteNumbers, durationFor, fetchPowerCurve, fetchRides, fetchWellness, deleteEvent, ICU_TYPE_FOR_KIND, sportOf, testConnection, updateActivityDescription, updateActivityType } from './intervals';
-import { schedulePush, syncDevices } from '../data/devicesync';
+import { onDeviceSync, schedulePush, syncDevices } from '../data/devicesync';
+import { ensureHistories, refreshThresholds } from '../data/thresholds';
+import { getThresholdCtx, thresholdsOf } from '../engine/thresholdCtx';
 import { weightSystem } from '../engine/units';
 import { backToPlannedDay, toDoneDay } from './doneDay';
 
@@ -112,17 +114,24 @@ async function pullAll(): Promise<SyncResult> {
   const numbers = await testConnection(c);
   if (profile) {
     const next = { ...applyAthleteNumbers(profile, numbers), id: 'me' as const };
-    if (JSON.stringify(next) !== JSON.stringify(profile)) { await saveProfile(next); profile = (await db.profile.get('me')) ?? next; }
+    // A threshold that arrives changed from Intervals.icu adds an entry to Antogo's history from today, saying so.
+    if (JSON.stringify(next) !== JSON.stringify(profile)) { await saveProfile(next, { from: 'service' }); profile = (await db.profile.get('me')) ?? next; }
   }
+  // Antogo's histories and the rider's corrections, as they stand now, are what the activities are scored with.
+  await refreshThresholds();
 
   // Stage 1 (22 Nov 2026): Antogo's own numbers laid over what the data service sent, where they are kept.
   const rides = await applyOwnTo(await fetchRides(c, oldest, newest));
   // Activities brought in as files are this device's own: the data service not having them says nothing.
-  const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).filter((r) => r.source !== 'file').map((r) => r.id));
+  // Nor does it for an activity whose start the rider moved into these days from outside them: it was not asked for.
+  const outside = (d?: string) => !!d && (d < oldest || d > newest);
+  const known = new Set((await db.rides.where('date').between(oldest, newest, true, true).toArray()).filter((r) => r.source !== 'file' && !outside(r.setAside?.start?.date)).map((r) => r.id));
   // An activity deleted in Intervals.icu (or on another device) goes from this one too.
   const gone = [...known].filter((id) => !rides.some((r) => r.id === id));
   if (gone.length) { await db.rides.bulkDelete(gone); await db.streams.bulkDelete(gone); await db.powerCurves.bulkDelete(gone); await db.thumbs.bulkDelete(gone); await db.reads.bulkDelete(gone); }
-  const newIds = first ? [] : rides.filter((r) => !known.has(r.id)).map((r) => r.id);
+  // New means not on this device at all: an activity whose start the rider moved out of these days is here already.
+  const here = new Set((await db.rides.bulkGet(rides.map((r) => r.id))).filter((r): r is Ride => !!r).map((r) => r.id));
+  const newIds = first ? [] : rides.filter((r) => !known.has(r.id) && !here.has(r.id)).map((r) => r.id);
   // Rides score from power or heart rate; walks from heart rate; strength from
   // heart rate if there was a strap, else a modest hourly rate. Intervals.icu's
   // own load is the fallback whenever the app has nothing better.
@@ -163,11 +172,14 @@ async function pullAll(): Promise<SyncResult> {
   await db.sync.put({ key: 'intervals', athleteId: c.athleteId, lastActivitySync: new Date().toISOString(), lastWellnessSync: new Date().toISOString(), lastError: undefined, lastErrorAt: undefined });
   // Plans, calendar and workouts: merge with the rider's other devices through the note in Intervals.icu.
   await syncDevices(c);
+  // Antogo's own FTP and threshold heart-rate histories are filled in once, after the first merge (so a device takes
+  // the history the rider's others already have); then whatever is out of step with them is worked out again.
+  void ensureHistories().then(() => startChangeOver()).catch(() => {});
   // A new device catches up to the history the rider's other devices hold, in the background.
   void matchHistory();
   // Stage 0 (22 Nov 2026): keep the whole history and each activity's original file on this device, in the
   // background, a little after the sync so the app is quick to use first.
-  setTimeout(() => { void keepHistory(c, { loadHistory: (back) => loadHistory(back, () => {}), onKept: (id) => changeOne(id, scoreActivity, refreshSoon) }).then(() => startChangeOver()); }, KEEP_DELAY_MS);
+  setTimeout(() => { void keepHistory(c, { loadHistory: (back) => loadHistory(back, () => {}), onKept: (id) => changeOne(id, rescorer(), refreshSoon) }).then(() => startChangeOver()); }, KEEP_DELAY_MS);
   return { rides: rides.length, wellness: wellness.length, newIds };
 }
 
@@ -379,11 +391,23 @@ export function isTrivialRecording(r: Pick<Ride, 'seconds' | 'elapsedSeconds'>):
 export const POWER_ENOUGH = 0.8;
 
 export function scoreActivity(r: Ride, profile: Pick<Profile, 'ftp' | 'lthr'> & Partial<Profile> | undefined | null, opts: { handMatched?: boolean } = {}): void {
+  // The thresholds of the activity's day (22 Nov 2026): Antogo's history, the device's FTP where the rider chose that,
+  // or their own figure for this activity. They are kept on the activity so its page can say what was used.
+  const ctx = getThresholdCtx();
+  const used = ctx ? thresholdsOf(r, profile, ctx) : undefined;
+  if (used?.ftp && r.sport === 'ride' && (ctx?.ftp || used.ftp.why.kind === 'you') && r.ftpAtRide !== used.ftp.value) {
+    // The FTP the data service kept with the activity stays on record beside the one that scores it.
+    if (r.ftpService == null && r.ftpAtRide && r.source !== 'file' && !r.ftpDevice && r.ftpFrom !== 'device') r.ftpService = r.ftpAtRide;
+    r.ftpAtRide = used.ftp.value;
+    // With no recording to work the rest out from, intensity at least follows the FTP.
+    if (r.normalizedPower && !r.ownNumbers) r.intensityFactor = Math.round((r.normalizedPower / used.ftp.value) * 100) / 100;
+  }
+  if (used?.lthr) r.lthrAtRide = used.lthr.value;
   r.notTraining = looksLikeADrive(r) ? 'drive' : !opts.handMatched && isTrivialRecording(r) ? 'trivial' : undefined;
   if (r.notTraining) { r.tss = 0; r.tssBasis = undefined; return; }
   // Rides are judged on the bike ladder; anything on foot on the foot threshold and its ladder.
   const onFoot = r.sport === 'walk' || r.sport === 'run';
-  const lthr = profile ? (onFoot ? footLthr(profile) : profile.lthr) : 0;
+  const lthr = used?.lthr?.value ?? (profile ? (onFoot ? footLthr(profile) : profile.lthr) : 0);
   const ladder = profile ? (onFoot ? { hr: footHrZones(profile), power: ridePowerZones(profile) } : rideLadders(profile)) : undefined;
   const hrOnly = r.averageHr ? hrTss(r.seconds, r.averageHr, lthr, ladder) : 0;
   const set = (tss: number, basis: Ride['tssBasis']) => { r.tss = tss; r.tssBasis = basis; };
@@ -391,7 +415,7 @@ export function scoreActivity(r: Ride, profile: Pick<Profile, 'ftp' | 'lthr'> & 
     // A power meter that dropped out for a good part of the ride (22 Nov 2026): the power recorded is not the whole
     // ride's, so heart rate, which was there throughout, scores it.
     const partial = r.powerCoverage != null && r.powerCoverage < POWER_ENOUGH;
-    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp) && !(partial && hrOnly)) set(rideTss(r, profile?.ftp ?? 0, profile?.lthr ?? 0, ladder), 'power');
+    if (r.normalizedPower && (r.ftpAtRide || profile?.ftp) && !(partial && hrOnly)) set(rideTss(r, profile?.ftp ?? 0, lthr, ladder), 'power');
     else if (hrOnly) set(hrOnly, 'heart-rate');
     else if (r.icuLoad) set(r.icuLoad, 'intervals');
     else set(estimatedRideTss(r.seconds), 'estimate');
@@ -511,12 +535,38 @@ function refreshSoon(): void {
   refreshTimer = setTimeout(() => { refreshTimer = null; void import('../ui/store').then((m) => m.notify()); }, 3000);
 }
 
-/** Stage 1: change activities over to Antogo's own numbers, in the background; the screens refresh as it goes. */
-export function startChangeOver(): Promise<number> {
+/**
+ * One activity scored as the app scores it everywhere: by the app's own rules, then the load the rider decided (a
+ * strength session they rated, an activity left out of training load). What the working-out-again uses, so an
+ * activity worked out again keeps what the rider said about it.
+ */
+export function rescorer(): (r: Ride, p: Profile) => Promise<void> {
+  let at = 0, edits: ActivityEdit[] = [], planned: PlannedWorkout[] = [], workoutOf: (id: string) => Workout | undefined = () => undefined;
+  return async (r, p) => {
+    if (Date.now() - at > 2000) { [edits, planned, workoutOf] = await Promise.all([db.activityEdits.toArray(), db.planned.toArray(), workoutLookup()]); at = Date.now(); }
+    const pl = planned.find((x) => x.activityId === r.id && x.status === 'completed');
+    scoreActivity(r, p, { handMatched: !!pl?.matchedByHand });
+    const w = pl ? workoutOf(pl.workoutId) : undefined;
+    const fromEffort = w && pl ? recordTss(w, r.seconds, pl.rpe) : undefined;
+    if (fromEffort != null) r.tss = fromEffort;
+    applyLoadEdits([r], edits, planned);
+  };
+}
+
+/**
+ * Work out again, in the background, every activity out of step with how it would be worked out now: one not yet on
+ * Antogo's own numbers (Stage 1), and any whose FTP, threshold heart rate or corrections have changed since. The
+ * screens refresh as it goes, and Settings says what the last run did.
+ */
+export async function startChangeOver(): Promise<number> {
   // Second copies of one recording (brought in from a file, and here already) are made one, here as after every sync.
   void mergeFileCopies().then((n) => { if (n) void import('../ui/store').then((m) => m.notify()); }).catch(() => {});
-  return changeOver(scoreActivity, () => { void import('../ui/store').then((m) => m.notify()); });
+  await refreshThresholds();
+  await ensureHistories();
+  return changeOver(rescorer(), () => { void import('../ui/store').then((m) => m.notify()); });
 }
+// A merge with the rider's other devices may bring a changed history, setting or correction: what it touches is worked out again.
+onDeviceSync(() => { void startChangeOver().catch(() => {}); });
 
 /** How long after a sync the keeping starts. */
 export const KEEP_DELAY_MS = 10_000;

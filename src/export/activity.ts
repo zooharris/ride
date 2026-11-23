@@ -15,6 +15,8 @@ import type { Recording } from '../player/types';
 import { clock } from '../engine/workout';
 import { encodeFitActivity, encodeGpx, encodeTcx, hasRecord, hasRoute, type ActivityStreams } from './activityFiles';
 import { exportFileName } from './names';
+import { correctRecording, fixSig } from '../engine/corrections';
+import { wholeRecordingOf } from '../sync/ownService';
 import type { ActivityFormat, FileOut } from './formats';
 
 /** Where an activity came from: made in Antogo (its player, or logged by hand), or brought in from a device or service. */
@@ -76,6 +78,9 @@ export async function patiently<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 async function recordOf(c: IntervalsCredentials | null, r: Ride, local?: Recording): Promise<ActivityStreams | null> {
   const cached = await db.streams.get(r.id);
   if (cached && (cached.v ?? 0) >= STREAMS_VERSION && hasRecord(cached)) return cached;
+  // The activity's own file kept on this device comes before asking the data service (which never had one brought in from a file).
+  const kept = await wholeRecordingOf(r.id).catch(() => undefined);
+  if (kept && hasRecord(kept)) return kept;
   if (c) {
     try {
       const st = await patiently(() => fetchStreams(c, r.id));
@@ -124,13 +129,25 @@ export interface ActivityFileResult {
 const MIME: Record<ActivityFormat, string> = { fit: 'application/octet-stream', tcx: 'application/xml', gpx: 'application/gpx+xml' };
 
 /** The file for one activity in the format asked for. */
-export async function activityFile(c: IntervalsCredentials | null, r: Ride, format: ActivityFormat, origin: Origin, local?: Recording): Promise<ActivityFileResult> {
+export async function activityFile(c: IntervalsCredentials | null, r: Ride, format: ActivityFormat, origin: Origin, local?: Recording, opts: { original?: boolean } = {}): Promise<ActivityFileResult> {
   const name = (ext: string) => exportFileName(r.date, r.name, r.sport, ext);
+  // An activity the rider trimmed, or left a measure out of (22 Nov 2026): the file is the activity as corrected,
+  // written from the part kept, unless the original was asked for. The recording itself is never changed.
+  const edit = await db.activityEdits.get(r.id);
+  const asCorrected = !!fixSig(edit) && !opts.original;
   // 1. The player's own file, when its recording is still on this device.
-  if (format === 'fit' && local?.samples.length) return { file: { name: name('fit'), data: rideFile(local), mime: MIME.fit }, how: 'player' };
-  // 2. The original, unchanged, when it is already this format. Only a .fit can be: an original is a .fit file, so
+  if (!asCorrected && format === 'fit' && local?.samples.length) return { file: { name: name('fit'), data: rideFile(local), mime: MIME.fit }, how: 'player' };
+  // 2. The original, unchanged, when it is already this format: the copy kept on this device first.
+  if (!asCorrected) {
+    const kept = await db.files.get(r.id);
+    if (kept?.status === 'kept' && kept.bytes) {
+      const orig = await maybeGunzip(kept.bytes);
+      if (originalKind(orig) === format) return { file: { name: name(format), data: orig, mime: MIME[format] }, how: 'original' };
+    }
+  }
+  // Only a .fit can be asked of the data service: an original there is a .fit file, so
   // a .tcx or .gpx goes straight to the record and the data service is asked for each activity once (12 Nov 2026).
-  if (c && format === 'fit') {
+  if (!asCorrected && c && format === 'fit' && r.source !== 'file') {
     try {
       const orig = await maybeGunzip(await patiently(() => fetchActivityFile(c, r.id)));
       if (orig.length && originalKind(orig) === format) return { file: { name: name(format), data: orig, mime: MIME[format] }, how: 'original' };
@@ -140,7 +157,8 @@ export async function activityFile(c: IntervalsCredentials | null, r: Ride, form
     }
   }
   // 3. Written from the record.
-  const rec = await recordOf(c, r, local);
+  const whole = await recordOf(r.source === 'file' ? null : c, r, local);
+  const rec = whole && asCorrected ? correctRecording(whole, edit) : whole;
   if (rec) {
     if (format === 'gpx' && !hasRoute(rec)) return { file: { name: name('txt'), data: '', mime: 'text/plain' }, how: 'record', unavailable: 'This activity has no route, so there is no GPS file to give.' };
     const data = format === 'fit' ? encodeFitActivity(r, rec) : format === 'tcx' ? encodeTcx(r, rec) : encodeGpx(r, rec);

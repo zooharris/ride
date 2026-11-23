@@ -4,6 +4,8 @@ import type { Thumb } from './thumbs';
 import Dexie, { type Table } from 'dexie';
 import type { DayNote, PlannedWorkout, Profile, Ride, Wellness, Workout, ActivityEdit } from '../engine/types';
 import { settleUnsure, settledText } from '../engine/known';
+import { FOOT_LTHR_HISTORY, FTP_HISTORY, LTHR_HISTORY, type HistoryKey } from '../engine/thresholdCtx';
+import { dayWords, entryOn, sorted, withEntry, type EntrySource, type ThresholdHistory } from '../engine/thresholdHistory';
 
 export interface Settings {
   key: string;
@@ -101,7 +103,7 @@ export interface SyncState {
 export interface KeptFile { id: string; date: string; status: 'kept' | 'none'; bytes?: Uint8Array; size?: number; at: string; why?: string }
 
 /** Antogo's numbers for one activity, the thresholds they used, and what the activity came with before them. */
-export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; /** The FTP of the activity's day as each source has it (22 Nov 2026), and which one `ftp` is. */ deviceFtp?: number; serviceFtp?: number; ftpFrom?: 'device' | 'service'; /** 2 when `came` was taken during the hour on 22 Nov 2026 when Intervals.icu's drift was wrongly turned over. */ cameV?: number; at: string }
+export interface OwnRecord { id: string; v: number; ftp: number; lthr: number; nums: import('../engine/ownNumbers').OwnNumbers; came?: import('../engine/ownNumbers').OwnNumbers; /** The FTP of the activity's day as each source has it (22 Nov 2026), and which one `ftp` is. */ deviceFtp?: number; serviceFtp?: number; ftpFrom?: 'device' | 'service'; /** 2 when `came` was taken during the hour on 22 Nov 2026 when Intervals.icu's drift was wrongly turned over. */ cameV?: number; /** The rider's corrections the numbers were worked out with (the part kept, measures left out), as one word; and the part's totals. */ fix?: string; totals?: Partial<import('../engine/types').Ride>; at: string }
 
 class RideDb extends Dexie {
   profile!: Table<Profile & { id: 'me' }, string>;
@@ -231,7 +233,10 @@ export async function loadProfile(): Promise<Profile | null> {
   return rest;
 }
 
-export async function saveProfile(p: Profile): Promise<void> {
+/** How a changed threshold came about, for the entry it adds to Antogo's history (22 Nov 2026). */
+export interface ChangeWhy { from?: EntrySource; note?: string; /** The day it applies from, when not today (a test's day). */ on?: string }
+
+export async function saveProfile(p: Profile, why: ChangeWhy = {}): Promise<void> {
   // A changed FTP carries the day it changed (Settings, a sync from Intervals.icu, or a test result), for "set 12 September".
   const before = await db.profile.get('me');
   // A number the setup left unknown or estimated becomes the rider's own once it changes (13 Nov 2026).
@@ -246,6 +251,31 @@ export async function saveProfile(p: Profile): Promise<void> {
     ...(before && before.lthr !== p.lthr && p.lthrSetOn === before.lthrSetOn ? { lthrSetOn: localDay() } : {}),
   };
   await db.profile.put({ ...p, ...stamp, id: 'me' });
+  // Antogo's own history (22 Nov 2026): a threshold that changed adds an entry from that day, saying how it changed.
+  // Only a number that is the rider's own: an unknown one, or the app's estimate, is not history.
+  if (before) {
+    const mine = (k: 'ftp' | 'lthr') => !p.unsure?.[k];
+    if (before.ftp !== p.ftp && mine('ftp')) await noteThreshold(FTP_HISTORY, p.ftp, why);
+    if (before.lthr !== p.lthr && mine('lthr')) await noteThreshold(LTHR_HISTORY, p.lthr, why);
+    if (before.footLthr !== p.footLthr && p.footLthr) await noteThreshold(FOOT_LTHR_HISTORY, p.footLthr, why);
+  }
+}
+
+/**
+ * Add an entry to one of Antogo's threshold histories, once the history exists on this device (it is filled in once,
+ * see data/thresholds). A test's result applies from the day of the test, unless the history has changed since then:
+ * then from today, saying which test.
+ */
+async function noteThreshold(key: HistoryKey, value: number, why: ChangeWhy): Promise<void> {
+  const cur = (await db.settings.get(key))?.value as ThresholdHistory | undefined;
+  if (!cur || !Array.isArray(cur.entries) || !value) return;
+  const today = localDay();
+  const last = sorted(cur).pop();
+  const on = why.on && why.on <= today && (!last || last.from <= why.on) ? why.on : today;
+  // Already what the history says for that day (it was edited there first): nothing to add.
+  if (entryOn(cur, on)?.value === Math.round(value)) return;
+  const note = why.note ? (why.on && why.on !== on ? `${why.note} of ${dayWords(why.on, today)}` : why.note) : undefined;
+  await db.settings.put({ key, value: withEntry(cur, { from: on, value, source: why.from ?? 'settings', ...(note ? { note } : {}) }) });
 }
 
 function localDay(): string {

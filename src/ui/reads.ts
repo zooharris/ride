@@ -1,3 +1,4 @@
+import { cachedRecording, corrected } from '../sync/ownService';
 import { db, getSetting } from '../data/db';
 import { readActivity, readWords, READ_DAYS, READ_VERSION, type ActivityRead, type Streams } from '../engine/reads';
 import type { BreathNormal } from '../engine/breathOffset';
@@ -76,10 +77,10 @@ async function run(input: ReadsInput, only?: string): Promise<number> {
     // it is read from its own numbers and tried again on a later pass. Only being offline stops the pass.
     let s: Streams | undefined;
     let retry = false;
-    const full = await db.streams.get(r.id);
+    const full = await cachedRecording(r.id);
     try {
       s = full?.time?.length ? { time: full.time, watts: full.watts, heartrate: full.heartrate, ve: full.ve, br: full.br, tv: full.tv }
-        : c ? await fetchPowerStream(c, r.id) : undefined;
+        : c ? await corrected(r.id, await fetchPowerStream(c, r.id)) : undefined;
     } catch {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
       retry = true;

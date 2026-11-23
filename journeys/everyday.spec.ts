@@ -66,7 +66,9 @@ test('nothing set to receive workouts: the app says what to change, before sendi
   if (await list.isVisible()) await list.click();
   await page.locator('a[href*="#/workout/"]').filter({ hasNotText: /Strength|Legs|Upper|Mobility|Walk/ }).first().click();
   await expect(page.getByText("Intervals.icu isn't set to upload workouts to any device.").first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Put it on my Intervals.icu calendar anyway' })).toBeVisible();
+  // A ride's page can say this in each place it offers to send (the ride as planned, and its other version), so the
+  // button may be there once or twice depending on the ride the day's plan put first: one is enough (22 Nov 2026).
+  await expect(page.getByRole('button', { name: 'Put it on my Intervals.icu calendar anyway' }).first()).toBeVisible();
   await looksRight(s, info, 'A ride with nothing to receive it');
 });
 

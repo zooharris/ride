@@ -9,7 +9,9 @@ import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
 import { db, getSetting, saveProfile, setSetting } from '../../data/db';
-import { FtpSourceChoice } from '../FtpSource';
+import { ThresholdHistoryPanel } from '../ThresholdHistory';
+import { readQuery } from '../router';
+import { startChangeOver } from '../../sync/syncService';
 import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
 import { importBatches, mergeFileCopies, undoImport, watchImport, type ImportBatch } from '../../import/importer';
 import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
@@ -49,7 +51,7 @@ export function Settings({ data }: { data: AppData }) {
   const [p, setP] = useState<Profile>(data.profile!);
   const hasKey = useHasKey();
   // A card that saved numbers itself (Update, Apply, Use): bring those into this page's copy, so Save never puts the old ones back.
-  const SAVED_BY_CARDS = ['ftp', 'ftpSetOn', 'lthr', 'lthrSetOn', 'powerZoneMode', 'powerZonePcts', 'powerZoneWatts', 'hrZoneMode', 'hrZonePcts', 'hrZoneTops', 'vt1Ve', 'vt2Ve', 'breathSetOn', 'breathZoneMode', 'breathZonePcts', 'breathZoneTops', 'updatedAt'] as const;
+  const SAVED_BY_CARDS = ['ftp', 'ftpSetOn', 'lthr', 'lthrSetOn', 'powerZoneMode', 'powerZonePcts', 'powerZoneWatts', 'hrZoneMode', 'hrZonePcts', 'hrZoneTops', 'vt1Ve', 'vt2Ve', 'breathSetOn', 'breathZoneMode', 'breathZonePcts', 'breathZoneTops', 'updatedAt', 'footLthr', 'unsure'] as const;
   const takeSaved = async () => {
     const stored = await db.profile.get('me');
     if (!stored) return;
@@ -132,6 +134,8 @@ export function Settings({ data }: { data: AppData }) {
     if (coachFieldsChanged(data.profile!, p) || claudeKey.trim() !== savedKey) await setSetting('coachNote', null);
     setSavedKey(claudeKey.trim()); setSavedAuto(coachAuto && !!claudeKey.trim()); setSavedProvider(provider); setSavedModel(model.trim());
     notify();
+    // A changed FTP or threshold heart rate is an entry in Antogo's history from today: what it affects is worked out again.
+    void startChangeOver().catch(() => {});
     const before = data.profile!;
     // A number typed in place of an unknown or estimated one is the rider's own from now (13 Nov 2026).
     const mineNow = settleUnsure(before, p).profile;
@@ -268,6 +272,7 @@ export function Settings({ data }: { data: AppData }) {
             <div class="field"><label>FTP (watts)</label><NumberBox value={knownFtp(p)} placeholder={knownFtp(p) == null ? 'not known yet' : undefined} onValue={(v) => { if (v) setP(markMine({ ...p, ftp: v }, ['ftp'])); }} check={within(50, 600, 'FTP')} />
               <Unsure p={p} k="ftp" unknown="Not known yet: a power test sets it (the Ramp Test on a smart trainer, or the 20-minute FTP test). Until then rides have no watts." /></div>
           </div>
+          <ThresholdHistoryPanel kind="ftp" open={readQuery().get('open') === 'ftp-history'} stamp={data.profile?.updatedAt} onChanged={() => void takeSaved()} />
           {hasKey && <CoachFtp profile={data.profile!} data={data} onChanged={() => void takeSaved()} />}
           {knownFtp(p) != null && <ZoneEditor title="Power zones" unit="W" threshold={p.ftp} zones={ridePowerZones(p)} mode={p.powerZoneMode ?? 'pct'} custom={!!(p.powerZonePcts || p.powerZoneWatts)}
             onMode={(m) => setP({ ...p, powerZoneMode: m, powerZonePcts: ladderPcts(ridePowerZones(p)), powerZoneWatts: ladderTops(ridePowerZones(p), p.ftp) })}
@@ -288,6 +293,7 @@ export function Settings({ data }: { data: AppData }) {
             onMode={(m) => setP({ ...p, hrZoneMode: m, hrZonePcts: ladderPcts(rideHrZones(p)), hrZoneTops: ladderTops(rideHrZones(p), p.lthr) })}
             onPcts={(v) => setP({ ...p, hrZoneMode: 'pct', hrZonePcts: v })} onAbs={(v) => setP({ ...p, hrZoneMode: 'abs', hrZoneTops: v })}
             onStandard={() => setP({ ...p, hrZoneMode: undefined, hrZonePcts: undefined, hrZoneTops: undefined })} />}
+          <ThresholdHistoryPanel kind="lthr" stamp={data.profile?.updatedAt} onChanged={() => void takeSaved()} />
           <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
             <b class="small">On foot</b>
             <p class="muted small" style="margin:4px 0 10px">Runs and walks have their own numbers: threshold heart rate on foot is usually a few beats above the bike's.</p>
@@ -300,6 +306,7 @@ export function Settings({ data }: { data: AppData }) {
               onMode={(m) => setP({ ...p, footHrZoneMode: m, footHrZonePcts: ladderPcts(footHrZones(p)), footHrZoneTops: ladderTops(footHrZones(p), footThreshold(p)) })}
               onPcts={(v) => setP({ ...p, footHrZoneMode: 'pct', footHrZonePcts: v })} onAbs={(v) => setP({ ...p, footHrZoneMode: 'abs', footHrZoneTops: v })}
               onStandard={() => setP({ ...p, footHrZoneMode: undefined, footHrZonePcts: undefined, footHrZoneTops: undefined })} />}
+            <ThresholdHistoryPanel kind="footLthr" stamp={data.profile?.updatedAt} onChanged={() => void takeSaved()} />
           </div>
         </div>
 
@@ -612,7 +619,6 @@ function HistoryLoader() {
           <SecondCopies />
           <ImportsList />
         </div>
-        <FtpSourceChoice mode="setting" />
         <KeepingLine />
         <p class="faint small" style="margin-top:10px">Fitness and the charts count up to two years back. The power curve reads each newly loaded ride in the background the next time you open Progress.</p>
         <p class="faint small" style="margin-top:6px">This can only bring what Intervals.icu holds. If your device is a Garmin: Intervals.icu's Garmin link fetches at most a year of history from before you connected it; for older years, use <b>Import all Garmin Data</b> in Intervals.icu's Garmin settings, then load here again. Activities that reached Intervals.icu only from Strava are not shared with other apps.</p>

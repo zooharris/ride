@@ -27,10 +27,18 @@ export function pace(speedMs: number | undefined, profile: Parameters<typeof mil
  * strength or mobility session gets its time, load and heart rate. Nothing
  * that only means something on a bike is shown for anything else.
  */
-export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effort?: number, test?: boolean): Array<[string, string | number | undefined, string?]> {
+export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effort?: number, test?: boolean, says: { ftp?: string; lthr?: string; edit?: { noPower?: boolean; noHr?: boolean; trim?: unknown } } = {}): Array<[string, string | number | undefined, string?]> {
+  // A measure the rider left out (22 Nov 2026): its numbers are hidden, with a line saying why.
+  const leftOut: Array<[string, string | number | undefined, string?]> = [
+    ['Power', says.edit?.noPower ? 'Left out by you' : undefined, 'You left this ride’s power out, under Correct this activity. Its power numbers are hidden, it is scored from heart rate, and it is kept out of your power curve and records. Take the correction away and they come back.'],
+    ['Heart rate', says.edit?.noHr ? 'Left out by you' : undefined, 'You left this activity’s heart rate out, under Correct this activity. Its heart-rate numbers are hidden and it is kept out of your heart-rate records. Take the correction away and they come back.'],
+  ];
+  const lthrUsed: [string, string | number | undefined, string?] = ['Threshold heart rate used', r.averageHr && (says.lthr || r.lthrAtRide) ? says.lthr ?? `${r.lthrAtRide} bpm` : undefined, 'Heart-rate zones and heart-rate load are measured against the threshold heart rate in force on the activity’s day, from your threshold heart-rate history in Settings. To change it for this activity alone, use Correct this activity.'];
   const hr: Array<[string, string | number | undefined, string?]> = [
     ['Average heart rate', r.averageHr ? `${Math.round(r.averageHr)} bpm` : undefined, `Over the whole ${KIND_NOUN[r.sport]}`],
     ['Max heart rate', r.maxHr ? `${Math.round(r.maxHr)} bpm` : undefined],
+    lthrUsed,
+    leftOut[1],
   ];
   // More per activity (11 Nov 2026): each shows only when the data service carried it for this activity.
   const imperial = miles(profile);
@@ -51,11 +59,12 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
     ['Numbers', r.ownNumbers ? 'Worked out by Antogo' : r.source === 'file' ? 'From the file’s summary' : 'From Intervals.icu', r.ownNumbers ? 'Antogo worked these out from the recording itself. They can differ a little from other apps’ figures for the same activity.' : r.source === 'file' ? 'The file had no second-by-second recording to work from, so these are the totals it carried.' : 'Antogo hasn’t worked these out from the recording yet (it does once the activity’s original file is kept on this device), so they are Intervals.icu’s.'],
   ];
   if (r.sport === 'ride') return [
-    ['Moving time', clock(r.seconds), 'Time pedalling, stops excluded'],
+    ['Moving time', clock(r.seconds), says.edit?.trim ? 'Time pedalling in the part you kept, stops excluded' : 'Time pedalling, stops excluded'],
     ['Elapsed time', r.elapsedSeconds && r.elapsedSeconds - r.seconds >= 60 ? clock(r.elapsedSeconds) : undefined, 'Start to finish, stops included'],
     ['Distance', distance(r.distanceM, profile)],
     ['Total climbing', elevation(r.elevationM, profile)],
-    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (' + (r.powerCoverage != null && r.powerCoverage < 0.8 ? 'the power meter recorded only part of the ride' : 'no power was recorded') + '). An hour flat out at threshold is 100' : GLOSSARY.tss.short],
+    ['Training load (TSS)', r.tss, r.notTraining === 'drive' ? 'Counts 0: at this speed with no power it was not a ride (a car, a train, a watch left recording).' : r.notTraining === 'trivial' ? 'Counts 0: under five minutes is not training. If it was a planned session, match it by hand below.' : r.tssBasis === 'estimate' ? 'An estimate from the time alone (no power and no heart rate were recorded), at the cost of easy endurance riding, about 45 an hour' : r.tssBasis === 'heart-rate' ? 'How much the ride cost you, from average heart rate against your threshold heart rate (' + (says.edit?.noPower ? 'you left its power out' : r.powerCoverage != null && r.powerCoverage < 0.8 ? 'the power meter recorded only part of the ride' : 'no power was recorded') + '). An hour flat out at threshold is 100' : GLOSSARY.tss.short],
+    leftOut[0],
     ['Normalized power', r.normalizedPower ? `${r.normalizedPower} W` : undefined, GLOSSARY.np.short],
     ['Average power', r.averagePower ? `${r.averagePower} W` : undefined, 'Plain average over the whole ride, coasting included'],
     ['Power recorded for', r.powerCoverage != null && r.powerCoverage < 0.95 ? `${Math.round(r.powerCoverage * 100)}% of the ride` : undefined, r.powerCoverage != null && r.powerCoverage < 0.8 ? 'The power meter gave no reading for the rest. The power numbers describe only the part it recorded, so this ride’s training load is from heart rate.' : 'The power meter gave no reading for the rest. The power numbers describe the part it recorded.'],
@@ -75,7 +84,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
     ['Average temperature', tempF],
     ...weather,
     ...energy,
-    ['FTP used for this ride', r.ftpAtRide ? `${r.ftpAtRide} W` : undefined, `${r.ftpFrom === 'device' ? 'As your device had it set the day you rode' : r.ftpFrom === 'service' ? 'As Intervals.icu had it on record the day you rode' : 'The FTP on record the day you rode'}; TSS and intensity are relative to it${r.ftpDevice && r.ftpService && r.ftpDevice !== r.ftpService ? `. Your device had ${r.ftpDevice} W and Intervals.icu ${r.ftpService} W; Settings, History is where you choose between them` : ''}`],
+    ['FTP used for this ride', r.ftpAtRide && (r.normalizedPower || r.averagePower) ? says.ftp ?? `${r.ftpAtRide} W` : undefined, `Training load, intensity and time in power zones are measured against it. Settings, Thresholds and zones has the rule (your FTP history, or the FTP your device had set that day) and the history itself. To change it for this ride alone, use Correct this activity${r.ftpDevice && r.ftpDevice !== r.ftpAtRide ? `. This ride's own file says your device had ${r.ftpDevice} W set` : ''}`],
     ...tail,
   ];
   if (r.sport === 'walk') return [

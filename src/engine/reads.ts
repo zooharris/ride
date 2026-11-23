@@ -1,3 +1,5 @@
+import { DRIFT_SKIP, DRIFT_STEADY_MIN, hrDrift } from './drift';
+export { hrDrift };
 import type { Basis, Profile, Ride, SessionKind, Workout } from './types';
 import { hrAtPower, type HrAtPower } from './hrPower';
 import { veAtPower, type BreathNormal, type VeAtPower } from './breathOffset';
@@ -24,9 +26,9 @@ export const READ_VERSION = 3;
 /** How far back activities are read. */
 export const READ_DAYS = 84;
 /** The steady part of a ride starts after the warm-up. */
-const SKIP = 600;
+const SKIP = DRIFT_SKIP;
 /** Fade and drift need this much steady riding to mean anything. */
-const STEADY_MIN = 1800;
+const STEADY_MIN = DRIFT_STEADY_MIN;
 /** A heart-rate band compared with the rider's normal needs this much time in both. */
 const COMPARE_FLOOR = 300;
 /** The rider's normal heart rate at power is read from the rides of the weeks before. */
@@ -148,29 +150,6 @@ export function powerFade(time: number[], watts: number[] | undefined): number |
   };
   const first = avg(0, total / 4), last = avg(total * 3 / 4, total);
   return first > 0 ? Math.round((last / first) * 100) / 100 : undefined;
-}
-
-/**
- * Heart rate drifting against power: power per beat in the first half of the
- * steady part against the second half, in percent. Only seconds with both
- * pedalling (power above zero) and heart rate count, after minute 10.
- */
-export function hrDrift(time: number[], watts: number[] | undefined, hr: number[] | undefined): number | undefined {
-  if (!watts?.length || !hr?.length) return undefined;
-  const n = Math.min(time.length, watts.length, hr.length);
-  const d = dts(time, n);
-  const idx: number[] = [];
-  for (let i = 0; i < n; i++) if (time[i] >= SKIP && d[i] > 0 && watts[i] > 0 && hr[i] > 0) idx.push(i);
-  const total = idx.reduce((t, i) => t + d[i], 0);
-  if (total < STEADY_MIN) return undefined;
-  let acc = 0, p1 = 0, h1 = 0, p2 = 0, h2 = 0;
-  for (const i of idx) {
-    const first = acc < total / 2; acc += d[i];
-    if (first) { p1 += watts[i] * d[i]; h1 += hr[i] * d[i]; } else { p2 += watts[i] * d[i]; h2 += hr[i] * d[i]; }
-  }
-  if (!h1 || !h2 || !p1) return undefined;
-  const ef1 = p1 / h1, ef2 = p2 / h2;
-  return Math.round(((ef1 - ef2) / ef1) * 1000) / 10;
 }
 
 function normalized(time: number[], watts: number[]): number | undefined {

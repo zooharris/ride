@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { cancelImport, importFiles, UPLOAD_IMPORTS, watchImport, type ImportState } from '../import/importer';
+import { cancelImport, finishImport, importFiles, UPLOAD_IMPORTS, watchImport, type ImportState } from '../import/importer';
+import { ftpScoring, readHistory } from '../data/thresholds';
+import { FTP_HISTORY } from '../engine/thresholdCtx';
+import { importFtpWords } from '../engine/thresholdHistory';
+import { watchChangeOver, type ChangeOverState } from '../sync/ownService';
+import { APP_SHORT_NAME } from '../appName';
 import { getSetting, setSetting } from '../data/db';
 import { credentials } from '../sync/syncService';
 import { notify } from './store';
@@ -37,6 +42,17 @@ export function AddFilesSheet({ onClose }: { onClose: () => void }) {
     catch (e) { toast({ ok: false, text: `Stopped: ${(e as Error).message} What arrived is kept.` }); }
   };
   const r = st.result;
+  // Part E (22 Nov 2026): files that carry a device's FTP settings. The summary says what they say and how they will be
+  // used under the rider's setting, before anything is scored; the rider carries on, or opens the FTP history first.
+  const [ftpSays, setFtpSays] = useState<{ found: string; used: string } | null>(null);
+  const [work, setWork] = useState<ChangeOverState>({ running: false, done: 0, total: 0 });
+  const [scoring, setScoring] = useState(false);
+  useEffect(() => watchChangeOver(setWork), []);
+  useEffect(() => {
+    if (!r?.ftpFound) { setFtpSays(null); return; }
+    void Promise.all([ftpScoring(), readHistory(FTP_HISTORY)]).then(([sc, h]) => setFtpSays(importFtpWords(r.ftpFound!, sc, h, APP_SHORT_NAME)));
+  }, [r?.ftpFound]);
+  const carryOn = async () => { setScoring(true); try { await finishImport(notify); } finally { setScoring(false); } };
   return (
     <div class="modal-bg" onClick={onClose}>
       <div class="modal" style="max-width:560px" role="dialog" aria-label="Add activity files" onClick={(e) => e.stopPropagation()}>
@@ -67,6 +83,22 @@ export function AddFilesSheet({ onClose }: { onClose: () => void }) {
           <div class="panel import-result" style="margin-top:12px" aria-live="polite">
             <p class="small" style="margin:0"><b>{r.added}</b> new {r.added === 1 ? 'activity' : 'activities'}{r.already ? `, ${r.already} already here (their files are now kept with them)` : ''}{r.wellnessDays ? `, ${r.wellnessDays} ${r.wellnessDays === 1 ? 'day' : 'days'} of wellness added or filled in` : ''}.</p>
             {r.notActivities > 0 && <p class="faint small" style="margin:4px 0 0">{r.notActivities.toLocaleString()} other device {r.notActivities === 1 ? 'file was' : 'files were'} passed over: the device's own records that aren't activities (daily monitoring, settings and the like).</p>}
+            {r.ftpFound && ftpSays && (
+              <div class="import-ftp">
+                <p class="small" style="margin:0"><b>{ftpSays.found}</b></p>
+                <p class="small muted" style="margin:4px 0 0">{ftpSays.used} A ride's page says what was used, and any one ride can be corrected there.</p>
+                {r.waiting ? (
+                  <>
+                    <p class="small" style="margin:8px 0 6px">Nothing brought in has been scored yet.</p>
+                    <div class="row wrap" style="gap:8px">
+                      <button class="btn primary sm" disabled={scoring} onClick={() => void carryOn()}>{scoring ? (work.running && work.total ? `Working them out: ${work.done} of ${work.total}` : 'Working them out…') : 'Carry on'}</button>
+                      <a class="btn sm" href="#/settings?open=ftp-history" onClick={onClose}>Open my FTP history first</a>
+                    </div>
+                    <p class="faint small" style="margin:6px 0 0">Carry on scores them now. If you open your FTP history first and change it, they are scored with it as changed; they are scored in any case the next time {APP_SHORT_NAME} opens.</p>
+                  </>
+                ) : <p class="faint small" style="margin:6px 0 0">The new activities have been scored.</p>}
+              </div>
+            )}
             {r.batchId && <p class="faint small" style="margin:4px 0 0">Not what you expected? Settings, History lists this under "Brought in from files", with Undo.</p>}
             {r.unreadable.length > 0 && (
               <details style="margin-top:6px"><summary class="small">{r.unreadable.length} couldn't be read</summary>

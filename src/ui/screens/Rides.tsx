@@ -12,8 +12,8 @@ import type { Ride } from '../../engine/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { db, getSetting, setSetting, STREAMS_VERSION, type StreamSet } from '../../data/db';
 import { credentials, plannedSeconds, shownName, unmatchRecording } from '../../sync/syncService';
-import { deleteRecording, matchByHand, renameActivity, setActivityKind, setExcluded, undoHandLog } from '../../sync/records';
-import type { ActivityEdit, PlannedWorkout, SessionKind } from '../../engine/types';
+import { deleteRecording, matchByHand, undoHandLog } from '../../sync/records';
+import type { ActivityEdit, PlannedWorkout } from '../../engine/types';
 import { keepableRecording, keepVeloiqInstead, undoWindowOpen } from '../../player/garmin';
 import { ActivityWhatYouDid, PlannedList, WhatYouDid } from '../DoneRecord';
 import { StepsTable } from '../StepsTable';
@@ -52,7 +52,13 @@ import { TwoRecordings } from '../TwoRecordings';
 import { activityWords, onReadsBuilt, readOne, readsInput } from '../reads';
 import { fahrenheit, miles, weightSystem } from '../../engine/units';
 import { activityNumbers, isIndoor, KIND_NOUN } from '../activityNumbers';
-import { recordingOf } from '../../sync/ownService';
+import { wholeRecordingOf } from '../../sync/ownService';
+import { correctRecording, fixSig } from '../../engine/corrections';
+import { getThresholdCtx, thresholdsOf } from '../../engine/thresholdCtx';
+import { usedWords } from '../../engine/thresholdHistory';
+import { CorrectActivity, CorrectionsInForce } from '../CorrectActivity';
+import { isUnknown } from '../../engine/known';
+import { APP_SHORT_NAME } from '../../appName';
 import { NumbersGrid } from '../NumbersGrid';
 import { AddFilesButton } from '../AddFiles';
 
@@ -160,7 +166,7 @@ export const NO_DETAIL = 'Intervals.icu sent this activity without its detail. G
 
 /** An activity's recording from its original file kept on this device, if one is. */
 async function fromKeptFile(id: string): Promise<StreamSet | undefined> {
-  const set = await recordingOf(id);
+  const set = await wholeRecordingOf(id);
   return set ? { ...set, id, v: STREAMS_VERSION } : undefined;
 }
 
@@ -185,7 +191,11 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const p = data.planned.find((x) => x.activityId === r.id);
   const w = p ? findWorkout(data.mine, p.workoutId) : undefined;
   const c = w && w.kind === 'ride' ? scoreRide(w, r) : undefined;
-  const [streams, setStreams] = useState<StreamSet | null | undefined>(undefined);
+  // The recording as it was made; `streams` below is what the page shows: the same with the rider's corrections laid over
+  // (the part kept, a measure left out). The recording itself is never changed.
+  const [rawStreams, setStreams] = useState<StreamSet | null | undefined>(undefined);
+  const edit = data.edits.find((e) => e.id === r.id);
+  const streams = useMemo(() => (rawStreams ? correctRecording(rawStreams, edit) : rawStreams), [rawStreams, fixSig(edit)]);
   const [streamErr, setStreamErr] = useState<string | null>(null);
   // Shown from the original file kept on this device (Stage 0), not from the data service.
   const [fromFile, setFromFile] = useState(false);
@@ -286,7 +296,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   // The chart opened large (22 Nov 2026, brief Part C): laps and steps, the planned target, zones as of the ride.
   const largeExtras = useMemo<LargeExtras | undefined>(() => {
     if (!shown) return undefined;
-    const dayProfile = { ...profile, ftp: r.ftpAtRide ?? profile.ftp, lthr: recLthr ?? profile.lthr };
+    const dayProfile = { ...profile, ftp: r.ftpAtRide ?? profile.ftp, lthr: recLthr ?? (r.sport === 'ride' ? r.lthrAtRide : undefined) ?? profile.lthr };
     // The measure the target was set in: breathing when ridden or sent by breathing, else the basis the session was planned on.
     const measure: TargetMeasure = (p?.rodeByBreath || p?.sentBreath) && breathZones(profile) ? 've' : (p?.basis ?? basis) === 'hr' ? 'hr' : 'watts';
     const has = measure === 'watts' ? !!shown.watts?.length : measure === 'hr' ? !!shown.heartrate?.length : !!shown.ve?.some((v) => v > 0);
@@ -304,7 +314,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       target,
       zones: {
         ...(r.sport === 'ride' ? { watts: zoneBands(ridePowerZones(profile), dayProfile.ftp), ve: breathBands(breathZones(profile)) } : {}),
-        hr: zoneBands(r.sport === 'ride' ? rideHrZones(profile) : footHrZones(profile), r.sport === 'ride' ? dayProfile.lthr : footLthr(profile)),
+        hr: zoneBands(r.sport === 'ride' ? rideHrZones(profile) : footHrZones(profile), r.sport === 'ride' ? dayProfile.lthr : r.lthrAtRide ?? footLthr(profile)),
       },
       test: !!testKind,
       imperial: miles(profile),
@@ -314,7 +324,12 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, profile, r.id, recLthr, playerLaps, analysis, judgedAs, testKind, lapNames?.matched]);
   const tempF = r.averageTempC != null ? (fahrenheit(profile) ? `${Math.round(r.averageTempC * 1.8 + 32)}°F` : `${Math.round(r.averageTempC)}°C`) : undefined;
-  const items = [...activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind), ...breathNumbers(shown)];
+  // What each threshold used was, and why, in the words of the rule that scores every activity (22 Nov 2026).
+  const used = thresholdsOf(r, profile, getThresholdCtx());
+  // A rider whose FTP isn't known yet has a stand-in for the sums only: the page says so, and never calls it their setting.
+  const standIn = used.ftp?.why.kind === 'now' && isUnknown(profile, 'ftp');
+  const usedSays = { ftp: standIn ? `${r.ftpAtRide} W · a stand-in until your FTP is known` : used.ftp && used.ftp.value === r.ftpAtRide ? usedWords(used.ftp, 'W', today(), APP_SHORT_NAME) : undefined, lthr: used.lthr && used.lthr.value === r.lthrAtRide ? usedWords(used.lthr, 'bpm', today(), APP_SHORT_NAME) : undefined, edit };
+  const items = [...activityNumbers(r, profile, tempF, p && w?.kind === 'strength' ? p.rpe : undefined, !!testKind, usedSays), ...breathNumbers(shown)];
   const isRide = r.sport === 'ride';
   const noun = KIND_NOUN[r.sport];
   const plannedSecs = w ? (plannedSeconds(w) ?? 0) : 0;
@@ -346,13 +361,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     toast({ ok: true, text: `${w.name} is back to to-do.` });
     go('today');
   };
-  const hubActions = p && w && (
-    <div class="row wrap" style="gap:8px;margin-top:10px">
-      {handLogged
-        ? <button class="btn sm" disabled={busy} onClick={undoLogged}>Undo: not done yet</button>
-        : <button class="btn sm" disabled={busy} onClick={differentWorkout} title="This recording was something else; put the planned session back to to-do">This was a different workout</button>}
-    </div>
-  );
+  // "This was a different workout" and "Undo: not done yet" sit under Correct this activity, with the planned session (22 Nov 2026).
+  const hubActions = null;
   const deleteIt = async () => {
     const also = p && w ? `\n\n${w.name} goes back to to-do${p.plannedFor ? ` on ${shortDay(p.plannedFor)}` : ''}${(p.plannedFor ?? p.date) < today() ? ' (missed, as its day has passed)' : ''}.` : '';
     if (!confirm(`Delete ${r.name} (${fmtDate(r.date)}, ${clock(r.seconds)})?\n\nIt is deleted from Intervals.icu and from this app, and cannot be brought back here.${also}`)) return;
@@ -374,13 +384,14 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     <div>
       <PageHead back={{ label: 'Activities', href: '#/rides' }} help="activities" title={shownName(r.name, w)} eyebrow={`${fmtDate(r.date)}${r.sport !== 'ride' ? ` · ${KIND_LABEL[r.sport]}` : ''}${recordedAs(r) ? ` · recorded as ${recordedAs(r)}` : ''}`}><button class="btn sm" onClick={() => setDownloading(true)}>Download</button></PageHead>
       <SummaryStrip items={items} />
+      <CorrectionsInForce ride={r} edit={edit} />
       <TwoRecordings edits={data.edits} rides={data.ridesAll} only={r.id} top />
       {w && p && !c && (
         <div class="panel hub" style="margin-top:14px;border-color:var(--good)">
           <b style="color:var(--good)">Done</b> <span class="muted">against {planLink}</span>
           {p.plannedFor && <p class="faint small" style="margin-top:2px">planned for {shortDay(p.plannedFor)}</p>}
           <p class="muted small" style="margin-top:4px">{doneAgainst(r.seconds, plannedSecs, handLogged ? 'logged' : 'recorded')}{r.tss != null ? `, training load ${r.tss} TSS` : ''}{w.estimatedTss != null ? ` (about ${w.estimatedTss} planned)` : ''}{r.averageHr ? `, average heart rate ${Math.round(r.averageHr)} bpm` : ''}.</p>
-          {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
+          {shortRec && !handLogged && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the session ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, say so under Correct this activity, below.</p>}
           {hubActions}
         </div>
       )}
@@ -389,24 +400,23 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <b style={`color:${verdictColor(c.verdict)}`}>{w.test ? 'Done' : verdictLabel(c.verdict)}</b> <span class="muted">against {planLink}</span>
           {p.plannedFor && <p class="faint small" style="margin-top:2px">planned for {shortDay(p.plannedFor)}</p>}
           <p class="muted small" style="margin-top:4px">{w.test === 'ramp' && rampTop != null ? `Ramp test: ridden to ${rampTop} W.` : c.reason}{analysis && !w.test ? ` ${analysis.summary}` : ''}</p>
-          {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, press This was a different workout.</p>}
+          {shortRec && <p class="small" style="margin-top:6px;color:var(--warn)">This recording is much shorter than the ride ({lengths(r.seconds, plannedSecs).join(' of ')}). If it was something else, say so under Correct this activity, below.</p>}
           {hubActions}
         </div>
       )}
       {testKind && streams !== undefined && <ActivityTest ride={r} kind={testKind} streams={streams} profile={profile} />}
       {refused && <p class="muted small" style="margin-top:14px">Not matched to a planned session: you said it was a different workout from {refusedW?.name ?? 'the session'} on {fmtDate(refused.date)}.</p>}
 
-      {!p && <MatchByHand ride={r} data={data} />}
       {!p && (r.sport === 'strength' || r.sport === 'mobility' || r.sport === 'walk') && (
         <section class="section">
           <h2>What you did</h2>
-          <div style="margin-top:8px"><ActivityWhatYouDid ride={r} edit={data.edits.find((e) => e.id === r.id)} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
+          <div style="margin-top:8px"><ActivityWhatYouDid noEffort ride={r} edit={data.edits.find((e) => e.id === r.id)} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {w && p && !isRide && w.kind !== 'ride' && (
         <section class="section">
           <h2>What you did</h2>
-          <div style="margin-top:8px"><WhatYouDid planned={p} workout={w} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
+          <div style="margin-top:8px"><WhatYouDid noEffort planned={p} workout={w} units={weightSystem(profile)} history={doneHistory(data.planned, data.edits)} /></div>
         </section>
       )}
       {w && p && (
@@ -498,7 +508,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
           <h2>{r.sport === 'strength' || r.sport === 'mobility' ? 'Sets and rests' : isRide ? 'Laps and intervals' : 'Laps'}</h2>
           <p class="faint small" style="margin:4px 0 10px">{r.sport === 'strength' ? 'Each set ended on the lap button; rests were timed. In order, with heart rate.' : r.sport === 'mobility' ? 'Each stretch or hold, and each move into position, in order, with heart rate.' : isRide ? 'The laps you pressed and the efforts Intervals.icu found, in order.' : 'The laps the watch recorded, in order.'}</p>
           {lapNames && !lapNames.matched && w && <p class="faint small" style="margin:-4px 0 10px">The laps don't line up with the {lapSteps!.length} steps of {w.name} (a lap press missed or extra), so they're numbered rather than named.</p>}
-          <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={isRide ? profile.lthr : footLthr(profile)} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={miles(profile)} /></div>
+          <div class="panel" style="overflow-x:auto"><LapsTable names={lapNames?.names} intervals={streams.intervals} ftp={r.ftpAtRide ?? profile.ftp} lthr={r.lthrAtRide ?? (isRide ? profile.lthr : footLthr(profile))} hrZones={isRide ? rideHrZones(profile) : footHrZones(profile)} powerZones={ridePowerZones(profile)} heartRateOnly={!isRide} distance={r.sport === 'run' ? streams.distance : undefined} time={streams.time} imperial={miles(profile)} /></div>
         </section>
       ) : null}
       <section class="section">
@@ -507,7 +517,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       </section>
       {downloading && <DownloadActivity ride={r} data={data} onClose={() => setDownloading(false)} />}
       <StrapDetails activityId={r.id} />
-      <AboutActivity data={data} streamsReady={!!streams} ride={r} matched={!!p} excluded={!!data.edits.find((e) => e.id === r.id)?.excluded} kindEdited={data.edits.find((e) => e.id === r.id)?.kind} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'through your bike computer' : undefined)} />
+      <CorrectActivity ride={r} data={data} planned={p} workout={w} onDifferent={differentWorkout} onUndoLogged={undoLogged} matchByHand={!p ? <MatchByHand ride={r} data={data} /> : undefined} />
+      <AboutActivity data={data} streamsReady={!!streams} ride={r} replaced={data.edits.find((e) => e.id === r.id)?.replaced} breathSensor={data.edits.find((e) => e.id === r.id)?.breathSensor ?? (hasBreathing(streams) ? 'through your bike computer' : undefined)} />
       <section class="section">
         <button class="btn danger sm" disabled={busy} onClick={deleteIt}>Delete this activity</button>
         <p class="faint small" style="margin-top:6px">For an accidental recording or a duplicate. It will be deleted from Intervals.icu too{p ? `, and ${w?.name ?? 'the session it completed'} goes back to to-do` : ''}. Your device's own app keeps its own copy; delete it there as well if you want it gone everywhere.</p>
@@ -624,7 +635,6 @@ function ZoneStrip({ seconds, power }: { seconds: number[]; power: boolean }) {
   );
 }
 
-const KIND_CHOICES: Array<[SessionKind, string]> = [['ride', 'Ride'], ['strength', 'Strength'], ['mobility', 'Mobility'], ['walk', 'Walk'], ['run', 'Run'], ['other', 'Other (swim, row, anything else)']];
 
 /**
  * Match an unmatched recording to a planned session by hand: one done a day
@@ -654,8 +664,7 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
     finally { setBusy(false); }
   };
   return (
-    <section class="section">
-      <h2>Was this a planned session?</h2>
+    <div class="match-by-hand">
       <p class="faint small" style="margin:4px 0 10px">If this was one of your planned sessions, done on another day or under another name, match it here and the session is marked done with this recording.</p>
       <div class="row wrap" style="gap:8px;align-items:flex-end">
         <div class="field" style="flex:1;min-width:220px">
@@ -667,13 +676,12 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
         </div>
         <button class="btn" disabled={!chosen || busy} onClick={go2}>{busy ? 'Matching…' : 'Match'}</button>
       </div>
-    </section>
+    </div>
   );
 }
 
 /** The activity's name, what it was (when the device got it wrong), and whether it counts toward training load. */
-function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdited, replaced, breathSensor }: { data: AppData; streamsReady: boolean; ride: Ride; matched: boolean; excluded: boolean; kindEdited?: SessionKind; replaced?: ActivityEdit['replaced']; breathSensor?: string }) {
-  const [name, setName] = useState(r.name);
+function AboutActivity({ data, streamsReady, ride: r, replaced, breathSensor }: { data: AppData; streamsReady: boolean; ride: Ride; replaced?: ActivityEdit['replaced']; breathSensor?: string }) {
   const [busy, setBusy] = useState(false);
   // The Garmin rule removed Antogo's copy of this ride: within 30 days, on the computer that has its file, it can come back.
   const [keepable, setKeepable] = useState<string | undefined>();
@@ -686,7 +694,6 @@ function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdi
     notify();
     toast({ ok: res.ok, text: res.ok ? `Kept Antogo's recording of ${replaced!.name}.` : res.text });
   };
-  useEffect(() => setName(r.name), [r.name]);
   // What the recording shows (the re-check thinks, 1 Nov): the same sentences the coach reads.
   const [shows, setShows] = useState<string[]>([]);
   useEffect(() => {
@@ -698,17 +705,6 @@ function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdi
     return () => { alive = false; off(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.id, streamsReady]);
-  // These two save at once (they also write to Intervals.icu), so each offers Undo for five seconds.
-  const run = async (what: () => Promise<void>, ok: string, undo?: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await what(); notify();
-      toast({ ok: true, text: ok, action: undo ? { label: 'Undo', run: async () => { try { await undo(); notify(); toast({ ok: true, text: 'Undone.' }); } catch (e) { toast({ ok: false, text: `Not undone: ${(e as Error).message}` }); } } } : undefined });
-    }
-    catch (e) { toast({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
-    finally { setBusy(false); }
-  };
-  const recorded = r.type;
   return (
     <section class="section">
       <h2>About this activity</h2>
@@ -721,25 +717,6 @@ function AboutActivity({ data, streamsReady, ride: r, matched, excluded, kindEdi
             {keepable && <button class="btn sm" disabled={busy} onClick={() => void keepOurs()}>Keep Antogo's instead…</button>}
           </div>
         )}
-        <div class="row wrap" style="gap:8px;align-items:flex-end">
-          <div class="field" style="flex:1;min-width:200px"><label>Name</label><input value={name} maxLength={80} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
-          <button class="btn" disabled={busy || !name.trim() || name.trim() === r.name} onClick={() => run(() => renameActivity(r, name), 'Renamed.')}>Rename</button>
-          {name !== r.name && <button class="btn quiet" disabled={busy} onClick={() => setName(r.name)}>Cancel</button>}
-        </div>
-        {!matched && (
-          <div class="field">
-            <label>What it was</label>
-            <select value={kindEdited ?? ''} disabled={busy} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as SessionKind | ''; const was = kindEdited; void run(() => setActivityKind(r, v || undefined), v ? `Counted as ${KIND_CHOICES.find(([k]) => k === v)![1].toLowerCase()}.` : 'Back to what the device recorded.', async () => setActivityKind((await db.rides.get(r.id)) ?? r, was)); }}>
-              <option value="">As recorded ({KIND_LABEL[sportOf(recorded, r.averageSpeedMs)].toLowerCase()})</option>
-              {KIND_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
-            <span class="faint small">Correct it when the device filed it wrongly (a treadmill walk as a run, say). The training load is worked out again for that kind, and the type in Intervals.icu is corrected too.</span>
-          </div>
-        )}
-        <label class="row" style="gap:10px;align-items:flex-start;cursor:pointer">
-          <input type="checkbox" style="width:18px;height:18px;margin-top:2px;accent-color:var(--accent)" checked={excluded} disabled={busy} onChange={(e) => { const v = (e.target as HTMLInputElement).checked; void run(() => setExcluded(r, v), v ? 'Left out of training load.' : 'Counted toward training load again.', () => setExcluded(r, !v)); }} />
-          <span><b style="font-weight:600">Leave out of training load</b><br /><span class="faint small">{excluded ? `Counts 0 toward fitness, fatigue and your week (it would be ${r.uncountedTss ?? 0} TSS). It stays in your history.` : 'For something that happened but should not count, like carrying the bike or a walk to the shop. It stays in your history and counts 0 toward fitness, fatigue and your week.'}</span></span>
-        </label>
       </div>
     </section>
   );
@@ -800,5 +777,5 @@ function ActivityTest({ ride: r, kind, streams, profile }: { ride: Ride; kind: '
     void setSetting(testResultKey(r.id), x);
     if (rec) void patchRecording(rec.id, { test: x });
   };
-  return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact /></div>;
+  return <div class="panel" style="margin-top:14px"><TestResults result={result} profile={profile} onChange={change} compact testDay={r.date} /></div>;
 }

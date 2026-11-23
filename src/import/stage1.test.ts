@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Encoder, Profile as FitProfile } from '@garmin/fitsdk';
 import { db } from '../data/db';
+import { setThresholdCtx } from '../engine/thresholdCtx';
 import { encodeFitActivity } from '../export/activityFiles';
 import { fitType, readActivityFile, fromGpx, fromTcx } from './readers';
 import { addActivity, importFiles, mergeFileCopies, rideFromParsed, sameActivity } from './importer';
@@ -9,7 +10,6 @@ import { ownNumbers, normalizedPower, perSecond } from '../engine/ownNumbers';
 import { POWER_ZONES, HR_ZONES } from '../engine/zones';
 import { changeOver, thresholdsFor } from '../sync/ownService';
 import { scoreActivity } from '../sync/syncService';
-import { checkNumbers } from '../sync/checkNumbers';
 import { fillDays, wellnessFromJson } from './wellnessExport';
 import type { Profile, Ride, Wellness } from '../engine/types';
 
@@ -56,7 +56,8 @@ function garminFit(): Uint8Array {
 
 const readAct = async (n: string, b: Uint8Array) => (await readActivityFile(n, b)) as import('./readers').ParsedActivity;
 
-beforeEach(async () => { await db.delete(); await db.open(); await db.profile.put({ id: 'me', ...profile }); });
+// What scoring holds in memory (Antogo's histories, the rider's corrections) is forgotten with the database.
+beforeEach(async () => { setThresholdCtx(undefined); await db.delete(); await db.open(); await db.profile.put({ id: 'me', ...profile }); });
 
 describe('reading activity files of any maker', () => {
   it('a FIT file from Garmin\'s own SDK: summary, local time from the file, and the recording', async () => {
@@ -128,14 +129,23 @@ describe('Antogo\'s own numbers, against hand-worked figures', () => {
     expect(perSecond(time, [100, 100, 100, 100, 100, 100, 100]).filter((x) => x != null)).toHaveLength(9);   // 0-6 (3 and 4 filled, a gap of 3 s), then 60-61; 7-59 a pause
     expect(normalizedPower(new Array(60).fill(250))).toBe(250);
   });
-  it('drift: the second half\'s power per heartbeat falling behind the first', () => {
-    const n = ownNumbers({ ...rideStreams, heartrate: T.map((i) => (i < 1800 ? 140 : 154)) }, ctx);
+  it('drift: the second half\'s power per heartbeat falling behind the first, the warm-up skipped (the one rule the whole app uses)', () => {
+    // An hour at 200 W. After the first ten minutes: 25 minutes at 140 bpm, then 25 at 154. 200/140 against 200/154 is 9.1%.
+    const n = ownNumbers({ ...rideStreams, heartrate: T.map((i) => (i < 2100 ? 140 : 154)) }, ctx);
     expect(n.decoupling).toBeCloseTo(9.1, 1);
+    // A hard warm-up changes nothing: it is not part of either half.
+    const warm = ownNumbers({ ...rideStreams, heartrate: T.map((i) => (i < 600 ? 175 : i < 2100 ? 140 : 154)) }, ctx);
+    expect(warm.decoupling).toBe(n.decoupling);
+    // Under half an hour of steady riding after the warm-up: no figure.
+    const short = { ...rideStreams, time: T.slice(0, 2000), watts: rideStreams.watts.slice(0, 2000), heartrate: T.slice(0, 2000).map(() => 140) };
+    expect(ownNumbers(short, ctx).decoupling).toBeUndefined();
   });
   it('scored with the FTP of the day where the activity carries it', () => {
-    expect(thresholdsFor({ sport: 'ride', ftpAtRide: 230 }, profile).ftp).toBe(230);
-    expect(thresholdsFor({ sport: 'ride' }, profile).ftp).toBe(250);
-    expect(thresholdsFor({ sport: 'walk' }, profile).lthr).toBe(160);
+    // Before Antogo's own history exists on a device, an activity keeps the FTP it came with (sync/ftpHistory.test.ts has the rule after).
+    const at = { id: 'a', date: '2026-11-20' };
+    expect(thresholdsFor({ ...at, sport: 'ride', ftpAtRide: 230 }, profile).ftp).toBe(230);
+    expect(thresholdsFor({ ...at, sport: 'ride' }, profile).ftp).toBe(250);
+    expect(thresholdsFor({ ...at, sport: 'walk' }, profile).lthr).toBe(160);
   });
 });
 
@@ -227,10 +237,6 @@ describe('the change-over of activities already here', () => {
     expect(rec.came?.normalizedPower).toBe(205);
     // Nothing to do the second time; a changed FTP (none carried by the activity) would be worked out again.
     expect(await changeOver(scoreActivity, () => {})).toBe(0);
-    const checks = checkNumbers(await db.rides.toArray(), await db.own.toArray());
-    const np = checks.find((c) => c.key === 'normalizedPower')!;
-    expect(np).toMatchObject({ n: 1, within: 0 });              // 200 against 205: 2.4% apart
-    expect(checks.find((c) => c.key === 'averagePower')).toMatchObject({ n: 1, within: 1 });   // 200 against 198
   });
   it('a ride with no FTP of its own is worked out again when the FTP changes', async () => {
     const icu: Ride = { id: 'i901', date: '2026-11-20', startTime: '2026-11-20T08:00:00', name: 'Herndon', type: 'Ride', sport: 'ride', seconds: 3600 };

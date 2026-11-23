@@ -3,6 +3,8 @@ import { db, getSetting, setSetting, untracked, type Settings, type Tombstone } 
 import { readBackupNote, writeBackupNote, type IntervalsCredentials } from '../sync/intervals';
 import type { DayNote, PlannedWorkout, Profile, Workout, ActivityEdit } from '../engine/types';
 import type { ActivePlan } from '../ui/planService';
+import { HISTORY_KEYS } from '../engine/thresholdCtx';
+import { mergeHistories, sameHistory, type ThresholdHistory } from '../engine/thresholdHistory';
 import { decodeSealed, encodeSealed, isSealed, makeLock, newDataKey, open, seal, unlockWithAnswer, unlockWithPassphrase, type LockEnvelope } from './notecrypto';
 
 /**
@@ -168,7 +170,20 @@ export async function mergeRemote(remote: SyncDoc): Promise<{ applied: number; l
       if (!mine || t(remote.profile.updatedAt) > t(mine.updatedAt)) { await db.profile.put(remote.profile); applied++; }
       else if (t(mine.updatedAt) > t(remote.profile.updatedAt) || (!mine.updatedAt && JSON.stringify(mine) !== JSON.stringify(remote.profile))) localNewer = true;
     } else if (await db.profile.get('me')) localNewer = true;
-    await mergeTable<Settings>('settings', db.settings, (remote.settings ?? []).filter(inNote), (s) => s.key, inNote);
+    // Antogo's threshold histories (22 Nov 2026) are merged day by day, never one device's whole list over another's:
+    // an entry added on the phone and one corrected on the laptop both stand.
+    const isHistory = (s: Settings) => (HISTORY_KEYS as readonly string[]).includes(s.key);
+    for (const key of HISTORY_KEYS) {
+      const theirs = (remote.settings ?? []).find((s) => s.key === key);
+      const mine = await db.settings.get(key);
+      if (!theirs && !mine) continue;
+      if (!mine) { await db.settings.put(theirs!); applied++; continue; }
+      if (!theirs) { localNewer = true; continue; }
+      const merged = mergeHistories(mine.value as ThresholdHistory, theirs.value as ThresholdHistory);
+      if (!sameHistory(merged, mine.value as ThresholdHistory)) { await db.settings.put({ key, value: merged, updatedAt: t(theirs.updatedAt) > t(mine.updatedAt) ? theirs.updatedAt : mine.updatedAt }); applied++; }
+      if (!sameHistory(merged, theirs.value as ThresholdHistory)) localNewer = true;
+    }
+    await mergeTable<Settings>('settings', db.settings, (remote.settings ?? []).filter((s) => inNote(s) && !isHistory(s)), (s) => s.key, (s) => inNote(s) && !isHistory(s));
     await mergeTable<Workout>('workouts', db.workouts, remote.workouts ?? [], (w) => w.id);
     await mergeTable<PlannedWorkout>('planned', db.planned, remote.planned ?? [], (p) => p.id);
     await mergeTable<DayNote>('dayNotes', db.dayNotes, remote.dayNotes ?? [], (n) => n.date);

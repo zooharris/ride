@@ -24,9 +24,11 @@ type Kind = Workout['kind'];
  * Edit opens the editor in place. The effort rating sits beneath it (for
  * strength it sets the training load).
  */
-export function RecordPanel({ rec, rpe, kind, date, units, history, plannedRec, onSave, onEffort, unplanned }: {
+export function RecordPanel({ rec, rpe, kind, date, units, history, plannedRec, onSave, onEffort, unplanned, noEffort }: {
   rec: DoneRecord; rpe?: number; kind: Kind; date: string; units: 'imperial' | 'metric'; history: PlannedWorkout[];
   plannedRec?: DoneRecord; onSave: (rec: DoneRecord) => Promise<void>; onEffort: (n: number) => Promise<void>; unplanned?: boolean;
+  /** On an activity's page the effort sits under Correct this activity, with the other things the rider can change (22 Nov 2026). */
+  noEffort?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const unit = unitOf(units);
@@ -56,31 +58,31 @@ export function RecordPanel({ rec, rpe, kind, date, units, history, plannedRec, 
             </div>
           </div>
         )}
-      <Effort rpe={rpe} kind={kind} onEffort={onEffort} />
+      {!noEffort && <Effort rpe={rpe} kind={kind} onEffort={onEffort} />}
     </div>
   );
 }
 
 /** The record of a planned session that is done. */
-export function WhatYouDid({ planned, workout, units, history }: { planned: PlannedWorkout; workout: Workout; units: 'imperial' | 'metric'; history: PlannedWorkout[] }) {
+export function WhatYouDid({ planned, workout, units, history, noEffort }: { planned: PlannedWorkout; workout: Workout; units: 'imperial' | 'metric'; history: PlannedWorkout[]; noEffort?: boolean }) {
   const plannedRec = buildDoneRecord(workout, planned.loggedSeconds ? Math.round(planned.loggedSeconds / 60) : undefined);
   const rec = planned.done ?? plannedRec;
   if (!rec) return null;
-  return <RecordPanel rec={rec} rpe={planned.rpe} kind={workout.kind} date={planned.date} units={units} history={history} plannedRec={plannedRec}
+  return <RecordPanel rec={rec} rpe={planned.rpe} kind={workout.kind} date={planned.date} units={units} history={history} plannedRec={plannedRec} noEffort={noEffort}
     onSave={async (r) => { await saveRecord(planned, workout, r); notify(); }}
     onEffort={async (n) => { await saveEffort(planned, workout, n, rec); notify(); }} />;
 }
 
 /** The record of an activity no planned session covers (strength, mobility or a walk). */
-export function ActivityWhatYouDid({ ride, edit, units, history }: { ride: Ride; edit?: ActivityEdit; units: 'imperial' | 'metric'; history: PlannedWorkout[] }) {
+export function ActivityWhatYouDid({ ride, edit, units, history, noEffort }: { ride: Ride; edit?: ActivityEdit; units: 'imperial' | 'metric'; history: PlannedWorkout[]; noEffort?: boolean }) {
   const kind = ride.sport as Kind;
   const rec: DoneRecord = edit?.done ?? (kind === 'walk' ? { walk: { minutes: Math.round(ride.seconds / 60) } } : { exercises: [] });
-  return <RecordPanel rec={rec} rpe={edit?.rpe} kind={kind} date={ride.date} units={units} history={history} unplanned
+  return <RecordPanel rec={rec} rpe={edit?.rpe} kind={kind} date={ride.date} units={units} history={history} unplanned noEffort={noEffort}
     onSave={async (r) => { await saveActivityRecord(ride, r); notify(); }}
     onEffort={async (n) => { await saveActivityEffort(ride, n); notify(); }} />;
 }
 
-function Effort({ rpe, kind, onEffort }: { rpe?: number; kind: Kind; onEffort: (n: number) => Promise<void> }) {
+export function Effort({ rpe, kind, onEffort }: { rpe?: number; kind: Kind; onEffort: (n: number) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const pick = async (n: number) => { setBusy(true); try { await onEffort(n); } finally { setBusy(false); } };
   return (

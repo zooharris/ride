@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Encoder, Profile as FitProfile } from '@garmin/fitsdk';
 import { db } from '../data/db';
+import { setThresholdCtx } from '../engine/thresholdCtx';
 import { readFitActivity } from '../player/fitRecording';
 import { NOT_ACTIVITY, readActivityFile, type ParsedActivity } from './readers';
 import { addActivity, importBatches, importFiles, sameActivity, undoImport } from './importer';
@@ -41,7 +42,8 @@ const fileOf = (name: string, bytes: Uint8Array) => new File([bytes as unknown a
 const START = Date.UTC(2026, 6, 24, 13, 0, 0) / 1000;
 const every = (n: number, f: (i: number) => { w?: number; hr?: number; cad?: number; spd?: number }) => Array.from({ length: n }, (_, i) => ({ t: i, ...f(i) }));
 
-beforeEach(async () => { await db.delete(); await db.open(); await db.profile.put({ id: 'me', ...profile }); });
+// What scoring holds in memory (Antogo's histories, the rider's corrections) is forgotten with the database.
+beforeEach(async () => { setThresholdCtx(undefined); await db.delete(); await db.open(); await db.profile.put({ id: 'me', ...profile }); });
 
 describe('pauses are the device\'s own', () => {
   it('reads the timer\'s stops and starts, the FTP of the day and the file\'s kind', () => {
@@ -140,14 +142,11 @@ describe('bringing files in, hardened', () => {
     const r = await importFiles([fileOf('m.fit', monitoring), fileOf('a.fit', ride())], () => {});
     expect(r).toMatchObject({ added: 1, notActivities: 1, unreadable: [] });
   });
-  it('the FTP of the day stays with the activity: the file\'s own, else the nearest known, and a later change of FTP does not rescore it', async () => {
+  it('the FTP its file says the device had set is kept with the activity, beside the one that scores it', async () => {
     const own = await addActivity((await readActivityFile('a.fit', ride(START, { ftp: 244 }))) as ParsedActivity, ride(), profile) as Ride;
-    expect(own.ftpAtRide).toBe(244);
-    await db.rides.put({ id: 'i1', date: '2026-07-01', startTime: '2026-07-01T09:00:00', name: 'x', type: 'Ride', sport: 'ride', seconds: 3600, ftpAtRide: 230 });
-    const later = START + 86400 * 3;
-    const near = await addActivity((await readActivityFile('b.fit', ride(later))) as ParsedActivity, ride(later), profile) as Ride;
-    expect(near.ftpAtRide).toBe(244);
-    expect(near.intensityFactor).toBe(Math.round((180 / 244) * 100) / 100);
+    expect(own.ftpDevice).toBe(244);
+    // Which figure scores it is the rule's (Antogo's FTP history, or the device's): see sync/ftpHistory.test.ts.
+    expect(own.tss).toBeGreaterThan(0);
   });
   it('a run of bringing files in can be undone: its activities and the wellness it added go, what was here stays', async () => {
     await db.wellness.put({ date: '2026-07-01', restingHr: 50 });
@@ -269,53 +268,5 @@ describe('lasting the same, like with like', () => {
     expect(sameActivity(here, file)).toBe(true);
     expect(sameActivity(file, here)).toBe(true);
     expect(sameActivity(here, { ...file, seconds: 4000, movingSeconds: 4000, elapsedSeconds: 4100 })).toBe(false);
-  });
-});
-
-describe('which FTP of the day scores a ride', () => {
-  const bytes = fit({ start: START, records: every(1800, () => ({ w: 200, hr: 130, cad: 85, spd: 8 })), events: [{ t: 0, type: 'start' }], ftp: 244 });
-  const fromService = (): Ride => ({ id: 'i5', date: '2026-07-24', startTime: '2026-07-24T09:00:00', name: 'Loudoun', type: 'Ride', sport: 'ride', seconds: 1800, elapsedSeconds: 1800, ftpAtRide: 222, ftpService: 222, ftpFrom: 'service' });
-  const setUp = async () => {
-    await db.rides.put(fromService());
-    await db.files.put({ id: 'i5', date: '2026-07-24', status: 'kept', bytes, size: bytes.byteLength, at: 'x' });
-  };
-  const run = async () => { const { changeOver } = await import('../sync/ownService'); await changeOver(scoreActivity, () => {}); return (await db.rides.get('i5'))!; };
-  it('with no choice made, the data service\'s stands, and both are kept with the ride', async () => {
-    const { chooseFtp } = await import('../sync/ownService');
-    expect(chooseFtp(244, 222, undefined)).toEqual({ ftp: 222, from: 'service' });
-    expect(chooseFtp(244, undefined, undefined)).toEqual({ ftp: 244, from: 'device' });
-    expect(chooseFtp(undefined, undefined, 'device')).toEqual({});
-    await setUp();
-    const r = await run();
-    expect(r).toMatchObject({ ftpAtRide: 222, ftpFrom: 'service', ftpDevice: 244, ftpService: 222, intensityFactor: 0.9 });
-  });
-  it('the rider chooses the device\'s: the ride is worked out again with it, and choosing back restores it', async () => {
-    const { setSetting } = await import('../data/db');
-    const { FTP_SOURCE } = await import('../sync/ownService');
-    await setUp();
-    const before = await run();
-    await setSetting(FTP_SOURCE, 'device');
-    const r = await run();
-    expect(r).toMatchObject({ ftpAtRide: 244, ftpFrom: 'device', ftpDevice: 244, ftpService: 222, intensityFactor: 0.82 });
-    expect(r.tss!).toBeLessThan(before.tss!);
-    await setSetting(FTP_SOURCE, 'service');
-    expect(await run()).toMatchObject({ ftpAtRide: 222, ftpFrom: 'service', tss: before.tss });
-  });
-  it('the next sync brings the data service\'s copy again, and the rider\'s choice still stands', async () => {
-    const { setSetting } = await import('../data/db');
-    const { FTP_SOURCE, applyOwnTo } = await import('../sync/ownService');
-    await setUp();
-    await setSetting(FTP_SOURCE, 'device');
-    await run();
-    const [r] = await applyOwnTo([fromService()]);
-    expect(r).toMatchObject({ ftpAtRide: 244, ftpFrom: 'device', ftpService: 222 });
-  });
-  it('says so when the two differ by more than a twentieth on recent rides, and not when they agree', async () => {
-    const { ftpStats } = await import('../ui/FtpSource');
-    await setUp();
-    await run();
-    expect(await ftpStats()).toEqual({ n: 1, device: 244, service: 222, differ: true });
-    await db.own.update('i5', { serviceFtp: 240 });
-    expect((await ftpStats())!.differ).toBe(false);
   });
 });

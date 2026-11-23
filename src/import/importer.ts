@@ -5,6 +5,9 @@ import { NOT_ACTIVITY, readActivityFile, type ParsedActivity } from './readers';
 import { zipEntries, zipRead, type ZipEntry } from './zip';
 import { fillDays, wellnessFile, wellnessFromJson } from './wellnessExport';
 import { applyRec, workOut } from '../sync/ownService';
+import { refreshThresholds } from '../data/thresholds';
+import { thresholdsOf } from '../engine/thresholdCtx';
+import { periodsOf, type Period } from '../engine/thresholdHistory';
 
 /**
  * Bringing activities and wellness in from files (Stage 1, 22 Nov 2026): one file, many, a folder, or a whole-account
@@ -67,7 +70,7 @@ export function rideFromParsed(p: ParsedActivity): Ride {
     name: `${part} ${NOUN[sport]}`, type, sport,
     seconds: durationFor(sport, p.movingS, p.elapsedS), movingSeconds: p.movingS, elapsedSeconds: p.elapsedS,
     distanceM: p.distanceM, elevationM: p.ascentM != null ? Math.round(p.ascentM) : undefined, elevationLossM: p.descentM != null ? Math.round(p.descentM) : undefined,
-    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file', ...(p.ftp ? { ftpAtRide: p.ftp, ftpDevice: p.ftp, ftpFrom: 'device' as const } : {}),
+    calories: p.calories, averageSpeedMs: avg, device: p.device, source: 'file', ...(p.ftp ? { ftpDevice: p.ftp } : {}),
   };
 }
 
@@ -78,6 +81,19 @@ export interface ImportResult {
   notActivities: number;
   /** This run's record, when it added anything, so it can be undone. */
   batchId?: string;
+  /**
+   * The files carried FTP settings from a device (Part E, 22 Nov 2026): what they say, in periods, and how the new
+   * rides will be scored under the rider's setting. While `waiting`, nothing brought in has been scored yet.
+   */
+  ftpFound?: FtpFound;
+  waiting?: boolean;
+}
+
+/** What the files brought in say the device's FTP was, and how the new rides among them will be scored. */
+export interface FtpFound {
+  periods: Period[];
+  /** New rides scored with the FTP from their own file; with Antogo's history; and (older than the history, with no FTP in the file) with the history's first entry. */
+  byDevice: number; byHistory: number; byFirst: number;
 }
 
 /**
@@ -137,6 +153,9 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
     const p = await db.profile.get('me');
     const upload = await getSetting<boolean>(UPLOAD_IMPORTS, false);
     const fresh: Ride[] = [];
+    // The FTP each file says the device had set, so the summary can say what was found before anything is scored (Part E).
+    const deviceFtp: Array<{ date: string; value: number | undefined }> = [];
+    await refreshThresholds();
     let n = 0;
     for (const item of activities) {
       if (cancelled) break;
@@ -146,7 +165,8 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
         if (parsed === NOT_ACTIVITY) result.notActivities++;
         else if (!parsed) result.unreadable.push({ name: item.name, why: 'not an activity file this app can read' });
         else {
-          const r = await addActivity(parsed, bytes, p ?? undefined);
+          if (parsed.ftp) deviceFtp.push({ date: parsed.startLocal.slice(0, 10), value: parsed.ftp });
+          const r = await addActivity(parsed, bytes, p ?? undefined, { defer: true });
           if (r === 'already') result.already++;
           else { result.added++; fresh.push(r); batch.rides.push(r.id); if (upload) await sendOn(r, bytes, item.name); }
         }
@@ -177,10 +197,15 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
       result.wellnessDays = add.length;
     }
     if (batch.rides.length || batch.wellness.length) { await db.imports.put(batch); result.batchId = batch.id; }
-    if (fresh.length) await pairNew(fresh, p ?? undefined);
     // A second copy that slipped in (an activity whose kind was changed here) becomes one with the one already here.
     try { const merged = await mergeFileCopies(); if (merged) { result.added -= merged; result.already += merged; } } catch { /* the next sync does it */ }
-    onChanged();
+    const still = (await db.rides.bulkGet(fresh.map((r) => r.id))).filter((r): r is Ride => !!r);
+    pending = still.map((r) => r.id);
+    // Files that carry a device's FTP settings: the summary says what they say and how they will be used, and the
+    // rider carries on from there, or looks at their FTP history first. Otherwise the activities are scored at once.
+    const ftpFound = ftpFoundIn(deviceFtp, still, p ?? undefined);
+    if (ftpFound && still.length) { result.ftpFound = ftpFound; result.waiting = true; onChanged(); emit({ running: false, result }); return result; }
+    await finishImport(onChanged);
     emit({ running: false, result });
     return result;
   } catch (e) {
@@ -189,8 +214,41 @@ export async function importFiles(files: File[], onChanged: () => void): Promise
   }
 }
 
-/** Add one parsed activity, or attach its file to the one already here. */
-export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: Profile | undefined): Promise<Ride | 'already'> {
+let pending: string[] = [];
+
+/** What the files say the device's FTP was, in periods, and how the new rides will be scored under the rider's setting. */
+export function ftpFoundIn(points: Array<{ date: string; value: number | undefined }>, fresh: Ride[], p: Profile | undefined): FtpFound | undefined {
+  const periods = periodsOf(points);
+  if (!periods.length) return undefined;
+  const out: FtpFound = { periods, byDevice: 0, byHistory: 0, byFirst: 0 };
+  for (const r of fresh) {
+    if (r.sport !== 'ride') continue;
+    const k = thresholdsOf(r, p).ftp?.why.kind;
+    if (k === 'device' || k === 'device-before') out.byDevice++; else if (k === 'first') out.byFirst++; else out.byHistory++;
+  }
+  return out;
+}
+
+/**
+ * The activities brought in are worked out and scored (the second half of bringing files in). Run at once when the
+ * files carry no FTP settings; otherwise when the rider carries on from the summary. Should the app be closed in
+ * between, they are worked out the next time it opens, like any activity not yet on Antogo's numbers.
+ */
+export async function finishImport(onChanged: () => void): Promise<void> {
+  const ids = pending; pending = [];
+  const { startChangeOver } = await import('../sync/syncService');
+  await startChangeOver();
+  const fresh = (await db.rides.bulkGet(ids)).filter((r): r is Ride => !!r);
+  if (fresh.length) {
+    await pairNew(fresh, (await db.profile.get('me')) ?? undefined);
+    await db.rides.bulkPut(fresh);
+  }
+  if (state.result?.waiting) emit({ result: { ...state.result, waiting: false } });
+  onChanged();
+}
+
+/** Add one parsed activity, or attach its file to the one already here. With `defer`, it is kept but not yet worked out or scored. */
+export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: Profile | undefined, opts: { defer?: boolean } = {}): Promise<Ride | 'already'> {
   const ride = rideFromParsed(parsed);
   const day = ride.date;
   const near = await withStarts(await db.rides.where('date').between(prevDay(day), nextDay(day), true, true).toArray());
@@ -202,20 +260,13 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
     return 'already';
   }
   await db.files.put(file(ride.id, ride.date));
-  // The FTP of its day, kept with the activity so a later change of FTP does not rescore it: the file's own where it
-  // says, else the nearest known before it (or, failing that, after), else today's.
-  if (!ride.ftpAtRide && ride.sport === 'ride') {
-    const known = (x: Ride) => !!x.ftpAtRide;
-    const near = (await db.rides.where('date').belowOrEqual(day).reverse().filter(known).first()) ?? (await db.rides.where('date').above(day).filter(known).first());
-    const ftp = near?.ftpAtRide ?? p?.ftp;
-    if (ftp) ride.ftpAtRide = ftp;
-  }
+  // Its FTP is the one Antogo's rule gives for its day (the history, or the device's from this file), worked out with its numbers.
   let out = ride;
-  if (p) {
+  if (p && !opts.defer) {
     const rec = await workOut(ride, p, parsed.streams ? { streams: { ...parsed.streams, id: ride.id }, ftp: parsed.ftp } : undefined);
     if (rec) out = applyRec(ride, rec);
-    const { scoreActivity } = await import('../sync/syncService');
-    scoreActivity(out, p);
+    const { rescorer } = await import('../sync/syncService');
+    await rescorer()(out, p);
   }
   await db.rides.put(out);
   return out;

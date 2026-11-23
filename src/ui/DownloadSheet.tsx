@@ -12,6 +12,7 @@ import { today } from '../engine/load';
 import type { AppData } from './store';
 import { toast } from './Toast';
 import { knownFtp } from '../engine/known';
+import { fixSig } from '../engine/corrections';
 
 /**
  * Download one workout or one finished activity, at any time (12 Nov 2026). A small sheet: the format and, for a
@@ -107,14 +108,18 @@ export function DownloadActivity({ ride, data, onClose }: { ride: Ride; data: Ap
   const [ready, setReady] = useState<ActivityFileResult | null>(null);
   const offers = activityOffers(ride, false);
   const [connected, setConnected] = useState(true);
-  useEffect(() => { void credentials().then((c) => setConnected(!!c)).catch(() => {}); }, []);
+  // A trimmed activity, or one with a measure left out, downloads as corrected or as the original file (22 Nov 2026).
+  const edit = data.edits.find((e) => e.id === ride.id);
+  const fixed = !!fixSig(edit);
+  const [original, setOriginal] = useState(false);
+  useEffect(() => { void Promise.all([credentials(), db.files.get(ride.id)]).then(([c, f]) => setConnected(!!c || f?.status === 'kept')).catch(() => {}); }, []);
   const make = async () => {
     setBusy(true);
     try {
       const recs = await db.recordings.toArray();
       const local = recs.find((x) => x.activityId === ride.id);
       const origin = originOf(ride, data.edits, data.planned, new Set(recs.map((x) => x.activityId).filter((x): x is string => !!x)));
-      const got = await activityFile(await credentials(), ride, format, origin, local);
+      const got = await activityFile(await credentials(), ride, format, origin, local, { original });
       if (got.unavailable) { toast({ ok: false, text: got.unavailable }); setBusy(false); return; }
       // A phone saves through its share sheet, which needs a fresh tap: the file is ready, then saved.
       if (sharesFiles()) { setReady(got); setBusy(false); return; }
@@ -134,6 +139,12 @@ export function DownloadActivity({ ride, data, onClose }: { ride: Ride; data: Ap
         </>
       ) : (
         <>
+          {fixed && (
+            <div class="stack" style="gap:6px;margin-bottom:10px" role="radiogroup" aria-label="Which version">
+              <label class="dl-opt"><input type="radio" name="dl-version" checked={!original} onChange={() => setOriginal(false)} /><span><b>{edit?.trim ? 'The trimmed activity' : 'The activity as corrected'}</b><span class="faint small" style="display:block">{[edit?.trim ? 'only the part you kept' : '', edit?.noPower ? 'without its power' : '', edit?.noHr ? 'without its heart rate' : ''].filter(Boolean).join(', ')}, written from the recording</span></span></label>
+              <label class="dl-opt"><input type="radio" name="dl-version" checked={original} onChange={() => setOriginal(true)} /><span><b>The original file</b><span class="faint small" style="display:block">the whole recording, exactly as your device made it</span></span></label>
+            </div>
+          )}
           <Formats offers={offers} value={format} set={setFormat} label={ACTIVITY_FORMAT_LABEL} what={ACTIVITY_FORMAT_WHAT} />
           {!connected && <p class="small" style="margin:10px 0 0;color:var(--warn)">This device isn't connected to your account, so unless the ride player recorded this ride here, you'll get a short summary, not a ride file. Connect in Settings first.</p>}
           <p class="faint small" style="margin:10px 0 0">The original file comes out unchanged when it is already in the format you pick; otherwise the file is written from the recording.</p>

@@ -91,9 +91,4 @@ test('an activity from the data service, with its numbers worked out by Antogo f
     return page.locator('.numgrid').innerText();
   }, { timeout: 60_000, intervals: [3000] }).toContain('Worked out by Antogo');
   await looksRight(s, info, 'An activity on Antogo\'s numbers');
-  // The temporary check page (by its address only): it compares, and copies.
-  await go(page, '#/check-numbers');
-  await expect(page.getByRole('heading', { name: "Check Antogo's numbers" })).toBeVisible();
-  await expect(page.getByText(/Average heart rate: \d+ of \d+ agree|Average heart rate: none to compare/)).toBeVisible();
-  await looksRight(s, info, 'The one-time check');
 });

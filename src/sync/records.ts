@@ -3,7 +3,14 @@ import { today } from '../engine/load';
 import { buildDoneRecord, recordTss } from '../engine/record';
 import type { ActivityEdit, DoneRecord, PlannedWorkout, Ride, SessionKind, Workout } from '../engine/types';
 import { deleteActivity, deleteEvent, durationFor, sportOf, updateActivityName, updateActivityType } from './intervals';
-import { applyLoadEdits, credentials, recheckMatches, scoreActivity, writeRecord } from './syncService';
+import { applyLoadEdits, credentials, recheckMatches, rescorer, scoreActivity, startChangeOver, writeRecord } from './syncService';
+import { refreshThresholds, readHistory, writeHistory } from '../data/thresholds';
+import { changeOne } from './ownService';
+import type { Fix } from '../engine/corrections';
+import { FOOT_LTHR_HISTORY, FTP_HISTORY, FTP_SCORING, LTHR_HISTORY, type HistoryKey } from '../engine/thresholdCtx';
+import { EMPTY_HISTORY, entryOn, usePeriod, withEntry, withoutEntry, type EntrySource, type FtpScoring, type Period, type ThresholdHistory } from '../engine/thresholdHistory';
+import { saveProfile } from '../data/db';
+import { numbersToPush, pushAthleteNumbers } from './intervals';
 import { weightSystem } from '../engine/units';
 import { toDoneDay } from './doneDay';
 
@@ -108,6 +115,8 @@ export async function upsertEdit(id: string, date: string, patch: Partial<Activi
   const cur = (await db.activityEdits.get(id)) ?? { id, date };
   const next = { ...cur, ...patch, id, date };
   await db.activityEdits.put(next);
+  // Scoring reads the rider's corrections from one place; it is read again whenever they change.
+  await refreshThresholds();
   return next;
 }
 
@@ -197,4 +206,78 @@ export async function matchByHand(p: PlannedWorkout, w: Workout, r: Ride): Promi
   });
   if (e) await upsertEdit(r.id, r.date, { kind: undefined, done: undefined, rpe: undefined });
   await reapply(r.id);
+}
+
+
+/* ---------- corrections to one activity (22 Nov 2026, Part C) ---------- */
+
+/**
+ * Make, change or take away corrections to one activity: the FTP or threshold heart rate it alone is scored with, its
+ * power or heart rate left out, when it started, the part of it kept. Saved with the rider's other edits (so it
+ * travels and survives a sync), then the activity is worked out again at once, and the matching rules run in case it
+ * changed day. Nothing is sent to Intervals.icu.
+ */
+export async function setFix(r: Pick<Ride, 'id' | 'date'>, patch: Partial<Fix>): Promise<void> {
+  await upsertEdit(r.id, r.date, patch);
+  await changeOne(r.id, rescorer(), () => {});
+  if ('start' in patch) await recheckMatches();
+}
+
+/* ---------- Antogo's threshold histories (Parts A, B and D) ---------- */
+
+const todayLocal = () => today();
+
+/**
+ * After a history changed: scoring reads it again, the setting in Settings follows the entry in force today (the
+ * history is the authority; Intervals.icu is told, as when Settings is saved), and only the activities it affects are
+ * worked out again. Returns how many were.
+ */
+async function historyChanged(key: HistoryKey, h: ThresholdHistory): Promise<{ rides: number; now?: number }> {
+  await writeHistory(key, h);
+  await refreshThresholds();
+  const p = await db.profile.get('me');
+  const now = entryOn(h, todayLocal())?.value;
+  const field = key === FTP_HISTORY ? 'ftp' : key === LTHR_HISTORY ? 'lthr' : 'footLthr';
+  let told: number | undefined;
+  if (p && now && p[field] !== now) {
+    const { id: _id, ...rest } = p;
+    const next = { ...rest, [field]: now };
+    if (field !== 'footLthr' && next.unsure?.[field]) { const { [field]: _u, ...others } = next.unsure; next.unsure = Object.keys(others).length ? others : undefined; }
+    await saveProfile(next);
+    told = now;
+    const c = await credentials();
+    if (c) { try { await pushAthleteNumbers(c, numbersToPush(next)); } catch { /* Settings, Save sends it again */ } }
+  }
+  return { rides: await startChangeOver(), now: told };
+}
+
+/** Add an entry by hand, or change the one on that day. */
+export async function setHistoryEntry(key: HistoryKey, from: string, value: number, source: EntrySource = 'typed', note?: string): Promise<{ rides: number; now?: number }> {
+  return historyChanged(key, withEntry((await readHistory(key)) ?? EMPTY_HISTORY, { from, value, source, ...(note ? { note } : {}) }));
+}
+/** Move an entry to another day, or change its figure: the old day's entry goes and the new one is the rider's own. */
+export async function changeHistoryEntry(key: HistoryKey, was: string, from: string, value: number): Promise<{ rides: number; now?: number }> {
+  let h = (await readHistory(key)) ?? EMPTY_HISTORY;
+  const before = h.entries.find((e) => e.from === was);
+  if (was !== from) h = withoutEntry(h, was);
+  // Only the day moved: it keeps saying how it first got there.
+  return historyChanged(key, withEntry(h, before && before.value === Math.round(value) ? { ...before, from, at: undefined } : { from, value, source: 'typed' }));
+}
+export async function removeHistoryEntry(key: HistoryKey, from: string): Promise<{ rides: number; now?: number }> {
+  return historyChanged(key, withoutEntry((await readHistory(key)) ?? EMPTY_HISTORY, from));
+}
+/** "Use the device's for this period" (A5). */
+export async function useDevicePeriod(p: Period): Promise<{ rides: number; now?: number }> {
+  return historyChanged(FTP_HISTORY, usePeriod((await readHistory(FTP_HISTORY)) ?? EMPTY_HISTORY, p));
+}
+/** "From this ride onward" (C1, C2): an entry from the activity's day. */
+export async function setFromRideOnward(r: Pick<Ride, 'date' | 'sport'>, what: 'ftp' | 'lthr', value: number): Promise<{ rides: number; now?: number }> {
+  const key = what === 'ftp' ? FTP_HISTORY : r.sport === 'walk' || r.sport === 'run' ? FOOT_LTHR_HISTORY : LTHR_HISTORY;
+  return setHistoryEntry(key, r.date, value, 'typed');
+}
+/** The setting (Part B): score rides with Antogo's FTP history, or with the FTP the device had set that day. */
+export async function setFtpScoring(v: FtpScoring): Promise<number> {
+  await db.settings.put({ key: FTP_SCORING, value: v });
+  await refreshThresholds();
+  return startChangeOver();
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { cachedRecording, corrected } from '../sync/ownService';
 import { db, STREAMS_VERSION } from '../data/db';
 import { buildThumb, THUMB_VERSION, type Thumb } from '../data/thumbs';
 import type { Profile, Ride, Workout } from '../engine/types';
@@ -29,11 +30,11 @@ async function load(id: string): Promise<Thumb | null> {
   const kept = await db.thumbs.get(id);
   if (kept && kept.v === THUMB_VERSION) return kept;
   // A recording already opened on this device has everything needed.
-  const st = await db.streams.get(id);
+  const st = await cachedRecording(id);
   if (st && (st.v ?? 0) >= 2 && (st.v ?? 0) <= STREAMS_VERSION) { const t = buildThumb(id, st); await db.thumbs.put(t); return t; }
   const c = await credentials();
   if (!c) return null;
-  const t = buildThumb(id, await fetchThumbStreams(c, id));
+  const t = buildThumb(id, await corrected(id, await fetchThumbStreams(c, id)));
   await db.thumbs.put(t);
   return t;
 }

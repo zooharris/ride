@@ -1,4 +1,3 @@
-import { CheckNumbers } from './screens/CheckNumbers';
 import { GarminKey } from './screens/GarminKey';
 import { db, loadProfile, saveProfile } from '../data/db';
 import { isUnknown, markMine } from '../engine/known';
@@ -194,11 +193,10 @@ export function App() {
     case 'export': screen = <Export data={data} />; break;
     case 'garmin-key': screen = <GarminKey />; break;
     // TEMPORARY (22 Nov 2026): the one-time check of Antogo's numbers; not linked, removed in the follow-up.
-    case 'check-numbers': screen = <CheckNumbers />; break;
     case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key' || root === 'check-numbers') ? 'settings' : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key') ? 'settings' : root || 'today';
 
   return (
     <div class="shell">

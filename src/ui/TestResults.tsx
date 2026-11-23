@@ -21,7 +21,7 @@ import { applyZones } from './testService';
 import { maxHrInUse, useMaxHrSeen } from './maxHrSeen';
 import { knownFtp, knownLthr } from '../engine/known';
 
-export function TestResults({ result, profile, onChange, compact }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean }) {
+export function TestResults({ result, profile, onChange, compact, testDay }: { result: TestResult; profile: Profile; onChange: (r: TestResult) => void; compact?: boolean; /** The day the test was ridden, when not today: its result enters the FTP history from that day. */ testDay?: string }) {
   // Diagnostics brief, Part B (7 Nov 2026): Estimate anyway shows the best estimate from imperfect data in place of the
   // strict read. It is kept only when the rider acts on something (the result passed to onChange then carries it).
   const [estimating, setEstimating] = useState(false);
@@ -51,7 +51,7 @@ export function TestResults({ result, profile, onChange, compact }: { result: Te
   const take = async (which: 'ftp' | 'lthr') => {
     setBusy(true);
     const before = which === 'ftp' ? ftpNow : profile.lthr;
-    const res = await takeThreshold(which === 'ftp' ? { ftp: r.ftpEstimate } : { lthr: r.lthrEstimate });
+    const res = await takeThreshold(which === 'ftp' ? { ftp: r.ftpEstimate } : { lthr: r.lthrEstimate }, { name: r.kind === '20min' ? '20-minute test' : 'Ramp Test', day: testDay });
     setMsg(res);
     save(which === 'ftp' ? { ...r, ftpAction: 'updated', ftpBefore: r.ftpBefore ?? before } : { ...r, lthrAction: 'updated', lthrBefore: r.lthrBefore ?? before });
     setBusy(false);

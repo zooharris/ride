@@ -1,6 +1,7 @@
 import type { Ride } from './types';
 import type { Zone } from './zones';
 import { powerZone } from './zones';
+import { hrDrift } from './drift';
 
 /**
  * Heart-rate drift is positive when heart rate rose for the same power in the second half (the app's meaning
@@ -23,7 +24,11 @@ import { powerZone } from './zones';
  * 3 (22 Nov 2026): the FTP of the day is kept from both places that have one (the device's own setting in the file, and
  * the data service's record), and the rider chooses which scores their rides.
  */
-export const OWN_VERSION = 3;
+/**
+ * 4 (22 Nov 2026, later): each activity is scored with the FTP and threshold heart rate of its day from Antogo's own
+ * history; and heart-rate drift follows the one rule the rest of the app uses (the warm-up skipped).
+ */
+export const OWN_VERSION = 4;
 
 /** The numbers Antogo works out. Only those the recording can give are present. */
 export type OwnNumbers = Partial<Pick<Ride,
@@ -148,16 +153,11 @@ export function ownNumbers(s: OwnInput, ctx: OwnContext): OwnNumbers {
     if (mx || raw) out.maxHr = Math.round(mx || raw);
     if (ctx.lthr) out.hrZoneSeconds = zoneSeconds(H, ctx.lthr, ctx.hrZones);
     if (hasW && ride && out.normalizedPower && avg) out.efficiencyFactor = Math.round((out.normalizedPower / avg) * 100) / 100;
-    if (hasW && ride) {
-      // Power per heartbeat in each half of the time ridden: the drift is how much the second half falls behind.
-      const idx = W.map((x, i) => (x != null && H[i] != null && H[i]! > 0 ? i : -1)).filter((i) => i >= 0);
+    if (hasW && ride && (out.powerCoverage ?? 1) >= 0.8) {
+      // Heart-rate drift by the one rule the whole app uses (engine/drift): the warm-up skipped, steady riding only.
       // Not on a ride whose power meter dropped out for a good part of it: the halves would not be like for like.
-      if (idx.length >= 1200 && (out.powerCoverage ?? 1) >= 0.8) {
-        const half = Math.floor(idx.length / 2);
-        const ratio = (ix: number[]) => { let p = 0, h = 0; for (const i of ix) { p += W[i]!; h += H[i]!; } return h ? p / h : 0; };
-        const a = ratio(idx.slice(0, half)), b = ratio(idx.slice(half));
-        if (a > 0) out.decoupling = Math.round(((a - b) / a) * 1000) / 10;
-      }
+      const drift = hrDrift(W.map((_, i) => i), W, H);
+      if (drift != null) out.decoupling = drift;
     }
   }
   const hasC = C.some((x) => x != null && x > 0);

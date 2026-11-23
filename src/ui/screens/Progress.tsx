@@ -1,3 +1,4 @@
+import { cachedRecording, corrected } from '../../sync/ownService';
 import { replaceQuery } from '../router';
 import { coachConfig } from '../coachConfig';
 import type { CoachConfig } from '../../coach/llm';
@@ -1346,7 +1347,7 @@ function useTests(data: AppData): TestEntry[] {
         const kind = kindOf(r);
         if (!kind) continue;
         let result = kept.get(r.id) ?? byRide.get(r.id)?.test;
-        if (!result) { const st = await db.streams.get(r.id); if (st) result = resultFromStreams(kind, st.watts, st.heartrate, data.profile?.weightKg, st.time); }
+        if (!result) { const st = await cachedRecording(r.id); if (st) result = resultFromStreams(kind, st.watts, st.heartrate, data.profile?.weightKg, st.time); }
         list.push({ key: r.id, date: r.date, kind, result, rideId: r.id });
       }
       for (const rec of recs) if (!rec.activityId || !data.rides.some((x) => x.id === rec.activityId)) list.push({ key: rec.id, date: rec.date, kind: rec.test!.kind, result: rec.test });
@@ -1547,8 +1548,8 @@ function useHr20(data: AppData, on: boolean): Record<string, number> {
       for (const r of todo) {
         if (!alive) return;
         try {
-          const local = await db.streams.get(r.id);
-          const s = local?.heartrate?.length ? local : c ? await fetchPowerStream(c, r.id) : undefined;
+          const local = await cachedRecording(r.id);
+          const s = local?.heartrate?.length ? local : c ? await corrected(r.id, await fetchPowerStream(c, r.id)) : undefined;
           next[r.id] = s?.heartrate?.length ? best20MinHr(s.time, s.heartrate) ?? 0 : 0;
         } catch { next[r.id] = 0; }
         if (++n % 10 === 0) { await setSetting('hr20Best', next); if (alive) setMap({ ...next }); }

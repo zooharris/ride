@@ -3,13 +3,13 @@
  * heart rate from a test, and it is saved and sent to Intervals.icu exactly as
  * Save in Settings does it. Also the "re-send this week's rides" offer.
  */
-import { db, saveProfile, setSetting } from '../data/db';
+import { db, saveProfile, setSetting, type ChangeWhy } from '../data/db';
 import { addDays, today } from '../engine/load';
 import type { PlannedWorkout, Profile, Workout } from '../engine/types';
 import { garminSendable } from '../engine/workout';
 import { validTops } from '../engine/zones';
 import { numbersToPush, pushAthleteNumbers } from '../sync/intervals';
-import { credentials } from '../sync/syncService';
+import { credentials, startChangeOver } from '../sync/syncService';
 import { sendPlanned } from './planService';
 import { findWorkout, notify } from './store';
 import { weekStart } from './derived';
@@ -26,9 +26,10 @@ export function zonesFollowFtp(p: Pick<Profile, 'powerZoneMode' | 'powerZonePcts
  * is stamped with it), the coach's note made fresh, and the numbers sent to
  * Intervals.icu. The words say what happened, as Settings does.
  */
-export async function takeThreshold(change: { ftp?: number; lthr?: number }): Promise<{ ok: boolean; text: string }> {
+export async function takeThreshold(change: { ftp?: number; lthr?: number }, test?: { name: string; day?: string }): Promise<{ ok: boolean; text: string }> {
   const what = [change.ftp != null ? `FTP ${change.ftp} W` : '', change.lthr != null ? `threshold heart rate ${change.lthr} bpm` : ''].filter(Boolean).join(' and ');
-  return applyNumbers(change, what);
+  // A test done in Antogo adds an entry to the history on the day of the test (22 Nov 2026).
+  return applyNumbers(change, what, test ? { from: 'test', note: test.name, on: test.day } : undefined);
 }
 
 /** Breathing to apply: the two thresholds (L/min) and the zone tops, as shares of VT2 or in L/min. */
@@ -62,12 +63,13 @@ export function breathProfile(b?: BreathPatch): Partial<Profile> {
 }
 
 /** Save numbers on the profile, freshen the coach's note, and send them to Intervals.icu, saying what happened as Settings does. */
-export async function applyNumbers(change: Partial<Profile>, what: string): Promise<{ ok: boolean; text: string }> {
+export async function applyNumbers(change: Partial<Profile>, what: string, why?: ChangeWhy): Promise<{ ok: boolean; text: string }> {
   const before = await db.profile.get('me');
   if (!before) return { ok: false, text: 'No profile on this device yet.' };
   const next: Profile = { ...before, ...change };
-  await saveProfile(next);
+  await saveProfile(next, why);
   await setSetting('coachNote', null);
+  void startChangeOver().catch(() => {});
   notify();
   const c = await credentials();
   if (!c?.apiKey) return { ok: true, text: `Saved: ${what}. Connect Intervals.icu in Settings to send it there too.` };

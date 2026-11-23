@@ -353,6 +353,23 @@ export interface ActivityEdit {
   choice?: { garminId: string; since: string };
   /** On the Garmin's recording: Antogo's copy of the same ride was removed in its favour. */
   replaced?: { name: string; at: string; playerActivityId?: string; recordingId?: string };
+  /**
+   * Corrections (22 Nov 2026, "an activity you can correct"). The recording itself is never changed: each of these is
+   * laid over it whenever the activity is worked out, so it survives a sync, a restore and a move to another device,
+   * and taking one away puts the activity back as it was.
+   */
+  /** The FTP this ride alone is scored with. */
+  ftp?: number;
+  /** The threshold heart rate this activity alone is scored with (the bike's or on foot, as the activity is). */
+  lthr?: number;
+  /** The power is left out: a power meter that read wrong. Scored from heart rate; out of the power curve and records. */
+  noPower?: boolean;
+  /** The heart rate is left out: a strap that glitched. Out of the heart-rate records. */
+  noHr?: boolean;
+  /** When it really started, the rider's local time as "YYYY-MM-DDTHH:MM:SS". */
+  start?: string;
+  /** The part kept, in seconds from the start of the whole recording. */
+  trim?: { from: number; to: number };
 }
 
 /** The record of a done strength, mobility or walk session. Rides have none: the device's data is the record. */
@@ -401,8 +418,18 @@ export interface Ride {
   ftpDevice?: number;
   /** The FTP the data service had on record for the activity's day. */
   ftpService?: number;
-  /** Which of the two `ftpAtRide` is, where it is one of them. */
+  /** Which of the two `ftpAtRide` was, before Antogo kept its own FTP history (22 Nov 2026). No longer read. */
   ftpFrom?: 'device' | 'service';
+  /** Its kept file was read and holds no second-by-second recording (the working-out's version when that was found), so it is not read again each time. */
+  noRecV?: number;
+  /** The threshold heart rate the activity was scored with: the entry of Antogo's history in force on its day, or the rider's own for it. */
+  lthrAtRide?: number;
+  /**
+   * What a correction took off the activity, kept so taking the correction away puts it back even when no recording
+   * is here to work it out from again: the power or heart-rate numbers left out, the start as recorded, and the
+   * totals of the whole recording under a trim. This device only.
+   */
+  setAside?: { power?: Partial<Ride>; hr?: Partial<Ride>; start?: { date: string; startTime: string }; whole?: Partial<Ride> };
   eftp?: number;            // Intervals.icu's FTP estimate from this ride, if it made one
   pairedEventId?: number;
   /** Left out of training load by the rider: `tss` is 0 and this is what it would have been. */

@@ -5,6 +5,8 @@ import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { fmtDate } from '../derived';
 import { appKey, garminFetch, inApp, MAC_DOWNLOAD } from '../../shell';
+import { garminKeyChanged, loadGarminState, setGarminOn, watchGarmin, type GarminState } from '../../sync/garminSource';
+import { fetchGarmin } from '../../sync/garminAuto';
 import { APP_SHORT_NAME } from '../../appName';
 
 /**
@@ -45,7 +47,7 @@ export function GarminKey() {
     if (!key) return;
     let k: SavedGarminKey = { key, savedAt: new Date().toISOString(), ...(expires ? { expires } : {}) };
     if (app) {
-      try { k = await appKey.save(key, expires || undefined); }
+      try { k = await appKey.save(key, expires || undefined); await garminKeyChanged(); }
       catch { toast({ ok: false, text: "The key could not be saved: this computer's password store did not accept it." }); return; }
     } else await setSetting(GARMIN_KEY_SETTING, k);
     setSaved(k); setTyped(''); setExpires('');
@@ -60,7 +62,7 @@ export function GarminKey() {
   };
   const forget = async () => {
     if (!confirm('Forget the Garmin key on this device?\n\nIt is removed from this app. Garmin will not show it again: unless you have it somewhere else, you would have to make a new one in Garmin Connect.')) return;
-    if (app) await appKey.forget();
+    if (app) { await appKey.forget(); await setGarminOn(false); await garminKeyChanged(); }
     await db.settings.delete(GARMIN_KEY_SETTING);
     setSaved(null); setShown(false); setSteps([]);
   };
@@ -75,10 +77,10 @@ export function GarminKey() {
 
   return (
     <div>
-      <PageHead back={{ label: 'Settings', href: '#/settings' }} title="Test a Garmin personal key" />
+      <PageHead back={{ label: 'Settings', href: '#/settings' }} title="Garmin, with your personal key" />
       <p class="prose" style="margin-top:0">Garmin now lets anyone make a free personal key in Garmin Connect, which reads your own activities and health data (it can't send workouts to a device). {app
-        ? <>This page finds out what it actually returns and how far back it reaches. Nothing else in the app uses the key yet.</>
-        : <>This page finds out what it actually returns, how far back it reaches, and whether a web page may use it at all. Nothing in the app uses the key yet.</>}</p>
+        ? <>With it, and your say-so below, this app brings your activities and daily wellness straight from Garmin.</>
+        : <>In {APP_SHORT_NAME} for the Mac, the app can bring your activities and daily wellness straight from Garmin with it. A browser can't: Garmin does not answer one.</>}</p>
       {!app && <div class="panel" style="margin-bottom:14px"><p class="small" style="margin:0"><b>Garmin does not answer a browser.</b> <span class="muted">The test below will stop at its first step here. {APP_SHORT_NAME} for the Mac holds the same pages in an app you download, and Garmin answers it.</span> <a href={MAC_DOWNLOAD} target="_blank" rel="noopener">Download {APP_SHORT_NAME} for the Mac</a></p></div>}
       {app && !canSeal && <div class="panel" style="margin-bottom:14px"><p class="small" style="margin:0"><b>This computer's password store isn't available to the app,</b> <span class="muted">so a key can't be kept here.</span></p></div>}
 
@@ -107,10 +109,12 @@ export function GarminKey() {
         )}
       </section>
 
+      {app && saved && <GarminSource />}
+
       {saved && (
         <section class="section">
           <h2>The test</h2>
-          <p class="faint small" style="margin:4px 0 10px">A few dozen requests to Garmin, reading only. It lists your activities (up to 6,000), opens the newest one's original file, and reads a week of HRV, sleep and daily numbers, then the same week in earlier years.</p>
+          <p class="faint small" style="margin:4px 0 10px">A check of what the key reads. A few dozen requests to Garmin, reading only. It lists your activities (up to 6,000), opens the newest one's original file, and reads a week of HRV, sleep and daily numbers, then the same week in earlier years.</p>
           <button class="btn primary" disabled={running} onClick={run}>{running ? 'Testing…' : steps.length ? 'Run the test again' : 'Run the test'}</button>
           {steps.length > 0 && (
             <div class="panel" style="margin-top:12px"><div class="stack" style="gap:10px">
@@ -129,5 +133,50 @@ export function GarminKey() {
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Garmin as a source (23 Nov 2026, the Mac app): nothing is fetched until the rider says so here, and it can be turned
+ * off here at any time. Says what it is doing and what it has done.
+ */
+function GarminSource() {
+  const [g, setG] = useState<GarminState | null>(null);
+  useEffect(() => { void loadGarminState(); return watchGarmin(setG); }, []);
+  if (!g) return null;
+  const on = async () => { await setGarminOn(true); void fetchGarmin(); };
+  const off = async () => { await setGarminOn(false); toast({ ok: true, text: 'Stopped. What was brought in stays.' }); };
+  const n = (x: number, one: string, many: string) => `${x} ${x === 1 ? one : many}`;
+  const doing = !g.running ? ''
+    : g.phase === 'list' ? "Reading Garmin's list of your activities…"
+    : g.phase === 'files' ? `Fetching what is new, one at a time: ${g.done} of ${g.toDo}. You can keep using the app.`
+    : g.phase === 'wellness' ? 'Reading your daily wellness…' : '';
+  const any = g.added + g.already + g.noFile + g.unread + g.days > 0;
+  return (
+    <section class="section">
+      <h2>Bring from Garmin</h2>
+      <div class="panel">
+        {!g.on ? (
+          <>
+            <p class="small muted" style="margin:0 0 10px">The app reads Garmin's list of your activities and fetches the original file of each one that isn't here yet, one at a time in the background, then your daily wellness (HRV, sleep, resting heart rate, steps and the like). An activity already here is never added twice, and what the app already holds for a day is never replaced. Nothing is written to Garmin. The first time it goes back through everything Garmin has; after that it asks only for what is new, a little after the app opens and every few hours.</p>
+            <button class="btn primary" onClick={on}>Bring my activities and wellness from Garmin</button>
+            {any && <p class="faint small" style="margin:10px 0 0">Turned off. Brought in so far: {n(g.added, 'activity', 'activities')} added, {n(g.days, 'day', 'days')} of wellness filled in.</p>}
+          </>
+        ) : (
+          <>
+            <p class="small" style="margin:0 0 4px"><b>On.</b> <span class="muted">{g.last ? `Last fetched ${new Date(g.last).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : 'Not fetched yet.'}</span></p>
+            <p class="small muted" style="margin:0">{n(g.added, 'activity', 'activities')} added from Garmin. {n(g.already, 'was', 'were')} already here{g.noFile ? `; ${n(g.noFile, 'has', 'have')} no file at Garmin (entered by hand, say)` : ''}{g.unread ? `; ${n(g.unread, 'file', 'files')} could not be read as an activity` : ''}. {n(g.days, 'day', 'days')} of wellness filled in.</p>
+            {doing && <p class="faint small" role="status" style="margin:6px 0 0">{doing}</p>}
+            {g.running && g.phase === 'files' && g.toDo > 0 && <div class="ws-track" style="margin-top:6px"><div class="ws-fill" style={`width:${(g.done / g.toDo) * 100}%`} /></div>}
+            {!g.running && g.error && <p class="small" role="status" style="margin:8px 0 0;color:var(--bad)">{g.error}</p>}
+            <div class="row wrap" style="gap:8px;margin-top:12px">
+              <button class="btn primary sm" disabled={g.running} onClick={() => { void fetchGarmin(); }}>{g.running ? 'Fetching…' : 'Fetch from Garmin now'}</button>
+              <button class="btn sm" onClick={off}>Stop bringing from Garmin</button>
+            </div>
+            <p class="faint small" style="margin:10px 0 0">An activity already here is never added twice; one that was here without its original file gains it. What the app already holds for a day of wellness is never replaced. Everything brought in is kept in the app and is in Back up everything. Nothing is written to Garmin.</p>
+          </>
+        )}
+      </div>
+    </section>
   );
 }

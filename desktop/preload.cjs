@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('antogoApp', {
   keyRead: () => ipcRenderer.invoke('key:read'),
   keySave: (key, expires) => ipcRenderer.invoke('key:save', key, expires),
   keyForget: () => ipcRenderer.invoke('key:forget'),
+  onBluetooth: (fn) => { ipcRenderer.on('bt:devices', (_e, list) => fn(list)); },
+  chooseBluetooth: (id) => ipcRenderer.invoke('bt:choose', id),
 });

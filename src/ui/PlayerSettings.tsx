@@ -32,7 +32,7 @@ export function PlayerSettings() {
 
   return (
     <Fold title="Ride player" summary={`${devices.length ? `${devices.length} device${devices.length === 1 ? '' : 's'} remembered` : 'No devices remembered yet'}${sim ? ' · practice mode on' : ''}`}>
-      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. It needs Chrome or Edge on a computer{bluetoothAvailable() ? '' : inApp() ? ' (the Mac app can’t reach Bluetooth yet: that is its next step)' : ' (this browser can’t reach Bluetooth)'}. Everything here belongs to this computer only.</p>
+      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. {inApp() ? `It uses this computer's Bluetooth${bluetoothAvailable() ? '' : ' (which the app can’t reach here)'}.` : `It needs Chrome or Edge on a computer${bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}.`} Everything here belongs to this computer only.</p>
       <div class="panel">
         <b class="small">Your trainer and sensors on this computer</b>
         {devices.length ? (

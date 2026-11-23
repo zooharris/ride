@@ -2107,3 +2107,10 @@ body.lv-open { overflow: hidden; }
 .th-list > :first-child { border-top: 0; }
 .th-edit input[type="date"] { min-height: 36px; }
 .import-ftp { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+/* The installed app's own list for choosing a Bluetooth device (23 Nov 2026). */
+.bt-back { position: fixed; inset: 0; z-index: 4000; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.bt-sheet { width: min(440px, 100%); max-height: min(560px, 90dvh); overflow: auto; }
+.bt-list { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.bt-item { width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--bg-3, var(--bg)); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.bt-item:hover, .bt-item:focus-visible { border-color: var(--brand-blue); }

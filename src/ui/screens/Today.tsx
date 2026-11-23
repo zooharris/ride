@@ -1,3 +1,4 @@
+import { inApp } from '../../shell';
 import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { GettingStarted } from './Help';
@@ -314,7 +315,7 @@ export function Today({ data }: { data: AppData }) {
           ) : (
             <p class="faint small" style="margin-top:10px">Each number is compared with your own normal range over the last four weeks; a morning at your normal is Ready. The score weighs HRV most, then sleep, heart rate overnight, breathing rate and form. Lines show the last two weeks; green is better than normal, red worse. Tap the dial for readiness over time.</p>
           )}
-          {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it.</p>}
+          {data.wellnessAll.length === 0 && <p class="faint small" style="margin-top:10px">HRV, sleep and resting heart rate appear once Intervals.icu is connected and has wellness data from whatever you use to record it{inApp() ? ', or once this app brings them from Garmin with your personal key (Settings, History)' : ''}.</p>}
           <DayNoteEditor date={date} note={todayNote} hasWellness={data.wellnessAll.some((w) => w.date === date)} />
         </div>
       </section>

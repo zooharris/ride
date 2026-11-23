@@ -36,8 +36,8 @@ test('the Garmin key test page: save a key, show it, copy it, test it, forget it
   page.on('dialog', (d) => void d.accept());
   await go(page, '#/settings');
   await page.getByRole('button', { name: /^History/ }).click();
-  await page.getByRole('link', { name: 'Test a Garmin personal key' }).click();
-  await expect(page.getByRole('heading', { name: 'Test a Garmin personal key' })).toBeVisible();
+  await page.getByRole('link', { name: 'Garmin, with your personal key' }).click();
+  await expect(page.getByRole('heading', { name: 'Garmin, with your personal key' })).toBeVisible();
   // In a browser the page says where Garmin does answer, with the Mac app's download (23 Nov 2026).
   await expect(page.getByText('Garmin does not answer a browser.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download Antogo for the Mac' })).toHaveAttribute('href', /releases\/latest\/download\/Antogo\.dmg$/);

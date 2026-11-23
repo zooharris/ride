@@ -32,9 +32,15 @@ function garminStandIn(seen: string[]): Promise<Server> {
     }
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401); res.end('no token'); return; }
     if (url.startsWith('/userprofile-service')) return json({ id: 1, measurementSystem: 'statute' });
-    if (url.startsWith('/activitylist-service')) return json(url.includes('start=0') ? [{ activityId: 9, activityName: 'Long ride', startTimeLocal: '2026-11-21 08:00:00', activityType: { typeKey: 'cycling' } }, { activityId: 8, activityName: 'Walk', startTimeLocal: '2019-03-02 08:00:00' }] : []);
-    if (url.startsWith('/download-service')) { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(Buffer.from(fit)); return; }
-    if (url.startsWith('/hrv-service')) return json({ hrvSummaries: [{ calendarDate: '2026-11-20' }] });
+    if (url.startsWith('/activitylist-service')) return json(url.includes('start=0') ? [{ activityId: 9, activityName: 'Long ride', startTimeLocal: '2026-11-21 08:00:00', duration: 600, activityType: { typeKey: 'cycling' } }, { activityId: 8, activityName: 'Walk', startTimeLocal: '2019-03-02 08:00:00' }] : []);
+    // The newest activity has its original file; the old one was entered by hand and has none.
+    if (url.startsWith('/download-service/files/activity/9')) { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(Buffer.from(fit)); return; }
+    if (url.startsWith('/download-service')) { res.writeHead(404); res.end(''); return; }
+    // One night's wellness, yesterday's, whatever stretch is asked for.
+    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    if (url.startsWith('/hrv-service')) return json({ hrvSummaries: [{ calendarDate: yesterday, lastNightAvg: 58 }] });
+    if (url.startsWith('/sleep-service')) return json([{ calendarDate: yesterday, sleepTimeSeconds: 27000 }]);
+    if (url.startsWith('/usersummary-service')) return json([{ calendarDate: yesterday, restingHeartRate: 49, totalSteps: 8123 }]);
     return json([]);
   });
   return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok(srv)));
@@ -161,6 +167,37 @@ test('Garmin, which gives a web page no answer, answers the app; and the key is 
   expect(seen[0]).toMatch(/^POST .*token ApiKey$/);
   expect(seen.slice(1).every((s) => s.endsWith('Bearer'))).toBe(true);
 
+  // Garmin as a source: nothing is fetched until the rider says so.
+  seen.length = 0;
+  await r.page.waitForTimeout(1000);
+  expect(seen).toEqual([]);
+  await r.page.getByRole('button', { name: 'Bring my activities and wellness from Garmin' }).click();
+  const source = r.page.locator('section', { hasText: 'Bring from Garmin' });
+  await expect(source).toContainText('Last fetched', { timeout: 60_000 });
+  await expect(source).toContainText('1 activity added from Garmin');
+  await expect(source).toContainText('1 has no file at Garmin');
+  await expect(source).toContainText('1 day of wellness filled in');
+  if (process.env.SHOTS) await r.page.screenshot({ path: `${process.env.SHOTS}/garmin.png`, fullPage: true });
+  expect(seen.filter((x) => x.includes('/download-service')).length).toBe(2);
+  // Pressing again asks for the list and wellness, never for a file it has dealt with, and adds nothing twice.
+  seen.length = 0;
+  await r.page.getByRole('button', { name: 'Fetch from Garmin now' }).click();
+  await expect(r.page.getByRole('button', { name: 'Fetching…' })).toHaveCount(0, { timeout: 60_000 });
+  expect(seen.filter((x) => x.includes('/download-service'))).toEqual([]);
+  await expect(source).toContainText('1 activity added from Garmin');
+  // The activity is in the app under Garmin's name, worked out from its file, and says where it came from.
+  await go(r.page, '#/rides');
+  await r.page.getByRole('link', { name: /Long ride/ }).first().click();
+  await expect(r.page.locator('main')).toContainText('From Garmin');
+  await expect(r.page.locator('main')).toContainText('Worked out by Antogo');
+  // Turned off: it stops asking, and what was brought in stays.
+  await go(r.page, '#/garmin-key');
+  await r.page.getByRole('button', { name: 'Stop bringing from Garmin' }).click();
+  await expect(r.page.getByRole('button', { name: 'Bring my activities and wellness from Garmin' })).toBeVisible();
+  await expect(r.page.locator('section', { hasText: 'Bring from Garmin' })).toContainText('1 activity added');
+  await go(r.page, '#/rides');
+  await expect(r.page.getByRole('link', { name: /Long ride/ }).first()).toBeVisible();
+
   // The key is not in the app's data, nor in a backup, nor readable in the file that holds it.
   const inData = await r.page.evaluate(() => new Promise<boolean>((ok) => {
     const q = indexedDB.open('ride');
@@ -209,15 +246,48 @@ test('Garmin, which gives a web page no answer, answers the app; and the key is 
   srv.close();
 });
 
-test('Settings, Help and the ride player say plainly what the Mac app is, and that Bluetooth is its next step', async () => {
+test('Settings, Help and the ride player say plainly what the Mac app is', async () => {
   const r = await launch();
   await setUpNew(r.page);
-  await go(r.page, '#/play/free');
-  await expect(r.page.getByRole('heading', { name: 'Riding with a trainer is coming to the Mac app' })).toBeVisible();
+  // Where the app can't reach Bluetooth at all (this test machine, on Linux), the player says so.
+  if (process.platform === 'linux') {
+    await go(r.page, '#/play/free');
+    await expect(r.page.getByRole('heading', { name: 'The app can’t reach Bluetooth on this computer' })).toBeVisible();
+  }
   await go(r.page, '#/settings');
   await expect(r.page.locator('main')).toContainText('This is Antogo for the Mac');
   await go(r.page, '#/help?s=settings');
   await expect(r.page.locator('main')).toContainText('Open Anyway');
+  expect(r.problems).toEqual([]);
+  await r.app.close();
+});
+
+test('choosing a Bluetooth device: the app shows its own list, and connects to nothing until one is picked', async () => {
+  const r = await launch();
+  await setUpNew(r.page);
+  // The engine's search reports what it has found to the app's own side, again each time it finds more.
+  const found = (devices: Array<{ deviceId: string; deviceName: string }>) => r.app.evaluate(({ BrowserWindow }, list) => {
+    const g = globalThis as unknown as { picked?: string };
+    g.picked = undefined;
+    BrowserWindow.getAllWindows()[0].webContents.emit('select-bluetooth-device', { preventDefault() {} }, list, (id: string) => { g.picked = id; });
+  }, devices);
+  const picked = () => r.app.evaluate(() => (globalThis as unknown as { picked?: string }).picked);
+  await found([]);
+  const list = r.page.getByRole('dialog', { name: 'Choose a device' });
+  await expect(list).toContainText('Nothing found yet.');
+  await expect(list).toContainText('Still looking');
+  await found([{ deviceId: 'aa', deviceName: 'KICKR CORE 1234' }, { deviceId: 'bb', deviceName: 'Unknown or Unsupported Device (bb)' }]);
+  await expect(list.locator('.bt-item')).toHaveText(['KICKR CORE 1234', 'A device with no name']);
+  if (process.env.SHOTS) await r.page.screenshot({ path: `${process.env.SHOTS}/chooser.png` });
+  expect(await picked()).toBeUndefined();
+  await list.getByRole('button', { name: 'KICKR CORE 1234' }).click();
+  await expect(list).toHaveCount(0);
+  expect(await picked()).toBe('aa');
+  // Cancel stops the search without choosing anything.
+  await found([{ deviceId: 'aa', deviceName: 'KICKR CORE 1234' }]);
+  await list.getByRole('button', { name: 'Cancel' }).click();
+  await expect(list).toHaveCount(0);
+  expect(await picked()).toBe('');
   expect(r.problems).toEqual([]);
   await r.app.close();
 });

@@ -657,7 +657,7 @@ function KeepingLine() {
       {k.total > 0 && <div class="ws-track" style="margin-top:6px"><div class="ws-fill" style={`width:${((k.kept + k.none) / k.total) * 100}%`} /></div>}
       <KeepSafeLine />
       <p class="faint small" style="margin:6px 0 0">Back up everything now includes all of it, so it is not tied to this browser. A Garmin rider can also ask Garmin for a copy of everything: in Garmin's account settings, under data management, request an export.</p>
-      <p class="small" style="margin:8px 0 0"><a href="#/garmin-key">Test a Garmin personal key</a> <span class="faint">· see what Garmin's own key can read, and keep the key where you can copy it again</span></p>
+      <p class="small" style="margin:8px 0 0"><a href="#/garmin-key">Garmin, with your personal key</a> <span class="faint">· {inApp() ? "bring your activities and wellness straight from Garmin, and see what the key can read" : "keep the key where you can copy it again; bringing from Garmin needs Antogo for the Mac"}</span></p>
     </div>
   );
 }

@@ -12,7 +12,12 @@ interface AppSide {
   keyRead(): Promise<SavedGarminKey | null>;
   keySave(key: string, expires?: string): Promise<SavedGarminKey>;
   keyForget(): Promise<boolean>;
+  onBluetooth?(fn: (found: FoundDevice[]) => void): void;
+  chooseBluetooth?(id: string): Promise<boolean>;
 }
+/** A Bluetooth device the app's search has found. */
+export interface FoundDevice { id: string; name: string }
+
 const side = (): AppSide | undefined => (typeof window !== 'undefined' ? (window as unknown as { antogoApp?: AppSide }).antogoApp : undefined);
 
 /** True inside the installed app, false in a browser. */
@@ -39,4 +44,16 @@ export const appKey = {
   read: (): Promise<SavedGarminKey | null> => side()?.keyRead() ?? Promise.resolve(null),
   save: (key: string, expires?: string): Promise<SavedGarminKey> => side()!.keySave(key, expires),
   forget: async (): Promise<void> => { await side()?.keyForget(); },
+};
+
+/**
+ * Choosing a Bluetooth device in the installed app (23 Nov 2026). A browser shows its own list; the app's own side
+ * hands the devices it finds to the pages instead, again each time it finds more, and waits for one to be picked.
+ */
+export const appBluetooth = {
+  /** Whether this app can show its own list (an older copy of the app's own side cannot). */
+  can: (): boolean => typeof side()?.onBluetooth === 'function' && typeof side()?.chooseBluetooth === 'function',
+  watch: (fn: (found: FoundDevice[]) => void): void => { side()?.onBluetooth?.(fn); },
+  /** The device picked, by id; an empty id stops the search. */
+  choose: (id: string): Promise<boolean> => side()?.chooseBluetooth?.(id) ?? Promise.resolve(false),
 };

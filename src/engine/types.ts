@@ -468,6 +468,8 @@ export interface Ride {
   carbsEstimated?: boolean;
   /** Where the activity came from when it is not the data service: a file the rider brought in. */
   source?: 'file';
+  /** A file the app fetched for the rider rather than one they picked: from Garmin, with their personal key (23 Nov 2026). */
+  via?: 'garmin';
   /** The start as a moment in time (UTC, ISO), when known: what tells one activity from another across time zones. */
   startUtc?: string;
   /** `startUtc` was read from the activity's own file, so it is exact. One from anywhere else is a hint only. */

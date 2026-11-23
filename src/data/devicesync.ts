@@ -42,7 +42,9 @@ export const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup',
   // 22 Nov 2026: what an activity's chart opened large shows (laps, target, zones; power smoothing) is remembered on each device.
   'activityShow', 'activitySmoothing',
   // Stage 0: whether this device has loaded the whole history.
-  'historyWhole']);
+  'historyWhole',
+  // 23 Nov 2026: Garmin as a source belongs to the one installed app that holds the key.
+  'garminSource', 'garminProgress']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at

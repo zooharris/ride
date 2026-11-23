@@ -66,7 +66,10 @@
       "gatekeeperAssess": false,
       "category": "public.app-category.healthcare-fitness",
       "icon": "desktop/icon.png",
-      "artifactName": "Antogo.${ext}"
+      "artifactName": "Antogo.${ext}",
+      "extendInfo": {
+        "NSBluetoothAlwaysUsageDescription": "Antogo connects to your smart trainer, power meter, heart-rate strap and other sensors when you ride indoors."
+      }
     },
     "dmg": {
       "sign": false,

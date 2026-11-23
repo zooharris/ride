@@ -276,7 +276,7 @@ export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: 
  * Activities with their start as a moment in time filled in where it is missing and their original file is kept: the
  * file says exactly when it began, which is what tells a second copy of the same recording from another activity.
  */
-async function withStarts(rides: Ride[]): Promise<Ride[]> {
+export async function withStarts(rides: Ride[]): Promise<Ride[]> {
   for (const r of rides) {
     if (r.startFromFile) continue;
     let exact: string | undefined;
@@ -305,6 +305,14 @@ async function pairNew(rides: Ride[], p: Profile | undefined): Promise<void> {
     const planned = await db.planned.where('date').between(prevDay(from), nextDay(to), true, true).toArray();
     await applyPairing(rides, planned, await workoutLookupFor(), null, p ?? null, {});
   } catch { /* pairing is a convenience: the activities are in either way */ }
+}
+
+/** Activities just added, by id, matched to planned sessions (for a source other than the rider's own files, 23 Nov 2026). */
+export async function pairAdded(ids: string[]): Promise<void> {
+  const fresh = (await db.rides.bulkGet(ids)).filter((r): r is Ride => !!r);
+  if (!fresh.length) return;
+  await pairNew(fresh, (await db.profile.get('me')) ?? undefined);
+  await db.rides.bulkPut(fresh);
 }
 
 /** Also add a file brought in to the rider's Intervals.icu, when they have asked for that. */

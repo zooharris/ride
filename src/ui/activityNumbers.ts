@@ -55,6 +55,7 @@ export function activityNumbers(r: Ride, profile: Profile, tempF?: string, effor
   const tail: Array<[string, string | number | undefined, string?]> = [
     ['Effort you rated', r.rpe ? `${Math.round(r.rpe)} of 10` : undefined, 'The effort you gave this in Intervals.icu'],
     ['Recorded on', r.device],
+    ['Brought in', r.via === 'garmin' ? 'From Garmin' : undefined, 'This app fetched it from Garmin with your personal key, as the original file your device recorded.'],
     // Stage 1 (22 Nov 2026): where the numbers came from, in one line.
     ['Numbers', r.ownNumbers ? 'Worked out by Antogo' : r.source === 'file' ? 'From the file’s summary' : 'From Intervals.icu', r.ownNumbers ? 'Antogo worked these out from the recording itself. They can differ a little from other apps’ figures for the same activity.' : r.source === 'file' ? 'The file had no second-by-second recording to work from, so these are the totals it carried.' : 'Antogo hasn’t worked these out from the recording yet (it does once the activity’s original file is kept on this device), so they are Intervals.icu’s.'],
   ];

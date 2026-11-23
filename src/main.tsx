@@ -6,7 +6,9 @@ import './styles/global.css';
 import { initTheme } from './ui/theme';
 import { startHistory } from './ui/router';
 import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';
-import { inApp } from './shell';
+import { appBluetooth, inApp } from './shell';
+import { BluetoothChooser } from './ui/BluetoothChooser';
+import { startGarmin } from './sync/garminAuto';
 
 // New versions are checked for on every launch, every 15 minutes while open, and whenever the app
 // comes back to the front. A new build
@@ -33,4 +35,7 @@ if (location.hash && location.hash !== '#/today') history.replaceState(null, '',
 // This entry is the visit's first: Back buttons on it fall back to their own page (8 Nov 2026).
 startHistory();
 initTheme();
-render(<App />, document.getElementById('app')!);
+// The installed app, with the rider's say-so, brings what is new from Garmin by itself.
+startGarmin();
+// The installed app shows its own list for choosing a Bluetooth device, over whatever screen asked for one.
+render(<><App />{appBluetooth.can() && <BluetoothChooser />}</>, document.getElementById('app')!);

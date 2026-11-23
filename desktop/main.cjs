@@ -36,6 +36,9 @@ function readKey() {
   } catch { return null; }
 }
 
+/** The answer the Bluetooth search is waiting for: the id of the device picked, or nothing to stop looking. */
+let choose = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 380, minHeight: 560, backgroundColor: '#0B0E14', title: 'Antogo Cycling',
@@ -44,6 +47,13 @@ function createWindow() {
   // A link to anywhere else opens in the rider's browser; the app's window only ever shows the app.
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://antogo/')) { e.preventDefault(); if (/^https?:\/\//.test(url)) void shell.openExternal(url); } });
+  // Choosing a Bluetooth device: a browser shows a list of its own; the app has none, so the pages show Antogo's. Each
+  // time the search finds more, the list is sent again; nothing is connected until the rider picks one.
+  win.webContents.on('select-bluetooth-device', (event, devices, callback) => {
+    event.preventDefault();
+    choose = callback;
+    win.webContents.send('bt:devices', devices.map((d) => ({ id: d.deviceId, name: d.deviceName })));
+  });
   void win.loadURL(HOME);
   return win;
 }
@@ -62,6 +72,7 @@ app.whenReady().then(() => {
     const res = await net.fetch(garminBase + url.slice(GARMIN.length), { method: init?.method ?? 'GET', headers: init?.headers ?? {} });
     return { status: res.status, type: res.headers.get('content-type') ?? '', body: new Uint8Array(await res.arrayBuffer()) };
   });
+  ipcMain.handle('bt:choose', (e, id) => { fromApp(e); const answer = choose; choose = null; if (answer) answer(typeof id === 'string' ? id : ''); return !!answer; });
   ipcMain.handle('key:can', (e) => { fromApp(e); return safeStorage.isEncryptionAvailable(); });
   ipcMain.handle('key:read', (e) => { fromApp(e); return readKey(); });
   ipcMain.handle('key:save', (e, key, expires) => {
@@ -80,5 +91,4 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-// Step one has no Bluetooth chooser of its own yet; without one the app says so rather than pick a device unasked.
 app.on('window-all-closed', () => app.quit());

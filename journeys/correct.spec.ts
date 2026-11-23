@@ -173,12 +173,23 @@ test('correct an activity: leave out its power, trim it and restore it, move its
   await page.locator('details.fix-trim > summary').click();
   const chart = page.locator('.trim-chart');
   await expect(chart).toBeVisible();
-  await chart.scrollIntoViewIfNeeded();
+  // Brought to the middle of the screen, as a rider would, so the phone's bar along the bottom is not over it.
+  await chart.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(300);
   const b = (await chart.boundingBox())!;
-  await page.mouse.move(b.x + 1, b.y + b.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(b.x + b.width * 0.2, b.y + b.height / 2, { steps: 5 });
-  await page.mouse.up();
+  const y = b.y + b.height / 2;
+  if (info.project.name.startsWith('phone')) {
+    // A finger, not a mouse: the press, the slide and the lift as a touch screen reports them.
+    const touch = (type: string, x: number) => chart.dispatchEvent(type, { pointerId: 7, pointerType: 'touch', isPrimary: true, bubbles: true, clientX: x, clientY: y });
+    await touch('pointerdown', b.x + b.width * 0.02);
+    for (const f of [0.06, 0.1, 0.15, 0.2]) await touch('pointermove', b.x + b.width * f);
+    await touch('pointerup', b.x + b.width * 0.2);
+  } else {
+    await page.mouse.move(b.x + b.width * 0.02, y);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width * 0.2, y, { steps: 5 });
+    await page.mouse.up();
+  }
   const from = page.getByLabel('Keep from this time into the recording');
   await expect(from).not.toHaveValue('0:00');
   await from.fill('5:00');

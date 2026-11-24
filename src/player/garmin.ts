@@ -41,7 +41,7 @@ export async function markPlayerMade(activityId: string, date: string, keep?: bo
 
 async function mineNow(): Promise<Set<string>> {
   const [edits, recs] = await Promise.all([db.activityEdits.toArray(), db.recordings.toArray()]);
-  return playerMade(edits, recs.map((r) => r.activityId).filter((x): x is string => !!x));
+  return playerMade(edits, recs.flatMap((r) => [r.activityId, r.localId]).filter((x): x is string => !!x));
 }
 
 const near = (date: string) => db.rides.where('date').between(addDays(date, -1), addDays(date, 1), true, true).toArray();
@@ -89,7 +89,7 @@ export async function keepVeloiqInstead(recordingId: string, garminId?: string):
   if (!r) return { ok: false, text: "Antogo's recording of that ride is no longer on this computer." };
   const gid = r.supersededBy ?? garminId;
   if (gid) for (const p of (await db.planned.toArray()).filter((x) => x.activityId === gid)) await release(p, gid);
-  await patchRecording(recordingId, { status: 'finished', supersededBy: undefined, activityId: undefined, keepVeloiq: true });
+  await patchRecording(recordingId, { status: 'finished', supersededBy: undefined, activityId: undefined, localId: undefined, keepVeloiq: true });
   const res = await uploadRide(recordingId);
   const g = gid ? await db.rides.get(gid) : undefined;
   if (res.ok && g) { await upsertEdit(g.id, g.date, { replaced: undefined }); await setExcluded(g, true); }
@@ -143,7 +143,7 @@ async function swapPair(e: ActivityEdit, p: Ride, g: Ride, rec: Recording | unde
   if (e.rpe != null && !(await db.planned.toArray()).some((x) => x.activityId === g.id)) await saveActivityEffort(g, e.rpe);
   await deletePlayerRide(p.id);
   const undo = !!rec && rec.samples.length > 0;
-  if (rec) await patchRecording(rec.id, { status: 'superseded', supersededBy: g.id, activityId: undefined });
+  if (rec) await patchRecording(rec.id, { status: 'superseded', supersededBy: g.id, activityId: undefined, localId: undefined });
   await upsertEdit(g.id, g.date, { replaced: { name: p.name, at: today(), playerActivityId: p.id, recordingId: undo ? rec!.id : undefined } });
   return { name: p.name, garminId: g.id, recordingId: undo ? rec!.id : undefined, noPower: g.averagePower == null && p.averagePower != null, undo };
 }
@@ -154,7 +154,7 @@ export async function keepGarminChoice(playerId: string): Promise<Swap> {
   const p = await db.rides.get(playerId);
   const g = e?.choice ? await db.rides.get(e.choice.garminId) : undefined;
   if (!e || !p || !g) throw new Error('That ride has already been sorted out on another device.');
-  const rec = (await db.recordings.toArray()).find((r) => r.activityId === p.id);
+  const rec = (await db.recordings.toArray()).find((r) => r.activityId === p.id || r.localId === p.id);
   const s = await swapPair(e, p, g, rec);
   await setExcluded(g, false);
   return s;
@@ -171,7 +171,7 @@ export async function keepAntogoChoice(playerId: string): Promise<void> {
   const g = await db.rides.get(e.choice.garminId);
   if (g) for (const pl of (await db.planned.toArray()).filter((x) => x.activityId === g.id)) await release(pl, g.id);
   await upsertEdit(e.id, e.date, { keepVeloiq: true, choice: undefined });
-  const rec = (await db.recordings.toArray()).find((r) => r.activityId === e.id);
+  const rec = (await db.recordings.toArray()).find((r) => r.activityId === e.id || r.localId === e.id);
   if (rec) await patchRecording(rec.id, { keepVeloiq: true });
   if (g) await setExcluded(g, true);
 }
@@ -187,19 +187,19 @@ export async function deletePlayerRide(id: string): Promise<void> {
  * At every sync and at launch: each ride the player uploaded whose Garmin
  * twin has arrived gives the Garmin's ride its session, done record and effort,
  * and is deleted from Intervals.icu and here. Returns what was swapped, for the
- * toast. Needs Intervals.icu (a delete there must succeed first).
+ * toast. For a ride that is at Intervals.icu, the delete there must succeed first.
  */
 export async function applyGarminRule(): Promise<Swap[]> {
-  const c = await credentials();
-  if (!c) return [];
+  // (23 Nov 2026: no longer only for riders connected to Intervals.icu. A ride saved in Antogo's own record is
+  // swapped the same way when the device's recording arrives, from Garmin directly or from a file.)
   const [edits, recs, rides] = await Promise.all([db.activityEdits.toArray(), db.recordings.toArray(), db.rides.toArray()]);
-  const mine = playerMade(edits, recs.map((r) => r.activityId).filter((x): x is string => !!x));
+  const mine = playerMade(edits, recs.flatMap((r) => [r.activityId, r.localId]).filter((x): x is string => !!x));
   const swaps: Swap[] = [];
   for (const e of edits) {
     if (e.source !== 'veloiq' || e.keepVeloiq) continue;
     const p = rides.find((r) => r.id === e.id);
     if (!p) continue;
-    const rec = recs.find((r) => r.activityId === p.id);
+    const rec = recs.find((r) => r.activityId === p.id || r.localId === p.id);
     if (rec?.keepVeloiq) continue;
     const g = garminTwin(spanOf(p), rides, mine);
     if (!g) continue;

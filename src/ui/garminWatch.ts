@@ -21,6 +21,9 @@ export function swapToast(s: Swap): void {
   });
 }
 
+/** Run the rule now (after activities arrive from anywhere: a pull, Garmin with the rider's key, files). */
+export async function runGarminRule(): Promise<void> { await run(); }
+
 async function run(): Promise<void> {
   if (running) return;
   running = true;

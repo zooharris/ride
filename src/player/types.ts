@@ -30,13 +30,16 @@ export type RideEventType = 'start' | 'pause' | 'resume' | 'skip' | 'stop' | 'in
 /** 'breath' (Step 5, 11 Nov 2026): on a ride by breathing, breathing stopped arriving, or the rider carried on another way. */
 export interface RideEvent { t: number; type: RideEventType; value?: string | number }
 
-export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded' | 'superseded';
+/** 'saved' (23 Nov 2026): in Antogo's own record, with no data service to send it on to. */
+export type RecordingStatus = 'recording' | 'finished' | 'uploaded' | 'discarded' | 'superseded' | 'saved';
 
 export interface Recording {
   id: string;
   /** The cues the player showed, at seconds into the workout, and who wrote them (12 Nov 2026, B6). */
   cues?: { by: 'ai' | 'written'; lines: Array<{ t: number; text: string }> };
   status: RecordingStatus;
+  /** The activity this ride became in Antogo's own record when it was saved (23 Nov 2026). */
+  localId?: string;
   /** ISO local-time string of the start, and the start in ms since 1970. */
   startedAt: string;
   startMs: number;

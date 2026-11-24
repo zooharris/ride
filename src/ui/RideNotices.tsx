@@ -8,8 +8,7 @@ import { toast } from './Toast';
 
 /**
  * On Today: a ride the browser closed in the middle of (save it or discard
- * it), and rides recorded on this computer that are waiting to reach
- * Intervals.icu (try now). Nothing shows when there is nothing to say.
+ * it), and rides recorded on this computer that are not saved yet (try now). Nothing shows when there is nothing to say.
  */
 export function RideNotices() {
   const [open, setOpen] = useState<Recording[]>([]);
@@ -26,7 +25,7 @@ export function RideNotices() {
     setBusy(true);
     const r = await sendWaitingRides();
     setBusy(false);
-    toast({ ok: !r.left, text: r.left ? `${r.left} ride${r.left === 1 ? '' : 's'} still waiting: ${(await waitingRides())[0]?.error ?? 'try again later.'}` : `Saved ${r.sent} ride${r.sent === 1 ? '' : 's'} to Intervals.icu.` });
+    toast({ ok: !r.left, text: r.left ? `${r.left} ride${r.left === 1 ? '' : 's'} still waiting: ${(await waitingRides())[0]?.error ?? 'try again later.'}` : `Saved ${r.sent} ride${r.sent === 1 ? '' : 's'}.` });
     load();
     notify();
   };
@@ -53,8 +52,8 @@ export function RideNotices() {
       {waiting.length > 0 && (
         <div class="panel ride-notice">
           <div style="min-width:0">
-            <b>{waiting.length === 1 ? `${waiting[0].name} is` : `${waiting.length} rides are`} waiting to upload</b>
-            <div class="muted small">{waiting[0].error ?? 'Recorded on this computer and not yet in Intervals.icu.'}</div>
+            <b>{waiting.length === 1 ? `${waiting[0].name} is` : `${waiting.length} rides are`} waiting to be saved</b>
+            <div class="muted small">{waiting[0].error ?? 'Recorded on this computer and not saved yet.'}</div>
           </div>
           <button class="btn sm" disabled={busy} onClick={() => void tryNow()}>{busy ? 'Saving…' : 'Try now'}</button>
         </div>

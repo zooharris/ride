@@ -75,6 +75,8 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await looksRight(s, info, 'Today, done');
   // 22 Nov 2026: the ride's chart opened large shows the planned target, from the player's own record of each step.
   await go(page, '#/rides');
+  // 23 Nov 2026: saved in Antogo's record and sent on to the data service, it is one activity, not two.
+  await expect(page.locator('a[href*="#/rides/"]').filter({ hasText: rideName })).toHaveCount(1);
   await page.locator('a[href*="#/rides/"]').filter({ hasText: rideName }).first().click();
   await page.getByRole('button', { name: 'Open power large' }).click();
   const large = page.getByRole('dialog');
@@ -105,4 +107,51 @@ test('pause a ride on a phone', async ({ page }, info) => {
   await page.getByRole('button', { name: 'Pause' }).click();
   await expect(page.getByRole('button', { name: 'Resume' }).first()).toBeVisible();
   await looksRight(s, info, 'Paused');
+});
+
+/**
+ * 23 Nov 2026: a rider with no account anywhere rides and saves. The ride is in Antogo's own record at once, with
+ * nothing said about a data service; and a ride under five minutes is kept, not listed, and the player says where it is.
+ */
+test('a rider with no data service saves rides from the player', async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith('laptop'), 'the player with a trainer is a laptop journey');
+  const s = await setUp(page, 'new');
+  page.on('dialog', (d) => void d.accept());   // "End the ride?"
+  await simulatedTrainer(page);
+  await page.clock.install({ time: new Date(new Date().setHours(12, 0, 0, 0)) });
+  const rideFor = async (minutes: number) => {
+    await go(page, '#/play/free');
+    await page.getByRole('button', { name: /^Smart trainer/ }).first().click();
+    await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();
+    await page.getByRole('button', { name: 'Start ride' }).click();
+    await page.clock.runFor(minutes * 60_000);
+    await page.getByRole('button', { name: 'End ride' }).first().click();
+    await page.getByRole('button', { name: 'Save ride' }).click();
+    await expect(page.locator('.rd-saved')).toBeVisible({ timeout: 20_000 });
+    const text = (await page.locator('.rd-saved').innerText()).trim();
+    if (minutes < 5) await looksRight(s, info, 'Saved, under five minutes'); else await looksRight(s, info, 'Saved, with no data service');
+    await page.getByRole('button', { name: 'Done', exact: true }).first().click();
+    return text;
+  };
+  const said = await rideFor(8);
+  expect(said).toMatch(/^Saved/);
+  expect(said).not.toMatch(/Intervals|upload/i);
+  await page.clock.resume();
+  await go(page, '#/rides');
+  await expect(page.locator('main')).toContainText('1 activity');
+  await expect(page.locator('a[href*="#/rides/file-"]')).toHaveCount(1);
+  await page.locator('a[href*="#/rides/file-"]').first().click();
+  await expect(page.locator('[data-own-numbers]')).toHaveAttribute('data-own-numbers', 'yes');
+  await expect(page.getByRole('heading', { name: 'The recording' })).toBeVisible();
+  await go(page, '#/today');
+  await expect(page.getByText('waiting to be saved')).toHaveCount(0);
+  // A ride of three minutes: kept, not listed, and the player says so.
+  await page.clock.install({ time: new Date(new Date().setHours(15, 0, 0, 0)) });
+  const short = await rideFor(3);
+  expect(short).toContain('under five minutes');
+  expect(short).toContain('Show the recordings that are not training');
+  await page.clock.resume();
+  await go(page, '#/rides');
+  await expect(page.locator('main')).toContainText('1 activity · 1 not training');
+  await expect(page.locator('a[href*="#/rides/file-"]')).toHaveCount(1);
 });

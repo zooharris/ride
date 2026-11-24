@@ -36,8 +36,8 @@ describe('a ride with breathing, saved and read back on another device', () => {
     const r = await uploadRide('rb1');
     expect(r.ok).toBe(true);
     expect(await db.activityEdits.get(r.activityId!)).toMatchObject({ source: 'veloiq', breathSensor: 'VitalPro R 4821' });
-    // Another device: no recording here, Intervals.icu has no custom streams, so the original file is read.
-    const set = await fillBreathing({ id: r.activityId!, time: Array.from({ length: 900 }, (_, t) => t) }, undefined, async () => box.files.get(r.activityId!)!);
+    // Another device: no recording here, Intervals.icu has no custom streams, so the original file (the one sent) is read.
+    const set = await fillBreathing({ id: r.activityId!, time: Array.from({ length: 900 }, (_, t) => t) }, undefined, async () => [...box.files.values()][0]);
     expect(hasBreathing(set)).toBe(true);
     expect(Number.isNaN(set.ve![30])).toBe(true);
     expect(set.ve![300]).toBeCloseTo(32, 3);

@@ -76,6 +76,8 @@ export interface Driver {
 }
 
 const RETRY_MS = 5000;
+/** How long one attempt to connect may take before it is given up and tried again (23 Nov 2026): it never sits on "Connecting…". */
+export const CONNECT_LIMIT_MS = 20_000;
 
 export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEvents): Driver {
   let disposed = false;
@@ -91,9 +93,16 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
   const crank = crankRate();
   const wheel = kind === 'csc' ? cscWheelRate() : cpsWheelRate();
 
-  const onValue = (fn: (v: DataView) => void) => (e: Event) => {
-    const v = (e.target as BluetoothRemoteGATTCharacteristic).value;
-    if (v) { try { fn(v); } catch { /* a malformed packet is skipped */ } }
+  // Each attempt to connect has a number. An attempt that was given up for taking too long may still finish later:
+  // whatever it set up is ignored, so readings never arrive twice.
+  let attempt = 0;
+  const onValue = (fn: (v: DataView) => void) => {
+    const mine = attempt;
+    return (e: Event) => {
+      if (mine !== attempt) return;
+      const v = (e.target as BluetoothRemoteGATTCharacteristic).value;
+      if (v) { try { fn(v); } catch { /* a malformed packet is skipped */ } }
+    };
   };
 
   const listen = async (svc: BluetoothRemoteGATTService, char: BluetoothCharacteristicUUID, fn: (v: DataView) => void) => {
@@ -119,6 +128,7 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
   };
 
   const connect = async () => {
+    const mine = ++attempt;
     ev.status('connecting');
     const server = await device.gatt!.connect();
     if (kind === 'trainer') {
@@ -199,6 +209,7 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
         });
       });
     }
+    if (mine !== attempt) return;   // given up for taking too long; a later attempt has the device
     everConnected = true;
     ev.status('connected');
     const ws = connectedWaiters; connectedWaiters = [];
@@ -241,16 +252,31 @@ export function attach(device: BluetoothDevice, kind: SensorKind, ev: DriverEven
     // One attempt at a time: a reconnect we asked for and the disconnect event can both schedule one.
     if (disposed || connecting) return;
     connecting = true;
-    try { await connect(); } catch {
+    let limit: ReturnType<typeof setTimeout> | undefined;
+    const tooLong = new Promise<never>((_, no) => { limit = setTimeout(() => no(new Error('unanswered')), CONNECT_LIMIT_MS); });
+    try { await Promise.race([connect(), tooLong]); } catch (e) {
       if (disposed) return;
-      // Never reached yet: switched off or asleep. Reached before: dropped out. Either way, keep trying quietly.
-      ev.status(everConnected ? 'lost' : 'offline');
+      if ((e as Error).message === 'unanswered') {
+        // It was reached for and has said nothing in the time allowed: let go of it and try afresh, saying so.
+        attempt++;
+        control = undefined; strapCmd = undefined;
+        quiet = true;
+        try { device.gatt?.disconnect(); } catch { /* not connected */ }
+        quiet = false;
+        ev.status('unanswered');
+      } else {
+        // Never reached yet: switched off or asleep. Reached before: dropped out. Either way, keep trying quietly.
+        ev.status(everConnected ? 'lost' : 'offline');
+      }
+      clearTimeout(retry);
       retry = setTimeout(tryConnect, RETRY_MS);
-    } finally { connecting = false; }
+    } finally { clearTimeout(limit); connecting = false; }
   };
 
+  // Letting go of a device that did not answer is our own doing, not a drop-out.
+  let quiet = false;
   const onDisconnect = () => {
-    if (disposed) return;
+    if (disposed || quiet) return;
     control = undefined;
     strapCmd = undefined;
     ev.status('lost');

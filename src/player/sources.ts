@@ -4,7 +4,8 @@
  */
 
 export type SensorKind = 'trainer' | 'power' | 'hr' | 'csc' | 'breath';
-export type SensorStatus = 'connecting' | 'connected' | 'lost' | 'offline';
+/** 'unanswered' (23 Nov 2026): chosen and reached for, but it has not answered within the time allowed; it is tried again. */
+export type SensorStatus = 'connecting' | 'connected' | 'lost' | 'offline' | 'unanswered';
 
 export interface Reading {
   watts?: number;

@@ -93,7 +93,7 @@ function RideList({ data, mph }: { data: AppData; mph: (ms?: number) => string }
   const pickView = (v: 'list' | 'month') => setView(v);
   return (
     <div>
-      <PageHead eyebrow={`${data.rides.length} synced${hidden ? ` · ${hidden} not training` : ''}`} title="Activities" help="activities">
+      <PageHead eyebrow={`${data.rides.length} ${data.rides.length === 1 ? 'activity' : 'activities'}${hidden ? ` · ${hidden} not training` : ''}`} title="Activities" help="activities">
         <AddFilesButton label="Add files" />
         <a class="btn sm" href="#/export">Export</a>
         <div class="seg"><button class={view === 'list' ? 'on' : ''} onClick={() => pickView('list')}>List</button><button class={view === 'month' ? 'on' : ''} onClick={() => pickView('month')}>Month</button></div>
@@ -507,7 +507,8 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
       ) : null}
       <section class="section">
         <h2>Numbers</h2>
-        <NumbersGrid rows={items} />
+        {/* (For the whole-journey tests: whether Antogo worked these numbers out itself.) */}
+        <div data-own-numbers={r.ownNumbers ? 'yes' : 'no'}><NumbersGrid rows={items} /></div>
       </section>
       {downloading && <DownloadActivity ride={r} data={data} onClose={() => setDownloading(false)} />}
       <StrapDetails activityId={r.id} />

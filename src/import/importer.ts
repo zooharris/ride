@@ -248,10 +248,26 @@ export async function finishImport(onChanged: () => void): Promise<void> {
 }
 
 /** Add one parsed activity, or attach its file to the one already here. With `defer`, it is kept but not yet worked out or scored. */
-export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: Profile | undefined, opts: { defer?: boolean } = {}): Promise<Ride | 'already'> {
-  const ride = rideFromParsed(parsed);
+/**
+ * Activities the ride player made (23 Nov 2026): marked so on their correction, or saved or sent from a recording on
+ * this device. A recording of the same ride from the rider's own device is not a second copy of one of these to be
+ * quietly made one with it: which of the two is kept is the player's own rule (the device's, unless the rider says
+ * otherwise), which also moves the session and the effort and offers Undo.
+ */
+export async function playerMadeIds(): Promise<Set<string>> {
+  const [edits, recs] = await Promise.all([db.activityEdits.toArray(), db.recordings.toArray()]);
+  return new Set([...edits.filter((e) => e.source === 'veloiq').map((e) => e.id), ...recs.flatMap((r) => [r.activityId, r.localId]).filter((x): x is string => !!x)]);
+}
+
+/**
+ * `own` (23 Nov 2026): the ride player's own recording, saved by the rider. It is always added as an activity of its
+ * own, under an id of its own, whatever else was recorded at that time.
+ */
+export async function addActivity(parsed: ParsedActivity, bytes: Uint8Array, p: Profile | undefined, opts: { defer?: boolean; own?: string } = {}): Promise<Ride | 'already'> {
+  const ride = opts.own ? { ...rideFromParsed(parsed), id: opts.own } : rideFromParsed(parsed);
   const day = ride.date;
-  const near = await withStarts(await db.rides.where('date').between(prevDay(day), nextDay(day), true, true).toArray());
+  const mine = await playerMadeIds();
+  const near = opts.own ? [] : await withStarts((await db.rides.where('date').between(prevDay(day), nextDay(day), true, true).toArray()).filter((x) => !mine.has(x.id)));
   const same = near.find((x) => sameActivity(x, ride));
   const file = (id: string, date: string): KeptFile => ({ id, date, status: 'kept', bytes, size: bytes.byteLength, at: new Date().toISOString() });
   if (same) {
@@ -333,11 +349,20 @@ async function sendOn(r: Ride, bytes: Uint8Array, name: string): Promise<void> {
 export async function mergeFileCopies(opts: { countOnly?: boolean } = {}): Promise<number> {
   const fileRides = (await db.rides.toArray()).filter((r) => r.source === 'file');
   let merged = 0;
+  // A ride the player saved here is made one only with its own copy at the data service (the activity its sending
+  // made), never with another recording of that ride; and no other file is made one with a ride the player made.
+  const recs = await db.recordings.toArray();
+  const mine = await playerMadeIds();
   for (const f of fileRides) {
     try {
-    const near = await withStarts((await db.rides.where('date').between(prevDay(f.date), nextDay(f.date), true, true).toArray()).filter((x) => x.source !== 'file'));
-    const twin = near.find((x) => sameActivity(x, f));
-    if (!twin) continue;
+    const sent = recs.find((r) => r.localId === f.id)?.activityId;
+    let twin: Ride | undefined;
+    if (mine.has(f.id)) twin = sent ? await db.rides.get(sent) : undefined;
+    else {
+      const near = await withStarts((await db.rides.where('date').between(prevDay(f.date), nextDay(f.date), true, true).toArray()).filter((x) => x.source !== 'file' && !mine.has(x.id)));
+      twin = near.find((x) => sameActivity(x, f));
+    }
+    if (!twin || twin.id === f.id) continue;
     if (opts.countOnly) { merged++; continue; }
     const kept = await db.files.get(f.id);
     const twinFile = await db.files.get(twin.id);

@@ -580,7 +580,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
           </>}
           {v.state === 'waiting' && <>
             <span class="pl-dev-name">{name}</span>
-            <span class="pl-dev-s"><span class="pl-dot connecting" />{d?.status === 'lost' ? 'Lost: reconnecting…' : 'Connecting…'}</span>
+            <span class="pl-dev-s"><span class="pl-dot connecting" />{d?.status === 'lost' ? 'Lost: reconnecting…' : d?.status === 'unanswered' ? 'Not answering. Trying again…' : 'Connecting…'}</span>
           </>}
           {v.state === 'off' && <span class="pl-dev-none">None for this ride</span>}
           {v.state === 'empty' && <>

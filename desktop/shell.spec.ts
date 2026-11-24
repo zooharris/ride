@@ -189,7 +189,7 @@ test('Garmin, which gives a web page no answer, answers the app; and the key is 
   await go(r.page, '#/rides');
   await r.page.getByRole('link', { name: /Long ride/ }).first().click();
   await expect(r.page.locator('main')).toContainText('From Garmin');
-  await expect(r.page.locator('main')).toContainText('Worked out by Antogo');
+  await expect(r.page.locator('[data-own-numbers]')).toHaveAttribute('data-own-numbers', 'yes');
   // Turned off: it stops asking, and what was brought in stays.
   await go(r.page, '#/garmin-key');
   await r.page.getByRole('button', { name: 'Stop bringing from Garmin' }).click();

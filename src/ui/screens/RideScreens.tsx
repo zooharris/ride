@@ -7,6 +7,7 @@ import { breathZones, hrZone, powerZone, ridePowerZones, rideHrZones } from '../
 import { Mark } from '../Brand';
 import { breathZoneVar, ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
+import { notify } from '../store';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { controlledTrainer, type SensorState } from '../../player/hub';
@@ -712,9 +713,9 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const changeTest = async (r: TestResult) => {
     setTest(r);
     await patchRecording(rec.id, { test: r });
-    // Already in Intervals.icu: the kept copy (which syncs to the other devices) follows the choice.
-    const id = (await getRecording(rec.id))?.activityId;
-    if (id) await setSetting(testResultKey(id), r);
+    // Already saved: the kept copy (which syncs to the other devices) follows the choice.
+    const now = await getRecording(rec.id);
+    for (const id of [now?.activityId, now?.localId]) if (id) await setSetting(testResultKey(id), r);
   };
   // The ride is drawn and judged with the numbers it was ridden at, even after a test result changes the settings.
   const asRidden: Profile = { ...profile, ftp: rec.ftp, lthr: rec.lthr };
@@ -728,7 +729,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const note = byBreath ? observationHr(stats, 'breathing') : byHr ? observationHr(stats) : observation(stats);
   const zoneTime = byBreath && timeline.length ? timeInZone(rec.samples, timeline, (s) => breathBand(s, asRidden), (x) => x.ve) : byHr && timeline.length ? timeInZone(rec.samples, timeline, bandOf) : undefined;
   const [rpe, setRpe] = useState<number | undefined>(rec.rpe);
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId || rec.supersededBy ? 'saved' : 'idle');
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'waiting'>(rec.activityId || rec.localId || rec.supersededBy ? 'saved' : 'idle');
   const [said, setSaid] = useState<string>(rec.supersededBy ? KEPT_GARMIN : '');
   const [garmins, setGarmins] = useState(!!rec.supersededBy);
   const want = plannedSeconds(workout);
@@ -745,6 +746,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const save = async () => {
     setState('saving');
     const r = await uploadRide(rec.id);
+    // The ride is in the record now: every screen reads it again (23 Nov 2026: no pull from a data service does that for it).
+    notify();
     setSaid(r.text);
     setGarmins(!!r.superseded);
     setState(r.ok ? 'saved' : 'waiting');
@@ -754,6 +757,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const ours = async () => {
     setState('saving');
     const r = await keepVeloiqInstead(rec.id);
+    notify();
     setSaid(r.text);
     setGarmins(false);
     setState(r.ok ? 'saved' : 'waiting');

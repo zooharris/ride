@@ -7,7 +7,8 @@ export function garminDeps(): GarminDeps {
     fetch: garminFetch,
     key: async () => (await appKey.read().catch(() => null))?.key,
     changed: () => { void import('../ui/store').then((m) => m.notify()); },
-    settle: () => import('./syncService').then((m) => m.startChangeOver()),
+    // What is out of step is worked out again; and a ride the player saved gives way to the device's recording of it.
+    settle: async () => { await import('./syncService').then((m) => m.startChangeOver()); await import('../ui/garminWatch').then((m) => m.runGarminRule()); },
   };
 }
 

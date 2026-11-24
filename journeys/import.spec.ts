@@ -59,7 +59,7 @@ test('bring in activity files: a new one, the same again, and an export with wel
   await sheet.getByRole('button', { name: 'Close' }).click();
   // The activity brought in: its page, with Antogo's numbers.
   await page.locator('a[href*="#/rides/file-"]').first().click();
-  await expect(page.locator('.numgrid')).toContainText('Worked out by Antogo');
+  await expect(page.locator('[data-own-numbers]')).toHaveAttribute('data-own-numbers', 'yes');
   await expect(page.getByRole('heading', { name: 'The recording' })).toBeVisible();
   await looksRight(s, info, 'An activity brought in from its file');
   await go(page, '#/progress');
@@ -88,7 +88,7 @@ test('an activity from the data service, with its numbers worked out by Antogo f
   await expect.poll(async () => {
     await go(page, '#/rides');
     await page.locator('a[href*="#/rides/"]').filter({ hasText: 'Evening walk' }).first().click();
-    return page.locator('.numgrid').innerText();
-  }, { timeout: 60_000, intervals: [3000] }).toContain('Worked out by Antogo');
+    return page.locator('[data-own-numbers]').getAttribute('data-own-numbers');
+  }, { timeout: 60_000, intervals: [3000] }).toBe('yes');
   await looksRight(s, info, 'An activity on Antogo\'s numbers');
 });

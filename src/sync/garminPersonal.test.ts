@@ -62,7 +62,7 @@ describe('the Garmin personal key test', () => {
     expect(ok.map((s) => s.words).join(' ')).not.toMatch(/web page|browser/);
     const off = await runGarminTest(KEY, () => {}, (async () => { throw new TypeError('net::ERR_INTERNET_DISCONNECTED'); }) as unknown as typeof fetch, new Date(), 'app');
     expect(off).toHaveLength(1);
-    expect(off[0].words).toMatch(/could not be reached\. Check this computer's internet connection/);
+    expect(off[0].words).toMatch(/could not be reached\. Check the internet connection on this computer/);
     expect(resultsText(ok, new Date(), 'from the Mac app')).toMatch(/^Garmin personal key test, from the Mac app,/);
   });
   it('a refused key is said plainly', async () => {

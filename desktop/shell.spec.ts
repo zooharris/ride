@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { standIn, watchProblems } from '../journeys/standin';
@@ -257,7 +257,8 @@ test('Settings, Help and the ride player say plainly what the Mac app is', async
   await go(r.page, '#/settings');
   await expect(r.page.locator('main')).toContainText('This is Antogo for the Mac');
   await go(r.page, '#/help?s=settings');
-  await expect(r.page.locator('main')).toContainText('Open Anyway');
+  await expect(r.page.locator('main')).toContainText('signed by its maker and checked by Apple');
+  await expect(r.page.locator('main')).not.toContainText('Open Anyway');
   expect(r.problems).toEqual([]);
   await r.app.close();
 });
@@ -288,6 +289,41 @@ test('choosing a Bluetooth device: the app shows its own list, and connects to n
   await list.getByRole('button', { name: 'Cancel' }).click();
   await expect(list).toHaveCount(0);
   expect(await picked()).toBe('');
+  expect(r.problems).toEqual([]);
+  await r.app.close();
+});
+
+test('a key an earlier copy of the app sealed, which this copy cannot read, is asked for once and said plainly', async () => {
+  // What an unsigned copy leaves behind for a signed one: the key's file is there, sealed with a secret this copy is not given.
+  const data = scratch('data');
+  writeFileSync(join(data, 'garmin-key'), JSON.stringify({ sealed: Buffer.from('sealed-by-another-copy').toString('base64'), savedAt: '2026-11-23T12:00:00.000Z' }));
+  const r = await launch({ data });
+  await setUpNew(r.page);
+  await go(r.page, '#/garmin-key');
+  await expect(r.page.getByText('Please paste your key once more.')).toBeVisible();
+  await expect(r.page.locator('main')).toContainText('make a new one in Garmin Connect');
+  // Pasting it saves it in this copy's own store; the notice goes, and the key shows again after the app is reopened.
+  await r.page.getByLabel('Garmin personal key').fill(KEY);
+  await r.page.getByRole('button', { name: 'Save on this device' }).click();
+  await expect(r.page.getByText('Please paste your key once more.')).toHaveCount(0);
+  await expect(r.page.getByRole('button', { name: 'Copy the key' })).toBeVisible();
+  expect(readFileSync(join(data, 'garmin-key'), 'utf8')).not.toContain(KEY);
+  expect(r.problems).toEqual([]);
+  await r.app.close();
+});
+
+test('About and legal: the open-source notices are inside the app, and say what it is built with', async () => {
+  const r = await launch();
+  await setUpNew(r.page);
+  await go(r.page, '#/settings');
+  await r.page.getByRole('button', { name: /About and legal/ }).click();
+  await expect(r.page.locator('main')).toContainText('OpenStreetMap contributors');
+  await r.page.getByRole('link', { name: 'Read the notices' }).click();
+  const text = r.page.locator('.notices-text');
+  for (const name of ['preact', 'dexie', 'leaflet', '@fontsource-variable/archivo', 'SIL Open Font License', 'Apache License', 'Electron']) await expect(text).toContainText(name);
+  await expect(text).not.toContainText('GNU GENERAL PUBLIC LICENSE');
+  // Reading them asked nothing of the outside world.
+  expect(r.outside.filter((u) => !/zooharris\.github\.io\/ride\/version\.json/.test(u))).toEqual([]);
   expect(r.problems).toEqual([]);
   await r.app.close();
 });

@@ -1,5 +1,5 @@
 import { goBack } from '../router';
-import { inApp } from '../../shell';
+import { appKind, inApp, thisDevice } from '../../shell';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { brShown } from '../../engine/breathThresholds';
 import type { ComponentChildren } from 'preact';
@@ -123,7 +123,9 @@ function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }
 
 function NoBluetooth() {
   const where = platform();
-  const [head, text] = inApp()
+  const [head, text] = appKind() === 'ios'
+    ? ['Bluetooth on iPhone and iPad comes next', <>This version of {APP_SHORT_NAME} for iPhone and iPad can't talk to a smart trainer or sensors yet: that comes in the next version. Until then, ride with a trainer from {APP_SHORT_NAME} for the Mac, or try the player here with simulated sensors.</>]
+    : inApp()
     ? ['The app can’t reach Bluetooth on this computer', <>So it can't talk to a smart trainer or sensors here. Check that Bluetooth is turned on, and that {APP_SHORT_NAME} is allowed to use it (on a Mac: System Settings, Privacy &amp; Security, Bluetooth), then open {APP_SHORT_NAME} again.</>]
     : where === 'iphone'
     ? ['Riding with a trainer needs a computer or an iPad', <>An iPhone's browsers can't reach Bluetooth, so they can't talk to a smart trainer or sensors. Open {APP_SHORT_NAME} in <b>Chrome</b> or <b>Edge</b> on a computer (Mac, Windows or Chromebook), or in the free <b>Bluefy</b> browser on an iPad.</>]
@@ -242,7 +244,7 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
 
   return (
     <>
-      {!bt && <div class="pl-banner">{inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+      {!bt && <div class="pl-banner">{appKind() === 'ios' ? 'Bluetooth trainers and sensors on iPhone and iPad come in the next version of the app: for now only the simulated sensors are available.' : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
       <main class="pl-main pl-pre">
         <section class="pl-card pl-workout">
           <p class="eyebrow">{when}</p>
@@ -456,7 +458,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   });
   return (
     <>
-      {!bt && <div class="pl-banner">{inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+      {!bt && <div class="pl-banner">{appKind() === 'ios' ? 'Bluetooth trainers and sensors on iPhone and iPad come in the next version of the app: for now only the simulated sensors are available.' : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
       <main class="pl-main pl-pre">
         <section class="pl-card pl-workout pl-free">
           <p class="eyebrow">{`Today · ${fmtDate(today())}`}</p>
@@ -623,7 +625,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
         {box('cadence')}{box('speedKmh')}{box('ve')}
       </div>
       {quietStrap && <QuietStrap id={quietStrap.id} simulated={!!quietStrap.simulated} />}
-      {!known.length && !sensors.length && <p class="pl-note">Click a box to choose the device for it. {inApp() ? 'You pick each one from a list of the devices found nearby.' : 'Your browser asks before connecting each one, and this computer remembers them for next time.'}</p>}
+      {!known.length && !sensors.length && <p class="pl-note">Click a box to choose the device for it. {inApp() ? 'You pick each one from a list of the devices found nearby.' : `Your browser asks before connecting each one, and ${thisDevice()} remembers them for next time.`}</p>}
     </section>
   );
 }

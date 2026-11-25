@@ -19,6 +19,7 @@
  * days falls back to the Garmin's, with the usual Undo. When both have
  * breathing, the silent rule stands.
  */
+import { thisDevice } from '../shell';
 import { db } from '../data/db';
 import { addDays, today } from '../engine/load';
 import type { ActivityEdit, PlannedWorkout, Ride } from '../engine/types';
@@ -86,7 +87,7 @@ async function release(p: PlannedWorkout, gid: string): Promise<void> {
  */
 export async function keepVeloiqInstead(recordingId: string, garminId?: string): Promise<UploadResult> {
   const r = await getRecording(recordingId);
-  if (!r) return { ok: false, text: "Antogo's recording of that ride is no longer on this computer." };
+  if (!r) return { ok: false, text: `Antogo's recording of that ride is no longer on ${thisDevice()}.` };
   const gid = r.supersededBy ?? garminId;
   if (gid) for (const p of (await db.planned.toArray()).filter((x) => x.activityId === gid)) await release(p, gid);
   await patchRecording(recordingId, { status: 'finished', supersededBy: undefined, activityId: undefined, localId: undefined, keepVeloiq: true });

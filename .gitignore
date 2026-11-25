@@ -8,3 +8,6 @@ journeys-report
 playwright-report
 dist-app
 shell-report
+dist-ios
+ios-report
+build

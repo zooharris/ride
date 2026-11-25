@@ -1,3 +1,4 @@
+import { thisDevice } from '../shell';
 import { readFitRecording } from '../player/fitRecording';
 import { maybeGunzip } from '../player/fitRead';
 
@@ -24,7 +25,7 @@ export type From = 'page' | 'app';
 /** What a failed request means, in plain words. */
 export function failure(e: unknown, status?: number, body?: string, from: From = 'page'): string {
   if (status == null) return from === 'app'
-    ? `Garmin could not be reached. Check this computer's internet connection and try again.${e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : ''}`
+    ? `Garmin could not be reached. Check the internet connection on ${thisDevice()} and try again.${e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : ''}`
     : 'Garmin did not answer a request from a web page. Garmin does not allow its key to be used from a browser (the browser blocks the answer), so it can be used only from the installed app.';
   if (status === 401) return `Garmin refused the key (401). Check that it was copied whole and has not expired or been deleted.${body ? ` Garmin said: ${body.slice(0, 200)}` : ''}`;
   if (status === 403) return `Garmin refused this request (403).${body ? ` Garmin said: ${body.slice(0, 200)}` : ''}`;

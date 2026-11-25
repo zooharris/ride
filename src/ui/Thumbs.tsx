@@ -109,6 +109,8 @@ export function RouteThumb({ route, height, width }: { route: Array<[number, num
         <polyline points={pts} fill="none" stroke="var(--rt-line)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
         <circle cx={sx} cy={sy} r="2.8" fill="var(--good)" stroke="var(--rt-halo)" stroke-width="1.2" />
       </svg>
+      {/* The map data's licence asks for its credit wherever the map shows (24 Nov 2026). */}
+      <span class="rt-credit" title="Map data © OpenStreetMap contributors">{H >= 48 && W >= 120 ? '© OpenStreetMap' : '© OSM'}</span>
     </div>
   );
 }

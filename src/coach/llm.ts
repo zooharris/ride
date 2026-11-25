@@ -1,3 +1,4 @@
+import { serviceFetch } from '../shell';
 /**
  * The re-check thinks (1 Nov 2026), Part F: the coach on any of the three
  * providers a rider can get a key for: Anthropic (Claude), OpenAI and Google
@@ -40,7 +41,7 @@ const reply = (text: string, cut: boolean): CompleteReply => ({ content: [{ type
 
 async function post(url: string, headers: Record<string, string>, body: unknown, provider: Provider): Promise<Response> {
   try {
-    return await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+    return await serviceFetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
   } catch {
     throw new BrowserRefused(`${providerName(provider)} could not be reached from the app: no connection, or it doesn't allow the app to call it from a browser.`);
   }
@@ -203,10 +204,10 @@ export async function listModels(cfg: Pick<CoachConfig, 'provider' | 'key'>): Pr
   let res: Response;
   try {
     res = cfg.provider === 'anthropic'
-      ? await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': cfg.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } })
+      ? await serviceFetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': cfg.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } })
       : cfg.provider === 'openai'
-        ? await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${cfg.key}` } })
-        : await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': cfg.key } });
+        ? await serviceFetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${cfg.key}` } })
+        : await serviceFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': cfg.key } });
   } catch { throw new BrowserRefused(`${providerName(cfg.provider)} could not be reached from the app: no connection, or it doesn't allow the app to call it from a browser.`); }
   if (!res.ok) throw new Error(await errorText(res, cfg.provider));
   const j = (await res.json()) as { data?: Array<{ id: string }>; models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };

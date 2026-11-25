@@ -12,6 +12,7 @@
  *   - events: POST /athlete/{id}/events with category WORKOUT and the workout
  *     text in `description`; Intervals.icu pushes it to Garmin Connect.
  */
+import { serviceFetch } from '../shell';
 import { versionFor, type Where } from '../library/sendWhere';
 import type { UnsureNumber } from '../engine/types';
 import { markMine } from '../engine/known';
@@ -45,7 +46,7 @@ function headers(c: IntervalsCredentials): HeadersInit {
 export async function call<T>(c: IntervalsCredentials, path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { ...init, headers: { ...headers(c), ...(init.headers ?? {}) } });
+    res = await serviceFetch(`${BASE}${path}`, { ...init, headers: { ...headers(c), ...(init.headers ?? {}) } });
   } catch {
     throw new IntervalsError('Could not reach intervals.icu. Check your connection.');
   }
@@ -909,7 +910,7 @@ export async function fetchHasBreathing(c: IntervalsCredentials, activityId: str
 /** The activity's original file as uploaded (for reading breathing out of it when Intervals.icu has no streams of it). */
 export async function fetchActivityFile(c: IntervalsCredentials, activityId: string): Promise<Uint8Array> {
   let res: Response;
-  try { res = await fetch(`${BASE}/activity/${activityId}/file`, { headers: headers(c) }); } catch { throw new IntervalsError('Could not reach intervals.icu. Check your connection.'); }
+  try { res = await serviceFetch(`${BASE}/activity/${activityId}/file`, { headers: headers(c) }); } catch { throw new IntervalsError('Could not reach intervals.icu. Check your connection.'); }
   if (!res.ok) throw new IntervalsError(`Intervals.icu answered ${res.status}.`, res.status);
   return new Uint8Array(await res.arrayBuffer());
 }
@@ -967,7 +968,7 @@ export async function uploadActivityFile(c: IntervalsCredentials, file: Uint8Arr
   if (o.description) q.set('description', o.description);
   let res: Response;
   try {
-    res = await fetch(`${BASE}/athlete/${c.athleteId}/activities?${q}`, { method: 'POST', body: form, headers: { Authorization: 'Basic ' + btoa(`API_KEY:${c.apiKey}`) } });
+    res = await serviceFetch(`${BASE}/athlete/${c.athleteId}/activities?${q}`, { method: 'POST', body: form, headers: { Authorization: 'Basic ' + btoa(`API_KEY:${c.apiKey}`) } });
   } catch {
     throw new IntervalsError('Could not reach intervals.icu. Check your connection.');
   }

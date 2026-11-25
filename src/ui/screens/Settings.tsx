@@ -22,7 +22,7 @@ import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection,
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME, APP_SHORT_NAME } from '../../appName';
 import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
-import { inApp, MAC_DOWNLOAD } from '../../shell';
+import { appKind, inApp, MAC_DOWNLOAD } from '../../shell';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
@@ -413,6 +413,15 @@ export function Settings({ data }: { data: AppData }) {
 
       <PlayerSettings />
 
+      <Fold title="About and legal" summary="Licence agreement, privacy policy, open-source notices">
+        <div class="stack" style="gap:12px">
+          <p class="small" style="margin:0"><b>Licence agreement</b><br /><span class="muted">Draft in preparation. The licence agreement for {APP_SHORT_NAME} will be here before it is released.</span></p>
+          <p class="small" style="margin:0"><b>Privacy policy</b><br /><span class="muted">Draft in preparation. In short: {APP_SHORT_NAME} keeps your information on your own devices. It has no accounts, no ads, no analytics and no tracking, and it contacts other services only when you connect them.</span></p>
+          <p class="small" style="margin:0"><b>Open-source notices</b><br /><span class="muted">{APP_SHORT_NAME} is built with open-source software, each part under its own licence.</span> <a href="#/notices">Read the notices</a></p>
+          <p class="small" style="margin:0"><b>Maps</b><br /><span class="muted">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>.</span></p>
+        </div>
+      </Fold>
+
       <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · your data stays on your devices and in your Intervals.icu account</p>
       <UpdateCheck />
     </div>
@@ -740,6 +749,13 @@ function UpdateCheck() {
   const [state, setState] = useState<'idle' | 'checking' | 'latest' | 'ready'>(updateReady() ? 'ready' : 'idle');
   const [updating, setUpdating] = useState(false);
   const check = async () => { setState('checking'); setState((await checkForUpdate(true)) ? 'ready' : 'latest'); };
+  // iPhone and iPad: Apple's TestFlight or App Store brings new versions; the app itself has nothing to check.
+  if (appKind() === 'ios') return (
+    <div class="row wrap" style="gap:8px 14px;margin-top:28px;align-items:center">
+      <p class="faint small" style="margin:0">This version of {APP_NAME} was built {buildTime()}.</p>
+      <p class="faint small" style="margin:0;flex-basis:100%">This is {APP_SHORT_NAME} for iPhone and iPad: every page is inside the app. New versions arrive through Apple's TestFlight or the App Store, which tell you when one is ready. Its data is its own, separate from the Mac app's and any browser's: see Help, Moving between your devices.</p>
+    </div>
+  );
   return (
     <div class="row wrap" style="gap:8px 14px;margin-top:28px;align-items:center">
       <p class="faint small" style="margin:0">This version of {APP_NAME} was built {buildTime()}.</p>

@@ -1,0 +1,6 @@
+{
+  "appId": "cycling.antogo.app",
+  "appName": "Antogo",
+  "webDir": "dist-ios",
+  "ios": { "contentInset": "never" }
+}

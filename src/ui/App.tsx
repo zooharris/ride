@@ -1,4 +1,5 @@
 import { GarminKey } from './screens/GarminKey';
+import { Notices } from './screens/Notices';
 import { db, loadProfile, saveProfile } from '../data/db';
 import { isUnknown, markMine } from '../engine/known';
 import { maxHrSeen } from './maxHrSeen';
@@ -192,11 +193,12 @@ export function App() {
     case 'settings': screen = <Settings data={data} />; break;
     case 'export': screen = <Export data={data} />; break;
     case 'garmin-key': screen = <GarminKey />; break;
+    case 'notices': screen = <Notices />; break;
     // TEMPORARY (22 Nov 2026): the one-time check of Antogo's numbers; not linked, removed in the follow-up.
     case 'help': screen = <Help params={route.params} />; break;
     default: screen = <Today data={data} />;
   }
-  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key') ? 'settings' : root || 'today';
+  const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key' || root === 'notices') ? 'settings' : root || 'today';
 
   return (
     <div class="shell">

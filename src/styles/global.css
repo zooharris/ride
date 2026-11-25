@@ -2125,3 +2125,9 @@ body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-are
 
 /* Open-source notices (24 Nov 2026): long licence texts, readable and wrapping on a phone. */
 .notices-text { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; color: var(--ink-2); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-s, 8px); padding: 14px; overflow-x: auto; }
+
+/* iPhone and iPad only (24 Nov 2026): typing in a box whose text is smaller than 16px makes the system enlarge the whole
+   page and leave it enlarged. Boxes for typing are 16px there, in the app and in Safari alike; nothing changes elsewhere. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { font-size: 16px !important; }
+}

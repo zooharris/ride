@@ -84,6 +84,9 @@ export async function runIosSelfTest(): Promise<void> {
   const insets = { top: cs.paddingTop, right: cs.paddingRight, bottom: cs.paddingBottom, left: cs.paddingLeft, width: innerWidth, height: innerHeight };
   probe.remove();
 
+  // The page is shown at its own size: an iPhone enlarges a page when a box with small text is typed in, which Antogo's text sizes must not cause.
+  const scale = window.visualViewport?.scale ?? 1;
+  checks.push({ name: 'The page is shown at its own size, not enlarged', ok: Math.abs(scale - 1) < 0.01 && innerWidth === screen.width, detail: `scale ${scale}, page ${innerWidth} wide on a screen ${screen.width} wide` });
   const ok = checks.every((c) => c.ok);
   await side.report({ name: `antogo-selftest-${run}.json`, text: JSON.stringify({ ok, run, checks, insets, userAgent: navigator.userAgent }, null, 2) });
 }

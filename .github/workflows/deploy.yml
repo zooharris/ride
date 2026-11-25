@@ -186,8 +186,9 @@ jobs:
           rm -rf dist-ios && mkdir -p dist-ios && cp -R dist dist-ios/ride && cp dist/index.html dist-ios/index.html
           npx cap sync ios
           xcodebuild -version
+      # Signed "to run locally", as a simulator build is: without that the simulator's password store refuses the app.
       - name: The test build, for Apple's simulators
-        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO -quiet build
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/sim CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet build
       - name: The self-test in an iPhone and an iPad simulator
         timeout-minutes: 25
         run: node scripts/ios-selftest.mjs build/sim/Build/Products/Debug-iphonesimulator/App.app

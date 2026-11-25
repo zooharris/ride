@@ -90,7 +90,7 @@ jobs:
           echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
           # The certificate file, from its text form (spaces and line ends in the pasted text don't matter), then tried
           # with its password in a scratch keychain, so a wrong password or a wrong file is said plainly here.
-          printf '%s' "$MAC_CERT_P12" | tr -d '[:space:]' | base64 -D > "$RUNNER_TEMP/developer-id.p12" 2>/dev/null || { echo "::error::MAC_CERT_P12 is not the certificate file's text (the output of the base64 command). Nothing was published."; exit 1; }
+          printf '%s' "$MAC_CERT_P12" | tr -d '[:space:]' | base64 -D > "$RUNNER_TEMP/developer-id.p12" 2>/dev/null || { echo "::error::MAC_CERT_P12 is not the certificate file's text (the output of the base64 command): it is ${#MAC_CERT_P12} characters long (a certificate file's text is several thousand) and $(case "$MAC_CERT_P12" in MI*) echo 'starts as one should';; *) echo 'does not start as one does';; esac). Nothing was published."; exit 1; }
           security create-keychain -p check "$RUNNER_TEMP/check.keychain"
           if ! security import "$RUNNER_TEMP/developer-id.p12" -k "$RUNNER_TEMP/check.keychain" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign 2> "$RUNNER_TEMP/import.err"; then
             cat "$RUNNER_TEMP/import.err"

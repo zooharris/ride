@@ -75,17 +75,7 @@
       },
       "entitlements": "desktop/entitlements.mac.plist",
       "entitlementsInherit": "desktop/entitlements.mac.plist",
-      "notarize": true,
-      "extraResources": [
-        {
-          "from": "node_modules/electron/dist",
-          "to": "notices",
-          "filter": [
-            "LICENSE",
-            "LICENSES.chromium.html"
-          ]
-        }
-      ]
+      "notarize": true
     },
     "dmg": {
       "sign": true,
@@ -94,6 +84,12 @@
     "linux": {
       "target": "dir",
       "icon": "desktop/icon.png"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build-notices",
+        "to": "notices"
+      }
+    ]
   }
 }

@@ -111,7 +111,12 @@ jobs:
           name: pages-built
           path: dist
       - name: Make, sign and notarize the app
-        run: npx electron-builder --mac --universal
+        run: |
+          # The engine's own licences travel inside the app, for Settings, About and legal.
+          mkdir -p build-notices
+          cp node_modules/electron/dist/LICENSE node_modules/electron/dist/LICENSES.chromium.html build-notices/
+          ls -la build-notices
+          npx electron-builder --mac --universal
         env:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}

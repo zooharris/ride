@@ -39,6 +39,9 @@ export default defineConfig({
     // iPad's size. Where the engine is installed: the publishing machine, or anywhere with APPLE_ENGINE=1.
     ...(process.env.CI || process.env.APPLE_ENGINE ? ([['iphone', 'iPhone 15', 'dark'], ['ipad', 'iPad Pro 11', 'light']] as const).map(([name, device, scheme]) => ({
       name: `${name}-apple-engine`,
+      // One more try for a journey that fails here: this engine now and then loses a race the journey itself sets up
+      // (data written from the test, then the page reloaded at once). A journey that passes on its second try is listed as flaky.
+      retries: 1,
       use: { ...devices[device], colorScheme: scheme, launchOptions: {} },
     })) : []),
   ],

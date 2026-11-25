@@ -57,6 +57,14 @@ jobs:
           name: pages-built
           path: dist
           retention-days: 3
+      # The engine's own licences (Electron's, and Chromium's full list), for the Mac app to carry. Taken here, where the
+      # engine's package is laid out with them beside it; on the Mac machine they are inside the engine's app.
+      - run: mkdir -p build-notices && cp node_modules/electron/dist/LICENSE node_modules/electron/dist/LICENSES.chromium.html build-notices/ && ls -la build-notices
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-notices
+          path: build-notices
+          retention-days: 3
       - uses: actions/configure-pages@v5
         with:
           enablement: true
@@ -110,12 +118,14 @@ jobs:
         with:
           name: pages-built
           path: dist
+      # The engine's own licences travel inside the app, for Settings, About and legal.
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-notices
+          path: build-notices
       - name: Make, sign and notarize the app
         run: |
-          # The engine's own licences travel inside the app, for Settings, About and legal.
-          mkdir -p build-notices
-          cp node_modules/electron/dist/LICENSE node_modules/electron/dist/LICENSES.chromium.html build-notices/
-          ls -la build-notices
+          ls -la build-notices/LICENSE build-notices/LICENSES.chromium.html
           npx electron-builder --mac --universal
         env:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}

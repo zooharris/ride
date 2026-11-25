@@ -1,8 +1,9 @@
-name: Build, publish the web version, and make the Mac app
+name: Build, publish the web version, and make the Mac and iPhone apps
 
 on:
   push:
-    branches: [main]
+    # main publishes; a build-* branch runs every check and makes the apps without publishing the web version or the Mac release.
+    branches: [main, 'build-*']
     # Documents and source art are not the app: changing them must not publish a new version.
     paths-ignore: ['docs/**', 'art/**', '**/*.md']
   workflow_dispatch:
@@ -14,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +31,7 @@ jobs:
       - run: npm test
       - run: npm run build
       # Whole-journey tests on the built site: a failing journey stops the publish.
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npx playwright test
         env:
           CI: 'true'
@@ -63,12 +64,30 @@ jobs:
         with:
           path: dist
 
-  # The Mac app: one file, built on a Mac, holding the pages built above. Signed only "ad hoc" (no Apple developer
-  # account), so a Mac asks its owner to allow it the first time each download is opened.
+  # The Mac app: one file, built on a Mac, holding the pages built above. Signed with the maker's Developer ID and checked
+  # by Apple (notarized) since 24 Nov 2026, so it opens with a double-click. A missing secret stops it before anything
+  # is published: an unsigned file is never published in place of a signed one.
   mac:
     needs: build
     runs-on: macos-latest
+    env:
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_KEY_TEXT: ${{ secrets.APPLE_API_KEY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
     steps:
+      - name: The signing secrets are all there
+        run: |
+          missing=""
+          for n in APPLE_API_ISSUER_ID APPLE_API_KEY_ID APPLE_API_KEY_TEXT APPLE_TEAM_ID MAC_CERT_P12 MAC_CERT_PASSWORD; do
+            [ -n "${!n}" ] || missing="$missing ${n/APPLE_API_KEY_TEXT/APPLE_API_KEY}"
+          done
+          if [ -n "$missing" ]; then echo "::error::These GitHub secrets are missing or empty:$missing. Nothing was published."; exit 1; fi
+          printf '%s\n' "$APPLE_API_KEY_TEXT" > "$RUNNER_TEMP/AuthKey.p8"
+          grep -q "BEGIN PRIVATE KEY" "$RUNNER_TEMP/AuthKey.p8" || { echo "::error::APPLE_API_KEY does not look like the .p8 key file's text (it should start with -----BEGIN PRIVATE KEY-----)."; exit 1; }
+          echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -79,19 +98,32 @@ jobs:
         with:
           name: pages-built
           path: dist
-      - run: npx electron-builder --mac --universal
+      - name: Make, sign and notarize the app
+        run: npx electron-builder --mac --universal
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: What was built
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+      - name: Notarize and staple the download itself
+        run: |
+          xcrun notarytool submit dist-app/Antogo.dmg --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait --timeout 40m
+          xcrun stapler staple dist-app/Antogo.dmg
+      - name: What was built, as a Mac sees a download
         run: |
           ls -la dist-app
           APP="dist-app/mac-universal/Antogo.app"
           lipo -archs "$APP/Contents/MacOS/Antogo"
           codesign -dv --verbose=2 "$APP" 2>&1 | head -20
-          codesign --verify --deep --strict --verbose=1 "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          ls "$APP/Contents/Resources/notices"
           du -sh "$APP" dist-app/Antogo.dmg
-          # As a Mac sees a file that was downloaded: expected to be refused until its owner allows it.
-          spctl --assess --type execute -vv "$APP" 2>&1 || true
+          # Gatekeeper's own verdicts: both must accept, as signed by a known developer and checked by Apple.
+          spctl --assess --type execute -vv "$APP" 2>&1 | tee /tmp/app-verdict
+          grep -q "source=Notarized Developer ID" /tmp/app-verdict
+          spctl --assess --type open --context context:primary-signature -vv dist-app/Antogo.dmg 2>&1 | tee /tmp/dmg-verdict
+          grep -q "accepted" /tmp/dmg-verdict
+          xcrun stapler validate dist-app/Antogo.dmg
+          xcrun stapler validate "$APP"
           hdiutil attach dist-app/Antogo.dmg -nobrowse -mountpoint /tmp/antogo-dmg && ls /tmp/antogo-dmg && hdiutil detach /tmp/antogo-dmg
       # The built app itself, opened and used on a Mac.
       - name: Journeys in the built app
@@ -119,8 +151,88 @@ jobs:
           path: dist-app/Antogo.dmg
           retention-days: 14
 
+  # Antogo for iPhone and iPad (24 Nov 2026): the same pages inside the iOS shell. The test build runs its self-test in
+  # an iPhone and an iPad simulator; then the app is signed through the App Store Connect key and uploaded to TestFlight.
+  # It does not hold up the web version or the Mac app: a failure here leaves TestFlight's last build where it was.
+  ios:
+    needs: build
+    runs-on: macos-latest
+    env:
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_KEY_TEXT: ${{ secrets.APPLE_API_KEY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: The signing secrets are all there
+        run: |
+          missing=""
+          for n in APPLE_API_ISSUER_ID APPLE_API_KEY_ID APPLE_API_KEY_TEXT APPLE_TEAM_ID; do
+            [ -n "${!n}" ] || missing="$missing ${n/APPLE_API_KEY_TEXT/APPLE_API_KEY}"
+          done
+          if [ -n "$missing" ]; then echo "::error::These GitHub secrets are missing or empty:$missing. Nothing was uploaded."; exit 1; fi
+          printf '%s\n' "$APPLE_API_KEY_TEXT" > "$RUNNER_TEMP/AuthKey.p8"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-built
+          path: dist
+      - name: The pages into the iOS app
+        run: |
+          rm -rf dist-ios && mkdir -p dist-ios && cp -R dist dist-ios/ride && cp dist/index.html dist-ios/index.html
+          npx cap sync ios
+          xcodebuild -version
+      # Signed "to run locally", as a simulator build is: without that the simulator's password store refuses the app.
+      - name: The test build, for Apple's simulators
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/sim CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet build
+      - name: The self-test in an iPhone and an iPad simulator
+        timeout-minutes: 25
+        run: node scripts/ios-selftest.mjs build/sim/Build/Products/Debug-iphonesimulator/App.app
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-report
+          path: ios-report
+          retention-days: 14
+      - name: Archive for the App Store
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath build/Antogo.xcarchive CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -quiet archive
+      # Only the real publish (main) uploads to TestFlight; a build-* branch signs the app and stops there.
+      - name: Sign, and on main upload to TestFlight
+        env:
+          DESTINATION: ${{ github.ref == 'refs/heads/main' && 'upload' || 'export' }}
+        run: |
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$DESTINATION</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath build/Antogo.xcarchive -exportOptionsPlist build/ExportOptions.plist -exportPath build/export \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" -authenticationKeyID "$APPLE_API_KEY_ID" -authenticationKeyIssuerID "$APPLE_API_ISSUER_ID" 2>&1 | tee build/upload.log || {
+            if grep -qi "no suitable application records\|app record" build/upload.log; then
+              echo "::error::App Store Connect has no listing for cycling.antogo.app yet. Make the listing (Apps, +, New App), then publish again."
+            else
+              echo "::error::The iPhone app could not be signed or uploaded to TestFlight; the log above says why."
+            fi
+            exit 1; }
+
   deploy:
     needs: [build, mac]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -140,4 +252,4 @@ jobs:
           gh release create "mac-${{ github.run_number }}" mac-app/Antogo.dmg \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" --latest \
             --title "Antogo for the Mac, build ${{ github.run_number }}" \
-            --notes "Open the file and drag Antogo into Applications. The first time you open each new download, the Mac says it could not verify the app: click Done, then open System Settings, Privacy & Security, scroll down, click Open Anyway and give your Mac password. Replacing an older Antogo in Applications keeps your data."
+            --notes "Open the file and drag Antogo into Applications, then open it with a double-click: it is signed by its maker and checked by Apple. Replacing an older Antogo in Applications keeps your data. If your copy was downloaded before the signed version came out, the Garmin key page asks you to paste your key once more (or a new one made in Garmin Connect)."

@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { APP_NAME, APP_SHORT_NAME } from './src/appName';
+import { noticesPlugin } from './scripts/noticesPlugin';
 
 // One build time for the app and for version.json, the file the app checks to know a newer build is published.
 const BUILD = new Date().toISOString();
@@ -12,6 +13,8 @@ export default defineConfig({
   base: '/ride/',
   plugins: [
     preact(),
+    // Open-source notices for what this build ships; the build stops if a shipped licence isn't allowed (24 Nov 2026).
+    noticesPlugin(),
     { name: 'version-json', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD }) }); } },
     VitePWA({
       registerType: 'prompt',
@@ -48,6 +51,6 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 });

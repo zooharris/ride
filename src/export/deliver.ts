@@ -4,12 +4,13 @@
  * file that takes time to prepare is prepared first and then saved by a second tap.
  */
 import type { FileOut } from './formats';
-import { inApp } from '../shell';
+import { appShareFiles, appSharesFiles, inApp } from '../shell';
 
 const blobPart = (d: Uint8Array | string): BlobPart => (typeof d === 'string' ? d : (d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) as ArrayBuffer));
 
 /** Whether this device saves files through its share sheet (phones and tablets) rather than downloading them. */
 export function sharesFiles(): boolean {
+  if (appSharesFiles()) return true;
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   if (inApp() || typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
   // A computer's browser may offer sharing too; there a download is what the rider expects.
@@ -18,6 +19,8 @@ export function sharesFiles(): boolean {
 
 /** Save the files. Returns false when the rider closed the share sheet without saving. */
 export async function deliver(files: FileOut[]): Promise<boolean> {
+  // The iPhone and iPad app: the system's share and save sheet, through the app's own side.
+  if (appSharesFiles()) return appShareFiles(files.map((f) => ({ name: f.name, mime: f.mime, data: typeof f.data === 'string' ? new TextEncoder().encode(f.data) : f.data })));
   const list = files.map((f) => new File([blobPart(f.data)], f.name, { type: f.mime }));
   if (sharesFiles()) {
     const nav = navigator as Navigator & { canShare: (d: ShareData) => boolean };

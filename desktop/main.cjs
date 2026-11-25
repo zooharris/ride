@@ -13,7 +13,10 @@ const GARMIN = 'https://personal.connectapi.garmin.com/';
 // For the app's own tests only: Garmin's requests go to a stand-in (never in the built app), the data to a scratch
 // folder, and downloads into a folder without asking where.
 const garminBase = !app.isPackaged && process.env.ANTOGO_GARMIN_BASE ? process.env.ANTOGO_GARMIN_BASE : GARMIN;
+// The app's name is Antogo (so the password store's entry says Antogo, 24 Nov 2026), but its data stays where every
+// earlier copy kept it, under the folder named after the app's old working name: renaming must never lose a rider's data.
 if (process.env.ANTOGO_DATA) app.setPath('userData', process.env.ANTOGO_DATA);
+else app.setPath('userData', path.join(app.getPath('appData'), 'ride'));
 const downloadsTo = process.env.ANTOGO_DOWNLOADS;
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -73,8 +76,17 @@ app.whenReady().then(() => {
     return { status: res.status, type: res.headers.get('content-type') ?? '', body: new Uint8Array(await res.arrayBuffer()) };
   });
   ipcMain.handle('bt:choose', (e, id) => { fromApp(e); const answer = choose; choose = null; if (answer) answer(typeof id === 'string' ? id : ''); return !!answer; });
+  // The engine's own notices (Chromium's licences, several megabytes): packed in with the app, opened in the rider's browser.
+  ipcMain.handle('notices:engine', async (e) => {
+    fromApp(e);
+    const file = app.isPackaged ? path.join(process.resourcesPath, 'notices', 'LICENSES.chromium.html') : path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'LICENSES.chromium.html');
+    if (!fs.existsSync(file)) return false;
+    return (await shell.openPath(file)) === '';
+  });
   ipcMain.handle('key:can', (e) => { fromApp(e); return safeStorage.isEncryptionAvailable(); });
   ipcMain.handle('key:read', (e) => { fromApp(e); return readKey(); });
+  // A key kept by an earlier, unsigned copy is sealed with a secret this signed copy is not given: say so, never fail silently.
+  ipcMain.handle('key:unreadable', (e) => { fromApp(e); return fs.existsSync(keyFile()) && !readKey(); });
   ipcMain.handle('key:save', (e, key, expires) => {
     fromApp(e);
     if (typeof key !== 'string' || !key.trim()) throw new Error('No key given.');

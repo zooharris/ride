@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { applyUpdate, onUpdateReady, updateReady } from './update';
-import { inApp } from '../shell';
+import { appKind, inApp } from '../shell';
 import { APP_SHORT_NAME } from '../appName';
 
 /** "A new version is ready", with the button that switches to it. */
@@ -8,7 +8,7 @@ export function UpdateBanner() {
   const [ready, setReady] = useState(updateReady());
   const [busy, setBusy] = useState(false);
   useEffect(() => onUpdateReady(() => setReady(true)), []);
-  if (!ready) return null;
+  if (!ready || appKind() === 'ios') return null;
   // The installed app never changes by itself: a newer version is a new file, downloaded in the rider's browser.
   if (inApp()) return (
     <div class="panel accent row between wrap update-banner" role="status">

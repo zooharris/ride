@@ -1,3 +1,4 @@
+import { thisDevice } from '../shell';
 import { useEffect, useState } from 'preact/hooks';
 import { deleteRecording, sendWaitingRides, unfinishedRides, waitingRides } from '../player/rides';
 import type { Recording } from '../player/types';
@@ -53,7 +54,7 @@ export function RideNotices() {
         <div class="panel ride-notice">
           <div style="min-width:0">
             <b>{waiting.length === 1 ? `${waiting[0].name} is` : `${waiting.length} rides are`} waiting to be saved</b>
-            <div class="muted small">{waiting[0].error ?? 'Recorded on this computer and not saved yet.'}</div>
+            <div class="muted small">{waiting[0].error ?? `Recorded on ${thisDevice()} and not saved yet.`}</div>
           </div>
           <button class="btn sm" disabled={busy} onClick={() => void tryNow()}>{busy ? 'Saving…' : 'Try now'}</button>
         </div>

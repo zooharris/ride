@@ -1,4 +1,4 @@
-import { inApp } from '../shell';
+import { appKind, inApp, thisDevice } from '../shell';
 import { useEffect, useState } from 'preact/hooks';
 import { Fold } from './Fold';
 import { getSetting, setSetting } from '../data/db';
@@ -25,16 +25,16 @@ export function PlayerSettings() {
     setSim(on);
   };
   const drop = async (d: SavedDevice) => {
-    if (!confirm(`Forget ${d.name} on this computer?\n\nIt disconnects now. To use it again, add it again on the ride screen.`)) return;
+    if (!confirm(`Forget ${d.name} on ${thisDevice()}?\n\nIt disconnects now. To use it again, add it again on the ride screen.`)) return;
     await forget(d.id);
     load();
   };
 
   return (
     <Fold title="Ride player" summary={`${devices.length ? `${devices.length} device${devices.length === 1 ? '' : 's'} remembered` : 'No devices remembered yet'}${sim ? ' · practice mode on' : ''}`}>
-      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. {inApp() ? `It uses this computer's Bluetooth${bluetoothAvailable() ? '' : ' (which the app can’t reach here)'}.` : `It needs Chrome or Edge on a computer${bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}.`} Everything here belongs to this computer only.</p>
+      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. {appKind() === 'ios' ? 'On iPhone and iPad, Bluetooth trainers and sensors come in the next version of the app.' : inApp() ? `It uses this computer's Bluetooth${bluetoothAvailable() ? '' : ' (which the app can’t reach here)'}.` : `It needs Chrome or Edge on a computer${bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}.`} Everything here belongs to {thisDevice()} only.</p>
       <div class="panel">
-        <b class="small">Your trainer and sensors on this computer</b>
+        <b class="small">Your trainer and sensors on {thisDevice()}</b>
         {devices.length ? (
           <div class="stack" style="gap:0;margin-top:6px">
             {devices.map((d) => (

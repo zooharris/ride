@@ -5,6 +5,7 @@
  * after it is safely saved; a send that fails is tried again quietly, and when the service's copy comes back the
  * rule for second copies makes the two one activity.
  */
+import { thisDevice } from '../shell';
 import { testLines, testResultKey } from './tests';
 import { db, setSetting } from '../data/db';
 import { credentials, plannedSeconds, syncAll, TRIVIAL_SECONDS } from '../sync/syncService';
@@ -121,7 +122,7 @@ async function addToRecord(r: Recording): Promise<Ride> {
  */
 export async function uploadRide(id: string): Promise<UploadResult> {
   const r = await getRecording(id);
-  if (!r) return { ok: false, text: 'That ride is no longer on this computer.' };
+  if (!r) return { ok: false, text: `That ride is no longer on ${thisDevice()}.` };
   if (r.activityId) return { ok: true, text: 'Already saved.', activityId: r.activityId };
   if (r.status === 'superseded' && r.supersededBy) return { ok: true, text: 'Kept your device\'s recording of this ride.', activityId: r.supersededBy, superseded: true };
   if (r.status === 'saved' && r.localId && (await db.rides.get(r.localId))) return { ok: true, text: 'Already saved.', activityId: r.localId };
@@ -138,7 +139,7 @@ export async function uploadRide(id: string): Promise<UploadResult> {
     catch (e) {
       const why = (e as Error).message;
       await patchRecording(id, { status: 'finished', error: why });
-      return { ok: false, text: `Not saved: ${why} The ride is kept on this computer.` };
+      return { ok: false, text: `Not saved: ${why} The ride is kept on ${thisDevice()}.` };
     }
     await patchRecording(id, { localId: local.id, error: undefined });
     await markPlayerMade(local.id, r.date, r.keepVeloiq, r.breathing ? (r.breathSensor ?? 'Breathing strap') : undefined);

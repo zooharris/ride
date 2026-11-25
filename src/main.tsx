@@ -6,7 +6,7 @@ import './styles/global.css';
 import { initTheme } from './ui/theme';
 import { startHistory } from './ui/router';
 import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';
-import { appBluetooth, inApp } from './shell';
+import { appBluetooth, appKind, inApp } from './shell';
 import { BluetoothChooser } from './ui/BluetoothChooser';
 import { startGarmin } from './sync/garminAuto';
 
@@ -37,5 +37,7 @@ startHistory();
 initTheme();
 // The installed app, with the rider's say-so, brings what is new from Garmin by itself.
 startGarmin();
+// iPhone and iPad: the self-test the publishing machine asks for in Apple's simulator (never in the app riders get).
+if (appKind() === 'ios') setTimeout(() => { void import('./selfTestIos').then((m) => m.runIosSelfTest()); }, 2500);
 // The installed app shows its own list for choosing a Bluetooth device, over whatever screen asked for one.
 render(<><App />{appBluetooth.can() && <BluetoothChooser />}</>, document.getElementById('app')!);

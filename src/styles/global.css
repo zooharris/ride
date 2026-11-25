@@ -1408,6 +1408,7 @@ a.stat-link:hover .l, a.stat-link:focus-visible .l { color: var(--ink-2); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .route-thumb .rt-tiles { filter: saturate(.45) contrast(.88) brightness(1.04); } }
 .route-thumb img { position: absolute; width: 256px; height: 256px; max-width: none; }
 .route-thumb svg { position: absolute; inset: 0; display: block; }
+.route-thumb .rt-credit { position: absolute; right: 2px; bottom: 1px; font-size: 8px; line-height: 1.2; padding: 0 3px; border-radius: 3px; color: var(--ink-2); background: color-mix(in srgb, var(--bg) 70%, transparent); pointer-events: none; white-space: nowrap; }
 .act-pic { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 0; }
 .act-pic.skeleton { border-radius: 6px; width: 100%; }
 .act-pic.eff { align-items: stretch; background: color-mix(in srgb, var(--bg-3) 60%, transparent); border-radius: 6px; padding: 4px 4px 0; }
@@ -2114,3 +2115,19 @@ body.lv-open { overflow: hidden; }
 .bt-list { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
 .bt-item { width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--bg-3, var(--bg)); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .bt-item:hover, .bt-item:focus-visible { border-color: var(--brand-blue); }
+
+/* An iPhone held sideways (the iPhone and iPad app, and the home-screen web app; 24 Nov 2026): the page and the bottom
+   bar keep clear of the notch and the rounded corners. On a computer these insets are zero and nothing moves. */
+body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@media (max-width: 899px) {
+  .nav { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+}
+
+/* Open-source notices (24 Nov 2026): long licence texts, readable and wrapping on a phone. */
+.notices-text { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; color: var(--ink-2); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-s, 8px); padding: 14px; overflow-x: auto; }
+
+/* iPhone and iPad only (24 Nov 2026): typing in a box whose text is smaller than 16px makes the system enlarge the whole
+   page and leave it enlarged. Boxes for typing are 16px there, in the app and in Safari alike; nothing changes elsewhere. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { font-size: 16px !important; }
+}

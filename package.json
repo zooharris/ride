@@ -1,5 +1,6 @@
 {
   "name": "ride",
+  "productName": "Antogo",
   "private": true,
   "version": "2.0.0",
   "type": "module",
@@ -15,11 +16,14 @@
     "app:mac": "electron-builder --mac --universal"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.2",
     "dexie": "^4.0.10",
     "leaflet": "^1.9.4",
     "preact": "^10.24.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
     "@fontsource-variable/archivo": "^5.3.0",
     "@garmin/fitsdk": "^21.218.0",
     "@playwright/test": "^1.63.0",
@@ -61,18 +65,30 @@
           ]
         }
       ],
-      "identity": "-",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "category": "public.app-category.healthcare-fitness",
       "icon": "desktop/icon.png",
       "artifactName": "Antogo.${ext}",
       "extendInfo": {
         "NSBluetoothAlwaysUsageDescription": "Antogo connects to your smart trainer, power meter, heart-rate strap and other sensors when you ride indoors."
-      }
+      },
+      "entitlements": "desktop/entitlements.mac.plist",
+      "entitlementsInherit": "desktop/entitlements.mac.plist",
+      "notarize": true,
+      "extraResources": [
+        {
+          "from": "node_modules/electron/dist",
+          "to": "notices",
+          "filter": [
+            "LICENSE",
+            "LICENSES.chromium.html"
+          ]
+        }
+      ]
     },
     "dmg": {
-      "sign": false,
+      "sign": true,
       "title": "Antogo"
     },
     "linux": {

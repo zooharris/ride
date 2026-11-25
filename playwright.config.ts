@@ -30,10 +30,18 @@ export default defineConfig({
   },
   // Four of the six size-and-light pairs: enough to catch a page wider than a phone, a dark-mode
   // problem and a laptop layout, without doubling the run.
-  projects: ([['phone', 'dark'], ['tablet', 'light'], ['laptop', 'light'], ['laptop', 'dark']] as const).map(([size, scheme]) => ({
-    name: `${size}-${scheme === 'light' ? 'day' : 'night'}`,
-    use: { ...devices['Desktop Chrome'], ...chrome, ...sizes[size], colorScheme: scheme },
-  })),
+  projects: [
+    ...([['phone', 'dark'], ['tablet', 'light'], ['laptop', 'light'], ['laptop', 'dark']] as const).map(([size, scheme]) => ({
+      name: `${size}-${scheme === 'light' ? 'day' : 'night'}`,
+      use: { ...devices['Desktop Chrome'], ...chrome, ...sizes[size], colorScheme: scheme },
+    })),
+    // Apple's own engine (24 Nov 2026), which the iPhone and iPad app must use: the same journeys at an iPhone's and an
+    // iPad's size. Where the engine is installed: the publishing machine, or anywhere with APPLE_ENGINE=1.
+    ...(process.env.CI || process.env.APPLE_ENGINE ? ([['iphone', 'iPhone 15', 'dark'], ['ipad', 'iPad Pro 11', 'light']] as const).map(([name, device, scheme]) => ({
+      name: `${name}-apple-engine`,
+      use: { ...devices[device], colorScheme: scheme, launchOptions: {} },
+    })) : []),
+  ],
   webServer: {
     command: 'npx vite preview --port 4173 --strictPort',
     url: 'http://localhost:4173/ride/',

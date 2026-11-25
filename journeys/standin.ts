@@ -172,7 +172,10 @@ export async function standIn(page: Page, kind: RiderKind): Promise<Ledger> {
 /** Problems a rider would see: errors on the page, and requests that tried to leave the machine. */
 export function watchProblems(page: Page): string[] {
   const problems: string[] = [];
-  page.on('pageerror', (e) => problems.push(`Page error: ${e.message}`));
+  // Apple's engine reports a request cut short by leaving the page (a reload, a restore) as "… due to access control
+  // checks", where Chrome says "Failed to load resource" (let through below). Neither is a fault in the page: a request
+  // the stand-in truly refused would fail the journey's own expectations.
+  page.on('pageerror', (e) => { if (!/due to access control checks\.?$/.test(e.message)) problems.push(`Page error: ${e.message}`); });
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR_BLOCKED|blockedbyclient|ERR_FAILED/.test(m.text())) problems.push(`Console error: ${m.text()}`); });
   return problems;
 }

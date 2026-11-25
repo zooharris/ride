@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What the signed Mac app is allowed under the Mac's stricter protections for signed apps (24 Nov 2026):
+     only what the Chrome engine inside it needs to run its pages. Bluetooth needs no entitlement outside the App
+     Store's sandbox: the Mac asks the rider once (NSBluetoothAlwaysUsageDescription). -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

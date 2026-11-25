@@ -1,3 +1,4 @@
+import { thisDevice } from '../../shell';
 import { useEffect, useState } from 'preact/hooks';
 import { brShown } from '../../engine/breathThresholds';
 import type { Profile, Workout, PlannedWorkout } from '../../engine/types';
@@ -912,7 +913,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               {state !== 'saved' && <button class="btn danger" style="flex:1 1 auto" onClick={() => void discard()}>Discard ride…</button>}
               {state === 'waiting' && <button class="btn quiet" onClick={done}>Done for now</button>}
             </div>
-            <p class="faint small" style="text-align:center;margin:0">{state === 'waiting' ? 'The ride is kept on this computer and tried again each time the app opens.' : 'A copy stays on this computer until the upload succeeds.'}</p>
+            <p class="faint small" style="text-align:center;margin:0">{state === 'waiting' ? `The ride is kept on ${thisDevice()} and tried again each time the app opens.` : `A copy stays on ${thisDevice()} until the upload succeeds.`}</p>
           </div>
         </section>
         {test && rideChart}

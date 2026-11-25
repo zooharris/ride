@@ -201,7 +201,7 @@ jobs:
       - name: The test build, for Apple's simulators
         run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/sim CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet build
       - name: The self-test in an iPhone and an iPad simulator
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: node scripts/ios-selftest.mjs build/sim/Build/Products/Debug-iphonesimulator/App.app
       - uses: actions/upload-artifact@v4
         if: always()

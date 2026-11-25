@@ -53,7 +53,7 @@ function versionSource(entry: PlannedWorkout, w: Workout, plans: PlanDays[], whe
 
 async function doSend(entry: PlannedWorkout, w: Workout, profile: Profile, choice: SendChoice): Promise<boolean> {
   const c = await credentials();
-  if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return false; }
+  if (!c) { toast({ ok: false, text: 'Sending a session straight to a bike computer or watch goes through Intervals.icu, which is not connected. You can connect it in Settings, or save the session as a file under Settings, Export to other apps.' }); return false; }
   const again = entry.status === 'sent';
   try {
     const r = await sendPlanned(c, entry, w, profile, choice);
@@ -155,7 +155,7 @@ export function WeekSendButton({ items, profile, plans }: { items: Array<{ p: Pl
   async function send(pickFor: (p: PlannedWorkout, w: Workout) => SendChoice | undefined) {
     setOpen(false); setSheet(null);
     const c = await credentials();
-    if (!c) { toast({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return; }
+    if (!c) { toast({ ok: false, text: 'Sending a session straight to a bike computer or watch goes through Intervals.icu, which is not connected. You can connect it in Settings, or save the session as a file under Settings, Export to other apps.' }); return; }
     setBusy(true);
     let sent = 0;
     try {

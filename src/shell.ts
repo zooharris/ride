@@ -95,8 +95,8 @@ export const inApp = (): boolean => !!side();
 /** Which installed app this is: the Mac's, or the iPhone and iPad one; null in a browser. */
 export const appKind = (): 'mac' | 'ios' | null => side()?.kind ?? null;
 
-/** What the app runs on, in words for the pages: "this computer" on a Mac, "this iPhone or iPad" on iOS. */
-export const thisDevice = (): string => (appKind() === 'ios' ? (/iPad/.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) ? 'this iPad' : 'this iPhone') : 'this computer');
+/** What Antogo runs on, in words for the pages: "this computer" in the Mac app, "this iPhone" or "this iPad" in the iOS app, "this device" in a browser (which may be either). */
+export const thisDevice = (): string => (appKind() === 'ios' ? (/iPad/.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) ? 'this iPad' : 'this iPhone') : appKind() === 'mac' ? 'this computer' : 'this device');
 
 /** Where the web version is published, and where the newest file of the Mac app is always found. */
 export const WEB_ADDRESS = 'https://zooharris.github.io/ride/';

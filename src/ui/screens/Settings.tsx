@@ -15,14 +15,14 @@ import { startChangeOver } from '../../sync/syncService';
 import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
 import { importBatches, mergeFileCopies, undoImport, watchImport, type ImportBatch } from '../../import/importer';
 import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
-import { clearLock, lockStatus, setLock, syncDevices, unlockNote, type DeviceSyncState } from '../../data/devicesync';
+import { chooseDevices, clearLock, deviceStanding, lockStatus, setLock, syncDevices, unlockNote, type DeviceChoice, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { breathZones, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, standardBreathPcts, tableOf, validBreathTops, validTops, type Zone, type ZoneMode } from '../../engine/zones';
 import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection, type IntervalsCredentials } from '../../sync/intervals';
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME, APP_SHORT_NAME } from '../../appName';
 import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
-import { appKind, inApp, MAC_DOWNLOAD } from '../../shell';
+import { appKind, inApp, MAC_DOWNLOAD, thisDevice } from '../../shell';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
@@ -59,6 +59,18 @@ export function Settings({ data }: { data: AppData }) {
     setP((cur) => { const next = { ...cur }; for (const k of SAVED_BY_CARDS) (next as Record<string, unknown>)[k] = stored[k]; return next; });
   };
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
+  const [standing, setStanding] = useState<'sync' | 'separate' | 'waiting' | 'none'>('none');
+  const [connected, setConnected] = useState(false);
+  /** The rider's choice for this device: in step with their others, or separate. Said plainly before it takes effect. */
+  async function choose(choice: DeviceChoice) {
+    const c = await getSetting<IntervalsCredentials | null>('intervals', null);
+    const words = choice === 'sync'
+      ? `Keep ${thisDevice()} in step with your other devices?\n\nIts plans, calendar, workouts, day notes and settings are combined now with the saved copy in your Intervals.icu account: where both have the same thing, the newer change is kept. From then on, a change made on any of your devices reaches the others.`
+      : `Keep ${thisDevice()} separate?\n\nIt stops reading and writing the saved copy in your Intervals.icu account. What is on it now stays. A plan you make here stays here, and changes on your other devices don't arrive. It still uses Intervals.icu for your history and for sending sessions to your devices. You can turn keeping in step back on here at any time.`;
+    if (!confirm(words)) return;
+    setBusy(true);
+    try { setDevices(await chooseDevices(choice, c?.apiKey ? c : null)); setStanding(await deviceStanding()); notify(); } finally { setBusy(false); }
+  }
   const [claudeKey, setClaudeKey] = useState('');
   // Part F (1 Nov 2026): the coach on any of three providers, with a choice of model.
   const [provider, setProvider] = useState<Provider>('anthropic');
@@ -80,7 +92,7 @@ export function Settings({ data }: { data: AppData }) {
   const pane = (t: typeof zoneTab) => `margin-top:12px${zoneTab === t ? '' : ';display:none'}`;
 
   useEffect(() => {
-    getSetting<IntervalsCredentials | null>('intervals', null).then((c) => c && setCreds(c));
+    getSetting<IntervalsCredentials | null>('intervals', null).then((c) => { if (c) setCreds(c); setConnected(!!c?.apiKey); });
     void coachKey().then((k) => { setClaudeKey(k); setSavedKey(k); });
     getSetting<Provider>(PROVIDER_SETTING, 'anthropic').then((v) => { setProvider(v); setSavedProvider(v); });
     getSetting<string>(MODEL_SETTING, '').then((v) => { setModel(v); setSavedModel(v); });
@@ -88,6 +100,7 @@ export function Settings({ data }: { data: AppData }) {
     getSetting<boolean>('coachAuto', false).then((v) => { setCoachAuto(v); setSavedAuto(v); });
     getSetting<string | null>('lastBackup', null).then(setLastBackup);
     getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices);
+    deviceStanding().then(setStanding);
   }, []);
 
   // The provider's own list of models, read when there is a key (the known names otherwise).
@@ -163,11 +176,15 @@ export function Settings({ data }: { data: AppData }) {
       const c = { athleteId: creds.athleteId.trim(), apiKey: creds.apiKey.trim() };
       const a = await testConnection(c);
       await setSetting('intervals', c);
+      setConnected(true);
       const next = applyAthleteNumbers({ ...p, name: p.name || a.name }, a);
       setP(next);
       await saveProfile(next);
       notify();
-      setMsg({ ok: true, text: `Connected as ${a.name}.${a.ftp ? ` FTP ${a.ftp} W pulled from Intervals.icu.` : ''} Press Sync on Today to pull rides.` });
+      // A saved copy from the rider's other devices, if there is one, is found now and the choice about it shown below.
+      const st = await syncDevices(c);
+      setDevices(st); setStanding(await deviceStanding());
+      setMsg({ ok: true, text: `Connected as ${a.name}.${a.ftp ? ` FTP ${a.ftp} W pulled from Intervals.icu.` : ''} Press Sync on Today to pull rides.${st.waiting ? ` ${APP_SHORT_NAME} also found its saved copy from another device: see Across your devices, and backup, below.` : ''}` });
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally { setBusy(false); }
@@ -184,6 +201,7 @@ export function Settings({ data }: { data: AppData }) {
   async function disconnect() {
     if (!confirm('Disconnect Intervals.icu?\n\nThe athlete ID and API key are removed from this device and syncing stops until you connect again. Your activities, calendar and plans stay as they are here.')) return;
     await setSetting('intervals', null);
+    setConnected(false);
     await db.sync.clear();
     setCreds({ athleteId: '', apiKey: '' });
     notify();
@@ -389,13 +407,33 @@ export function Settings({ data }: { data: AppData }) {
       </Fold>
 
 
-      <Fold title="Across your devices, and backup" summary={devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)">The last sync failed</span> : devices?.locked && !devices?.last ? <span style="color:var(--warn)">The note is encrypted and not unlocked here</span> : devices?.last ? `Last merged ${new Date(devices.last).toLocaleString()}` : 'Not merged with the note yet'}>
-        <p class="muted small" style="margin-bottom:12px">Your plans, calendar, workouts, day notes and settings are kept in step between every device signed in to the same Intervals.icu account, through a private note in that account dated far in the future. Your API keys never go into the note; each device keeps its own. Each device merges with the note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each record wins, and deletions carry across. A new device picks everything up from the note on its first merge. Activities come back from Intervals.icu on their own.</p>
-        <p class="small" style="margin-bottom:12px">{devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
-        <div class="row wrap">
-          <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
-        </div>
-        <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />
+      <Fold title="Across your devices, and backup" summary={!connected ? 'Backup and restore' : standing === 'waiting' ? <span style="color:var(--warn)">A saved copy was found: your choice is needed</span> : standing === 'separate' ? 'Separate: this device keeps its own data' : devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)">The last sync failed</span> : devices?.locked && !devices?.last ? <span style="color:var(--warn)">The note is encrypted and not unlocked here</span> : devices?.last ? `In step · last merged ${new Date(devices.last).toLocaleString()}` : 'Not merged with the note yet'}>
+        {!connected ? (
+          <p class="muted small" style="margin-bottom:12px"><b>Keeping your devices in step.</b> Each copy of {APP_SHORT_NAME} (on a phone, a tablet, a computer) keeps its own data. Today they can be kept in step by themselves through Intervals.icu: connect the same Intervals.icu account on each device, under Intervals.icu above, and {APP_SHORT_NAME} keeps a private saved copy there that each device reads and writes. Without Intervals.icu, move your data between devices with the backup file below.</p>
+        ) : (<>
+          <p class="muted small" style="margin-bottom:12px"><b>Keeping your devices in step, through Intervals.icu.</b> {APP_SHORT_NAME} keeps a private saved copy in your own Intervals.icu account: a note in your calendar dated 31 Dec 2099. It holds your profile, settings, plans, calendar, workouts and day notes; not your rides and recordings, which each device fetches for itself, and never your keys. A device kept in step reads and writes that note when the app opens, comes back to the front, syncs, and a few seconds after any change; the newest change to each thing wins, and deletions carry across. A device kept separate never reads or writes it.</p>
+          {standing === 'waiting' && devices?.waiting ? (
+            <div class="panel accent" style="margin-bottom:12px">
+              <b>{APP_SHORT_NAME} found its saved copy from another device</b>
+              <p class="muted small" style="margin:4px 0 10px">Last saved {new Date(devices.waiting.savedAt).toLocaleString()}{devices.waiting.device ? ` by ${devices.waiting.device}` : ''}. Nothing has been combined. Choose what {thisDevice()} does:</p>
+              <div class="stack" style="gap:12px">
+                <div><button class="btn primary sm" onClick={() => choose('sync')} disabled={busy}>Keep this device in step with my others</button>
+                  <p class="muted small" style="margin:4px 0 0">What is on {thisDevice()} and the saved copy are combined, the newer change kept; from then on changes reach all your devices.</p></div>
+                <div><button class="btn sm" onClick={() => choose('separate')} disabled={busy}>Keep this device separate</button>
+                  <p class="muted small" style="margin:4px 0 0">{thisDevice().replace(/^t/, 'T')} keeps its own plans and settings and never reads or changes the saved copy.</p></div>
+              </div>
+            </div>
+          ) : standing === 'separate' ? (
+            <p class="small" style="margin-bottom:12px"><b>Separate:</b> {thisDevice()} keeps its own data and does not read or write the saved copy. <button class="btn sm" onClick={() => choose('sync')} disabled={busy}>Keep in step with my other devices</button></p>
+          ) : (
+            <p class="small" style="margin-bottom:12px"><b>In step with your other devices through Intervals.icu.</b> {devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
+          )}
+          {standing !== 'separate' && standing !== 'waiting' && <div class="row wrap">
+            <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
+            <button class="btn quiet" onClick={() => choose('separate')} disabled={busy}>Keep this device separate</button>
+          </div>}
+        </>)}
+        {connected && standing !== 'separate' && standing !== 'waiting' && <NoteLock devices={devices} onChange={() => getSetting<DeviceSyncState | null>('deviceSync', null).then(setDevices)} busy={busy} setBusy={setBusy} setMsg={setMsg} />}
         <p class="muted small" style="margin:16px 0 8px">A file copy of everything as well, for moving {APP_SHORT_NAME} to another device or keeping it safe: plans, calendar, workouts, settings, favourites, what the app has learned about you (such as the watts that hold each heart-rate zone), notes and efforts, ride recordings still on this device, and your whole history with each activity's original file. It is a .zip you can open to see them. Unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
           <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Back up everything</button>
@@ -422,7 +460,7 @@ export function Settings({ data }: { data: AppData }) {
         </div>
       </Fold>
 
-      <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · your data stays on your devices and in your Intervals.icu account</p>
+      <p class="faint small" style="margin-top:36px">{APP_NAME} 2.0 · {connected ? 'your data stays on your devices and in your own Intervals.icu account' : 'your data stays on your devices'}</p>
       <UpdateCheck />
     </div>
   );

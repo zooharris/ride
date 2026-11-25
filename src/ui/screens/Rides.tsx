@@ -69,7 +69,7 @@ export function Rides({ data, id }: { data: AppData; id?: string }) {
     return (
       <div>
         <PageHead title="Activities" help="activities" />
-        <Empty title="No activities yet." action={<AddFilesButton primary />}><span>Connect Intervals.icu in Settings and press Sync on Today, or bring in your activities from their files.</span></Empty>
+        <Empty title="No activities yet." action={<AddFilesButton primary />}><span>Ride a session in the ride player, or bring in your activities from their files. If you use Intervals.icu or Garmin, you can connect them in Settings to bring your history.</span></Empty>
       </div>
     );
   }

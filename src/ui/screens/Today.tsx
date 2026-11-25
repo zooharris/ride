@@ -1,3 +1,4 @@
+import { APP_SHORT_NAME } from '../../appName';
 import { inApp } from '../../shell';
 import { useEffect, useState } from 'preact/hooks';
 import type { AppData } from '../store';
@@ -105,6 +106,11 @@ export function Today({ data }: { data: AppData }) {
 
   useEffect(() => { credentials().then((c) => setConnected(!!c)); }, []);
   const [locked, setLocked] = useState<{ question: string } | null>(null);
+  // The offer to connect is an offer: "Not now" puts it away for good on this device (25 Nov 2026).
+  const [offerDone, setOfferDone] = useState(true);
+  useEffect(() => { getSetting<boolean>('connectOfferDone', false).then(setOfferDone); }, []);
+  const [copyWaiting, setCopyWaiting] = useState<{ savedAt: string } | null>(null);
+  useEffect(() => { Promise.all([getSetting<{ waiting?: { savedAt: string } } | null>('deviceSync', null), getSetting<string | null>('deviceChoice', null)]).then(([st, ch]) => setCopyWaiting(!ch && st?.waiting ? st.waiting : null)); }, [data.planned.length, data.rides.length]);
   useEffect(() => { getSetting<{ locked?: { question: string } } | null>('deviceSync', null).then((s) => setLocked(s?.locked ?? null)); }, [data.planned.length, data.rides.length, data.dayNotes.length]);
 
   // The plan re-checks itself whenever the data change; its suggestions stay on offer until accepted or rejected.
@@ -195,14 +201,24 @@ export function Today({ data }: { data: AppData }) {
       {tourDone === false && connected !== null && (
         <GettingStarted connected={connected === true} synced={data.rides.length > 0} planned={!!active} sent={data.planned.some((p) => p.status === 'sent' || p.status === 'completed')} reviewed={data.planned.some((p) => p.status === 'completed' && !!p.activityId)} onDismiss={() => { setTourDone(true); setSetting('tourDone', true); }} />
       )}
-      {connected === false && tourDone !== false && (
-        <div class="panel accent" style="margin-bottom:14px">
-          <b>Connect Intervals.icu</b>
-          <p class="muted small" style="margin-top:4px">That is how workouts reach your bike computer and finished activities come back. Add your athlete ID and API key in Settings.</p>
-          <a class="btn sm" href="#/settings" style="margin-top:10px">Open Settings</a>
+      {connected === false && tourDone !== false && !offerDone && (
+        <div class="panel" style="margin-bottom:14px">
+          <b>Optional: connect your devices and history</b>
+          <p class="muted small" style="margin-top:4px">{APP_SHORT_NAME} works as it is. If you use Intervals.icu, connecting it brings your history and recordings from your bike computer or watch, and sends your sessions to it. In the {APP_SHORT_NAME} app you can also bring activities straight from Garmin with a personal key. Both are in Settings, whenever you want them.</p>
+          <div class="row wrap" style="margin-top:10px;gap:8px">
+            <a class="btn sm" href="#/settings">Open Settings</a>
+            <button class="btn sm quiet" onClick={() => { setOfferDone(true); void setSetting('connectOfferDone', true); }}>Not now</button>
+          </div>
         </div>
       )}
 
+      {copyWaiting && (
+        <div class="panel accent" style="margin-bottom:14px">
+          <b>{APP_SHORT_NAME} found its saved copy from another device</b>
+          <p class="muted small" style="margin-top:4px">It is in your Intervals.icu account, last saved {new Date(copyWaiting.savedAt).toLocaleString()}. Nothing has been combined: choose whether this device is kept in step with your others, or kept separate.</p>
+          <a class="btn sm" href="#/settings" style="margin-top:10px">Choose in Settings</a>
+        </div>
+      )}
       {locked && (
         <div class="panel accent" style="margin-bottom:14px">
           <b>Your sync note is locked on this device</b>

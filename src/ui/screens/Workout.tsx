@@ -165,7 +165,7 @@ function SessionScreen({ w, backHref, planned, recording, history, units, milesO
   async function sendWalk() {
     if (!planned) return;
     const c = await credentials();
-    if (!c) { setSendMsg({ ok: false, text: 'Connect Intervals.icu in Settings to send sessions to your devices.' }); return; }
+    if (!c) { setSendMsg({ ok: false, text: 'Sending a session straight to a bike computer or watch goes through Intervals.icu, which is not connected. You can connect it in Settings, or save the session as a file under Settings, Export to other apps.' }); return; }
     setSending(true);
     try {
       const again = planned.status === 'sent';

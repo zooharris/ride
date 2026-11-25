@@ -66,7 +66,7 @@ async function launch(opts: { data?: string; garmin?: string; kind?: 'new' | 'po
 
 /** First-run setup for a rider with no account, through to Today. */
 async function setUpNew(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'No account yet, enter numbers by hand' }).click();
+  await page.getByRole('button', { name: 'Set up Antogo' }).click();
   await page.getByLabel('Name').fill('Nova Example');
   for (let i = 0; i < 4; i++) await page.getByRole('button', { name: "I don't know" }).first().click();
   await page.getByRole('button', { name: '5 h', exact: true }).click();

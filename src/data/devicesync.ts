@@ -44,7 +44,9 @@ export const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup',
   // Stage 0: whether this device has loaded the whole history.
   'historyWhole',
   // 23 Nov 2026: Garmin as a source belongs to the one installed app that holds the key.
-  'garminSource', 'garminProgress']);
+  'garminSource', 'garminProgress',
+  // 25 Nov 2026: whether this device is kept in step with the rider's others is this device's own choice.
+  'deviceChoice', 'connectOfferDone']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at
@@ -58,6 +60,37 @@ export interface DeviceSyncState {
   last?: string; pushed?: string; error?: string; device?: string;
   /** The note in Intervals.icu is encrypted and this device cannot open it; the question is shown so the rider can unlock. */
   locked?: { question: string; at: string };
+  /** A saved copy is in Intervals.icu and the rider has not yet said whether this device joins it (25 Nov 2026). */
+  waiting?: { savedAt: string; device?: string };
+}
+
+/**
+ * Whether this device is kept in step with the rider's others through the note (25 Nov 2026). 'sync': it reads and
+ * writes the note. 'separate': it never does; its plans and settings are its own. Unset on a device that was in step
+ * before the choice existed (it stays in step), and on a new one until the rider chooses.
+ */
+export type DeviceChoice = 'sync' | 'separate';
+export const DEVICE_CHOICE = 'deviceChoice';
+
+/** How this device stands, for the screens: in step, separate, waiting for the rider's choice, or nothing to choose yet. */
+export async function deviceStanding(): Promise<'sync' | 'separate' | 'waiting' | 'none'> {
+  const choice = await getSetting<DeviceChoice | null>(DEVICE_CHOICE, null);
+  if (choice) return choice;
+  const st = await getSetting<DeviceSyncState | null>('deviceSync', null);
+  return st?.last ? 'sync' : st?.waiting ? 'waiting' : 'none';
+}
+
+/** The rider's choice for this device. Choosing to be in step runs a round at once (this device and the note are combined). */
+export async function chooseDevices(choice: DeviceChoice, c: IntervalsCredentials | null): Promise<DeviceSyncState> {
+  await setSetting(DEVICE_CHOICE, choice);
+  const prev = (await getSetting<DeviceSyncState | null>('deviceSync', null)) ?? {};
+  if (choice === 'separate' || !c) {
+    const state: DeviceSyncState = { ...prev, waiting: undefined, error: undefined };
+    await setSetting('deviceSync', state);
+    listeners.forEach((l) => l());
+    return state;
+  }
+  return syncDevices(c);
 }
 
 /** Thrown by readRemote when the note is encrypted and this device holds no key that opens it. */
@@ -276,6 +309,8 @@ export async function unlockNote(c: IntervalsCredentials, secret: string, by: 'p
   if (!key) return false;
   await setSetting('noteKey', key);
   await setSetting('noteLock', sealed.lock);
+  // Giving the passphrase on this device is the rider asking for their saved copy here: the device is in step from now on.
+  if (!(await getSetting<DeviceChoice | null>(DEVICE_CHOICE, null))) await setSetting(DEVICE_CHOICE, 'sync');
   const prev = (await getSetting<DeviceSyncState | null>('deviceSync', null)) ?? {};
   await setSetting('deviceSync', { ...prev, locked: undefined });
   return true;
@@ -296,7 +331,17 @@ export function syncDevices(c: IntervalsCredentials): Promise<DeviceSyncState> {
   running = (async () => {
     const prev = (await getSetting<DeviceSyncState | null>('deviceSync', null)) ?? {};
     try {
+      const choice = await getSetting<DeviceChoice | null>(DEVICE_CHOICE, null);
+      // A device kept separate neither reads nor writes the note.
+      if (choice === 'separate') return prev;
       const remote = await readRemote(c);
+      // A device that has never been in step, finding a saved copy: nothing is combined until the rider says so.
+      if (!choice && !prev.last && remote) {
+        const state: DeviceSyncState = { ...prev, error: undefined, waiting: { savedAt: remote.exportedAt, device: remote.device } };
+        await setSetting('deviceSync', state);
+        if (!prev.waiting) listeners.forEach((l) => l());
+        return state;
+      }
       let applied = 0, push = true, from: string | undefined;
       if (remote) {
         const r = await mergeRemote(remote);

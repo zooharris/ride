@@ -100,10 +100,11 @@ export interface Ledger { events: Array<Record<string, unknown>>; requests: stri
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /** Answer Intervals.icu from the rider; refuse everything else that leaves this machine. */
-export async function standIn(page: Page, kind: RiderKind): Promise<Ledger> {
-  const ledger: Ledger = { events: [], requests: [] };
+/** `shared`: the same Intervals.icu account as another of the rider's devices (its calendar, with Antogo's saved copy). */
+export async function standIn(page: Page, kind: RiderKind, shared?: Ledger): Promise<Ledger> {
+  const ledger: Ledger = shared ?? { events: [], requests: [] };
   const r = kind === 'new' ? undefined : rider(kind);
-  let nextId = 5000;
+  let nextId = 5000 + ledger.events.length * 100 + Math.floor(Math.random() * 90);
   // Registered first, so matched last: anything not served locally and not Intervals.icu is refused.
   // (The installed app serves its own pages from inside itself, at app://.)
   await page.route((url) => url.protocol !== 'app:' && !/^(localhost|127\.0\.0\.1)$/.test(url.hostname), (route) => route.abort('blockedbyclient'));

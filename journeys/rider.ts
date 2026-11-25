@@ -10,9 +10,9 @@ import { standIn, watchProblems, type Ledger, type RiderKind } from './standin';
 
 export interface Session { page: Page; ledger: Ledger; problems: string[] }
 
-export async function open(page: Page, kind: RiderKind): Promise<Session> {
+export async function open(page: Page, kind: RiderKind, shared?: Ledger): Promise<Session> {
   const problems = watchProblems(page);
-  const ledger = await standIn(page, kind);
+  const ledger = await standIn(page, kind, shared);
   await page.goto('./');
   return { page, ledger, problems };
 }
@@ -21,13 +21,14 @@ export async function open(page: Page, kind: RiderKind): Promise<Session> {
 export async function setUp(page: Page, kind: RiderKind): Promise<Session> {
   const s = await open(page, kind);
   if (kind === 'new') {
-    await page.getByRole('button', { name: 'No account yet, enter numbers by hand' }).click();
+    await page.getByRole('button', { name: 'Set up Antogo' }).click();
     await page.getByLabel('Name').fill('Nova Example');
     for (let i = 0; i < 4; i++) await page.getByRole('button', { name: "I don't know" }).first().click();
     await page.getByRole('button', { name: '5 h', exact: true }).click();
     await expect(page.getByText('Targets start on heart rate.')).toBeVisible();
     await page.getByRole('button', { name: 'Start', exact: true }).click();
   } else {
+    await page.getByRole('button', { name: 'Connect Intervals.icu' }).click();
     await page.getByLabel('Athlete ID').fill(kind === 'hr' ? 'i900001' : 'i900002');
     await page.getByLabel('API key').fill('made-up-key');
     await page.getByRole('button', { name: 'Connect', exact: true }).click();

@@ -157,7 +157,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     return (
       <div>
         <PageHead title="Progress" help="progress" />
-        <div class="empty"><b>Nothing to chart yet.</b><p class="small muted">Connect Intervals.icu in Settings and press Sync on Today; the charts here fill in from your synced activities and wellness.</p></div>
+        <div class="empty"><b>Nothing to chart yet.</b><p class="small muted">The charts here fill in from your activities and wellness: ride a session in the ride player, bring in activities from their files (Activities), or, if you use them, connect Intervals.icu or Garmin in Settings.</p></div>
       </div>
     );
   }

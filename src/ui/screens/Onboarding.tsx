@@ -7,15 +7,21 @@ import { NumberBox } from '../NumberBox';
 import { TAGLINE } from '../../appName';
 import { applyAthleteNumbers, fetchRides, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
-import { fetchAutoBackup, restoreBackup } from '../../data/backup';
+import { backupSummaryOf, fetchAutoBackup, restoreBackup, restoreBackupFile } from '../../data/backup';
+import { DEVICE_CHOICE } from '../../data/devicesync';
+import { appKind, inApp, thisDevice } from '../../shell';
+import { APP_SHORT_NAME } from '../../appName';
 import { addDays, today } from '../../engine/load';
 import { deviceRegion, distUnitsOf, legacyUnits, mastersFor, miles, pounds, unitsForRegion, weightUnitsOf, type DistUnits, type WeightUnits } from '../../engine/units';
 import { maxHrFromAge, standIns } from '../../engine/known';
 import { fmtDate } from '../derived';
 
 /**
- * First run (13 Nov 2026: no made-up numbers). Step 1 connects Intervals.icu, which
- * may already hold the rider's FTP, heart rates and weight; step 2 shows each number
+ * First run. Nothing is required but the rider's own answers (25 Nov 2026): the first screen leads straight to setup,
+ * and offers, as options, restoring from a backup file the rider picks, or connecting Intervals.icu, which
+ * may already hold the rider's FTP, heart rates and weight. Where Intervals.icu holds Antogo's saved copy from another
+ * device, the rider is told what and where it is and chooses: keep this device in step with the others, keep it
+ * separate, or restore from a file instead. (13 Nov 2026: no made-up numbers.) Setup shows each number
  * marked with where it came from, or an empty box with what it is in plain words and
  * an "I don't know" that leads somewhere sensible: a test in the first week, or an
  * estimate marked as one. A rider who knows none of their numbers still gets a plan.
@@ -85,7 +91,7 @@ const EMPTY = (): Record<UnsureNumber, Box> => ({ ftp: { ...BLANK }, lthr: { ...
 type Answered = Record<UnsureNumber, boolean>;
 
 export function Onboarding() {
-  const [step, setStep] = useState<'connect' | 'review'>('connect');
+  const [step, setStep] = useState<'welcome' | 'connect' | 'note' | 'review'>('welcome');
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -111,7 +117,8 @@ export function Onboarding() {
       const a = await testConnection(c);
       await setSetting('intervals', c);
       setFound(a);
-      try { setBackup(await fetchAutoBackup(c)); } catch { /* none, or unreadable */ }
+      let note: { text: string; exportedAt: string } | null = null;
+      try { note = await fetchAutoBackup(c); setBackup(note); } catch { /* none, or unreadable */ }
       let h: HistoryHints | null = null;
       try { h = historyHints(await fetchRides(c, addDays(today(), -56), today()), today()); setHints(h); } catch { /* suggestions only */ }
       setP(applyAthleteNumbers({ ...p, name: a.name }, a));
@@ -121,11 +128,43 @@ export function Onboarding() {
       setBoxes(b);
       setAnswered({ ftp: !!a.ftp, lthr: !!a.lthr, maxHr: !!a.maxHr, weightKg: !!a.weight });
       if (h && h.ridesWithPower > 0) setHasPower(true);
-      setStep('review');
+      setStep(note ? 'note' : 'review');
     } catch (e) {
       setErr((e as Error).message);
     } finally { setBusy(false); }
   }
+
+  /** Restore from a backup file the rider picks, from anywhere their device can reach; it says what the file holds and asks first. */
+  async function restoreFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const f = input.files?.[0];
+    if (!f) return;
+    setErr(null);
+    try {
+      const sum = await backupSummaryOf(f);
+      if (!sum.ok) { setErr(sum.words); input.value = ''; return; }
+      const made = sum.exportedAt ? ` made ${new Date(sum.exportedAt).toLocaleString()}` : '';
+      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nEverything in it is brought onto ${thisDevice()}, and ${APP_SHORT_NAME} opens with it.`)) { input.value = ''; return; }
+      setBusy(true);
+      await restoreBackupFile(f);
+      notify();
+      location.hash = '/today';
+      location.reload();
+    } catch (x) { setErr((x as Error).message); input.value = ''; } finally { setBusy(false); }
+  }
+  /** The saved copy in Intervals.icu: this device takes it and stays in step with the rider's others. */
+  async function joinDevices() {
+    if (!backup) return;
+    setBusy(true);
+    try { await restoreBackup(backup.text); await setSetting(DEVICE_CHOICE, 'sync'); notify(); location.hash = '/today'; location.reload(); }
+    catch (x) { setErr((x as Error).message); setBusy(false); }
+  }
+  /** This device keeps its own data: it never reads or writes the saved copy. */
+  async function staySeparate() { await setSetting(DEVICE_CHOICE, 'separate'); setStep('review'); }
+  const noteDevice = (() => { try { return backup ? (JSON.parse(backup.text) as { device?: string }).device : undefined; } catch { return undefined; } })();
+  const filePick = (label: string, cls = 'btn') => (
+    <label class={cls} style="position:relative;overflow:hidden">{label}<input type="file" aria-label={label} accept="application/zip,.zip,application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restoreFile} disabled={busy} /></label>
+  );
 
   const historyPower = (hints?.ridesWithPower ?? 0) > 0;
   const ready = !!hours && hours > 0 && (Object.keys(answered) as UnsureNumber[]).every((k) => answered[k]);
@@ -178,12 +217,58 @@ export function Onboarding() {
     <main class="main onboard">
       <div class="ob-brand"><StackedLogo width={240} /><p class="ob-tagline">{TAGLINE}</p></div>
       <p class="ob-lede">Plan your training from your own data, send every session to your bike computer or watch, and see what each one did for you.</p>
-      <ol class="ob-steps" aria-label="Setup steps">
-        <li class={step === 'connect' ? 'on' : 'done'}><span>1</span>Connect Intervals.icu</li>
-        <li class={step === 'review' ? 'on' : ''}><span>2</span>Your numbers</li>
-      </ol>
-
-      {step === 'connect' ? (
+      {step === 'welcome' ? (
+        <div class="panel ob-card">
+          <h2>Welcome</h2>
+          <p class="muted small" style="margin:6px 0 16px">A few questions about you and your riding, and {APP_SHORT_NAME} makes your plan. There is no account to make and nothing you have to connect.</p>
+          {err && <div class="msg err" style="margin-bottom:12px">{err}</div>}
+          <button class="btn primary block" onClick={() => setStep('review')} disabled={busy}>Set up {APP_SHORT_NAME}</button>
+          <h3 style="margin:26px 0 4px;font-size:15px">Optional</h3>
+          <p class="faint small" style="margin:0 0 12px">Only if they apply to you. Each can also be done later, in Settings.</p>
+          <div class="stack" style="gap:16px">
+            <div>
+              <b class="small">Used {APP_SHORT_NAME} before? Restore from a backup file</b>
+              <p class="muted small" style="margin:2px 0 8px">Choose a backup file you made with <i>Back up everything</i>, from wherever you keep it: this device, iCloud Drive, OneDrive, Google Drive, Dropbox. You are shown what it holds before anything is restored.</p>
+              {filePick('Choose a backup file')}
+            </div>
+            <div>
+              <b class="small">Use Intervals.icu? Connect it</b>
+              <p class="muted small" style="margin:2px 0 8px">Intervals.icu is a free service many riders already use. Connected, it brings your history and your numbers, takes in recordings from many makes of bike computer and watch (Garmin, Wahoo, Polar, Coros, Suunto and others), sends your sessions to those devices, and can keep {APP_SHORT_NAME} in step between your own devices. {APP_SHORT_NAME} works without it.</p>
+              <button class="btn" onClick={() => { setErr(null); setStep('connect'); }} disabled={busy}>Connect Intervals.icu</button>
+            </div>
+            <div>
+              <b class="small">Have a Garmin personal key? Bring your activities straight from Garmin</b>
+              <p class="muted small" style="margin:2px 0 0">{inApp() ? `After setup, in Settings, under History. The key is typed into ${APP_SHORT_NAME} and kept on ${thisDevice()}.` : `This needs the ${APP_SHORT_NAME} app for the Mac, iPhone or iPad: Garmin does not answer a web browser. After setup, see Settings, under History.`}</p>
+            </div>
+          </div>
+        </div>
+      ) : step === 'note' && backup ? (
+        <div class="panel ob-card">
+          <h2>Your other devices</h2>
+          <p class="small" style="margin:6px 0 10px"><b>{APP_SHORT_NAME} found its saved copy in your Intervals.icu account.</b></p>
+          <ul class="small muted" style="margin:0 0 16px;padding-left:18px">
+            <li><b>What it is:</b> a private note in your own Intervals.icu calendar (dated 31 Dec 2099), written by {APP_SHORT_NAME} on {noteDevice ? <>another of your devices ({noteDevice})</> : 'another of your devices'}.</li>
+            <li><b>What it holds:</b> your profile, settings, plans, calendar and your own workouts.</li>
+            <li><b>What it doesn't hold:</b> your rides and recordings. Each device fetches those for itself.</li>
+            <li><b>Last saved:</b> {new Date(backup.exportedAt).toLocaleString()}.</li>
+          </ul>
+          {err && <div class="msg err" style="margin-bottom:12px">{err}</div>}
+          <div class="stack" style="gap:16px">
+            <div>
+              <button class="btn primary" onClick={joinDevices} disabled={busy}>Keep this device in step with my others</button>
+              <p class="muted small" style="margin:6px 0 0">{thisDevice().replace(/^t/, 'T')} takes the saved copy now and opens with your plan and settings. From then on, a change you make on any of your devices reaches the others through that note.</p>
+            </div>
+            <div>
+              <button class="btn" onClick={staySeparate} disabled={busy}>Keep this device separate</button>
+              <p class="muted small" style="margin:6px 0 0">You set up {thisDevice()} afresh. It still uses Intervals.icu for your history and for sending sessions to your devices, but it does not read or change the saved copy: a plan you make here stays here, and changes on your other devices don't arrive. You can turn keeping in step on later, in Settings.</p>
+            </div>
+            <div>
+              {filePick('Restore from a file I choose instead')}
+              <p class="muted small" style="margin:6px 0 0">A backup file you made with <i>Back up everything</i>, from wherever you keep it.</p>
+            </div>
+          </div>
+        </div>
+      ) : step === 'connect' ? (
         <div class="panel ob-card">
           <h2>Connect Intervals.icu</h2>
           <p class="muted small" style="margin:6px 0 14px">Intervals.icu is the free service that links the app to your devices: workouts go out through it to the bike computers and watches you connect there, and your recordings, sleep and HRV come back through it. If it already has your FTP and heart rates, the app uses them. On intervals.icu, open <b>Settings</b> and scroll to <b>Developer</b>: your athlete ID is there, and a button makes the API key.</p>
@@ -202,7 +287,7 @@ export function Onboarding() {
             <div class="field"><label for="ob-key">API key</label><input id="ob-key" type="password" autocomplete="off" value={creds.apiKey} onInput={(e) => setCreds({ ...creds, apiKey: (e.target as HTMLInputElement).value })} /></div>
           </div>
           <button class="btn primary block" style="margin-top:22px" onClick={connect} disabled={busy || !creds.athleteId || !creds.apiKey}>{busy ? 'Connecting…' : 'Connect'}</button>
-          <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('review')}>No account yet, enter numbers by hand</button>
+          <button class="btn quiet block" style="margin-top:8px" onClick={() => { setErr(null); setStep('welcome'); }}>Back</button>
         </div>
       ) : (
         <div class="panel ob-card">
@@ -210,13 +295,6 @@ export function Onboarding() {
           <p class="muted small" style="margin:6px 0 18px">
             {found ? `Connected as ${found.name}. Numbers Intervals.icu holds are filled in; check them. ` : ''}Type any number you know. For one you don't, press <b>I don't know</b>: the app finds it with a test in your first week, or estimates it and marks it as an estimate. You can change any of them later in Settings.
           </p>
-          {backup && (
-            <div class="panel accent" style="margin-bottom:14px">
-              <b>A backup from another device was found</b>
-              <p class="muted small" style="margin-top:4px">Saved {new Date(backup.exportedAt).toLocaleString()} in your Intervals.icu account: profile, settings, workouts and plan.</p>
-              <button class="btn sm" style="margin-top:10px" onClick={async () => { await restoreBackup(backup.text); notify(); location.hash = '/today'; location.reload(); }}>Restore it and continue</button>
-            </div>
-          )}
           <div class="form">
             <div class="field"><label for="ob-name">Name</label><input id="ob-name" value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
             <div class="field"><label for="ob-birth">Birth year (optional)</label>
@@ -285,10 +363,10 @@ export function Onboarding() {
           <p class="faint small" style="margin:6px 0 0">Targets start {setupProfile(p, boxes, hours ?? 1, hasPower, hasHr, historyPower).basis === 'power' ? 'on power' : 'on heart rate'}. You can change this in Settings.</p>
           {!ready && <p class="small" style="margin:18px 0 0;color:var(--ink-2)">Still to answer: {[...notAnswered.map((k) => ({ ftp: 'FTP', lthr: 'threshold heart rate', maxHr: 'max heart rate', weightKg: 'weight' }[k])), !hours && 'hours a week'].filter(Boolean).join(', ')}. A number or “I don't know” for each.</p>}
           <button class="btn primary block" style="margin-top:14px" onClick={start} disabled={!ready}>{found ? 'Start and pull my rides' : 'Start'}</button>
-          {!found && <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('connect')}>Back to connecting Intervals.icu</button>}
+          {!found && <button class="btn quiet block" style="margin-top:8px" onClick={() => setStep('welcome')}>Back</button>}
         </div>
       )}
-      <p class="faint small ob-foot">Your data stays on your devices and in your own Intervals.icu account. Nothing is sent anywhere else.</p>
+      <p class="faint small ob-foot">Your data stays on {appKind() ? thisDevice() : 'this device'}. {APP_SHORT_NAME} contacts another service only when you connect it.</p>
     </main>
   );
 }

@@ -14,15 +14,16 @@ export interface TourSide {
   tour(): Promise<{ asked: boolean }>;
   turn(o: { side: boolean }): Promise<void>;
   report(o: { name: string; text: string }): Promise<void>;
+  taken(o: { name: string }): Promise<{ yes: boolean }>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shown = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
 const said = (el: Element) => (el.textContent ?? '').trim().replace(/\s+/g, ' ');
 
-async function until<T>(what: string, fn: () => T | undefined | null | false, seconds = 20): Promise<T> {
+async function until<T>(what: string, fn: () => T | undefined | null | false | Promise<T | undefined | null | false>, seconds = 20): Promise<T> {
   for (let t = 0; t < seconds * 4; t++) {
-    const v = fn();
+    const v = await fn();
     if (v) return v;
     await sleep(250);
   }
@@ -68,9 +69,12 @@ export async function runTour(side: TourSide): Promise<void> {
     where = name;
     await sleep(900);
     const rm = room();
-    await side.report({ name: `antogo-tour-${String(n).padStart(2, '0')}-${name}.txt`, text: JSON.stringify({ name, sideways, width: innerWidth, height: innerHeight, room: rm, faults: phoneFaults({ room: rm, side: sideways }) }) });
-    // The publishing machine takes its picture here.
-    await sleep(3200);
+    const file = `antogo-tour-${String(n).padStart(2, '0')}-${name}.txt`;
+    await side.report({ name: file, text: JSON.stringify({ name, sideways, width: innerWidth, height: innerHeight, room: rm, faults: phoneFaults({ room: rm, side: sideways }) }) });
+    // The publishing machine takes its picture here, and says when it has: the tour waits for that, so each picture
+    // is of its own stop (the first tour moved on after a few seconds, and the pictures fell behind).
+    await until('the picture to be taken', () => side.taken({ name: file }).then((r) => r.yes).catch(() => false), 60).catch(() => undefined);
+    await sleep(300);
   };
   const turn = async (sideways: boolean) => {
     await side.turn({ side: sideways });

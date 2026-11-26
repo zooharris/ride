@@ -68,11 +68,11 @@ async function tour(d) {
   run(['simctl', 'launch', '--terminate-running-process', d.udid, BUNDLE], { SIMCTL_CHILD_ANTOGO_TOUR: '1' });
   let docs = '';
   const taken = new Set();
-  for (let t = 0; t < 600; t++) {
-    await sleep(500);
+  for (let t = 0; t < 1200; t++) {
+    await sleep(400);
     if (!docs) { try { docs = join(run(['simctl', 'get_app_container', d.udid, BUNDLE, 'data']).trim(), 'Documents'); } catch { continue; } }
     if (!existsSync(docs)) continue;
-    for (const f of readdirSync(docs).filter((x) => /^antogo-tour-\d\d-/.test(x)).sort()) {
+    for (const f of readdirSync(docs).filter((x) => /^antogo-tour-\d\d-.*\.txt$/.test(x)).sort()) {
       if (taken.has(f)) continue;
       taken.add(f);
       const stop = f.replace(/^antogo-tour-/, '').replace(/\.txt$/, '');
@@ -81,6 +81,8 @@ async function tour(d) {
       try { found = JSON.parse(readFileSync(join(docs, f), 'utf8')); } catch { /* still being written */ }
       const faults = found.faults ?? [];
       tourNotes.push(`${stop}: ${found.width}x${found.height}, room ${JSON.stringify(found.room)}: ${faults.length ? faults.join('; ') : 'fits'}`);
+      // Tell the app the picture is taken, so it moves on to its next stop.
+      writeFileSync(join(docs, `${f}.taken`), '');
     }
     const done = join(docs, 'antogo-tour-done.txt');
     if (existsSync(done)) {

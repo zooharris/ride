@@ -86,6 +86,7 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "report", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "tour", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "turn", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "taken", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: the services a rider connects, and nothing else
@@ -291,6 +292,18 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["asked": ProcessInfo.processInfo.environment["ANTOGO_TOUR"] == "1"])
         #else
         call.resolve(["asked": false])
+        #endif
+    }
+
+    /// Has the publishing machine taken its picture of this stop? It says so with a file beside the stop's own.
+    @objc func taken(_ call: CAPPluginCall) {
+        #if DEBUG
+        guard let name = call.getString("name"),
+              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { call.resolve(["yes": false]); return }
+        let safe = (name as NSString).lastPathComponent
+        call.resolve(["yes": FileManager.default.fileExists(atPath: docs.appendingPathComponent(safe + ".taken").path)])
+        #else
+        call.resolve(["yes": true])
         #endif
     }
 

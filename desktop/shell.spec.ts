@@ -1,6 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { standIn, watchProblems } from '../journeys/standin';
@@ -47,10 +48,10 @@ function garminStandIn(seen: string[]): Promise<Server> {
 }
 
 interface Running { app: ElectronApplication; page: Page; problems: string[]; outside: string[]; data: string; downloads: string }
-async function launch(opts: { data?: string; garmin?: string; kind?: 'new' | 'power' } = {}): Promise<Running> {
+async function launch(opts: { data?: string; garmin?: string; kind?: 'new' | 'power'; update?: string } = {}): Promise<Running> {
   const data = opts.data ?? scratch('data');
   const downloads = scratch('downloads');
-  const env = { ...process.env, ANTOGO_DATA: data, ANTOGO_DOWNLOADS: downloads, ANTOGO_TEST_STORE: '1', ...(opts.garmin ? { ANTOGO_GARMIN_BASE: opts.garmin } : {}) } as Record<string, string>;
+  const env = { ...process.env, ANTOGO_DATA: data, ANTOGO_DOWNLOADS: downloads, ANTOGO_TEST_STORE: '1', ...(opts.garmin ? { ANTOGO_GARMIN_BASE: opts.garmin } : {}), ...(opts.update ? { ANTOGO_UPDATE_LATEST: opts.update } : {}) } as Record<string, string>;
   const flags = process.platform === 'linux' ? ['--no-sandbox', '--password-store=basic'] : [];
   const app = process.env.ANTOGO_APP
     ? await electron.launch({ executablePath: process.env.ANTOGO_APP, args: flags, env })
@@ -89,6 +90,8 @@ test('the app opens on its own pages, with nothing fetched to start it', async (
   await r.page.waitForTimeout(4000);   // past the launch's look for a newer version
   // The only thing asked of the outside world is whether a newer version is published.
   expect(r.outside.filter((u) => !/zooharris\.github\.io\/ride\/version\.json/.test(u))).toEqual([]);
+  // The app's own downloader is there, and has started nothing by itself.
+  expect(await r.page.evaluate(() => (window as unknown as { antogoApp: { updateState(): Promise<{ state: string }> } }).antogoApp.updateState())).toEqual({ state: 'idle' });
   expect(r.problems).toEqual([]);
   console.log(`Bluetooth in this engine on ${process.platform}: ${await r.page.evaluate(() => 'bluetooth' in navigator)}`);
   await r.app.close();
@@ -326,4 +329,89 @@ test('About and legal: the open-source notices are inside the app, and say what 
   expect(r.outside.filter((u) => !/zooharris\.github\.io\/ride\/version\.json/.test(u))).toEqual([]);
   expect(r.problems).toEqual([]);
   await r.app.close();
+});
+
+/**
+ * A newer version, downloaded by the app itself (26 Nov 2026). A stand-in publishes a release and serves its file
+ * slowly. What this shows: one press starts one download however often the button is pressed; the pages say how far
+ * it has got; Cancel leaves nothing behind; the whole file is checked before it is called downloaded; a file already
+ * in Downloads is never replaced; and a file that is not the one published is refused.
+ */
+function releaseStandIn(file: Buffer, seen: string[], wrongFingerprint = false): Promise<Server> {
+  const sha = createHash('sha256').update(wrongFingerprint ? Buffer.from('another file') : file).digest('hex');
+  const srv = createServer((req, res) => {
+    const url = req.url ?? '';
+    seen.push(url);
+    const at = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+    if (url.startsWith('/latest')) { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ tag_name: 'mac-999', assets: [{ name: 'Antogo.dmg', size: file.length, digest: `sha256:${sha}`, browser_download_url: `${at}/Antogo.dmg` }] })); return; }
+    if (url.startsWith('/Antogo.dmg')) {
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(file.length) });
+      const piece = Math.ceil(file.length / 16);
+      let i = 0;
+      const next = () => { if (res.destroyed) return; if (i >= file.length) { res.end(); return; } res.write(file.subarray(i, i + piece)); i += piece; setTimeout(next, 180); };
+      next();
+      return;
+    }
+    res.writeHead(404); res.end('');
+  });
+  return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok(srv)));
+}
+
+test('a newer version is downloaded by the app itself: once, with its progress shown, checked, and nothing replaced', async () => {
+  test.skip(!!process.env.ANTOGO_APP, 'the built app asks only the real published release');
+  const file = Buffer.alloc(3_200_000, 7);
+  const seen: string[] = [];
+  const srv = await releaseStandIn(file, seen);
+  const r = await launch({ update: `http://127.0.0.1:${(srv.address() as { port: number }).port}/latest` });
+  await setUpNew(r.page);
+  // The published web version says a newer build exists.
+  await r.page.route('**/version.json*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ build: '2999-01-01T00:00:00.000Z' }) }));
+  await go(r.page, '#/settings');
+  await r.page.getByRole('button', { name: 'Check for updates' }).click();
+  const start = r.page.getByRole('button', { name: 'A newer version is ready: download' });
+  await expect(start).toBeVisible();
+  // A file of an earlier version is already in Downloads: it is not to be touched.
+  writeFileSync(join(r.downloads, 'Antogo.dmg'), 'an earlier version');
+  // Pressed, the button gives way at once to how far the download has got. Pressed three times in a hurry, it is still one download.
+  await start.click();
+  await r.page.evaluate(() => { const a = (window as unknown as { antogoApp: { updateStart(): Promise<boolean> } }).antogoApp; void a.updateStart(); void a.updateStart(); });
+  await expect(r.page.getByText('Downloading the newer Antogo…').first()).toBeVisible();
+  await expect(start).toHaveCount(0);
+  await expect(r.page.getByRole('progressbar', { name: 'Download' }).first()).toBeVisible();
+  await expect(r.page.getByText(/\d+ of 3 MB/).first()).toBeVisible();
+  // Cancelled part-way: nothing is left behind, and the offer is back.
+  await r.page.getByRole('button', { name: 'Cancel' }).first().click();
+  await expect(start).toBeVisible();
+  expect(readdirSync(r.downloads).sort()).toEqual(['Antogo.dmg']);
+  expect(seen.filter((u) => u.startsWith('/Antogo.dmg')).length).toBe(1);
+  // Started again, it runs to the end; the file is whole, named after its release, and the earlier file is as it was.
+  await start.click();
+  await expect(r.page.getByText('The newer Antogo is downloaded.').first()).toBeVisible({ timeout: 20_000 });
+  await expect(r.page.getByText(/Downloads folder as Antogo 999\.dmg/).first()).toBeVisible();
+  await expect(r.page.getByRole('button', { name: 'Open' }).first()).toBeVisible();
+  expect(readdirSync(r.downloads).sort()).toEqual(['Antogo 999.dmg', 'Antogo.dmg']);
+  expect(readFileSync(join(r.downloads, 'Antogo 999.dmg')).equals(file)).toBe(true);
+  expect(readFileSync(join(r.downloads, 'Antogo.dmg'), 'utf8')).toBe('an earlier version');
+  expect(seen.filter((u) => u.startsWith('/Antogo.dmg')).length).toBe(2);
+  expect(r.problems).toEqual([]);
+  await r.app.close();
+
+  // A fresh start of the app, with that file still in Downloads: asked again, nothing is fetched again.
+  const again = await launch({ update: `http://127.0.0.1:${(srv.address() as { port: number }).port}/latest` });
+  writeFileSync(join(again.downloads, 'Antogo 999.dmg'), file);
+  await again.page.evaluate(() => (window as unknown as { antogoApp: { updateStart(): Promise<boolean> } }).antogoApp.updateStart());
+  await expect.poll(() => again.page.evaluate(() => (window as unknown as { antogoApp: { updateState(): Promise<{ state: string; already?: boolean }> } }).antogoApp.updateState())).toMatchObject({ state: 'done', already: true });
+  expect(seen.filter((u) => u.startsWith('/Antogo.dmg')).length).toBe(2);
+  await again.app.close();
+  srv.close();
+
+  // A file that is not the one published is refused, and not kept.
+  const seen2: string[] = [];
+  const bad = await releaseStandIn(file, seen2, true);
+  const b = await launch({ update: `http://127.0.0.1:${(bad.address() as { port: number }).port}/latest` });
+  await b.page.evaluate(() => (window as unknown as { antogoApp: { updateStart(): Promise<boolean> } }).antogoApp.updateStart());
+  await expect.poll(() => b.page.evaluate(() => (window as unknown as { antogoApp: { updateState(): Promise<{ state: string; why?: string }> } }).antogoApp.updateState()), { timeout: 20_000 }).toMatchObject({ state: 'failed', why: 'the file that arrived was not the one published' });
+  expect(readdirSync(b.downloads)).toEqual([]);
+  await b.app.close();
+  bad.close();
 });

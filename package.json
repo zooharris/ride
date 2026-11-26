@@ -53,6 +53,7 @@
       "dist/**",
       "desktop/main.cjs",
       "desktop/preload.cjs",
+      "desktop/update.cjs",
       "!**/node_modules/**"
     ],
     "npmRebuild": false,
@@ -72,7 +73,8 @@
       "icon": "desktop/icon.png",
       "artifactName": "Antogo.${ext}",
       "extendInfo": {
-        "NSBluetoothAlwaysUsageDescription": "Antogo connects to your smart trainer, power meter, heart-rate strap and other sensors when you ride indoors."
+        "NSBluetoothAlwaysUsageDescription": "Antogo connects to your smart trainer, power meter, heart-rate strap and other sensors when you ride indoors.",
+        "NSDownloadsFolderUsageDescription": "Antogo saves the files you download or export, and a newer version of itself when you ask for one, in your Downloads folder."
       },
       "entitlements": "desktop/entitlements.mac.plist",
       "entitlementsInherit": "desktop/entitlements.mac.plist",

@@ -11,4 +11,9 @@ contextBridge.exposeInMainWorld('antogoApp', {
   onBluetooth: (fn) => { ipcRenderer.on('bt:devices', (_e, list) => fn(list)); },
   chooseBluetooth: (id) => ipcRenderer.invoke('bt:choose', id),
   openEngineNotices: () => ipcRenderer.invoke('notices:engine'),
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateStart: () => ipcRenderer.invoke('update:start'),
+  updateCancel: () => ipcRenderer.invoke('update:cancel'),
+  updateOpen: () => ipcRenderer.invoke('update:open'),
+  onUpdate: (fn) => { ipcRenderer.on('update:state', (_e, s) => fn(s)); },
 });

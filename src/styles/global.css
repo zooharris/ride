@@ -2600,3 +2600,11 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .pp .pl-dev-none { font-size: 12.5px; }
   .pp .pl-dev { padding: 3px 8px; }
 }
+
+/* The Mac app's own download of a newer version (26 Nov 2026): the words, and a bar that fills as it arrives. */
+.mac-update-words { flex: 1 1 260px; min-width: 0; }
+.mac-update-bar { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.mac-update-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); transition: width .25s linear; }
+.mac-update-bar.unknown i { width: 30%; animation: mac-update-slide 1.2s ease-in-out infinite alternate; }
+@keyframes mac-update-slide { from { margin-left: 0; } to { margin-left: 70%; } }
+@media (prefers-reduced-motion: reduce) { .mac-update-bar i { transition: none; } .mac-update-bar.unknown i { animation: none; } }

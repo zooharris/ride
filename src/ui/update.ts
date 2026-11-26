@@ -3,7 +3,7 @@
  * it until the rider says Reload, so a sync never runs half on old code
  * without the rider knowing a newer version is there.
  */
-import { appKind, inApp, MAC_DOWNLOAD, WEB_ADDRESS } from '../shell';
+import { appKind, appUpdate, inApp, MAC_DOWNLOAD, WEB_ADDRESS } from '../shell';
 
 let ready = false;
 const listeners = new Set<() => void>();
@@ -22,9 +22,10 @@ export function onUpdateReady(fn: () => void): () => void { listeners.add(fn); r
  */
 let applying = false;
 export async function applyUpdate(): Promise<void> {
-  // The installed app: the newest file opens in the rider's browser to download; nothing here changes by itself.
   if (appKind() === 'ios') return;   // iPhone and iPad: new versions arrive through TestFlight or the App Store
-  if (inApp()) { window.open(MAC_DOWNLOAD, '_blank'); return; }
+  // The Mac app downloads the newer file itself, once, and says how far it has got (26 Nov 2026). An older copy of
+  // the app, without that, hands the link to the rider's browser as before.
+  if (inApp()) { if (appUpdate.can()) await appUpdate.start(); else window.open(MAC_DOWNLOAD, '_blank'); return; }
   if (applying) return;
   applying = true;
   const reg = registration;

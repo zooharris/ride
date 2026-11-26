@@ -14,6 +14,9 @@ import { CHAR, SERVICE } from './player/ble/gatt';
  * native plugin inside the iOS shell (ios/App/App/AntogoNative.swift), wrapped below in the same shape, so the pages
  * use one interface for both.
  */
+/** How the Mac app's own download of a newer version stands. */
+export interface MacUpdate { state: 'idle' | 'starting' | 'downloading' | 'checking' | 'done' | 'failed'; name?: string; received?: number; total?: number; why?: string; already?: boolean }
+
 interface AppSide {
   kind: 'mac' | 'ios';
   garminFetch(url: string, init?: NetInit): Promise<NetReply>;
@@ -25,6 +28,12 @@ interface AppSide {
   keyUnreadable?(): Promise<boolean>;
   onBluetooth?(fn: (found: FoundDevice[]) => void): void;
   chooseBluetooth?(id: string): Promise<boolean>;
+  /** Mac: a newer Antogo downloaded by the app itself (26 Nov 2026): how it stands, start, cancel, open the file, and be told as it goes. */
+  updateState?(): Promise<MacUpdate>;
+  updateStart?(): Promise<boolean>;
+  updateCancel?(): Promise<boolean>;
+  updateOpen?(): Promise<boolean>;
+  onUpdate?(fn: (s: MacUpdate) => void): void;
   /** Mac: open the full list of the engine's (Chromium's) licences in the rider's browser. */
   openEngineNotices?(): Promise<boolean>;
   /** iPhone and iPad: hand files to the system's share and save sheet. False when the rider closed it without saving. */
@@ -133,6 +142,29 @@ export const appKind = (): 'mac' | 'ios' | null => side()?.kind ?? null;
 
 /** What Antogo runs on, in words for the pages: "this computer" in the Mac app, "this iPhone" or "this iPad" in the iOS app, "this device" in a browser (which may be either). */
 export const thisDevice = (): string => (appKind() === 'ios' ? (/iPad/.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) ? 'this iPad' : 'this iPhone') : appKind() === 'mac' ? 'this computer' : 'this device');
+
+/**
+ * The Mac app's own download of a newer version. `can` is false in a browser, on iPhone and iPad, and in a copy of
+ * the Mac app from before 26 Nov 2026, which hands the link to the rider's browser as it always did.
+ */
+const updateWatchers = new Set<(s: MacUpdate) => void>();
+let updateNow: MacUpdate = { state: 'idle' };
+let updateWired = false;
+function wireUpdate(): void {
+  const a = side();
+  if (updateWired || !a?.onUpdate) return;
+  updateWired = true;
+  a.onUpdate((s) => { updateNow = s; updateWatchers.forEach((w) => w(s)); });
+  void a.updateState?.().then((s) => { if (s && updateNow.state === 'idle') { updateNow = s; updateWatchers.forEach((w) => w(s)); } }).catch(() => undefined);
+}
+export const appUpdate = {
+  can: (): boolean => typeof side()?.updateStart === 'function',
+  now: (): MacUpdate => { wireUpdate(); return updateNow; },
+  watch: (fn: (s: MacUpdate) => void): (() => void) => { wireUpdate(); updateWatchers.add(fn); return () => { updateWatchers.delete(fn); }; },
+  start: async (): Promise<void> => { wireUpdate(); await side()?.updateStart?.(); },
+  cancel: async (): Promise<void> => { await side()?.updateCancel?.(); },
+  open: async (): Promise<boolean> => (await side()?.updateOpen?.()) ?? false,
+};
 
 /** Where the web version is published, and where the newest file of the Mac app is always found. */
 export const WEB_ADDRESS = 'https://zooharris.github.io/ride/';

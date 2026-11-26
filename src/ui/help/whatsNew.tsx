@@ -12,6 +12,7 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 export const WHATS_NEW: NewsEntry[] = [
   {
     id: '2026-11-26b', date: '26 November 2026, afternoon', items: [
+      { title: 'The Mac app downloads its own updates', text: 'When a newer version is ready, press Download once: the app fetches the file to your Downloads folder itself and shows how far it has got, with a Cancel. When the whole file has arrived and been checked, press Open. Nothing already in Downloads is replaced or removed.' },
       { title: 'The ride on a phone, one screen at a time', text: 'While you ride, a phone now shows three pages that each fit the screen, upright or on its side: Ride, Numbers and Workout. Swipe sideways between them, or press a page\'s name at the foot. Nothing sits below the fold.', help: 'riding' },
       { title: 'Before the ride, on one screen', text: 'On a phone the ride, your devices, how the ride runs and Start ride are all on one screen. Press the chart to see the steps, and press a device\'s box to choose or change it.', help: 'riding' },
     ],

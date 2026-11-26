@@ -6,6 +6,7 @@ const { app, BrowserWindow, protocol, net, ipcMain, shell, safeStorage, Menu, se
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const { createUpdater } = require('./update.cjs');
 
 const PAGES = path.join(__dirname, '..', 'dist');
 const HOME = 'app://antogo/ride/';
@@ -70,6 +71,18 @@ app.whenReady().then(() => {
   if (downloadsTo) session.defaultSession.on('will-download', (_e, item) => item.setSavePath(path.join(downloadsTo, item.getFilename())));
 
   const fromApp = (e) => { if (!e.senderFrame || !e.senderFrame.url.startsWith('app://antogo/')) throw new Error('not from the app'); };
+  // A newer Antogo is downloaded by the app itself, one at a time, and the pages are told how far it has got (26 Nov 2026).
+  const updater = createUpdater({
+    net,
+    folder: () => downloadsTo || app.getPath('downloads'),
+    send: (s) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:state', s); },
+    openPath: (p) => shell.openPath(p),
+    test: !app.isPackaged && process.env.ANTOGO_UPDATE_LATEST ? { latest: process.env.ANTOGO_UPDATE_LATEST } : {},
+  });
+  ipcMain.handle('update:state', (e) => { fromApp(e); return updater.state(); });
+  ipcMain.handle('update:start', (e) => { fromApp(e); void updater.start(); return true; });
+  ipcMain.handle('update:cancel', (e) => { fromApp(e); return updater.cancel(); });
+  ipcMain.handle('update:open', (e) => { fromApp(e); return updater.open(); });
   ipcMain.handle('garmin:fetch', async (e, url, init) => {
     fromApp(e);
     if (typeof url !== 'string' || !url.startsWith(GARMIN)) throw new Error('Only Garmin can be asked this way.');

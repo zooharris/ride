@@ -23,7 +23,8 @@ import { applyAthleteNumbers, numbersToPush, pushAthleteNumbers, testConnection,
 import { runSelfTest, type CheckResult } from '../../sync/selfTest';
 import { APP_NAME, APP_SHORT_NAME } from '../../appName';
 import { applyUpdate, buildTime, checkForUpdate, updateReady } from '../update';
-import { appKind, inApp, MAC_DOWNLOAD, thisDevice } from '../../shell';
+import { appKind, appUpdate, inApp, MAC_DOWNLOAD, thisDevice } from '../../shell';
+import { MacUpdateLine } from '../UpdateBanner';
 import { ZONE_VAR } from '../Profile';
 import { toast } from '../Toast';
 import { PageHead } from '../PageHead';
@@ -824,12 +825,12 @@ function UpdateCheck() {
       <p class="faint small" style="margin:0">This version of {APP_NAME} was built {buildTime()}.</p>
       {state === 'ready'
         ? inApp()
-          ? <button class="btn primary sm" onClick={() => { void applyUpdate(); }}>A newer version is ready: download</button>
+          ? (appUpdate.can() ? <MacUpdateLine compact /> : <button class="btn primary sm" onClick={() => { void applyUpdate(); }}>A newer version is ready: download</button>)
           : <button class="btn primary sm" disabled={updating} onClick={() => { setUpdating(true); void applyUpdate(); }}>{updating ? 'Updating…' : 'A newer version is ready: reload'}</button>
         : <button class="btn sm" disabled={state === 'checking'} onClick={check}>{state === 'checking' ? 'Checking…' : 'Check for updates'}</button>}
       {state === 'latest' && <span class="small muted">You have the latest version.</span>}
       <p class="faint small" style="margin:0;flex-basis:100%">{inApp()
-        ? <>This is {APP_SHORT_NAME} for the Mac: every page is inside the app, and a newer version is a new file to download. Its data is its own, separate from any browser's: Back up everything in a browser and Restore from a backup here brings yours across.</>
+        ? <>This is {APP_SHORT_NAME} for the Mac: every page is inside the app, and a newer version is a new file, which the app downloads to your Downloads folder when you ask. Its data is its own, separate from any browser's: Back up everything in a browser and Restore from a backup here brings yours across.</>
         : <><a href={MAC_DOWNLOAD} target="_blank" rel="noopener">Download {APP_SHORT_NAME} for the Mac</a> · the same pages in an app you download, which can also use a Garmin personal key. See Help, Settings.</>}</p>
     </div>
   );

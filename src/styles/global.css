@@ -2749,3 +2749,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .pp-few { display: inline; }
   .rc-others .btn { padding: 0 4px; font-size: 12.5px; }
 }
+/* A phone on its side: a narrow chart's last two times would run together, so the one before the last gives way. */
+@media (orientation: landscape) {
+  .pp .pl-chart-x:has(span:nth-child(5)) span:nth-last-child(2) { display: none; }
+  .rc .rd-chart-x:has(span:nth-child(5)) span:nth-last-child(2) { display: none; }
+}

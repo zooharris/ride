@@ -224,6 +224,21 @@ jobs:
           name: ios-report
           path: ios-report
           retention-days: 14
+      # The pictures are also kept on a branch of their own (one commit, replaced each time), where they can be
+      # fetched and looked at before a phone build is called ready (26 Nov 2026). Never stops a publish.
+      - name: The simulator's pictures, kept where they can be looked at
+        if: always()
+        continue-on-error: true
+        run: |
+          rm -rf /tmp/pictures && mkdir -p /tmp/pictures && cp -R ios-report/. /tmp/pictures/
+          cd /tmp/pictures
+          for f in *.png; do sips -Z 1500 "$f" >/dev/null; done
+          git init -q -b sim-pictures
+          git config user.name "Antogo publishing"
+          git config user.email "publishing@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Pictures from Apple's simulator: ${{ github.ref_name }}, run ${{ github.run_number }}"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" sim-pictures
       - name: Archive for the App Store
         run: |
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \

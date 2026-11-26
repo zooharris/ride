@@ -18,6 +18,7 @@ import CoreBluetooth
    connecting, reading, writing and listening. Apple's web engine has no Bluetooth, so the pages reach it here; the
    pages decide what to say to a device (src/player/ble), this side only carries it.
  - keepAwake: keeps the screen on during a ride, and lets it dim again afterwards.
+ - tour / turn: the same test build's tour of the phone's ride screens, and the screen turned for it.
  - selfTest / report: only in the test build the publishing machine runs in Apple's simulator (never in the app riders
    get): whether a self-test was asked for, and where its result is written.
  */
@@ -83,6 +84,8 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "keepAwake", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "selfTest", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "report", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "tour", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "turn", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: the services a rider connects, and nothing else
@@ -276,6 +279,35 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         let safe = (name as NSString).lastPathComponent
         do { try text.write(to: docs.appendingPathComponent(safe), atomically: true, encoding: .utf8); call.resolve() }
         catch { call.reject(error.localizedDescription) }
+        #else
+        call.reject("Not in this build.")
+        #endif
+    }
+
+    // MARK: the tour of the phone's ride screens (test build only): asked for or not, and the screen turned for it
+
+    @objc func tour(_ call: CAPPluginCall) {
+        #if DEBUG
+        call.resolve(["asked": ProcessInfo.processInfo.environment["ANTOGO_TOUR"] == "1"])
+        #else
+        call.resolve(["asked": false])
+        #endif
+    }
+
+    @objc func turn(_ call: CAPPluginCall) {
+        #if DEBUG
+        let side = call.getBool("side") ?? false
+        onMain {
+            guard let scene = self.bridge?.viewController?.view.window?.windowScene else { call.reject("No window to turn."); return }
+            if #available(iOS 16.0, *) {
+                let mask: UIInterfaceOrientationMask = side ? .landscapeRight : .portrait
+                scene.requestGeometryUpdate(UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)) { _ in }
+                self.bridge?.viewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                call.resolve()
+            } else {
+                call.reject("Turning the screen needs iOS 16.")
+            }
+        }
         #else
         call.reject("Not in this build.")
         #endif

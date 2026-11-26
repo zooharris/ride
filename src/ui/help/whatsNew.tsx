@@ -11,6 +11,12 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26c', date: '26 November 2026, evening', items: [
+      { title: 'The phone\'s ride screens, put right', text: 'On an iPhone the screen before a ride now fits every size of iPhone, whatever it is waiting for. Held on its side, each screen sits centred, with the same margin above as below, and no longer leaves the notch\'s space twice. Labels are no longer cut off. On its side, the Workout page gives most of its width to the chart, with the trainer\'s controls on one line beneath it.', help: 'riding' },
+      { title: 'Ride complete, on a phone', text: 'After a ride a phone now shows two pages that each fit the screen: Summary, with the ride\'s numbers, its chart, how it felt and Save ride; and Details, with each effort and what the cues said. Swipe between them, or press a page\'s name at the foot.', help: 'riding' },
+    ],
+  },
+  {
     id: '2026-11-26b', date: '26 November 2026, afternoon', items: [
       { title: 'The Mac app downloads its own updates', text: 'When a newer version is ready, press Download once: the app fetches the file to your Downloads folder itself and shows how far it has got, with a Cancel. When the whole file has arrived and been checked, press Open. Nothing already in Downloads is replaced or removed.' },
       { title: 'The ride on a phone, one screen at a time', text: 'While you ride, a phone now shows three pages that each fit the screen, upright or on its side: Ride, Numbers and Workout. Swipe sideways between them, or press a page\'s name at the foot. Nothing sits below the fold.', help: 'riding' },

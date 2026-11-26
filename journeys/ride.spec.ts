@@ -1,35 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
-import { go, looksRight, makePlan, setUp, simulatedTrainer } from './rider';
+import { go, looksRight, makePlan, openFirstRide, setUp, simulatedTrainer } from './rider';
 
 /**
  * Journey 2: Today's session in the ride player on the simulated trainer, ridden to the end, saved, and done.
  * The clock is run forward so an hour's ride takes seconds.
  */
-/**
- * Open the first session on the calendar that is a ride for the trainer. Which session comes first depends on the day
- * of the week the journey runs (on a Monday the plan opens with a mobility session), so the first link is not assumed
- * to be a ride, nor the first ride to be an ordinary one (23 Nov 2026).
- */
-async function openFirstRide(page: Page, notDone: boolean): Promise<void> {
-  const links = page.locator('a[href*="#/workout/"]');
-  await expect(links.first()).toBeVisible();
-  const all = notDone ? links.filter({ hasNot: page.locator('.done') }) : links;
-  const hrefs = [...new Set(await all.evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute('href') ?? '')))].filter(Boolean);
-  for (const h of hrefs.slice(0, 12)) {
-    await go(page, h);
-    const ride = page.getByRole('link', { name: 'Ride indoors on the trainer' }).first();
-    // Give the session's page time to appear: on a busy machine a ride's page that was slow to draw was passed over
-    // for a later session, which could be one the simulated trainer is not offered for (23 Nov 2026).
-    await ride.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-    if (!(await ride.isVisible().catch(() => false))) continue;
-    // A test (the ramp test, say) is ridden differently and asks for a power meter by name: these journeys ride an
-    // ordinary session, so a test is passed over. On a Monday the plan's first ride is its test (23 Nov 2026).
-    if (/\btest\b/i.test(await page.getByRole('heading', { level: 1 }).first().innerText().catch(() => ''))) continue;
-    return;
-  }
-  throw new Error('No ride for the trainer among the first sessions on the calendar.');
-}
-
 test('ride the day\'s session on the simulated trainer, save it, see it done', async ({ page }, info) => {
   // The slowest journey: run on a phone at night, a tablet and a laptop by day only.
   test.skip(!['phone-night', 'tablet-day', 'laptop-day'].includes(info.project.name), 'ridden on three sizes only');
@@ -71,9 +46,9 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   // Far enough to count as the session (five minutes and a fifth of the ride), then ended early, as a rider may.
   await page.clock.runFor(Math.max(6 * 60, rideSeconds / 5 + 60) * 1000);
   await page.getByRole('button', { name: 'End ride' }).first().click();
-  await expect(page.getByRole('button', { name: 'Save ride' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
   await looksRight(s, info, 'The summary');
-  await page.getByRole('button', { name: 'Save ride' }).click();
+  await page.getByRole('button', { name: 'Save ride' }).first().click();
   await expect(page.locator('.rd-saved')).toBeVisible({ timeout: 20_000 });
   await looksRight(s, info, 'Saved');
   // The ride is on today, done.
@@ -137,7 +112,7 @@ test('a rider with no data service saves rides from the player', async ({ page }
     await page.getByRole('button', { name: 'Start ride' }).click();
     await page.clock.runFor(minutes * 60_000);
     await page.getByRole('button', { name: 'End ride' }).first().click();
-    await page.getByRole('button', { name: 'Save ride' }).click();
+    await page.getByRole('button', { name: 'Save ride' }).first().click();
     await expect(page.locator('.rd-saved')).toBeVisible({ timeout: 20_000 });
     const text = (await page.locator('.rd-saved').innerText()).trim();
     if (minutes < 5) await looksRight(s, info, 'Saved, under five minutes'); else await looksRight(s, info, 'Saved, with no data service');

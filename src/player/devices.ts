@@ -104,6 +104,8 @@ export function pillFor(sensors: Sensor[], ready: boolean): { ok: boolean; text:
 }
 
 export const SLOT_CAPTION: Record<Slot, string> = { trainer: 'Smart trainer', watts: 'Power', bpm: 'Heart rate', cadence: 'Cadence', speedKmh: 'Speed', ve: 'Breathing strap' };
+/** A shorter name for a box too narrow for the whole one (a phone on its side). */
+export const SLOT_BRIEF: Partial<Record<Slot, string>> = { trainer: 'Trainer', ve: 'Breathing' };
 export const KIND_NOUN: Record<SensorKind, string> = { trainer: 'Smart trainer', power: 'Power meter', hr: 'Heart-rate monitor', csc: 'Speed or cadence sensor', breath: 'Breathing strap' };
 export const FIND_WORDS: Record<Slot, string> = {
   trainer: 'Find a smart trainer nearby…',

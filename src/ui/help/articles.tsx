@@ -265,7 +265,7 @@ export const ARTICLES: Article[] = [
         ) : (
           <Note title="In a browser">The ride carries on in a tab that is not in front, keeping time by your devices' readings. Do not close the tab.</Note>
         )}
-        {phoneScreen() && <Note title="On a phone, the ride is three pages">Ride, Numbers and Workout each fit the screen, upright or on its side. Swipe sideways, or press a page's name at the foot. The trainer's controls and Skip this step are on the Workout page.</Note>}
+        {phoneScreen() && <Note title="On a phone, the ride is three pages">Ride, Numbers and Workout each fit the screen, upright or on its side. Swipe sideways, or press a page's name at the foot. The trainer's controls and Skip this step are on the Workout page. When the ride ends, Ride complete is two pages in the same way: Summary, where you save the ride, and Details, with each effort and what the cues said.</Note>}
         <Note kind="tip">With auto-pause on, the ride pauses when you stop pedalling and carries on when you start again.</Note>
       </>
     ),

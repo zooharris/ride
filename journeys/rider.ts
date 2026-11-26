@@ -110,3 +110,29 @@ export async function simulatedTrainer(page: Page): Promise<void> {
   await field.getByRole('button', { name: 'On', exact: true }).click();
   await expect(field.getByRole('button', { name: 'On', exact: true })).toHaveAttribute('aria-pressed', 'true');
 }
+
+/**
+ * Open the first session on the calendar that is a ride for the trainer. Which session comes first depends on the day
+ * of the week the journey runs (on a Monday the plan opens with a mobility session), so the first link is not assumed
+ * to be a ride, nor the first ride to be an ordinary one (23 Nov 2026).
+ */
+export async function openFirstRide(page: Page, notDone: boolean): Promise<void> {
+  const links = page.locator('a[href*="#/workout/"]');
+  await expect(links.first()).toBeVisible();
+  const all = notDone ? links.filter({ hasNot: page.locator('.done') }) : links;
+  const hrefs = [...new Set(await all.evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute('href') ?? '')))].filter(Boolean);
+  for (const h of hrefs.slice(0, 12)) {
+    await go(page, h);
+    const ride = page.getByRole('link', { name: 'Ride indoors on the trainer' }).first();
+    // Give the session's page time to appear: on a busy machine a ride's page that was slow to draw was passed over
+    // for a later session, which could be one the simulated trainer is not offered for (23 Nov 2026).
+    await ride.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
+    if (!(await ride.isVisible().catch(() => false))) continue;
+    // A test (the ramp test, say) is ridden differently and asks for a power meter by name: these journeys ride an
+    // ordinary session, so a test is passed over. On a Monday the plan's first ride is its test (23 Nov 2026).
+    if (/\btest\b/i.test(await page.getByRole('heading', { level: 1 }).first().innerText().catch(() => ''))) continue;
+    return;
+  }
+  throw new Error('No ride for the trainer among the first sessions on the calendar.');
+}
+

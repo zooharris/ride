@@ -17,7 +17,7 @@ import { cleanName } from '../../player/devices';
 import { breathBand, cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
 import { breathTrend } from '../../player/breathControl';
 import { CUE_WORDS, hrSlot, zoneWords } from '../../player/hrCue';
-import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type Totals } from '../../player/summary';
+import { isEffort, observation, observationHr, stepStats, timeInZone, totals, type StepStats, type Totals } from '../../player/summary';
 import { rampResult, testResultKey, twentyMinResult, withActions, type TestResult } from '../../player/tests';
 import { rampContextFor } from '../maxHrSeen';
 import { TestResults } from '../TestResults';
@@ -242,8 +242,8 @@ function PhoneSteps({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
         return (
           <div key={s.index} role="listitem" class={`rp-step ${state}`}>
             <i style={`background:${t.colour}`} />
-            <b>{s.name}</b>
-            <span class="num">{mmss(s.seconds)} · {t.text}</span>
+            <div class="rp-step-n"><b>{s.name}</b>{state === 'now' && <small class="num">{t.text} · now</small>}</div>
+            <span class="num">{mmss(s.seconds)}<u> · {t.text}</u></span>
             <em>{state === 'done' ? 'Done' : state === 'now' ? 'Now' : ''}</em>
           </div>
         );
@@ -253,6 +253,34 @@ function PhoneSteps({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
 }
 
 interface Cell { label: string; value: string | number; unit?: string; note?: string; cls?: string }
+
+/** A phone's pages: a strip that snaps from one to the next, the page kept when the phone is turned. */
+function usePages(count: number) {
+  const pager = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(0);
+  const at = useRef(0);
+  at.current = page;
+  const turning = useRef(0);
+  const goTo = (i: number) => {
+    const el = pager.current;
+    if (!el) return;
+    setPage(i);
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
+  const onScroll = () => {
+    const el = pager.current;
+    if (!el || !el.clientWidth || Date.now() < turning.current) return;
+    const i = Math.max(0, Math.min(count - 1, Math.round(el.scrollLeft / el.clientWidth)));
+    if (i !== at.current) setPage(i);
+  };
+  useEffect(() => {
+    const keep = () => { const el = pager.current; if (el) el.scrollLeft = at.current * el.clientWidth; };
+    const turned = () => { turning.current = Date.now() + 500; keep(); setTimeout(keep, 120); setTimeout(keep, 400); };
+    addEventListener('resize', turned);
+    return () => removeEventListener('resize', turned);
+  }, []);
+  return { pager, page, goTo, onScroll };
+}
 
 function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
   const { sensors } = useSensors();
@@ -277,30 +305,7 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
   const avgVe = ves.length ? Math.round(ves.reduce((x, y) => x + y, 0) / ves.length) : undefined;
   const lost = sensors.filter((s) => s.status === 'lost');
 
-  // The pages: a strip that snaps, the page kept when the phone is turned.
-  const pager = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState(0);
-  const at = useRef(0);
-  at.current = page;
-  const turning = useRef(0);
-  const goTo = (i: number) => {
-    const el = pager.current;
-    if (!el) return;
-    setPage(i);
-    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
-  };
-  const onScroll = () => {
-    const el = pager.current;
-    if (!el || !el.clientWidth || Date.now() < turning.current) return;
-    const i = Math.max(0, Math.min(2, Math.round(el.scrollLeft / el.clientWidth)));
-    if (i !== at.current) setPage(i);
-  };
-  useEffect(() => {
-    const keep = () => { const el = pager.current; if (el) el.scrollLeft = at.current * el.clientWidth; };
-    const turned = () => { turning.current = Date.now() + 500; keep(); setTimeout(keep, 120); setTimeout(keep, 400); };
-    addEventListener('resize', turned);
-    return () => removeEventListener('resize', turned);
-  }, []);
+  const { pager, page, goTo, onScroll } = usePages(3);
 
   const dash = '—';
   const bpm = ride.live.bpm != null ? Math.round(ride.live.bpm) : undefined;
@@ -308,7 +313,7 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
   const speed = ride.live.speedKmh != null ? mph(ride.live.speedKmh, profile) : undefined;
   const lthrKnown = !isUnknown(profile, 'lthr');
   const st = step && !step.step.allOut ? ride.band.state : undefined;
-  const zoneWord = st === 'on' ? 'in zone' : st === 'under' ? 'below the zone' : st === 'over' ? 'above the zone' : undefined;
+  const zoneWord = st === 'on' ? 'in zone' : st === 'under' ? 'below zone' : st === 'over' ? 'above zone' : undefined;
 
   // The live readings in brief, for the pages that are not the Ride page.
   const first: Cell = byBreath ? { label: `Breathing${zoneWord && breathBand(step!, profile, e.scale) ? ` · ${zoneWord}` : ''}`, value: ride.veNow != null ? Math.round(ride.veNow) : dash, unit: 'L/min' }
@@ -411,7 +416,7 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
           {list && <PhoneSteps ride={ride} profile={profile} />}
           <div class="rp-ctl">
             {byBreath ? <BreathControls ride={ride} trainerOk={!!trainer} /> : byHr ? <HrControls ride={ride} trainerOk={!!trainer} /> : <PowerControls ride={ride} trainerOk={!!trainer} />}
-            {step && !step.ramp && <button class="btn quiet rp-skip" onClick={skipStep}>Skip this step ›</button>}
+            {step && !step.ramp && <button class="btn quiet rp-skip" aria-label="Skip this step ›" onClick={skipStep}><span>Skip<span class="rp-skip-more"> this step</span> ›</span></button>}
           </div>
         </section>
       </div>
@@ -494,7 +499,7 @@ function HrHero({ ride, profile, trainerOk, bare }: { ride: ActiveRide; profile:
   return (
     <section class="rd-card rd-hero">
       <div class="row between">
-        <span class="caption">Heart rate · {ride.setup.smoothing === 1 ? 'every second' : `${ride.setup.smoothing}-second average`}</span>
+        <span class="caption">Heart rate<span class="rd-smooth"> · {ride.setup.smoothing === 1 ? 'every second' : `${ride.setup.smoothing}-second average`}</span></span>
         {state && <span class={`rd-state ${state}`}>{state === 'on' ? 'In zone' : state === 'under' ? 'Below the zone' : 'Above the zone'}</span>}
       </div>
       <div class="rd-big num rd-hr">{bpm ?? '—'}<small>bpm</small></div>
@@ -560,7 +565,7 @@ function BreathHero({ ride, profile, trainerOk, bare }: { ride: ActiveRide; prof
   return (
     <section class="rd-card rd-hero">
       <div class="row between">
-        <span class="caption">Breathing · 30-second average</span>
+        <span class="caption">Breathing<span class="rd-smooth"> · 30-second average</span></span>
         {state && <span class={`rd-state ${state}`}>{state === 'on' ? 'In zone' : state === 'under' ? 'Below the zone' : 'Above the zone'}</span>}
       </div>
       <div class="rd-breath-pair rd-big-pair">
@@ -686,7 +691,7 @@ function Hero({ ride, profile, trainerOk, bare }: { ride: ActiveRide; profile: P
   return (
     <section class="rd-card rd-hero">
       <div class="row between">
-        <span class="caption">Power · {ride.setup.smoothing === 1 ? 'every second' : `${ride.setup.smoothing}-second average`}</span>
+        <span class="caption">Power<span class="rd-smooth"> · {ride.setup.smoothing === 1 ? 'every second' : `${ride.setup.smoothing}-second average`}</span></span>
         {state && <span class={`rd-state ${state}`}>{state === 'on' ? 'On target' : state === 'under' ? 'Under' : 'Over'}</span>}
       </div>
       <div class="rd-big num">{w ?? '—'}<small>W</small></div>
@@ -1001,6 +1006,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const short = !!workout && (rideSeconds(rec) < TRIVIAL_SECONDS || (!!want && rideSeconds(rec) < want * 0.2));
   const hasPower = t.avgPower != null;
   const when = new Date(rec.startMs);
+  const [phone] = useState(phoneScreen);
+  const { pager, page, goTo, onScroll } = usePages(2);
 
   const pick = async (n: number) => {
     const v = rpe === n ? undefined : n;
@@ -1032,11 +1039,11 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const rideChart = (
         <section class="rd-card rd-chartcard">
           <div class="rd-chart-head"><span class="caption">The ride</span>{byBreath ? <>
-            <span class="rd-key"><i class="ln br" />Your breathing, 30-second average</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Breathing target</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+            <span class="rd-key"><i class="ln br" />{phone ? 'Your breathing' : 'Your breathing, 30-second average'}</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{phone ? 'Target' : 'Breathing target'}</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
           </> : byHr ? <>
             <span class="rd-key"><i class="ln hr" />Your heart rate</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
           </> : <>
-            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target, coloured by zone</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
+            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{phone ? 'Target' : 'Target, coloured by zone'}</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
           </>}</div>
           <RideChart timeline={timeline} samples={rec.samples} profile={asRidden} by={by} />
         </section>
@@ -1047,6 +1054,140 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     clearRide();
     go('today');
   };
+
+  // The ride's six numbers (five where one has nothing to show), by what the ride was ridden by.
+  const load: Cell = { label: 'Training load', value: t.tss, unit: 'TSS', note: plannedStats ? `${plannedStats.tss} planned` : undefined };
+  const length: Cell = { label: 'Duration', value: clock(t.seconds) };
+  const avgHr: Cell = { label: 'Average heart rate', value: t.avgHr ?? '—', unit: 'bpm' };
+  const topHr: Cell = { label: 'Highest heart rate', value: t.maxHr ?? '—', unit: 'bpm' };
+  const avgPw: Cell = { label: 'Average power', value: t.avgPower ?? '—', unit: 'W' };
+  const far: Cell = { label: 'Distance', value: distText(t.distanceM, profile) };
+  const inZone = (label: string): Cell | undefined => zoneTime ? { label, value: clock(zoneTime.seconds), unit: zoneTime.share != null ? `· ${pct(zoneTime.share)}` : undefined } : undefined;
+  const ves = rec.samples.map((x) => x.ve).filter((x): x is number => x != null && x > 0);
+  const figs: Cell[] = (byBreath ? [length, load, { label: 'Average ventilation', value: ves.length ? Math.round(ves.reduce((x, y) => x + y, 0) / ves.length) : '—', unit: 'L/min' }, inZone('Time in breathing zone'), avgPw, avgHr]
+    : byHr ? [length, load, avgHr, inZone('Time in target zone') ?? topHr, hasPower ? avgPw : undefined, far]
+    : hasPower ? [length, load, { label: 'Normalized power', value: t.np ?? '—', unit: 'W' }, avgPw, avgHr, { label: 'Work done', value: t.kj ?? '—', unit: 'kJ' }]
+    : [length, load, far, topHr, avgHr, { label: 'Average cadence', value: t.avgCadence ?? '—', unit: 'rpm' }]).filter((c): c is Cell => !!c);
+  const figCard = (
+    <div class="rd-card rd-figs" style={`--n:${figs.length}`}>
+      {figs.map((c) => <div key={c.label}><span class="caption">{c.label}</span>{c.unit ? <span><b class="num">{c.value}</b><small> {c.unit}</small>{c.note && <small class="rd-fig-note"><i> · </i>{c.note}</small>}</span> : <b class="num">{c.value}</b>}</div>)}
+    </div>
+  );
+  const verdict = <>
+    {short ? <span class="pill">Too short to count as this workout: saved as a ride on its own</span>
+      : planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
+    {timeline.length > 0 && testKind !== 'ramp' && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
+  </>;
+  const whenWords = `${when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  // The efforts' columns: on a phone, three after the step's name, in fewer words.
+  const heads = byBreath ? (phone ? ['Effort', 'Ventilation', 'In zone', 'Heart rate'] : ['Step', 'Average ventilation', 'Time in breathing zone', 'Average power', 'Average heart rate'])
+    : byHr ? (phone ? ['Effort', 'Heart rate', 'In zone', 'Highest'] : ['Step', 'Average heart rate', 'Time in zone', 'Highest heart rate', ...(hasPower ? ['Average power'] : [])])
+    : phone ? ['Effort', 'Power', 'On target', 'Heart rate'] : ['Step', 'Average power', 'Time on target', 'Average heart rate', 'Highest heart rate'];
+  const good = (s: StepStats) => `num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`;
+  const share = (s: StepStats) => (s.onTarget != null ? pct(s.onTarget) : '—');
+  const w = (v?: number) => (v != null ? `${v} W` : '—');
+  const hr = (v?: number) => (v != null ? `${v} bpm` : '—');
+  const named = (s: StepStats, colour: string) => <td><i style={`background:${colour}`} />{s.step.name}{s.step.setNote ? <span class="faint"> · {s.step.setNote}</span> : null}</td>;
+  const efforts = work.length > 0 ? (
+    <>
+      <h2 class="pl-h2">{work.length === 1 ? 'The effort' : `The ${work.length === 2 ? 'two' : work.length === 3 ? 'three' : work.length} efforts`}</h2>
+      <table class="rd-table">
+        <thead><tr>{heads.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>{work.map((s) => (
+          <tr key={s.step.index}>
+            {byBreath ? <>
+              {named(s, breathZoneVar(breathBand(s.step, asRidden)?.zone ?? 1))}
+              <td class="num">{s.avgVe != null ? `${Math.round(s.avgVe)} L/min` : '—'}</td>
+              <td class={good(s)}>{share(s)}</td>
+              {!phone && <td class="num">{w(s.avgPower)}</td>}
+              <td class="num">{hr(s.avgHr)}</td>
+            </> : byHr ? <>
+              {named(s, ZONE_VAR[hrZoneOf(s.step, profile) - 1])}
+              <td class="num">{hr(s.avgHr)}</td>
+              <td class={good(s)}>{share(s)}</td>
+              <td class="num">{hr(s.maxHr)}</td>
+              {hasPower && !phone && <td class="num">{w(s.avgPower)}</td>}
+            </> : <>
+              {named(s, ZONE_VAR[s.step.zone - 1])}
+              <td class="num">{w(s.avgPower)}</td>
+              <td class={good(s)}>{share(s)}</td>
+              <td class="num">{hr(s.avgHr)}</td>
+              {!phone && <td class="num">{hr(s.maxHr)}</td>}
+            </>}
+          </tr>
+        ))}</tbody>
+      </table>
+    </>
+  ) : <><h2 class="pl-h2">The ride</h2><p class="muted">{timeline.length ? 'No hard efforts in this workout to compare.' : 'A free ride: no workout to compare against.'}</p></>;
+  const finding = note ? <div class="rd-note"><span class="pl-kind">↗</span><p>{note}</p></div> : null;
+  const cueLines = rec.cues?.lines.length ? rec.cues.lines.filter((l) => l.t <= rec.timerSeconds + 1) : [];
+  const cueTitle = `What the cues said${rec.cues?.by === 'ai' ? ', written for you by your AI' : ''}`;
+  const chips = (
+    <div class="rd-effort" role="group" aria-label="Effort from 1 to 10">
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} class={`chip${rpe === n ? ' on' : ''}`} aria-pressed={rpe === n} onClick={() => void pick(n)}>{n}</button>)}
+    </div>
+  );
+  const savedBox = (
+    <div class="rd-saved"><span class="rd-state on">{garmins ? "Your device's kept" : 'Saved'}</span><span class="small">{said || 'Your ride is saved.'}</span>
+      {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save Antogo's instead</button>}</div>
+  );
+  const saveWord = state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride';
+
+  // A phone (26 Nov 2026): two pages of one screen each, Summary and Details, swiped like the ride's own.
+  if (phone) {
+    const names = ['Summary', test ? 'Result' : 'Details'];
+    return (
+      <div class="player rp rc">
+        <div class="rp-pages" ref={pager} onScroll={onScroll}>
+          <section class="rp-page rc-sum" aria-label={names[0]}>
+            <div class="rc-top">
+              <div class="rc-head">
+                <p class="eyebrow"><span>{testKind ? 'Test complete' : 'Ride complete'}{recovered ? ', recovered' : ''}</span> · <span>{whenWords}</span></p>
+                <h1>{rec.name}</h1>
+                <div class="rc-pills">{verdict}</div>
+              </div>
+              {figCard}
+            </div>
+            {rideChart}
+            <div class="rc-act">
+              <div class="rd-card rc-feel">
+                <div class="rc-feel-head"><h2 class="pl-h2">How hard did that feel?</h2><span class="faint small">Optional</span></div>
+                {chips}
+                <div class="rd-effort-words faint small"><span>Very easy</span><span>All out</span></div>
+              </div>
+              {state === 'saved' ? savedBox : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
+              <div class="rc-others">
+                <button class="btn" onClick={() => downloadRide(rec)}>Download the file</button>
+                {state !== 'saved' && <button class="btn danger" onClick={() => void discard()}>Discard ride…</button>}
+                {state === 'waiting' && <button class="btn quiet" onClick={done}>Done for now</button>}
+                {state === 'saved' && <button class="btn primary" onClick={done}>Done</button>}
+              </div>
+              {state === 'waiting' && <p class="faint small rc-kept">The ride is kept on {thisDevice()} and tried again each time the app opens.</p>}
+            </div>
+          </section>
+          <section class={`rp-page rc-det${test || !cueLines.length ? ' one' : ''}`} aria-label={names[1]}>
+            <div class="rc-bar">
+              <div class="rp-title">
+                <div class="rp-name">{rec.name}</div>
+                <div class="rp-sub">{testKind ? 'Test complete' : 'Ride complete'} · {clock(t.seconds)} · {state === 'saved' ? 'saved' : 'not saved yet'}</div>
+              </div>
+              {state === 'saved' ? <button class="btn primary" onClick={done}>Done</button> : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
+            </div>
+            {test ? <div class="rd-card rc-eff"><TestResults result={test} profile={profile} onChange={changeTest} /></div> : <>
+              <div class="rd-card rc-eff">{efforts}{finding}</div>
+              {cueLines.length > 0 && <div class="rd-card rc-cues">
+                <h2 class="pl-h2">{cueTitle}</h2>
+                <ol>{cueLines.map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span><span>{l.text}</span></li>)}</ol>
+              </div>}
+            </>}
+          </section>
+        </div>
+        <nav class="rp-dots" aria-label="Pages">
+          {names.map((n, i) => <button key={n} class={page === i ? 'on' : ''} aria-current={page === i ? 'page' : undefined} onClick={() => goTo(i)}><i />{n}</button>)}
+        </nav>
+      </div>
+    );
+  }
 
   return (
     <div class="player">
@@ -1059,119 +1200,35 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
       <main class="pl-main rd-done">
         <section class="rd-done-head">
           <div class="rd-done-title">
-            <p class="eyebrow">{recovered ? 'Recovered ride · ' : ''}{when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>
+            <p class="eyebrow">{recovered ? 'Recovered ride · ' : ''}{whenWords}</p>
             <h1>{rec.name}</h1>
-            <div class="row" style="gap:8px;flex-wrap:wrap">
-              {short ? <span class="pill">Too short to count as this workout: saved as a ride on its own</span>
-                : planned && planned.date === rec.date ? <span class="rd-state on">Today's planned session</span> : workout ? <span class="pill">Goes on {rec.date === today() ? "today's" : 'its day\'s'} calendar as done</span> : null}
-              {timeline.length > 0 && testKind !== 'ramp' && <span class="pill">{doneSteps === timeline.length ? `All ${timeline.length} steps done` : `${doneSteps} of ${timeline.length} steps done`}</span>}
-            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">{verdict}</div>
           </div>
-          {byBreath ? (
-          <div class="rd-card rd-figs" style="grid-template-columns:repeat(6, minmax(0, 1fr))">
-            <div><span class="caption">Duration</span><b class="num">{clock(t.seconds)}</b></div>
-            <div><span class="caption">Training load</span><span><b class="num">{t.tss}</b><small>{plannedStats ? ` TSS · ${plannedStats.tss} planned` : ' TSS'}</small></span></div>
-            <div><span class="caption">Average ventilation</span><span><b class="num">{(() => { const v = rec.samples.map((x) => x.ve).filter((x): x is number => x != null && x > 0); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : '—'; })()}</b><small> L/min</small></span></div>
-            {zoneTime ? <div><span class="caption">Time in breathing zone</span><span><b class="num">{clock(zoneTime.seconds)}</b>{zoneTime.share != null && <small> · {pct(zoneTime.share)}</small>}</span></div> : <div />}
-            <div><span class="caption">Average power</span><span><b class="num">{t.avgPower ?? '—'}</b><small> W</small></span></div>
-            <div><span class="caption">Average heart rate</span><span><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></span></div>
-          </div>
-          ) : byHr ? (
-          <div class="rd-card rd-figs" style={`grid-template-columns:repeat(${hasPower ? 6 : 5}, minmax(0, 1fr))`}>
-            <div><span class="caption">Duration</span><b class="num">{clock(t.seconds)}</b></div>
-            <div><span class="caption">Training load</span><span><b class="num">{t.tss}</b><small>{plannedStats ? ` TSS · ${plannedStats.tss} planned` : ' TSS'}</small></span></div>
-            <div><span class="caption">Average heart rate</span><span><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></span></div>
-            {zoneTime ? <div><span class="caption">Time in target zone</span><span><b class="num">{clock(zoneTime.seconds)}</b>{zoneTime.share != null && <small> · {pct(zoneTime.share)}</small>}</span></div>
-              : <div><span class="caption">Highest heart rate</span><span><b class="num">{t.maxHr ?? '—'}</b><small> bpm</small></span></div>}
-            {hasPower && <div><span class="caption">Average power</span><span><b class="num">{t.avgPower}</b><small> W</small></span></div>}
-            <div><span class="caption">Distance</span><b class="num">{distText(t.distanceM, profile)}</b></div>
-          </div>
-          ) : (
-          <div class="rd-card rd-figs">
-            <div><span class="caption">Duration</span><b class="num">{clock(t.seconds)}</b></div>
-            <div><span class="caption">Training load</span><span><b class="num">{t.tss}</b><small>{plannedStats ? ` TSS · ${plannedStats.tss} planned` : ' TSS'}</small></span></div>
-            {hasPower ? <>
-              <div><span class="caption">Normalized power</span><span><b class="num">{t.np}</b><small> W</small></span></div>
-              <div><span class="caption">Average power</span><span><b class="num">{t.avgPower}</b><small> W</small></span></div>
-            </> : <>
-              <div><span class="caption">Distance</span><b class="num">{distText(t.distanceM, profile)}</b></div>
-              <div><span class="caption">Highest heart rate</span><span><b class="num">{t.maxHr ?? '—'}</b><small> bpm</small></span></div>
-            </>}
-            <div><span class="caption">Average heart rate</span><span><b class="num">{t.avgHr ?? '—'}</b><small> bpm</small></span></div>
-            <div><span class="caption">{hasPower ? 'Work done' : 'Average cadence'}</span><span><b class="num">{hasPower ? t.kj : t.avgCadence ?? '—'}</b><small>{hasPower ? ' kJ' : ' rpm'}</small></span></div>
-          </div>
-          )}
+          {figCard}
         </section>
 
         {!test && rideChart}
         <section class="rd-done-grid">
           {test ? <div class="rd-card"><TestResults result={test} profile={profile} onChange={changeTest} /></div> : <div class="rd-card">
-            {work.length > 0 ? (
-              <>
-                <h2 class="pl-h2">{work.length === 1 ? 'The effort' : `The ${work.length === 2 ? 'two' : work.length === 3 ? 'three' : work.length} efforts`}</h2>
-                <table class="rd-table">
-                  {byBreath ? <>
-                  <thead><tr><th>Step</th><th>Average ventilation</th><th>Time in breathing zone</th><th>Average power</th><th>Average heart rate</th></tr></thead>
-                  <tbody>{work.map((s) => (
-                    <tr key={s.step.index}>
-                      <td><i style={`background:${breathZoneVar(breathBand(s.step, asRidden)?.zone ?? 1)}`} />{s.step.name}{s.step.setNote ? <span class="faint"> · {s.step.setNote}</span> : null}</td>
-                      <td class="num">{s.avgVe != null ? `${Math.round(s.avgVe)} L/min` : '—'}</td>
-                      <td class={`num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`}>{s.onTarget != null ? pct(s.onTarget) : '—'}</td>
-                      <td class="num">{s.avgPower != null ? `${s.avgPower} W` : '—'}</td>
-                      <td class="num">{s.avgHr != null ? `${s.avgHr} bpm` : '—'}</td>
-                    </tr>
-                  ))}</tbody>
-                  </> : byHr ? <>
-                  <thead><tr><th>Step</th><th>Average heart rate</th><th>Time in zone</th><th>Highest heart rate</th>{hasPower && <th>Average power</th>}</tr></thead>
-                  <tbody>{work.map((s) => (
-                    <tr key={s.step.index}>
-                      <td><i style={`background:${ZONE_VAR[hrZoneOf(s.step, profile) - 1]}`} />{s.step.name}{s.step.setNote ? <span class="faint"> · {s.step.setNote}</span> : null}</td>
-                      <td class="num">{s.avgHr != null ? `${s.avgHr} bpm` : '—'}</td>
-                      <td class={`num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`}>{s.onTarget != null ? pct(s.onTarget) : '—'}</td>
-                      <td class="num">{s.maxHr != null ? `${s.maxHr} bpm` : '—'}</td>
-                      {hasPower && <td class="num">{s.avgPower != null ? `${s.avgPower} W` : '—'}</td>}
-                    </tr>
-                  ))}</tbody>
-                  </> : <>
-                  <thead><tr><th>Step</th><th>Average power</th><th>Time on target</th><th>Average heart rate</th><th>Highest heart rate</th></tr></thead>
-                  <tbody>{work.map((s) => (
-                    <tr key={s.step.index}>
-                      <td><i style={`background:${ZONE_VAR[s.step.zone - 1]}`} />{s.step.name}{s.step.setNote ? <span class="faint"> · {s.step.setNote}</span> : null}</td>
-                      <td class="num">{s.avgPower != null ? `${s.avgPower} W` : '—'}</td>
-                      <td class={`num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`}>{s.onTarget != null ? pct(s.onTarget) : '—'}</td>
-                      <td class="num">{s.avgHr != null ? `${s.avgHr} bpm` : '—'}</td>
-                      <td class="num">{s.maxHr != null ? `${s.maxHr} bpm` : '—'}</td>
-                    </tr>
-                  ))}</tbody>
-                  </>}
-                </table>
-              </>
-            ) : <><h2 class="pl-h2">The ride</h2><p class="muted">{timeline.length ? 'No hard efforts in this workout to compare.' : 'A free ride: no workout to compare against.'}</p></>}
-            {note && <div class="rd-note"><span class="pl-kind">↗</span><p>{note}</p></div>}
-            {rec.cues?.lines.length ? (
+            {efforts}
+            {finding}
+            {cueLines.length > 0 && (
               <details class="rd-cues">
-                <summary class="small">What the cues said{rec.cues.by === 'ai' ? ', written for you by your AI' : ''}</summary>
-                <ol class="small">{rec.cues.lines.filter((l) => l.t <= rec.timerSeconds + 1).map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span> {l.text}</li>)}</ol>
+                <summary class="small">{cueTitle}</summary>
+                <ol class="small">{cueLines.map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span> {l.text}</li>)}</ol>
               </details>
-            ) : null}
+            )}
           </div>}
 
           <div class="rd-card rd-save">
             <div>
               <h2 class="pl-h2">How hard did that feel?</h2>
               <p class="faint small" style="margin:2px 0 10px">Optional. The coach uses it alongside your numbers.</p>
-              <div class="rd-effort" role="group" aria-label="Effort from 1 to 10">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} class={`chip${rpe === n ? ' on' : ''}`} aria-pressed={rpe === n} onClick={() => void pick(n)}>{n}</button>)}
-              </div>
+              {chips}
               <div class="rd-effort-words faint small"><span>Very easy</span><span>All out</span></div>
             </div>
             <div class="rd-grow" />
-            {state === 'saved' ? (
-              <div class="rd-saved"><span class="rd-state on">{garmins ? "Your device's kept" : 'Saved'}</span><span class="small">{said || 'Your ride is saved.'}</span>
-                {garmins && <button class="btn quiet sm" onClick={() => void ours()}>Save Antogo's instead</button>}</div>
-            ) : (
-              <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride'}</button>
-            )}
+            {state === 'saved' ? savedBox : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
             <div class="row" style="gap:10px;flex-wrap:wrap">
               <button class="btn" style="flex:1 1 auto" onClick={() => downloadRide(rec)}>Download the ride file</button>
               {state !== 'saved' && <button class="btn danger" style="flex:1 1 auto" onClick={() => void discard()}>Discard ride…</button>}

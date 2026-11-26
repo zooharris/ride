@@ -31,7 +31,7 @@ import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSe
 import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
 import { breathBlocked, chooseBreathMode, chooseFreeMode, chooseMode } from '../../player/mode';
 import { breathZones } from '../../engine/zones';
-import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
+import { BREATH_OPTIONAL, BREATH_QUIET, cleanName, FIND_KIND, FIND_WORDS, KIND_NOUN, optionsFor, pillFor, SLOT_BRIEF, SLOT_CAPTION, slotView, WAKE, type Slot } from '../../player/devices';
 import { toast } from '../Toast';
 import { miles } from '../../engine/units';
 import { sameSessionName } from '../../engine/units';
@@ -268,7 +268,7 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
     const beeps = <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button>;
     return (
       <>
-        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth on ${thisDevice()} (check that it is turned on and allowed for ${APP_SHORT_NAME} in the Settings app): for now only the simulated sensors are available.` : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth (check it is on, and allowed for ${APP_SHORT_NAME}, in the Settings app): simulated sensors only.` : "This browser can't reach Bluetooth: only the simulated sensors are available."}</div>}
         <main class="pp">
           <div class="pp-ride pl-workout">
             <div class="pp-head">
@@ -577,7 +577,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
   if (phone) {
     return (
       <>
-        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth on ${thisDevice()} (check that it is turned on and allowed for ${APP_SHORT_NAME} in the Settings app): for now only the simulated sensors are available.` : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth (check it is on, and allowed for ${APP_SHORT_NAME}, in the Settings app): simulated sensors only.` : "This browser can't reach Bluetooth: only the simulated sensors are available."}</div>}
         <main class="pp">
           <div class="pp-ride pl-workout">
             <div class="pp-head">
@@ -734,7 +734,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
     return (
       <div key={slot} class="menu pl-devcell" data-slot={slot}>
         <button class={`pl-dev ${v.state}`} aria-haspopup="menu" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : slot)}>
-          <span class="pl-dev-k">{SLOT_CAPTION[slot]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
+          <span class="pl-dev-k">{SLOT_BRIEF[slot] ? <><span class="full">{SLOT_CAPTION[slot]}</span><span class="brief">{SLOT_BRIEF[slot]}</span></> : SLOT_CAPTION[slot]}<span class="pl-dev-chev" aria-hidden="true">⌄</span></span>
           {v.state === 'connected' && <>
             <span class="pl-dev-name">{name}</span>
             {slot === 'trainer' && <span class={`pl-dev-ctl${d?.controllable ? '' : ' off'}`} title={d?.controllable ? 'The player sets the resistance' : 'Another app has the trainer, or it does not take control from the browser'}>{d?.controllable ? 'In control' : 'Not in control'}</span>}
@@ -754,7 +754,7 @@ function Ready({ sensors, sources, profile, sim, bt, allSet, open, setOpen }: { 
           {v.state === 'off' && <span class="pl-dev-none">None for this ride</span>}
           {v.state === 'empty' && <>
             <span class="pl-dev-none">Not connected</span>
-            {v.lastUsed ? <span class="pl-dev-hint">Last used: {cleanName(v.lastUsed)}</span> : slot === 've' ? <span class="pl-dev-hint">{BREATH_OPTIONAL}</span> : null}
+            {v.lastUsed ? <span class="pl-dev-hint">Last used: {cleanName(v.lastUsed)}</span> : slot === 've' ? <span class="pl-dev-hint"><span class="full">{BREATH_OPTIONAL}</span><span class="brief">Optional</span></span> : null}
           </>}
           <span class="pl-dev-act">{v.state === 'connected' || v.state === 'waiting' ? 'Change…' : 'Choose…'}</span>
         </button>

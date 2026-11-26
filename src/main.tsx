@@ -41,5 +41,7 @@ initTheme();
 startGarmin();
 // iPhone and iPad: the self-test the publishing machine asks for in Apple's simulator (never in the app riders get).
 if (appKind() === 'ios') setTimeout(() => { void import('./selfTestIos').then((m) => m.runIosSelfTest()); }, 2500);
+// And the tour of the phone's ride screens it asks for there, for the pictures looked at before a phone build is called ready.
+if (appKind() === 'ios') setTimeout(() => { void import('./tourIos').then((m) => m.runIosTour()); }, 2500);
 // The installed app shows its own list for choosing a Bluetooth device, over whatever screen asked for one.
 render(<><App />{appBluetooth.can() && <BluetoothChooser />}<DevicesQuestion /><WhatsNewSheet /></>, document.getElementById('app')!);

@@ -3,11 +3,12 @@
 // It starts a stand-in for Garmin on this machine, installs the test build of the app in an iPhone and an iPad
 // simulator, opens it twice with the self-test asked for (the pages' side is src/selfTestIos.ts), reads the results
 // the app writes, and takes a picture of each screen. Anything that fails stops the iOS build being uploaded.
+// Then, on the iPhone, the app tours its own ride screens and a picture is taken of each (src/tourIos.ts).
 //
 //   node scripts/ios-selftest.mjs <path to App.app>
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const APP = process.argv[2];
@@ -60,6 +61,39 @@ async function waitFor(udid, name, seconds) {
   throw new Error(`${name} never appeared`);
 }
 
+const tourNotes = [];
+async function tour(d) {
+  run(['simctl', 'uninstall', d.udid, BUNDLE]);
+  run(['simctl', 'install', d.udid, APP]);
+  run(['simctl', 'launch', '--terminate-running-process', d.udid, BUNDLE], { SIMCTL_CHILD_ANTOGO_TOUR: '1' });
+  let docs = '';
+  const taken = new Set();
+  for (let t = 0; t < 600; t++) {
+    await sleep(500);
+    if (!docs) { try { docs = join(run(['simctl', 'get_app_container', d.udid, BUNDLE, 'data']).trim(), 'Documents'); } catch { continue; } }
+    if (!existsSync(docs)) continue;
+    for (const f of readdirSync(docs).filter((x) => /^antogo-tour-\d\d-/.test(x)).sort()) {
+      if (taken.has(f)) continue;
+      taken.add(f);
+      const stop = f.replace(/^antogo-tour-/, '').replace(/\.txt$/, '');
+      run(['simctl', 'io', d.udid, 'screenshot', join(OUT, `tour-${stop}.png`)]);
+      let found = {};
+      try { found = JSON.parse(readFileSync(join(docs, f), 'utf8')); } catch { /* still being written */ }
+      const faults = found.faults ?? [];
+      tourNotes.push(`${stop}: ${found.width}x${found.height}, room ${JSON.stringify(found.room)}: ${faults.length ? faults.join('; ') : 'fits'}`);
+    }
+    const done = join(docs, 'antogo-tour-done.txt');
+    if (existsSync(done)) {
+      const r = JSON.parse(readFileSync(done, 'utf8'));
+      if (!r.ok) { run(['simctl', 'io', d.udid, 'screenshot', join(OUT, 'tour-stopped.png')]); tourNotes.push(`The tour stopped at ${r.where} (${r.at}): ${r.error}. On the screen: ${r.screen}`); }
+      else tourNotes.push(`The tour finished: ${r.stops} stops.`);
+      break;
+    }
+  }
+  if (!taken.size) tourNotes.push('The tour made no stops.');
+  run(['simctl', 'terminate', d.udid, BUNDLE]);
+}
+
 const results = [];
 for (const kind of ['iPhone', 'iPad']) {
   const d = pick(kind);
@@ -75,6 +109,12 @@ for (const kind of ['iPhone', 'iPad']) {
     results.push({ device: d.name, ...r });
     run(['simctl', 'terminate', d.udid, BUNDLE]);
   }
+  // The tour of the phone's ride screens (26 Nov 2026): a fresh copy of the app walks itself through the screen before
+  // a ride, the ride's three pages and Ride complete's two, upright and on its side, and a picture is taken at each
+  // stop. The pictures are for looking at before a phone build is called ready; nothing here stops a publish.
+  if (kind === 'iPhone') {
+    try { await tour(d); } catch (e) { tourNotes.push(`The tour did not finish: ${e.message}`); }
+  }
   run(['simctl', 'shutdown', d.udid]);
 }
 srv.close();
@@ -88,5 +128,8 @@ for (const r of results) {
   // An iPhone with a notch or island must show the page clear of it.
   if (/iPhone/.test(r.device) && r.insets && parseFloat(r.insets.top) <= 0) { console.log('  FAIL the page does not know where the notch is'); failed++; }
 }
+console.log(`\nThe tour of the phone's ride screens (pictures in ${OUT}/tour-*.png):`);
+for (const t of tourNotes) console.log(`  ${t}`);
+writeFileSync(join(OUT, 'tour.txt'), tourNotes.join('\n'));
 console.log(`\nGarmin stand-in was asked: ${seen.join(', ') || 'nothing'}`);
 process.exit(failed ? 1 : 0);

@@ -8,13 +8,14 @@ import { useEffect, useState } from 'preact/hooks';
 import { formatPace, parsePace } from '../../engine/run';
 import type { AppData } from '../store';
 import { notify } from '../store';
-import { db, getSetting, saveProfile, setSetting } from '../../data/db';
+import { db, getSetting, loadProfile, saveProfile, setSetting } from '../../data/db';
 import { ThresholdHistoryPanel } from '../ThresholdHistory';
 import { readQuery } from '../router';
 import { startChangeOver } from '../../sync/syncService';
 import { askToKeep, keepSafeState, type KeepSafe } from '../../data/keepSafe';
 import { importBatches, mergeFileCopies, undoImport, watchImport, type ImportBatch } from '../../import/importer';
-import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile } from '../../data/backup';
+import { autoBackup, backupSummaryOf, downloadBackup, restoreBackupFile, type RestoreMode } from '../../data/backup';
+import { ADDED_WORDS, backupMade } from '../../data/restoreWords';
 import { chooseDevices, clearLock, deviceStanding, lockStatus, setLock, syncDevices, unlockNote, type DeviceChoice, type DeviceSyncState } from '../../data/devicesync';
 import type { Basis, Profile } from '../../engine/types';
 import { breathZones, footHrZones, footLthr as footThreshold, ladderPcts, ladderTops, rideHrZones, ridePowerZones, standardBreathPcts, tableOf, validBreathTops, validTops, type Zone, type ZoneMode } from '../../engine/zones';
@@ -45,6 +46,9 @@ import { distUnitsOf, legacyUnits, miles, pounds, setPackUnit, weightUnitsOf } f
 import { SEND_GENERAL, UploadSteps, useDestinations } from '../Destinations';
 import { destinationWords, lastUploadWords } from '../../sync/destinations';
 
+
+/** The saved copy's size as Intervals.icu stores it, in words: a measure only, since no limit is published to compare it with. */
+export const noteSizeWords = (chars: number): string => (chars < 1024 ? 'under 1 KB in size' : chars < 1024 * 1024 ? `${Math.round(chars / 1024)} KB in size` : `${(chars / 1048576).toFixed(1)} MB in size`);
 
 export function Settings({ data }: { data: AppData }) {
   // Part A5: the highest heart rate seen in the last 12 months of rides, shown under the max-heart-rate box (information only).
@@ -137,7 +141,7 @@ export function Settings({ data }: { data: AppData }) {
     setPackUnit(weightUnitsOf(p));
     await saveProfile(p);
     // The database stamps the profile on every write; take the stored copy so the page reads as saved.
-    const stored = await db.profile.get('me');
+    const stored = await loadProfile();
     if (stored) setP(stored);
     await setSetting(KEY_SETTING, claudeKey.trim());
     await setSetting(PROVIDER_SETTING, provider);
@@ -218,19 +222,33 @@ export function Settings({ data }: { data: AppData }) {
     else setMsg({ ok: false, text: `Sync across devices failed: ${r.error}. The file backup below still works.` });
   }
 
-  async function restore(e: Event) {
+  /**
+   * Restoring from a backup file (25 Nov 2026). What it does depends on whether this device is in step with the
+   * rider's others, and the question says which, leading with the backup's date and age:
+   * - not in step: this device's data is replaced with the backup's, as it was then; other devices are untouched;
+   * - in step: the backup is combined with what is here, the newer version of each thing kept;
+   * - "Put everything back as it was": the backup deliberately replaces newer data on every device.
+   */
+  async function restore(e: Event, everywhere = false) {
     const input = e.target as HTMLInputElement;
     const f = input.files?.[0];
     if (!f) return;
     try {
-      // Restoring replaces this device's own data, so it asks first and says what (12 Nov 2026).
       const sum = await backupSummaryOf(f);
       if (!sum.ok) { setMsg({ ok: false, text: sum.words }); input.value = ''; return; }
-      const made = sum.exportedAt ? ` made ${new Date(sum.exportedAt).toLocaleString()}` : '';
-      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nYour profile, settings, calendar, workouts, plans and day notes on this device are replaced with the backup's. Activities, wellness and original activity files in the backup are added where this device lacks them. Ride recordings already on this device are kept. Your other devices follow at their next merge.`)) { input.value = ''; return; }
-      const r = await restoreBackupFile(f);
+      const inStep = connected && standing === 'sync';
+      const mode: RestoreMode = everywhere ? 'everywhere' : inStep ? 'add' : 'device';
+      const head = `${backupMade(sum.exportedAt)}\n\nIt holds ${sum.words}.\n\n`;
+      const words = mode === 'everywhere'
+        ? `${head}Put everything back as it was then?\n\nYour profile, settings, calendar, workouts, plans and day notes go back to how they were in this backup, on ${thisDevice()} and on every device kept in step with it. Changes you have made to them since are lost, and what you have deleted since comes back. What you have added since stays.\n\nThis cannot be undone, except from a backup of how things are now. If you have not made one, cancel and use Back up everything first.`
+        : mode === 'add'
+          ? `${head}Restore from it?\n\n${thisDevice().replace(/^t/, 'T')} is in step with your other devices, so nothing newer is replaced. The backup is combined with what you have now: where both hold the same thing, the newer version is kept, and what you have deleted since stays deleted. ${ADDED_WORDS}\n\nTo go back to exactly how things were in this backup instead, cancel and use "Put everything back as it was".`
+          : `${head}Restore it?\n\nThe profile, settings, calendar, workouts, plans and day notes on ${thisDevice()} are replaced with the backup's, as they were then. ${ADDED_WORDS}\n\nYour other devices are not changed.${standing === 'separate' ? '' : ` If ${thisDevice()} is later kept in step with them, the newer version of each thing is kept.`}`;
+      if (!confirm(words)) { input.value = ''; return; }
+      const r = await restoreBackupFile(f, mode);
+      if (mode === 'device' && !(await getSetting<string | null>('deviceChoice', null))) await setSetting('devicesAsk', true);
       notify();
-      setMsg({ ok: true, text: `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
+      setMsg({ ok: true, text: mode === 'add' ? 'The backup has been combined with what you have. Reloading.' : `Restored ${r.workouts} workouts and ${r.planned} planned sessions. Reloading.` });
       setTimeout(() => location.reload(), 800);
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
@@ -426,7 +444,7 @@ export function Settings({ data }: { data: AppData }) {
           ) : standing === 'separate' ? (
             <p class="small" style="margin-bottom:12px"><b>Separate:</b> {thisDevice()} keeps its own data and does not read or write the saved copy. <button class="btn sm" onClick={() => choose('sync')} disabled={busy}>Keep in step with my other devices</button></p>
           ) : (
-            <p class="small" style="margin-bottom:12px"><b>In step with your other devices through Intervals.icu.</b> {devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
+            <p class="small" style="margin-bottom:12px"><b>In step with your other devices through Intervals.icu.</b> {devices?.last ? <>Last merged {new Date(devices.last).toLocaleString()}{devices.device ? ` · the note was last written by ${devices.device}` : ''}.</> : 'Not merged with the note yet.'}{devices?.size != null ? <> The saved copy is {noteSizeWords(devices.size)}.</> : null}{devices?.error && (!devices.last || devices.error > devices.last) ? <span style="color:var(--bad)"> Last attempt failed: {devices.error.replace(/^\S+ /, '')}</span> : null}{devices?.locked ? <span style="color:var(--warn)"> The note is encrypted and this device has not unlocked it yet; see below.</span> : null}</p>
           )}
           {standing !== 'separate' && standing !== 'waiting' && <div class="row wrap">
             <button class="btn" onClick={backupNow} disabled={busy}>Sync now</button>
@@ -437,8 +455,15 @@ export function Settings({ data }: { data: AppData }) {
         <p class="muted small" style="margin:16px 0 8px">A file copy of everything as well, for moving {APP_SHORT_NAME} to another device or keeping it safe: plans, calendar, workouts, settings, favourites, what the app has learned about you (such as the watts that hold each heart-rate zone), notes and efforts, ride recordings still on this device, and your whole history with each activity's original file. It is a .zip you can open to see them. Unlike the note, the file includes your API keys, so keep it where you keep passwords. {lastBackup ? `Last file backup ${new Date(lastBackup).toLocaleDateString()}.` : ''}</p>
         <div class="row wrap">
           <button class="btn" onClick={() => downloadBackup().then(() => getSetting<string | null>('lastBackup', null).then(setLastBackup))}>Back up everything</button>
-          <label class="btn" style="position:relative;overflow:hidden">Restore from a backup<input type="file" accept="application/zip,.zip,application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={restore} /></label>
+          <label class="btn" style="position:relative;overflow:hidden">Restore from a backup<input type="file" aria-label="Restore from a backup" accept="application/zip,.zip,application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => restore(e)} /></label>
         </div>
+        <p class="muted small" style="margin:8px 0 0">{connected && standing === 'sync'
+          ? <><b>Restore from a backup</b> never replaces anything newer: the backup is combined with what you have, the newer version of each thing kept. You are shown the backup's date first.</>
+          : <><b>Restore from a backup</b> replaces what is on {thisDevice()} with the backup's, as it was when the backup was made. You are shown its date first. Your other devices are not changed by it.</>}</p>
+        {connected && standing === 'sync' && <div style="margin-top:14px">
+          <label class="btn quiet" style="position:relative;overflow:hidden">Put everything back as it was…<input type="file" aria-label="Put everything back as it was" accept="application/zip,.zip,application/json,.json" style="position:absolute;inset:0;opacity:0;cursor:pointer" onChange={(e) => restore(e, true)} /></label>
+          <p class="muted small" style="margin:6px 0 0">For undoing a mistake. You choose a backup, and your profile, settings, calendar, workouts, plans and day notes go back to how they were in it, <b>on every device kept in step</b>. Changes since are lost and what was deleted since comes back. It asks first.</p>
+        </div>}
         <p class="faint small" style="margin:8px 0 0">To take rides and workouts to other apps instead, use <a href="#/export">Export</a>.</p>
       </Fold>
 

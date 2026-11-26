@@ -4,7 +4,7 @@ import { db, type KeptFile } from './db';
 import type { Ride, Wellness } from '../engine/types';
 import { today } from '../engine/load';
 
-import { LOCAL_ONLY, localDoc, readRemote, SECRET_SETTINGS, syncDevices, type SyncDoc } from './devicesync';
+import { LOCAL_ONLY, localDoc, mergeRemote, readRemote, SECRET_SETTINGS, syncDevices, type SyncDoc } from './devicesync';
 import { untracked } from './db';
 import type { IntervalsCredentials } from '../sync/intervals';
 import type { Recording } from '../player/types';
@@ -122,13 +122,13 @@ export async function backupSummaryOf(file: Blob): Promise<{ ok: boolean; words:
 }
 
 /** Restore from a backup file of either kind. The archive's activity files are added one at a time where this device lacks them. */
-export async function restoreBackupFile(file: Blob): Promise<{ workouts: number; planned: number }> {
-  if (!(await isZip(file))) return restoreBackup(await file.text());
+export async function restoreBackupFile(file: Blob, mode: RestoreMode = 'device'): Promise<{ workouts: number; planned: number }> {
+  if (!(await isZip(file))) return restoreBackup(await file.text(), mode);
   const entries = await zipEntries(file);
   const doc = entries.find((e) => e.name === BACKUP_DOC);
   if (!doc) throw new Error('This is not a backup file this app can read.');
   const text = new TextDecoder().decode(await zipRead(file, doc));
-  const out = await restoreBackup(text);
+  const out = await restoreBackup(text, mode);
   const meta = new Map(((JSON.parse(text) as Backup).history?.files ?? []).map((f) => [f.id, f]));
   const have = new Set((await db.files.where('status').equals('kept').primaryKeys()) as string[]);
   for (const e of entries) {
@@ -171,46 +171,79 @@ export async function downloadBackup(): Promise<void> {
 }
 
 /**
- * Replace this device's own data with a backup (file, or the note in
- * Intervals.icu). The restored records are stamped now, so they win on the
- * next sync across devices; the clean-up leaves no tombstones. Keys this
- * device already holds are kept when the backup brings none (the note never
- * carries them), so a restore from the note does not disconnect the device.
+ * How a backup is brought onto this device (25 Nov 2026). An older backup once came in marked as changed at the
+ * moment of the restore, so a device that then joined the rider's others replaced their newer data with it.
+ *
+ * - 'device': this device's own data is replaced with the backup's, each item at the age the backup records. It is
+ *   this device's state as it was; if the device later joins others, the newer version of each item wins, and what
+ *   the others have deleted since stays deleted. For a device that is not in step with others.
+ * - 'add': the backup is combined with what is here as another device's copy would be: the newer version of each item
+ *   wins, nothing newer is replaced, deletions stand. For a device already in step.
+ * - 'everywhere': "put everything back as it was". The backup's versions are marked as restored now, so they win on
+ *   every device at the next merge, and what was deleted since the backup comes back. The one deliberate way to undo.
  */
-export async function restoreBackup(text: string): Promise<{ workouts: number; planned: number }> {
+export type RestoreMode = 'device' | 'add' | 'everywhere';
+
+/**
+ * Bring a backup (a file, or the note in Intervals.icu) onto this device, in one of the ways above. Keys this
+ * device already holds are kept when the backup brings none (the note never carries them), so a restore from the
+ * note does not disconnect the device.
+ */
+export async function restoreBackup(text: string, mode: RestoreMode = 'device'): Promise<{ workouts: number; planned: number }> {
   const data = JSON.parse(text) as Omit<Backup, 'schema'> & { schema: number };
   if ((data.schema !== 1 && data.schema !== 2) || !data.profile) throw new Error('This is not a backup file this app can read.');
-  const strip = <R extends { updatedAt?: string }>(r: R): R => { const { updatedAt: _u, ...rest } = r; return rest as R; };
-  const incomingKeys = new Set((data.settings as Array<{ key: string }>).map((s) => s.key));
-  // This device's keys, and what belongs to the device itself (its paired sensors, its id, the note's key), are kept when the backup brings none.
-  const keptSecrets = (await db.settings.toArray()).filter((s) => (SECRET_SETTINGS.has(s.key) || LOCAL_ONLY.has(s.key)) && !incomingKeys.has(s.key));
-  await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.plans, db.activityEdits, db.sync, db.tombstones], async () => {
-    await untracked(async () => {
-      await db.profile.clear();
-      await db.settings.clear();
-      await db.workouts.clear();
-      await db.planned.clear();
-      await db.dayNotes.clear();
-      await db.plans.clear();
-      await db.activityEdits.clear();
-      await db.sync.clear();
-    });
-    await db.profile.put(strip(data.profile as never));
-    await db.settings.bulkPut((data.settings as never[]).map(strip));
-    if (keptSecrets.length) await untracked(() => db.settings.bulkPut(keptSecrets));
-    // Plans, sessions and workouts are marked as restored: that is the one thing that brings back a
-    // record deleted after the backup was made (deletions are otherwise final across devices).
-    const restoredAt = new Date().toISOString();
-    const restore = <R extends { updatedAt?: string }>(r: R): R => ({ ...strip(r), restoredAt });
+  if (mode === 'add') {
+    await mergeRemote({ ...(data as unknown as SyncDoc), tombstones: data.tombstones ?? [] });
+  } else {
+    const strip = <R extends { updatedAt?: string }>(r: R): R => { const { updatedAt: _u, ...rest } = r; return rest as R; };
+    const incomingKeys = new Set((data.settings as Array<{ key: string }>).map((s) => s.key));
+    // This device's keys, and what belongs to the device itself (its paired sensors, its id, the note's key), are kept when the backup brings none.
+    const keptSecrets = (await db.settings.toArray()).filter((s) => (SECRET_SETTINGS.has(s.key) || LOCAL_ONLY.has(s.key)) && !incomingKeys.has(s.key));
     const ids = (rows: unknown[] | undefined, table: string) => (rows ?? []).map((r) => `${table}:${(r as { id: string }).id}`);
-    await db.tombstones.bulkDelete([...ids(data.workouts, 'workouts'), ...ids(data.planned, 'planned'), ...ids(data.plans, 'plans')]);
-    await db.workouts.bulkPut((data.workouts as never[]).map(restore));
-    await db.planned.bulkPut((data.planned as never[]).map(restore));
-    if (data.dayNotes) await db.dayNotes.bulkPut((data.dayNotes as never[]).map(strip));
-    if (data.plans) await db.plans.bulkPut((data.plans as never[]).map(restore));
-    if (data.activityEdits) await db.activityEdits.bulkPut((data.activityEdits as never[]).map(strip));
-    if (data.sync) await db.sync.bulkPut(data.sync as never[]);
-  });
+    await db.transaction('rw', [db.profile, db.settings, db.workouts, db.planned, db.dayNotes, db.plans, db.activityEdits, db.sync, db.tombstones], async () => {
+      await untracked(async () => {
+        await db.profile.clear();
+        await db.settings.clear();
+        await db.workouts.clear();
+        await db.planned.clear();
+        await db.dayNotes.clear();
+        await db.plans.clear();
+        await db.activityEdits.clear();
+        await db.sync.clear();
+      });
+      if (mode === 'device') {
+        // Every item keeps the stamp the backup holds for it, and the backup's own record of deletions replaces this device's.
+        await untracked(async () => {
+          await db.tombstones.clear();
+          if (data.tombstones?.length) await db.tombstones.bulkPut(data.tombstones);
+          await db.profile.put(data.profile as never);
+          await db.settings.bulkPut(data.settings as never[]);
+          if (keptSecrets.length) await db.settings.bulkPut(keptSecrets);
+          await db.workouts.bulkPut(data.workouts as never[]);
+          await db.planned.bulkPut(data.planned as never[]);
+          if (data.dayNotes) await db.dayNotes.bulkPut(data.dayNotes as never[]);
+          if (data.plans) await db.plans.bulkPut(data.plans as never[]);
+          if (data.activityEdits) await db.activityEdits.bulkPut(data.activityEdits as never[]);
+          if (data.sync) await db.sync.bulkPut(data.sync as never[]);
+        });
+        return;
+      }
+      await db.profile.put(strip(data.profile as never));
+      await db.settings.bulkPut((data.settings as never[]).map(strip));
+      if (keptSecrets.length) await untracked(() => db.settings.bulkPut(keptSecrets));
+      // Plans, sessions and workouts are marked as restored: that is the one thing that brings back a
+      // record deleted after the backup was made (deletions are otherwise final across devices).
+      const restoredAt = new Date().toISOString();
+      const restore = <R extends { updatedAt?: string }>(r: R): R => ({ ...strip(r), restoredAt });
+      await db.tombstones.bulkDelete([...ids(data.workouts, 'workouts'), ...ids(data.planned, 'planned'), ...ids(data.plans, 'plans')]);
+      await db.workouts.bulkPut((data.workouts as never[]).map(restore));
+      await db.planned.bulkPut((data.planned as never[]).map(restore));
+      if (data.dayNotes) await db.dayNotes.bulkPut((data.dayNotes as never[]).map(strip));
+      if (data.plans) await db.plans.bulkPut((data.plans as never[]).map(restore));
+      if (data.activityEdits) await db.activityEdits.bulkPut((data.activityEdits as never[]).map(strip));
+      if (data.sync) await db.sync.bulkPut(data.sync as never[]);
+    });
+  }
   // Ride recordings belong to this device and are never cleared by a restore: the backup's are added where this device lacks them.
   if (data.recordings?.length) {
     const here = new Set((await db.recordings.toArray()).map((r) => r.id));

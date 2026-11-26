@@ -13,7 +13,8 @@ import { today } from '../../engine/load';
 import { distance, fitnessFromRides, fitnessOn, fmtDate, missedThisWeek, plannedOn, missingText, readinessToday, splitToday, syncLine, weekStart } from '../derived';
 import { getSetting, setSetting } from '../../data/db';
 import { credentials, syncAll } from '../../sync/syncService';
-import { notify, saveDayNote, sessionHref, useSyncState } from '../store';
+import { notify, saveDayNote, sessionHref, subscribe, useSyncState } from '../store';
+import { onDeviceSync } from '../../data/devicesync';
 import { durationWords, noteSignature, type CoachContext } from '../../coach/claude';
 import { runBandText } from '../../engine/run';
 import { CoachPanel } from '../CoachPanel';
@@ -110,7 +111,13 @@ export function Today({ data }: { data: AppData }) {
   const [offerDone, setOfferDone] = useState(true);
   useEffect(() => { getSetting<boolean>('connectOfferDone', false).then(setOfferDone); }, []);
   const [copyWaiting, setCopyWaiting] = useState<{ savedAt: string } | null>(null);
-  useEffect(() => { Promise.all([getSetting<{ waiting?: { savedAt: string } } | null>('deviceSync', null), getSetting<string | null>('deviceChoice', null)]).then(([st, ch]) => setCopyWaiting(!ch && st?.waiting ? st.waiting : null)); }, [data.planned.length, data.rides.length]);
+  // Looked at again whenever anything changes, so the notice appears as soon as a saved copy is found and goes once the rider has chosen.
+  useEffect(() => {
+    const look = () => { void Promise.all([getSetting<{ waiting?: { savedAt: string } } | null>('deviceSync', null), getSetting<string | null>('deviceChoice', null)]).then(([st, ch]) => setCopyWaiting(!ch && st?.waiting ? st.waiting : null)); };
+    look();
+    const a = subscribe(look); const b = onDeviceSync(look);
+    return () => { a(); b(); };
+  }, []);
   useEffect(() => { getSetting<{ locked?: { question: string } } | null>('deviceSync', null).then((s) => setLocked(s?.locked ?? null)); }, [data.planned.length, data.rides.length, data.dayNotes.length]);
 
   // The plan re-checks itself whenever the data change; its suggestions stay on offer until accepted or rejected.

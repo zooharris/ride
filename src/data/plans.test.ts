@@ -145,7 +145,7 @@ describe('deleted plans stay deleted, unless restored from a backup', () => {
     await new Promise((r) => setTimeout(r, 20));
     const oldTomb = (await db.tombstones.toArray()).find((t) => t.id === 'plans:kept')!;
     await new Promise((r) => setTimeout(r, 5));
-    await restoreBackup(backup);
+    await restoreBackup(backup, 'everywhere');
     expect(await db.plans.get('kept')).toBeTruthy();
     expect(await db.tombstones.get('plans:kept')).toBeUndefined();
     // another device's note still carries the deletion

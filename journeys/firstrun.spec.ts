@@ -105,7 +105,7 @@ test('restore at first run from a backup file the rider picks: told what it hold
   p2.on('dialog', (d) => { asked.push(d.message()); void d.accept(); });
   const s2 = await open(p2, 'new');
   await reloads(p2, () => p2.getByLabel('Choose a backup file').setInputFiles(file));
-  expect(asked[0]).toMatch(/^Restore from this backup made /);
+  expect(asked[0]).toMatch(/^This backup was made on .+ \(today\)\./);
   expect(asked[0]).toContain('It holds ');
   await hasPlan(p2);
   await looksRight(s2, info, 'Restored at first run from a chosen file');

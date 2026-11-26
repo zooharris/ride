@@ -46,7 +46,9 @@ export const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup',
   // 23 Nov 2026: Garmin as a source belongs to the one installed app that holds the key.
   'garminSource', 'garminProgress',
   // 25 Nov 2026: whether this device is kept in step with the rider's others is this device's own choice.
-  'deviceChoice', 'connectOfferDone']);
+  'deviceChoice', 'connectOfferDone',
+  // 25 Nov 2026: after a backup file is restored here, a saved copy from other devices is asked about at once.
+  'devicesAsk']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at
@@ -62,6 +64,8 @@ export interface DeviceSyncState {
   locked?: { question: string; at: string };
   /** A saved copy is in Intervals.icu and the rider has not yet said whether this device joins it (25 Nov 2026). */
   waiting?: { savedAt: string; device?: string };
+  /** How large the saved copy is as Intervals.icu stores it, in characters, when last read or written here. */
+  size?: number;
 }
 
 /**
@@ -71,6 +75,8 @@ export interface DeviceSyncState {
  */
 export type DeviceChoice = 'sync' | 'separate';
 export const DEVICE_CHOICE = 'deviceChoice';
+/** Set when a backup file has just been restored on a device that has made no choice: a saved copy found next is asked about at once. */
+export const DEVICES_ASK = 'devicesAsk';
 
 /** How this device stands, for the screens: in step, separate, waiting for the rider's choice, or nothing to choose yet. */
 export async function deviceStanding(): Promise<'sync' | 'separate' | 'waiting' | 'none'> {
@@ -245,10 +251,14 @@ async function gunzipBase64(payload: string): Promise<string> {
   return await new Response(stream).text();
 }
 
+/** How large the saved copy was, in characters as Intervals.icu stores it, the last time it was read or written here. */
+let noteSize: number | undefined;
+
 export async function readRemote(c: IntervalsCredentials): Promise<SyncDoc | null> {
   const note = await readBackupNote(c);
   if (!note) return null;
   let payload = note.payload;
+  noteSize = payload.length;
   if (isSealed(payload)) {
     const sealed = decodeSealed(payload);
     const key = await getSetting<string | null>('noteKey', null);
@@ -271,6 +281,7 @@ export async function writeRemote(c: IntervalsCredentials): Promise<SyncDoc> {
   const lock = await getSetting<LockEnvelope | null>('noteLock', null);
   if (key && lock) payload = encodeSealed(await seal(payload, key, lock));
   await writeBackupNote(c, payload);
+  noteSize = payload.length;
   return doc;
 }
 
@@ -337,7 +348,7 @@ export function syncDevices(c: IntervalsCredentials): Promise<DeviceSyncState> {
       const remote = await readRemote(c);
       // A device that has never been in step, finding a saved copy: nothing is combined until the rider says so.
       if (!choice && !prev.last && remote) {
-        const state: DeviceSyncState = { ...prev, error: undefined, waiting: { savedAt: remote.exportedAt, device: remote.device } };
+        const state: DeviceSyncState = { ...prev, error: undefined, waiting: { savedAt: remote.exportedAt, device: remote.device }, ...(noteSize != null ? { size: noteSize } : {}) };
         await setSetting('deviceSync', state);
         if (!prev.waiting) listeners.forEach((l) => l());
         return state;
@@ -350,6 +361,7 @@ export function syncDevices(c: IntervalsCredentials): Promise<DeviceSyncState> {
       const now = new Date().toISOString();
       const state: DeviceSyncState = { last: now, pushed: prev.pushed, device: from };
       if (push) { await writeRemote(c); state.pushed = now; }
+      if (noteSize != null) state.size = noteSize;
       await setSetting('deviceSync', state);
       if (applied) listeners.forEach((l) => l());
       return state;

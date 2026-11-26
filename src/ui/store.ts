@@ -16,6 +16,8 @@ import { learnWalkRates, setWalkRates, WALK_RATES_KEY, type WalkRates } from '..
 
 /** A tiny change bus: screens re-read from IndexedDB after any write. */
 const listeners = new Set<() => void>();
+/** Hear of any change to the data; returns the way to stop hearing. */
+export function subscribe(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
 export function notify(): void { listeners.forEach((l) => l()); schedulePush(credentials); }
 // Changes merged in from another device re-read the screens without scheduling a push of their own.
 onDeviceSync(() => listeners.forEach((l) => l()));

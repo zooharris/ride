@@ -8,6 +8,7 @@ import { startHistory } from './ui/router';
 import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';
 import { appBluetooth, appKind, inApp } from './shell';
 import { BluetoothChooser } from './ui/BluetoothChooser';
+import { DevicesQuestion } from './ui/DevicesQuestion';
 import { startGarmin } from './sync/garminAuto';
 
 // New versions are checked for on every launch, every 15 minutes while open, and whenever the app
@@ -40,4 +41,4 @@ startGarmin();
 // iPhone and iPad: the self-test the publishing machine asks for in Apple's simulator (never in the app riders get).
 if (appKind() === 'ios') setTimeout(() => { void import('./selfTestIos').then((m) => m.runIosSelfTest()); }, 2500);
 // The installed app shows its own list for choosing a Bluetooth device, over whatever screen asked for one.
-render(<><App />{appBluetooth.can() && <BluetoothChooser />}</>, document.getElementById('app')!);
+render(<><App />{appBluetooth.can() && <BluetoothChooser />}<DevicesQuestion /></>, document.getElementById('app')!);

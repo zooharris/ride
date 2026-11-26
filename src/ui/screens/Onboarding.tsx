@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { DEFAULT_PROFILE, saveProfile, setSetting } from '../../data/db';
+import { DEFAULT_PROFILE, getSetting, saveProfile, setSetting } from '../../data/db';
 import type { Profile, Ride, UnsureNumber } from '../../engine/types';
 import { notify } from '../store';
 import { StackedLogo } from '../Brand';
@@ -8,7 +8,8 @@ import { TAGLINE } from '../../appName';
 import { applyAthleteNumbers, fetchRides, testConnection, type AthleteNumbers, type IntervalsCredentials } from '../../sync/intervals';
 import { syncAll } from '../../sync/syncService';
 import { backupSummaryOf, fetchAutoBackup, restoreBackup, restoreBackupFile } from '../../data/backup';
-import { DEVICE_CHOICE } from '../../data/devicesync';
+import { DEVICE_CHOICE, DEVICES_ASK } from '../../data/devicesync';
+import { backupMade } from '../../data/restoreWords';
 import { appKind, inApp, thisDevice } from '../../shell';
 import { APP_SHORT_NAME } from '../../appName';
 import { addDays, today } from '../../engine/load';
@@ -143,10 +144,11 @@ export function Onboarding() {
     try {
       const sum = await backupSummaryOf(f);
       if (!sum.ok) { setErr(sum.words); input.value = ''; return; }
-      const made = sum.exportedAt ? ` made ${new Date(sum.exportedAt).toLocaleString()}` : '';
-      if (!confirm(`Restore from this backup${made}?\n\nIt holds ${sum.words}.\n\nEverything in it is brought onto ${thisDevice()}, and ${APP_SHORT_NAME} opens with it.`)) { input.value = ''; return; }
+      if (!confirm(`${backupMade(sum.exportedAt)}\n\nIt holds ${sum.words}.\n\nRestore it? Everything in it is brought onto ${thisDevice()} as it was then, and ${APP_SHORT_NAME} opens with it.\n\nYour other devices are not changed. If ${APP_SHORT_NAME} finds its saved copy from them, it asks what to do, and if you keep this device in step, the newer version of each thing is kept.`)) { input.value = ''; return; }
       setBusy(true);
-      await restoreBackupFile(f);
+      await restoreBackupFile(f, 'device');
+      // If a saved copy from the rider's other devices turns up, the choice is asked at once.
+      if (!(await getSetting<string | null>(DEVICE_CHOICE, null))) await setSetting(DEVICES_ASK, true);
       notify();
       location.hash = '/today';
       location.reload();
@@ -156,7 +158,7 @@ export function Onboarding() {
   async function joinDevices() {
     if (!backup) return;
     setBusy(true);
-    try { await restoreBackup(backup.text); await setSetting(DEVICE_CHOICE, 'sync'); notify(); location.hash = '/today'; location.reload(); }
+    try { await restoreBackup(backup.text, 'device'); await setSetting(DEVICE_CHOICE, 'sync'); notify(); location.hash = '/today'; location.reload(); }
     catch (x) { setErr((x as Error).message); setBusy(false); }
   }
   /** This device keeps its own data: it never reads or writes the saved copy. */

@@ -49,7 +49,7 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
   await looksRight(s, info, 'The summary');
   await page.getByRole('button', { name: 'Save ride' }).first().click();
-  await expect(page.locator('.rd-saved')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.rd-saved').first()).toBeVisible({ timeout: 20_000 });
   await looksRight(s, info, 'Saved');
   // The ride is on today, done.
   await page.clock.resume();
@@ -113,8 +113,8 @@ test('a rider with no data service saves rides from the player', async ({ page }
     await page.clock.runFor(minutes * 60_000);
     await page.getByRole('button', { name: 'End ride' }).first().click();
     await page.getByRole('button', { name: 'Save ride' }).first().click();
-    await expect(page.locator('.rd-saved')).toBeVisible({ timeout: 20_000 });
-    const text = (await page.locator('.rd-saved').innerText()).trim();
+    await expect(page.locator('.rd-saved').first()).toBeVisible({ timeout: 20_000 });
+    const text = (await page.locator('.rd-saved').first().innerText()).trim();
     if (minutes < 5) await looksRight(s, info, 'Saved, under five minutes'); else await looksRight(s, info, 'Saved, with no data service');
     await page.getByRole('button', { name: 'Done', exact: true }).first().click();
     return text;

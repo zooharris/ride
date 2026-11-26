@@ -185,15 +185,15 @@ export class RideEngine {
     if (this.phase === 'paused') {
       const pedalling = live.cadence != null ? live.cadence >= RESUME_RPM : live.watts != null ? live.watts >= RESUME_WATTS : (live.speedKmh ?? 0) > 3;
       this.going = this.autoPaused && pedalling ? this.going + 1 : 0;
-      if (this.autoPaused && this.going >= RESUME_S) { this.resume(now); out.note = 'Pedalling again: the ride carries on.'; }
+      if (this.autoPaused && this.going >= RESUME_S) this.resume(now);
       else { out.command = this.send(now / 1000, live.cadence); return out; }
     }
 
     // Auto-pause after ten seconds without pedalling.
     this.still = moving || !watching ? 0 : this.still + 1;
     if (watching && this.still >= AUTO_PAUSE_S) {
+      // No pop-up as well (26 Nov 2026): the Paused panel says it, and that pedalling carries the ride on.
       this.pause(now, true);
-      out.note = 'Paused: you stopped pedalling. Pedal to carry on.';
       out.command = this.send(now / 1000, live.cadence);
       return out;
     }

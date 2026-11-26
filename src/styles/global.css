@@ -2698,8 +2698,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rc-others { display: flex; gap: 8px; }
 .rc-others .btn { flex: 1 1 0; min-width: 0; min-height: 44px; justify-content: center; padding: 0 6px; font-size: 13px; line-height: 1.15; }
 .rc-kept { margin: 0; text-align: center; }
-.rc-bar { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px; }
-.rc-bar .btn { flex: none; width: auto; min-height: 44px; padding: 0 16px; font-size: 14px; }
+.rc-bar { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; }
 .rc-eff { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .rc-det.one .rc-eff { flex: 1 1 0; }
 .rc-eff .pl-h2, .rc-cues .pl-h2 { font-size: 14px; line-height: 20px; }
@@ -2730,11 +2729,9 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .rc-det { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .rc-det > .rc-eff { grid-column: 1; grid-row: 1 / span 2; }
   .rc-det > .rc-cues { grid-column: 2; grid-row: 1; min-height: 0; }
-  .rc-det > .rc-bar { grid-column: 2; grid-row: 2; }
-  .rc-det:not(.one) .rc-bar .rp-title { display: none; }
-  .rc-det:not(.one) .rc-bar .btn { flex: 1 1 auto; min-height: 54px; font-size: 17px; }
-  .rc-det.one > .rc-eff { grid-column: 1 / -1; grid-row: 1; }
-  .rc-det.one > .rc-bar { grid-column: 1 / -1; grid-row: 2; }
+  .rc-det > .rc-act { grid-column: 2; grid-row: 2; }
+  .rc-det:not(.one) > .rc-bar { display: none; }
+  .rc-det.one > .rc-bar { grid-column: 2; grid-row: 1; align-self: start; }
 }
 /* A narrow phone: the load's "planned" takes a line of its own; on its side, fewer words where a column is slim. */
 @media (orientation: portrait) and (max-width: 400px) {

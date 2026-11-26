@@ -11,6 +11,12 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26d', date: '26 November 2026, night', items: [
+      { title: 'Paused, said once', text: 'When you stop pedalling and the ride pauses itself, only the Paused panel appears: the extra message that said the same thing is gone, and so is the one that announced the ride carrying on. Start pedalling and the ride carries on, or press Resume.', help: 'riding' },
+      { title: 'Save, Download and Discard on both pages after a ride', text: 'On a phone, Ride complete\'s Details page now ends with the same three buttons as Summary, in the same place.', help: 'riding' },
+    ],
+  },
+  {
     id: '2026-11-26c', date: '26 November 2026, evening', items: [
       { title: 'The phone\'s ride screens, put right', text: 'On an iPhone the screen before a ride now fits every size of iPhone, whatever it is waiting for. Held on its side, each screen sits centred, with the same margin above as below, and no longer leaves the notch\'s space twice. Labels are no longer cut off. On its side, the Workout page gives most of its width to the chart, with the trainer\'s controls on one line beneath it.', help: 'riding' },
       { title: 'Ride complete, on a phone', text: 'After a ride a phone now shows two pages that each fit the screen: Summary, with the ride\'s numbers, its chart, how it felt and Save ride; and Details, with each effort and what the cues said. Swipe between them, or press a page\'s name at the foot.', help: 'riding' },

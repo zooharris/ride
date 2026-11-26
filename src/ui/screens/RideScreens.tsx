@@ -198,7 +198,7 @@ function RidingWide({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
         <div class="rd-overlay" role="dialog" aria-label="Paused">
           <div class="rd-paused">
             <h2>{e.isAutoPaused ? 'Paused: you stopped pedalling' : 'Paused'}</h2>
-            <p class="muted">{e.isAutoPaused ? 'Pedal to carry on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
+            <p class="muted">{e.isAutoPaused ? 'Start pedalling and the ride carries on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
             <div class="row" style="gap:10px;justify-content:center;margin-top:16px">
               <button class="btn primary rd-resume" onClick={resumeRide}>Resume</button>
               <button class="btn" onClick={() => void askEnd()}>End ride</button>
@@ -430,7 +430,7 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
         <div class="rd-overlay" role="dialog" aria-label="Paused">
           <div class="rd-paused">
             <h2>{e.isAutoPaused ? 'Paused: you stopped pedalling' : 'Paused'}</h2>
-            <p class="muted">{e.isAutoPaused ? 'Pedal to carry on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
+            <p class="muted">{e.isAutoPaused ? 'Start pedalling and the ride carries on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
             <div class="row" style="gap:10px;justify-content:center;margin-top:16px">
               <button class="btn primary rd-resume" onClick={resumeRide}>Resume</button>
               <button class="btn" onClick={() => void askEnd()}>End ride</button>
@@ -1133,6 +1133,18 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   );
   const saveWord = state === 'saving' ? 'Saving…' : state === 'waiting' ? 'Try saving again' : 'Save ride';
 
+  // Save, Download and Discard: the same three, in the same place, on both of a phone's pages (26 Nov 2026).
+  const actions = <>
+    {state === 'saved' ? savedBox : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
+    <div class="rc-others">
+      <button class="btn" onClick={() => downloadRide(rec)}>Download the file</button>
+      {state !== 'saved' && <button class="btn danger" onClick={() => void discard()}>Discard ride…</button>}
+      {state === 'waiting' && <button class="btn quiet" onClick={done}>Done for now</button>}
+      {state === 'saved' && <button class="btn primary" onClick={done}>Done</button>}
+    </div>
+    {state === 'waiting' && <p class="faint small rc-kept">The ride is kept on {thisDevice()} and tried again each time the app opens.</p>}
+  </>;
+
   // A phone (26 Nov 2026): two pages of one screen each, Summary and Details, swiped like the ride's own.
   if (phone) {
     const names = ['Summary', test ? 'Result' : 'Details'];
@@ -1155,14 +1167,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
                 {chips}
                 <div class="rd-effort-words faint small"><span>Very easy</span><span>All out</span></div>
               </div>
-              {state === 'saved' ? savedBox : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
-              <div class="rc-others">
-                <button class="btn" onClick={() => downloadRide(rec)}>Download the file</button>
-                {state !== 'saved' && <button class="btn danger" onClick={() => void discard()}>Discard ride…</button>}
-                {state === 'waiting' && <button class="btn quiet" onClick={done}>Done for now</button>}
-                {state === 'saved' && <button class="btn primary" onClick={done}>Done</button>}
-              </div>
-              {state === 'waiting' && <p class="faint small rc-kept">The ride is kept on {thisDevice()} and tried again each time the app opens.</p>}
+              {actions}
             </div>
           </section>
           <section class={`rp-page rc-det${test || !cueLines.length ? ' one' : ''}`} aria-label={names[1]}>
@@ -1171,7 +1176,6 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
                 <div class="rp-name">{rec.name}</div>
                 <div class="rp-sub">{testKind ? 'Test complete' : 'Ride complete'} · {clock(t.seconds)} · {state === 'saved' ? 'saved' : 'not saved yet'}</div>
               </div>
-              {state === 'saved' ? <button class="btn primary" onClick={done}>Done</button> : <button class="btn primary rd-savebtn" disabled={state === 'saving'} onClick={() => void save()}>{saveWord}</button>}
             </div>
             {test ? <div class="rd-card rc-eff"><TestResults result={test} profile={profile} onChange={changeTest} /></div> : <>
               <div class="rd-card rc-eff">{efforts}{finding}</div>
@@ -1180,6 +1184,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
                 <ol>{cueLines.map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span><span>{l.text}</span></li>)}</ol>
               </div>}
             </>}
+            <div class="rc-act">{actions}</div>
           </section>
         </div>
         <nav class="rp-dots" aria-label="Pages">

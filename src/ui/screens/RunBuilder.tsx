@@ -87,7 +87,7 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
 
   return (
     <div>
-      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit run' : 'New run'} eyebrow={<span title="Estimated training stress from each step's heart-rate band; it counts toward fitness and fatigue the way a ride's TSS does.">{minutes} min · ≈ {tss} TSS</span>} />
+      <PageHead help="library" back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit run' : 'New run'} eyebrow={<span title="Estimated training stress from each step's heart-rate band; it counts toward fitness and fatigue the way a ride's TSS does.">{minutes} min · ≈ {tss} TSS</span>} />
       <div class="form">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder="Thursday easy run" onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>

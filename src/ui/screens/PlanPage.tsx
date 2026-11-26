@@ -88,7 +88,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   const thisWeek = weekStart(today());
   return (
     <div>
-      <PageHead back={{ label: 'Plans', href: '#/plan' }} eyebrow={`${status} · ${goalLine(plan)} · ${fmtDate(plan.start, { month: 'short', day: 'numeric' })} to ${fmtDate(plan.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}`} title={plan.name} />
+      <PageHead help="plan" back={{ label: 'Plans', href: '#/plan' }} eyebrow={`${status} · ${goalLine(plan)} · ${fmtDate(plan.start, { month: 'short', day: 'numeric' })} to ${fmtDate(plan.goalDate, { month: 'short', day: 'numeric', year: 'numeric' })}`} title={plan.name} />
       <div class="row wrap" style="gap:8px;margin-top:-4px">
         {status !== 'finished' && <a class="btn primary sm" href={`#/plan/${plan.id}/edit`}>Edit plan</a>}
         <button class="btn sm" onClick={() => setRenaming(true)}>Rename</button>
@@ -273,7 +273,7 @@ function EditPlan({ data, plan }: { data: AppData; plan: ActivePlan }) {
 
   return (
     <div>
-      <PageHead back={{ label: plan.name, href: `#/plan/${plan.id}` }} eyebrow="Edit plan" title={plan.name} />
+      <PageHead help="plan" back={{ label: plan.name, href: `#/plan/${plan.id}` }} eyebrow="Edit plan" title={plan.name} />
       <p class="muted small" style="margin-top:-4px">Change what you need, then Save. Only sessions still to come can change: done sessions stay, and anything you added or changed by hand is never replaced unasked. Preview first if you want to see and choose each calendar change before it is made.</p>
 
       <section class="section">

@@ -19,7 +19,7 @@ const KINDS: Array<{ kind: Exclude<SessionKind, 'other'>; title: string; text: s
 export function BuildChooser() {
   return (
     <div>
-      <PageHead back={{ label: 'Library', href: '#/library' }} title="New workout" />
+      <PageHead help="library" back={{ label: 'Library', href: '#/library' }} title="New workout" />
       <p class="muted" style="margin:0 0 16px">What kind of session?</p>
       <div class="grid">
         {KINDS.map((k) => (

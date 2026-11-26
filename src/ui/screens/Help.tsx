@@ -1,6 +1,8 @@
-import type { ComponentChildren, VNode } from 'preact';
-import { createContext } from 'preact';
-import { useContext, useEffect, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { Def, Li, matches, P, Query } from '../help/search';
+import { GUIDES, type HelpSection } from '../help/guides';
+import { Shot } from '../help/Shot';
+import { Flow } from '../help/Flow';
 import { APP_NAME, APP_SHORT_NAME, TAGLINE } from '../../appName';
 import { StackedLogo } from '../Brand';
 import { PageHead } from '../PageHead';
@@ -15,70 +17,21 @@ import { GLOSSARY, NUMBERS_ORDER } from '../glossary';
  * (#/help?s=<id>), and the search box filters every item on the page.
  */
 
-/** The search text, lower-cased; empty when not searching. Items that do not contain it hide themselves. */
-const Query = createContext('');
-
-/** The plain text of a piece of JSX, for search. */
-function textOf(node: unknown): string {
-  if (node == null || typeof node === 'boolean') return '';
-  if (typeof node === 'string' || typeof node === 'number') return String(node);
-  if (Array.isArray(node)) return node.map(textOf).join(' ');
-  const v = node as VNode<{ children?: unknown; t?: string }>;
-  return `${v.props?.t ?? ''} ${textOf(v.props?.children)}`;
-}
-const shows = (q: string, children: unknown, extra = '') => !q || `${extra} ${textOf(children)}`.toLowerCase().includes(q);
-
-/** A list item that hides itself when it does not contain the search text. */
-function Li({ children }: { children: ComponentChildren }) {
-  return shows(useContext(Query), children) ? <li>{children}</li> : null;
-}
-/** A paragraph that hides itself when searching and it does not match. */
-function P({ children }: { children: ComponentChildren }) {
-  return shows(useContext(Query), children) ? <p>{children}</p> : null;
-}
-/** A term and its definition, shown or hidden together. */
-function Def({ t, children }: { t: string; children: ComponentChildren }) {
-  return shows(useContext(Query), children, t) ? <><dt>{t}</dt><dd>{children}</dd></> : null;
-}
-/** How many searchable items in a section body match. */
-function matches(node: unknown, q: string): number {
-  if (node == null || typeof node !== 'object') return 0;
-  if (Array.isArray(node)) return node.reduce((n, x) => n + matches(x, q), 0);
-  const v = node as VNode<{ children?: unknown; t?: string }>;
-  if (v.type === Li || v.type === P || v.type === Def) return shows(q, v.props.children, v.props.t ?? '') ? 1 : 0;
-  return matches(v.props?.children, q);
-}
-
-const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> = [
+/** One section per screen, and the reference: the longer account behind the guides. */
+const REFERENCE: Array<{ id: string; title: string; body: preact.JSX.Element }> = [
   {
-    id: 'overview', title: 'What it does, and what you need', body: (
-      <>
-        <P>{APP_NAME} is a training coach for road cycling, with strength, mobility and walking alongside the riding. It looks at your own rides, sleep and heart-rate data, builds a plan around the hours you have, sends each session to your bike computer or watch, reads back what you actually did, and adjusts the plan as you go.</P>
-        <P>It runs in your web browser, on a laptop or a phone, and can be installed on a phone's home screen like any other app. There is no account to create with {APP_SHORT_NAME} and no server: your data lives on your own devices and in your own Intervals.icu account.</P>
-        <P><b>You need:</b></P>
-        <ul>
-          <Li><b>A free Intervals.icu account.</b> Intervals.icu is the link between the app and your devices. The makers don't let individual apps talk to their devices directly, so sessions go from {APP_SHORT_NAME} to your Intervals.icu calendar, and Intervals.icu passes them to each maker you have connected there with uploads on (Garmin, Wahoo, Coros, Suunto, Zwift and others); your recordings come back the same way. See <b>How sending works</b>.</Li>
-          <Li><b>A bike computer or watch</b> connected to Intervals.icu through its maker, ideally one that records heart rate overnight (for sleep and HRV) and a power meter on the bike. Neither is essential: heart rate alone works for planning and scoring, and without overnight data the readiness score falls back to fitness and fatigue.</Li>
-          <Li><b>Optionally, an Anthropic API key</b> if you want a written daily note, reviews and answers from Claude. The app does everything else without it.</Li>
-        </ul>
-        <P>Every screen has a <b>?</b> at the top that opens this page at its own section; the search box above finds anything on the page.</P>
-        <P>Green is the one thing a screen is for. A pale teal shows what is selected; red outline means something will be removed, and asks first.</P>
-      </>
-    ),
-  },
-  {
-    id: 'setup', title: 'Setting it up, step by step', body: (
+    id: 'setup', title: 'Connecting Intervals.icu, step by step', body: (
       <>
         <ol>
           <Li><b>Make an Intervals.icu account</b> at intervals.icu (free).</Li>
           <Li><b>Connect your device's maker inside Intervals.icu.</b> In Intervals.icu, open Settings and connect the maker of your bike computer or watch, letting it import your activities and wellness (sleep, HRV, resting heart rate). Then tick <b>Upload planned workouts</b> for it on the same page, and approve it if the maker asks. That one tick is what lets sessions from this app reach your device; see the page for your maker under <b>How sending works</b>. If you use an Oura ring or Strava, connect them there as well. Give it a little while to bring in your history.</Li>
           <Li><b>Check your numbers in Intervals.icu.</b> Your FTP and threshold heart rate should be set in its cycling sport settings. If they are blank, set your best estimate; the app keeps them in step from then on.</Li>
           <Li><b>Get your athlete ID and API key.</b> Still in Intervals.icu Settings, scroll to the Developer section. Your athlete ID is shown there (it starts with i), and a button makes an API key. Copy both.</Li>
-          <Li><b>Open {APP_SHORT_NAME}</b> at its web address. The first screen asks for the athlete ID and API key; paste them and press Connect. (The same screen has a short version of these steps under "New to Intervals.icu?".) The key stays on this device and is only ever sent to Intervals.icu.</Li>
+          <Li><b>Connect it in {APP_SHORT_NAME}.</b> On a new installation, choose <b>Connect Intervals.icu</b> on the first screen. On one already set up: Settings, Intervals.icu. Paste the athlete ID and API key and press Connect. The key stays on this device and is only ever sent to Intervals.icu.</Li>
           <Li><b>Check your numbers</b> on the next screen: name, FTP, threshold heart rate, max heart rate, weight, the targets sent to your devices (power or heart rate), miles or kilometres. They came from Intervals.icu; correct anything out of date. Press Start.</Li>
           <Li><b>The first sync</b> runs by itself and brings in the last 120 days of activities and wellness. After that, Antogo pulls your latest activities and overnight numbers from Intervals.icu when you open it and when you come back to it, if the last pull is more than ten minutes old; Today shows when that was, under the Sync button. Press <b>Sync</b> to pull now. Every pull brings the last two weeks, which catches late uploads and edits. Two devices show the same numbers once both have synced.</Li>
           <Li><b>Load older history</b> (optional, recommended): Settings → History → Back one year (or two). This fills the long ranges on Progress and gives a power curve and fitness number built on your whole record. Do it on one device; your others follow on their own.</Li>
-          <Li><b>Install it on your phone</b>: open the same address in Safari on an iPhone (or Chrome on Android), tap Share → Add to Home Screen. Connect it with the same athlete ID and an API key (paste it once; keys are never copied between devices). Your plans, calendar and notes arrive by themselves; see Settings below.</Li>
+          <Li><b>On your other devices</b>: {APP_SHORT_NAME} is an app for iPhone and iPad, an app for the Mac, and a web page in a browser. Connect each with the same athlete ID and API key, and each asks whether to keep in step with the others. See <b>Your devices, backup and restore</b>.</Li>
           <Li><b>Set up your watch for strength and mobility</b> (only if you will do those with the watch). Some watches (Garmin's, for one) show the text of each step only in a bike activity, so for now these sessions are sent as rides. On the watch, make a copy of the <b>Indoor Bike</b> activity profile, name it (for example "{APP_NAME}"), and give it one data screen with heart rate, laps, lap time, timer and heart-rate zone. Start strength and mobility sessions from that profile; press lap at the end of each set. The app recognises the recording by its name and files it as the strength or mobility session it was.</Li>
           <Li><b>Add the coach</b> (optional): get an API key from Anthropic (Claude), OpenAI (ChatGPT) or Google (Gemini) and paste it in Settings → Coach. See The coach, below.</Li>
         </ol>
@@ -140,6 +93,8 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
   },
   {
     id: 'calendar', title: 'Calendar', body: (
+      <>
+        <Shot name="calendar" alt="The Calendar: the month, with each day's sessions" caption="The Calendar." />
       <ul>
         <Li><b>Month or List</b>: the Calendar always opens as the month; a day tapped in Today's week strip (or "Open the calendar" after adding a session) opens the list scrolled to that day, outlined for a moment. The switch at the top changes the view for that visit. The list shows two weeks; the arrows move a week at a time; <b>This week</b> comes back.</Li>
         <Li><b>Every row</b> carries a mark at its left edge and a word at its right: a green tick for <b>Done</b> (the line under the name then shows what was recorded, not what was planned), an empty ring for <b>To do</b>, a ring with an arrow for <b>Sent</b>, a grey ring with a dash for <b>Missed</b>. A recording with no session behind it shows a tick and "unscheduled". A session you moved says "moved by you from…" on the line under it.</Li>
@@ -153,11 +108,13 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
         <Li><b>Breathing on your bike computer</b>: for a rider with breathing zones, every step sent, however it is sent, carries its breathing target in the step's text ("breathing 31 to 37 litres a minute"). To see your breathing live on the bike computer, add your breathing strap maker's data field to a data screen (on a Garmin, from the Connect IQ store). Rides recorded that way bring their breathing back to Antogo: it counts toward your normal breathing, the search for your first breathing threshold, and time in breathing zones, with any stretch where the strap froze left out. A ride sent or ridden by breathing, with breathing in its recording, is judged on its page by its breathing.</Li>
         <Li><b>The month view</b> shows each ride's workout shape and a coloured edge for other sessions; recovery weeks of your plan are lightly shaded, and on a laptop each row ends with the week's training load.</Li>
       </ul>
+      </>
     ),
   },
   {
     id: 'activities', title: 'Activities', body: (
       <>
+        <Shot name="activity" alt="An activity's page: its chart, its numbers and what was planned" caption="An activity's page." />
         <P>Everything Intervals.icu has recorded, however it got there: rides from your bike computer, walks and strength from a watch, sessions you logged here. Month or List.</P>
         <ul>
           <Li><b>Pictures</b>: each activity shows its route on a small map, or the shape of the ride when there was no GPS, or else its kind's icon. An activity's page opens with its headline numbers; every number is under Numbers further down, in small cells grouped as Time and distance, Power, Heart rate, Breathing, Cadence and speed, Conditions, Energy, and About this recording (a group with only one number joins the one above it). Tap the <b>i</b> on a cell for what the number means.</Li>
@@ -177,6 +134,7 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
   {
     id: 'progress', title: 'Progress', body: (
       <>
+        <Shot name="progress" alt="Progress: fitness, fatigue and form over time" caption="Progress." />
         <P>The long view. The range at the top (6 weeks, 3 months, 6 months, a year, or everything) applies to every card on the page and is remembered. If the range reaches past the history on this device, a line says so and links to Settings → History to load more. Tap or hover over any chart to read its values; where a chart's readout ends in "›", tapping again (or clicking) opens that week on the Calendar or that ride's page.</P>
         <P><b>The top row</b> gives the numbers that matter at a glance: fitness, fatigue and form, FTP, watts per kilogram, this week's training load against what was planned, how many weeks in a row you have trained, and how much of the planned load in the range you did. Each change is over the range showing. Tap one to go to its card.</P>
         <P><b>Every card</b> opens with a line of its numbers worked out for the range, so the chart has its figures beside it. The <b>i</b> beside a card's title explains what the card shows and how its numbers are worked out; it closes with Escape, a second tap, or a tap anywhere else. On a computer the cards sit in three columns (two on a tablet), each card at its own height, and the columns end on the same line; on a phone they stack.</P>
@@ -249,6 +207,14 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
   {
     id: 'sending', title: 'How sending works', body: (
       <>
+        <Flow label="How a session reaches your device, and comes back" steps={[
+          { title: `Send to my devices, in ${APP_SHORT_NAME}`, text: 'The session is put on your Intervals.icu calendar. That is all the app does.' },
+          { title: 'Intervals.icu passes it on', text: 'To each maker you have connected there with Upload planned workouts ticked.' },
+          { title: "Your device's maker delivers it", text: "At your bike computer's or watch's next sync with its maker's app." },
+          { title: 'You ride it', text: 'The device shows each step and its target.' },
+          { kind: 'end', title: 'The recording comes back', text: `Device to maker, maker to Intervals.icu, and into ${APP_SHORT_NAME} at the next Sync, where it is matched to the session.` },
+        ]} />
+        <Shot name="workout" alt="A ride's page, with Send to my devices and where it will go" caption="A ride's page. The line under Send says where Intervals.icu will pass it." />
         <P><b>Send to my devices</b> puts a session on your Intervals.icu calendar. That is all it does. Intervals.icu then passes it to each maker you have connected in its settings with <b>Upload planned workouts</b> ticked, and each device picks it up at its next sync with its maker's app. The app can't send to one maker or one device: whatever is connected and switched on in Intervals.icu receives it.</P>
         <ul>
           <Li><b>Before you send</b>, the line under the button says where it will go, read from your Intervals.icu settings: "Intervals.icu will pass this to your Garmin and Wahoo." If a maker is connected but its uploads are off, it says so. If nothing is set to receive workouts, the button is replaced by the steps to set it up, with a quiet <b>Put it on my Intervals.icu calendar anyway</b>. If an upload filter is set for a maker, it warns that the filter may skip the session. A session more than about a week ahead reaches your devices nearer the day, since Intervals.icu uploads about a week ahead. If your settings can't be read (no connection), sending works as usual.</Li>
@@ -271,10 +237,10 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
       <>
         <P>Antogo can talk to a smart trainer and your sensors over Bluetooth, to ride a workout indoors. <b>Ride indoors on the trainer</b> is on Today's ride and on every ride's page (on a computer, Library ride cards also have <b>Ride now</b>). The ride player opens across the whole window: get your trainer and sensors ready, press <b>Start ride</b>, and the ride is recorded while the trainer holds each step's power for you, or while you ride to each step's heart-rate zone. The Library's Rides tab also has <b>Free ride on the trainer</b>, for a ride with no workout at all.</P>
         <ul>
-          <Li><b>Which browsers</b>: Chrome or Edge on a computer (Mac, Windows or Chromebook). On an iPad, the free Bluefy browser adds the Bluetooth that Safari lacks. Safari and Firefox can't reach Bluetooth, so on a computer or iPad the player says which browser to use. No iPhone browser can reach Bluetooth, so on an iPhone the button isn't offered at all.</Li>
+          <Li><b>Where it works</b>: in the {APP_SHORT_NAME} app for iPhone and iPad, and the app for the Mac, each with the device's own Bluetooth; and in a browser, in Chrome or Edge on a computer (Mac, Windows or Chromebook). Safari and Firefox can't reach Bluetooth, and nor can any browser on an iPhone, so there the player says what to use instead. See <b>Connect your trainer and sensors</b>.</Li>
           <Li><b>Your devices</b>: the ride screen has a box for your smart trainer and one for each number the ride measures: power, heart rate, cadence and speed, each chosen on its own, and one for a breathing strap. On a laptop the whole page stays in the window: the six boxes, How the ride runs and Start are always in view, and only a long list of steps scrolls, inside its own panel. Click a box to choose what fills it. The list shows the device connected now with its live reading, the devices this computer has used before that can fill that box (with when you last used each), <b>Find … nearby</b> to pair a new one, and <b>None for this ride</b>. One device can fill several boxes: power pedals give both power and cadence, a trainer gives speed. Wake a device before you pick it: pedal a few strokes, put the heart-rate strap on, or on a watch turn on its heart-rate broadcast (on a Garmin: Broadcast heart rate) (in its heart-rate settings). The label at the top says <b>All set</b> when the ride can start.</Li>
           <Li><b>Breathing strap</b>: the sixth box is for a Tymewear VitalPro breathing strap, which is optional: every ride works without one. It pairs in Chrome or Edge on a computer. The strap connects to one app at a time, so close the Tymewear app on your phone first. (Tymewear's TymeHR heart-rate pod pairs as an ordinary heart-rate strap, in the Heart rate box.) It gives three numbers: <b>ventilation</b>, the litres of air you breathe a minute (L/min), which climbs with effort; <b>breaths a minute</b>; and <b>breath size</b>, the litres in each breath. Your breathing is saved in the ride, and shows on the activity's page on every device. Antogo starts a session on the strap when a ride starts and stops it when the ride ends, as the Tymewear app does. If the strap stops sending breaths during a ride, Antogo tries to wake it by itself (it starts the session again, then restarts it, then renews the connection) and only tells you if none of that works; the ride keeps recording either way, and the activity's page shows when breathing stopped. If the box says no breathing is arriving, check the strap is snug and the Tymewear app is closed, then press <b>Wake the strap</b>; <b>Copy details</b> copies what the strap has sent and how it answered, for you to paste to us. If your device records the same ride without breathing, Antogo asks which to keep (see When your device records the ride too). Antogo also learns, from your rides, your normal breathing at each effort and how snugly the strap sits on the day; nothing shows yet, and later steps will use it to judge breathing zones fairly.</Li>
-          <Li><b>Next time</b>: this computer remembers every device you have used (Settings, Ride player) and which one you chose for each box. Where the browser hands remembered devices back on its own, they reconnect when you open the ride screen. Where it doesn't (Chrome on a Mac today), click the box and pick the device from the list: Chrome then shows just that device, to confirm.</Li>
+          <Li><b>Next time</b>: the device you ride on remembers every trainer and sensor you have used (Settings, Ride player) and which one you chose for each box. In the apps for iPhone, iPad and the Mac they reconnect when you open the ride screen. In a browser they do where the browser hands remembered devices back on its own; where it doesn't (Chrome on a Mac today), click the box and pick the device from the list: Chrome then shows just that device, to confirm.</Li>
           <Li><b>Which device gives which number</b>: the one you chose in its box. Until you choose, power comes from a power meter if you have one, otherwise from the trainer; cadence from the power meter, then a cadence sensor, then the trainer; speed from the trainer, then a speed sensor; heart rate from the strap or watch.</Li>
           <Li><b>KICKR ROLLR</b>: the ROLLR has no power meter of its own. It uses your bike's, once you've linked them in the Wahoo app (Power Meter Connect, once). Then add the ROLLR as your smart trainer: its power is your power meter's, and it holds the workout's targets against it. If it's not linked, the player notices (speed but no power) and says so.</Li>
           <Li><b>Practice</b>: turn on <b>Practice with a simulated trainer</b> in Settings, Ride player. Each device box on the ride screen then also offers a simulated one, and a simulated rider pedals for you.</Li>
@@ -370,7 +336,8 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
         <Li><b>Coach</b> (optional): the provider (Claude, ChatGPT or Gemini), your API key, the model, Test, and whether the coach judges your plan each day. See The coach.</Li>
         <Li><b>Across your devices</b>: each copy of {APP_SHORT_NAME} keeps its own data. If you connect the same Intervals.icu account on each device, {APP_SHORT_NAME} can keep them in step through a private saved copy in that account: a note in your calendar on 31 December 2099, named "App backup". It holds your profile, settings, plans, calendar, workouts and day notes; not your rides and recordings, which each device fetches for itself, and never your keys. The first time a device finds that saved copy, it asks what you want: <b>keep this device in step with my others</b> (it takes the saved copy, or combines it with what is already on the device, the newer change kept; from then on a change on any device reaches the others), or <b>keep this device separate</b> (it never reads or changes the saved copy; a plan made there stays there). You can change this at any time in Settings, under Across your devices, and backup. A device in step merges when the app opens, when it comes back to the front, after a sync, and a few seconds after any change; deletions carry across. <b>Sync now</b> merges on demand. Without Intervals.icu, move your data with a backup file: see Moving between your devices.</Li>
         <Li><b>Encryption of the note</b>: choose a passphrase and a question whose answer gets you back in if you forget it; Intervals.icu then holds only a scrambled copy. Every other device asks once for the passphrase or the answer, and until it has one it neither sends nor receives changes (nothing is lost). You can change the passphrase or turn encryption off.</Li>
-        <Li><b>Back up everything</b>: everything that is yours in the app, in one file: plans, calendar, workouts, settings and favourites, what the app has learned about you (such as the watts that hold each heart-rate zone, and with breathing, each breathing zone), day notes and efforts, the coach's conversations, the ride player's preferences, and ride recordings still on this device. Your API keys are in it too (the Garmin key as well, if you saved one), so keep it where you keep passwords. Since 22 Nov it also holds your whole history: every activity and day of wellness on this device, and each activity's original file, so the file is much larger than before. <b>Restore from a backup</b> asks first, saying what the backup holds and what it replaces; ride recordings already on the device are kept. Restoring reloads the app. To take rides and workouts to other apps instead, use Export (see Downloading and exporting).</Li>
+        <Li><b>Back up everything</b>: everything that is yours in the app, in one file: plans, calendar, workouts, settings and favourites, what the app has learned about you (such as the watts that hold each heart-rate zone, and with breathing, each breathing zone), day notes and efforts, the coach's conversations, the ride player's preferences, ride recordings still on this device, and your whole history: every activity and day of wellness on this device, and each activity's original file. Your API keys are in it too (not the Garmin key, which never leaves the device's own password store), so keep it where you keep passwords. To take rides and workouts to other apps instead, use Export (see Downloading and exporting).</Li>
+        <Li><b>Restore from a backup</b> shows the backup's date and how old it is, and what it holds, before anything happens. On a device <b>not</b> kept in step with others, it replaces what is on the device with the backup, as it was then, and changes no other device. On a device <b>in step</b>, it never replaces anything newer: the backup is combined with what you have. <b>Put everything back as it was</b>, offered only on a device in step, is for undoing a mistake: the backup wins on every device, and it warns first. Activities, wellness, original files and recordings are only ever added. See <b>Your devices, backup and restore</b>.</Li>
         <Li><b>Giving the app to someone else</b>: they open the same address and connect their own Intervals.icu account. Each install holds only its own person's data; nothing mixes.</Li>
       </ul>
     ),
@@ -400,10 +367,32 @@ const SECTIONS: Array<{ id: string; title: string; body: preact.JSX.Element }> =
         <Li><b>The power curve stopped part-way</b>: it says why on the chart. Usually the connection dropped; it carries on the next time you open Progress.</Li>
         <Li><b>Phone and laptop disagree</b>: check <b>Last synced</b> under the Sync button on Today on each; the one with the older time has not yet pulled the latest numbers, so press Sync there. For plans and the calendar, open Settings on each and press Sync now; the newest change to each item wins, except that a session done on one device stays done everywhere. A device asking for a passphrase is waiting to unlock the encrypted note.</Li>
         <Li><b>Readiness jumped, or differs between devices, first thing in the morning</b>: a device pulled while your watch's maker was still writing the night's numbers to Intervals.icu, which takes a few minutes after your watch syncs. A device can catch that moment even if it showed the right score a minute earlier. Press <b>Sync</b> on that device a few minutes later; every device that has pulled since then shows the same score. Antogo pulls by itself only when you open it or come back to it, and only if its last pull is ten minutes old or more, so within ten minutes use Sync.</Li>
-        <Li><b>Everything gone after clearing the browser</b>: connect Intervals.icu again and the note brings your plans and calendar back; press Sync for activities; or restore a backup file.</Li>
+        <Li><b>Everything gone after clearing the browser, or deleting the app</b>: restore a backup file, or connect Intervals.icu again and keep the device in step, which brings your plans and calendar back; then press Sync for activities. See <b>Moving to a new device</b>.</Li>
       </ul>
     ),
   },
+];
+
+const MORE = new Set(['numbers']);
+const FIXES = new Set(['trouble']);
+/** Everything in Help, in the order it is listed: the guides, the fixes, a section per screen, and the rest. */
+const SECTIONS: HelpSection[] = (() => {
+  const ref = REFERENCE.map((s): HelpSection => ({ ...s, group: FIXES.has(s.id) ? 'Fix a problem' : MORE.has(s.id) ? 'More' : 'Every screen' }));
+  const all = [...GUIDES, ...ref];
+  const order: HelpSection['group'][] = ['Guides', 'Fix a problem', 'Every screen', 'More'];
+  return order.flatMap((g) => all.filter((s) => s.group === g));
+})();
+/** The sections by id, for the test that every "?" and every link inside Help leads somewhere. */
+export const HELP_IDS = SECTIONS.map((s) => s.id);
+
+/** The way in, when Help is opened by itself: what most riders come for, one press away. */
+const DOORS: Array<{ id: string; title: string; text: string }> = [
+  { id: 'guide-start', title: 'Start here', text: 'What the app does and your first steps.' },
+  { id: 'guide-trainer', title: 'Connect your trainer and sensors', text: 'Riding indoors, step by step.' },
+  { id: 'guide-devices', title: 'Your devices, backup and restore', text: 'More than one device, a new device, a backup.' },
+  { id: 'check', title: 'Check my setup', text: 'Test each connection you have made.' },
+  { id: 'fix-bluetooth', title: 'Fix a problem', text: 'Step-by-step fixes for what goes wrong most.' },
+  { id: 'new', title: "What's new", text: 'What changed in this version.' },
 ];
 
 export function Help({ params }: { params?: URLSearchParams }) {
@@ -421,6 +410,8 @@ export function Help({ params }: { params?: URLSearchParams }) {
     return { s, titleHit, visible: !q || titleHit || matches(s.body, q) > 0 };
   });
   const none = q && !shown.some((x) => x.visible);
+  const jump = (id: string) => (e: Event) => { e.preventDefault(); document.getElementById(`help-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  const groups = [...new Set(SECTIONS.map((s) => s.group))];
   return (
     <div>
       <PageHead title="Help" />
@@ -428,14 +419,25 @@ export function Help({ params }: { params?: URLSearchParams }) {
         <input type="search" value={search} placeholder="Search help" aria-label="Search help" onInput={(e) => setSearch((e.target as HTMLInputElement).value)} style="flex:1;min-width:200px;max-width:420px" />
         {search && <button class="btn sm quiet" onClick={() => setSearch('')}>Clear</button>}
       </div>
+      {!q && (
+        <nav class="help-doors" aria-label="Where to begin">
+          {DOORS.map((d) => <a key={d.id} class="help-door panel" href={`#/help?s=${d.id}`} onClick={jump(d.id)}><b>{d.title}</b><span>{d.text}</span></a>)}
+        </nav>
+      )}
       <div class="help">
-        <nav class="help-toc panel">
-          {shown.map(({ s, visible }) => <a key={s.id} class={visible ? '' : 'dim'} href={`#/help?s=${s.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(`help-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{s.title}</a>)}
+        <nav class="help-toc panel" aria-label="Everything in Help">
+          {groups.map((g) => (
+            <div class="help-toc-group" key={g}>
+              <span class="help-toc-head">{g}</span>
+              {shown.filter(({ s }) => s.group === g).map(({ s, visible }) => <a key={s.id} class={visible ? '' : 'dim'} href={`#/help?s=${s.id}`} onClick={jump(s.id)}>{s.title}</a>)}
+            </div>
+          ))}
         </nav>
         <div class="help-body">
           {none && <div class="empty small"><b>Nothing in Help matches "{search.trim()}".</b><span class="small muted">Try a shorter word, or clear the search.</span></div>}
           {shown.filter((x) => x.visible).map(({ s, titleHit }) => (
             <section class="section" id={`help-${s.id}`} key={s.id}>
+              <p class="eyebrow" style="margin:0 0 2px">{s.group}</p>
               <h2>{s.title}</h2>
               <Query.Provider value={titleHit ? '' : q}>
                 <div class="prose">{s.body}</div>

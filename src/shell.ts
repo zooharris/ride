@@ -30,17 +30,22 @@ interface AppSide {
   shareFiles?(files: Array<{ name: string; mime: string; data: Uint8Array }>): Promise<boolean>;
   /** iPhone and iPad: ask one of the services the rider connects (Intervals.icu, Garmin, their AI) through the app's own side. */
   serviceFetch?(url: string, init?: NetInit): Promise<NetReply>;
+  /** iPhone and iPad: how Bluetooth stands for Antogo, found out without asking the rider anything. */
+  bluetoothStanding?(): Promise<BluetoothStanding>;
   /** iPhone and iPad: keep the screen on (a ride in progress), or let it dim again. */
   keepAwake?(on: boolean): Promise<void>;
 }
 interface NetInit { method?: string; headers?: Record<string, string>; body?: Uint8Array }
 interface NetReply { status: number; type: string; body: Uint8Array }
+/** Bluetooth for Antogo on an iPhone or iPad: not asked about yet, refused, allowed and on, or allowed and off. */
+export type BluetoothStanding = 'notAsked' | 'denied' | 'on' | 'off' | 'unsupported';
 /** A Bluetooth device the app's search has found. */
 export interface FoundDevice { id: string; name: string }
 
 // ---- iPhone and iPad: the native plugin, in the app's own shape ----------------------------------------------------
 
 interface NativePlugin extends NativeBluetooth {
+  btAllowed(): Promise<{ allowed: 'allowed' | 'denied' | 'restricted' | 'notAsked' }>;
   keepAwake(o: { on: boolean }): Promise<void>;
   fetch(o: { url: string; method: string; headers: Record<string, string>; body?: string }): Promise<{ status: number; type: string; body: string }>;
   keyRead(): Promise<{ saved?: string }>;
@@ -91,6 +96,13 @@ function iOS(): AppSide | null {
     onBluetooth: (fn) => chooserBus.watch(fn),
     chooseBluetooth: async (id) => chooserBus.pick(id),
     keepAwake: async (on) => { await plugin.keepAwake({ on }); },
+    bluetoothStanding: async () => {
+      const { allowed } = await plugin.btAllowed();
+      if (allowed === 'notAsked') return 'notAsked';
+      if (allowed !== 'allowed') return 'denied';
+      const { state } = await plugin.btState();
+      return state === 'on' ? 'on' : state === 'unsupported' ? 'unsupported' : state === 'denied' ? 'denied' : 'off';
+    },
   };
   return iosSide;
 }
@@ -175,6 +187,9 @@ export const appBluetooth = {
   /** The device picked, by id; an empty id stops the search. */
   choose: (id: string): Promise<boolean> => side()?.chooseBluetooth?.(id) ?? Promise.resolve(false),
 };
+
+/** iPhone and iPad: how Bluetooth stands for Antogo, without asking the rider; null elsewhere (a browser and the Mac app answer for themselves). */
+export const appBluetoothStanding = async (): Promise<BluetoothStanding | null> => (await side()?.bluetoothStanding?.().catch(() => null)) ?? null;
 
 /** iPhone and iPad: keep the screen on during a ride, and let it dim again after. Nothing to do elsewhere (the page asks the browser itself). */
 export const appKeepAwake = (on: boolean): void => { void side()?.keepAwake?.(on).catch(() => undefined); };

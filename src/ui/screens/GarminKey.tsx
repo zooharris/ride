@@ -79,7 +79,7 @@ export function GarminKey() {
 
   return (
     <div>
-      <PageHead back={{ label: 'Settings', href: '#/settings' }} title="Garmin, with your personal key" />
+      <PageHead help="fix-garmin-key" back={{ label: 'Settings', href: '#/settings' }} title="Garmin, with your personal key" />
       <p class="prose" style="margin-top:0">Garmin now lets anyone make a free personal key in Garmin Connect, which reads your own activities and health data (it can't send workouts to a device). {app
         ? <>With it, and your say-so below, this app brings your activities and daily wellness straight from Garmin.</>
         : <>In the {APP_SHORT_NAME} app (for the Mac, iPhone and iPad), the app can bring your activities and daily wellness straight from Garmin with it. A browser can't: Garmin does not answer one.</>}</p>

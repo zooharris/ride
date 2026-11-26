@@ -13,7 +13,8 @@
     "journeys": "playwright test",
     "app": "electron .",
     "app:journeys": "playwright test -c playwright.shell.config.ts",
-    "app:mac": "electron-builder --mac --universal"
+    "app:mac": "electron-builder --mac --universal",
+    "help:shots": "vite build && playwright test -c playwright.shots.config.ts"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.2",

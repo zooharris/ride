@@ -108,7 +108,7 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
 
   return (
     <div>
-      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`} eyebrow={<span title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>} />
+      <PageHead help="library" back={{ label: 'Library', onClick: cancel }} title={existing ? `Edit ${KIND_LABEL[kind].toLowerCase()} session` : `New ${KIND_LABEL[kind].toLowerCase()} session`} eyebrow={<span title="Estimated training stress for this session; it counts toward fitness and fatigue the way a ride’s TSS does. Walks are estimated from the heart-rate target and pack, strength from the planned effort, mobility from its length.">{minutes} min · ≈ {tss} TSS</span>} />
       <div class="form">
         <div class="field" style="grid-column:1/-1"><label>Name</label><input value={name} placeholder={kind === 'strength' ? 'Tuesday legs' : kind === 'walk' ? 'Lunchtime walk' : 'Evening stretch'} onInput={(e) => setName((e.target as HTMLInputElement).value)} /></div>
         <div class="field" style="grid-column:1/-1"><label>What it is for (optional)</label><input value={purpose} onInput={(e) => setPurpose((e.target as HTMLInputElement).value)} /></div>

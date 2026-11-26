@@ -48,7 +48,9 @@ export const LOCAL_ONLY = new Set(['powerCurve', 'lastAutoBackup', 'lastBackup',
   // 25 Nov 2026: whether this device is kept in step with the rider's others is this device's own choice.
   'deviceChoice', 'connectOfferDone',
   // 25 Nov 2026: after a backup file is restored here, a saved copy from other devices is asked about at once.
-  'devicesAsk']);
+  'devicesAsk',
+  // What's new is shown once on each device.
+  'whatsNewSeen']);
 /**
  * Secrets never leave the device in the sync note: the Intervals.icu key and the
  * Claude key are pasted once on each device. A file backup may carry them, at

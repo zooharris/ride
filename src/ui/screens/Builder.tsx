@@ -120,7 +120,7 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
 
   return (
     <div>
-      <PageHead back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit workout' : 'New ride workout'} eyebrow={`${clock(stats.seconds)} · ${stats.tss} TSS · intensity ${stats.intensityFactor.toFixed(2)}`} />
+      <PageHead help="library" back={{ label: 'Library', onClick: cancel }} title={existing ? 'Edit workout' : 'New ride workout'} eyebrow={`${clock(stats.seconds)} · ${stats.tss} TSS · intensity ${stats.intensityFactor.toFixed(2)}`} />
 
       <div class="panel" style="padding:14px 16px 12px">
         <div class="row between" style="margin-bottom:8px">

@@ -39,9 +39,17 @@ export default defineConfig({
       workbox: {
         // webp: the exercise pictures, so they show offline in a gym.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,webp}'],
+        // The app's own code is one file, kept whole so the app opens offline; it has grown past the tool's 2 MiB default.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Help's pictures come in three versions (computer, iPhone, iPad): a browser keeps the ones it has shown, not all of them.
+        globIgnores: ['help/**'],
         navigateFallback: '/ride/index.html',
         // Map tiles already seen stay available offline for a month.
         runtimeCaching: [{
+          urlPattern: /\/help\/[a-z-]+\.webp$/,
+          handler: 'CacheFirst',
+          options: { cacheName: 'help-pictures', expiration: { maxEntries: 60, maxAgeSeconds: 90 * 24 * 3600 } },
+        }, {
           urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
           handler: 'CacheFirst',
           options: { cacheName: 'map-tiles', expiration: { maxEntries: 1500, maxAgeSeconds: 30 * 24 * 3600 } },

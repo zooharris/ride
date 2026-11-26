@@ -22,7 +22,7 @@ export function Notices() {
   }, []);
   return (
     <div>
-      <PageHead back={{ label: 'Settings', href: '#/settings' }} title="Open-source notices" />
+      <PageHead help="settings" back={{ label: 'Settings', href: '#/settings' }} title="Open-source notices" />
       <p class="prose" style="margin-top:0">Antogo is built with open-source software, each part under its own licence. These are the notices and licences that come with them.</p>
       {kind === 'mac' && appNotices.canOpenEngine() && <p class="small"><button class="btn sm" onClick={() => { void appNotices.openEngine(); }}>Open the full list of Chromium's licences</button> <span class="faint">· the engine inside the Mac app; it opens in your browser</span></p>}
       <pre class="notices-text">{text ?? 'Reading…'}</pre>

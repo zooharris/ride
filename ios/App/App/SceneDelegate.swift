@@ -67,6 +67,7 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "keySave", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "keyForget", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "share", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "btAllowed", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "btState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "btScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "btStopScan", returnType: CAPPluginReturnPromise),
@@ -218,6 +219,17 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
     }()
     private func onMain(_ work: @escaping () -> Void) { DispatchQueue.main.async(execute: work) }
 
+    /// Whether the rider has allowed Antogo to use Bluetooth, read without asking them (for Check my setup).
+    @objc func btAllowed(_ call: CAPPluginCall) {
+        let word: String
+        switch CBCentralManager.authorization {
+        case .allowedAlways: word = "allowed"
+        case .denied: word = "denied"
+        case .restricted: word = "restricted"
+        default: word = "notAsked"
+        }
+        call.resolve(["allowed": word])
+    }
     @objc func btState(_ call: CAPPluginCall) { onMain { self.bluetooth.state(call) } }
     @objc func btScan(_ call: CAPPluginCall) { onMain { self.bluetooth.scan(call) } }
     @objc func btStopScan(_ call: CAPPluginCall) { onMain { self.bluetooth.stopScan(call) } }

@@ -11,6 +11,12 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26', date: '26 November 2026', items: [
+      { title: 'A ride carries on when the app is not in front', text: 'On iPhone and iPad you can switch to another app or lock the screen during a ride: every reading is kept, the trainer keeps to its targets, and the screen catches up when you return. The Mac app and a browser tab carry on when hidden too.', help: 'riding' },
+      { title: 'Help, rebuilt as pages', text: 'Help now opens on a few topics. Each page is one task: numbered steps, with a picture of the screen beside each, and the full detail folded away below. Press a picture to see it larger.', help: 'start' },
+    ],
+  },
+  {
     id: '2026-11-25b', date: '25 November 2026, evening', items: [
       { title: 'Ride with your trainer on iPhone and iPad', text: 'The ride player now reaches smart trainers, power meters, heart-rate straps and other sensors through the iPhone\'s or iPad\'s own Bluetooth, and is on the iPhone for the first time. The screen stays on while you ride.', help: 'guide-trainer' },
       { title: 'Restoring a backup never puts older data over newer', text: 'A backup is restored as it was when it was made. If the device is then kept in step with your others, the newer version of each thing is kept. Going back to an old backup on every device is its own action in Settings, and warns first.', help: 'guide-devices' },

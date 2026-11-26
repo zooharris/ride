@@ -256,7 +256,8 @@ test('Settings, Help and the ride player say plainly what the Mac app is', async
   }
   await go(r.page, '#/settings');
   await expect(r.page.locator('main')).toContainText('This is Antogo for the Mac');
-  await go(r.page, '#/help?s=settings');
+  await go(r.page, '#/help/settings');
+  await r.page.getByText('All the detail', { exact: true }).click();
   await expect(r.page.locator('main')).toContainText('signed by its maker and checked by Apple');
   await expect(r.page.locator('main')).not.toContainText('Open Anyway');
   expect(r.problems).toEqual([]);

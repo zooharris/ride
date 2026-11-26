@@ -195,7 +195,7 @@ export function App() {
     case 'garmin-key': screen = <GarminKey />; break;
     case 'notices': screen = <Notices />; break;
     // TEMPORARY (22 Nov 2026): the one-time check of Antogo's numbers; not linked, removed in the follow-up.
-    case 'help': screen = <Help params={route.params} />; break;
+    case 'help': screen = <Help params={route.params} page={route.parts[1]} />; break;
     default: screen = <Today data={data} />;
   }
   const active = root === 'workout' ? (route.params.get('from') ?? 'library') : root === 'build' ? 'library' : (root === 'export' || root === 'garmin-key' || root === 'notices') ? 'settings' : root || 'today';

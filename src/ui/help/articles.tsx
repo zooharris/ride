@@ -67,7 +67,7 @@ export const ARTICLES: Article[] = [
         <Note title="Your data stays with you">There is no account to make. Everything is kept on {thisDevice()}, not with us. {APP_SHORT_NAME} contacts another service only when you connect one.</Note>
         <Facts items={[
           { title: 'iPhone and iPad', text: `The ${APP_SHORT_NAME} app, with the device's own Bluetooth for your trainer.` },
-          { title: 'Mac', text: 'The app for the Mac, the same in every way.' },
+          { title: 'Mac', text: 'The app for the Mac. It is signed by its maker and checked by Apple, so it opens with a double-click. Download it from Settings, at the foot, in the browser version.' },
           { title: 'A web browser', text: 'The same app as a page. Riding with a trainer needs Chrome or Edge on a computer.' },
         ]} />
         <p>Each copy keeps its own data. <A to="devices">Using more than one device</A> explains how to have the same data on all of them.</p>

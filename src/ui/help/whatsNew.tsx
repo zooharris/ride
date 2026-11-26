@@ -11,7 +11,7 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
-    id: '2026-11-26', date: '26 November 2026', items: [
+    id: '2026-11-25b', date: '25 November 2026, evening', items: [
       { title: 'Ride with your trainer on iPhone and iPad', text: 'The ride player now reaches smart trainers, power meters, heart-rate straps and other sensors through the iPhone\'s or iPad\'s own Bluetooth, and is on the iPhone for the first time. The screen stays on while you ride.', help: 'guide-trainer' },
       { title: 'Restoring a backup never puts older data over newer', text: 'A backup is restored as it was when it was made. If the device is then kept in step with your others, the newer version of each thing is kept. Going back to an old backup on every device is its own action in Settings, and warns first.', help: 'guide-devices' },
       { title: 'Help, with pictures', text: 'Help now starts with short guides, pictures of the app as it looks on the device in your hand, step-by-step fixes for common problems, and Check my setup, which tests each connection you have made.', help: 'check' },
@@ -19,7 +19,7 @@ export const WHATS_NEW: NewsEntry[] = [
     ],
   },
   {
-    id: '2026-11-25', date: '25 November 2026', items: [
+    id: '2026-11-25', date: '25 November 2026, morning', items: [
       { title: 'Nothing to connect before you begin', text: `${APP_SHORT_NAME} opens straight into setup. Connecting Intervals.icu, adding a Garmin key and restoring a backup are each optional, and each can be done later in Settings.` },
       { title: 'You choose whether a device joins your others', text: 'A device that finds your saved copy from another device combines nothing until you choose: keep it in step, or keep it separate.', help: 'guide-devices' },
       { title: 'A signed app for the Mac', text: 'The Mac app opens with a double-click, with no warning.' },

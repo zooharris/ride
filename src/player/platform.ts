@@ -27,3 +27,14 @@ export const playerOffered = (): boolean => platform() !== 'iphone' || appKind()
 
 /** Where a trainer-only workout (the Ramp Test) can be ridden, said on a device that can't run the player. */
 export const TRAINER_ONLY_ELSEWHERE = `Ride this on a computer with Chrome, from ${APP_SHORT_NAME}.`;
+
+/**
+ * A phone-sized screen, by the device's own screen and not the window: the shorter side of every current phone is
+ * well under 500 points, and of every tablet well over. The ride is laid out as three pages on these (26 Nov 2026).
+ */
+export const isPhoneScreen = (width: number, height: number): boolean => Math.min(width, height) > 0 && Math.min(width, height) < 500;
+
+export function phoneScreen(): boolean {
+  if (typeof screen === 'undefined') return false;
+  return isPhoneScreen(screen.width, screen.height);
+}

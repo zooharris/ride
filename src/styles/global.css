@@ -2286,3 +2286,317 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .page-head { top: var(--safe-t); }
 }
 .pl-pick { max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 16px); }
+
+/* ── The ride on a phone: three pages of one screen each (26 Nov 2026) ──────────────────────────────────────────
+   Ride, Numbers, Workout: swiped sideways, each fitting the screen upright or on its side, clear of the clock,
+   the notch and the home bar. The cards inside are the wide screen's own, resized here. */
+.player.ride.rp { height: 100dvh; overflow: hidden; }
+.rp-bar { flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: calc(var(--safe-t) + 4px) max(12px, env(safe-area-inset-right, 0px)) 4px max(12px, env(safe-area-inset-left, 0px)); }
+.rp-title { flex: 1 1 0; min-width: 0; }
+.rp-name { font-size: 16px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-sub { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-bar .btn { flex: none; min-height: 44px; padding: 0 14px; }
+.rp-live { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.rp-live > div { min-width: 0; }
+.rp-live .caption { display: block; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-live b { font-size: 22px; font-stretch: 112%; letter-spacing: -0.02em; white-space: nowrap; }
+.rp-live small { font-size: 12px; color: var(--ink-2); }
+.rp-live-page { flex: none; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+.rp-live-bar { display: none; }
+.rp-pages { flex: 1; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.rp-pages::-webkit-scrollbar { display: none; }
+.rp-page { flex: 0 0 100%; min-width: 0; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; gap: 8px; padding: 4px max(12px, env(safe-area-inset-right, 0px)) 4px max(12px, env(safe-area-inset-left, 0px)); overflow-x: hidden; overflow-y: auto; }
+.rp .rd-card { padding: 10px 12px; border-radius: 12px; }
+.rp .rd-lost { padding: 6px 12px; font-size: 12.5px; }
+
+/* The Ride page. */
+.rp-ride > .rd-hero { flex: none; overflow: visible; }
+.rp .rd-hero > .row { gap: 8px; }
+.rp .rd-hero > .row > .caption { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp .rd-state { flex: none; }
+.rp .rd-big { font-size: clamp(60px, 12.5vh, 112px); margin-top: 0; }
+.rp .rd-big-pair { column-gap: 16px; }
+.rp .rd-big-pair .rd-big { font-size: clamp(40px, min(9vh, 14vw), 80px); }
+.rp .rd-target { margin-top: 4px; gap: 4px 8px; font-size: 13px; }
+.rp .rd-target b { font-size: 20px; }
+.rp .rd-band { margin-top: 6px; }
+.rp .rd-band-words { font-size: 11px; margin-top: 0; }
+.rp .rd-signal { min-height: 40px; margin-top: 6px; font-size: 13px; }
+.rp .rd-ask { margin-top: 6px; padding: 6px 10px; font-size: 13px; }
+.rp .rd-ask .btn { min-height: 40px; }
+.rp-ride > .rd-dial { flex: 1 1 0; min-height: 0; }
+.rp .rd-dial > .rd-ring { flex: 1 1 0; min-height: 0; width: 100%; height: auto; aspect-ratio: auto; margin-top: 2px; container-type: size; }
+.rp .rd-ring-text { padding-bottom: 0; }
+.rp .rd-dial-time { font-size: clamp(34px, 6.2vh, 56px); }
+@supports (font-size: 1cqh) {
+  .rp .rd-ring .rd-dial-time { font-size: clamp(22px, 27cqh, 64px); }
+  @container (max-height: 130px) { .rp .rd-ring-text > span:not(.rd-dial-time) { display: none; } }
+}
+.rp .rd-dial > .rd-grow { display: none; }
+.rp .rd-dial > .row { flex-wrap: wrap; gap: 4px 8px; }
+.rp .rd-dial > .row > .caption { white-space: nowrap; }
+.rp .rd-zone { display: inline-block; max-width: 100%; line-height: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp .rd-msg { min-height: calc(2 * 1.35em + 2px); margin-top: 4px; font-size: 15px; line-height: 1.35; }
+.rp .rd-next { padding-top: 8px; gap: 5px; }
+.rp .rd-next > div { font-size: 13px; gap: 8px; grid-template-columns: 34px 9px minmax(0, 1fr) auto; }
+.rp .rd-free-v { font-size: clamp(48px, 9vh, 96px); }
+.rp .rd-free-body { gap: 6px; }
+.rp .rd-free-btns .btn { height: 44px; }
+.rp-tiles { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rp-tiles > div:nth-child(n + 4) { display: none; }
+.rp-tile { min-width: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 7px 10px; }
+.rp-tile .caption { display: block; font-size: 10px; white-space: nowrap; }
+.rp-tile > div { white-space: nowrap; }
+.rp-tile b { font-size: clamp(24px, 3.6vh, 30px); font-stretch: 112%; line-height: 1.05; }
+.rp-tile small { font-size: 11px; color: var(--ink-2); margin-left: 3px; }
+.rp-tile em { display: block; min-height: 1.3em; font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-br { color: color-mix(in srgb, var(--accent) 70%, var(--ink)); }
+
+/* The Numbers page. */
+.rp-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 8px; }
+.rp-num { min-width: 0; display: flex; flex-direction: column; justify-content: center; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px; overflow: hidden; }
+.rp-num .caption { font-size: 10.5px; line-height: 1.2; }
+.rp-num > div { white-space: nowrap; }
+.rp-num b { font-size: clamp(21px, 3.7vh, 32px); font-stretch: 112%; letter-spacing: -0.02em; }
+.rp-num small { font-size: 13px; color: var(--ink-2); }
+.rp-num em { font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
+/* The Workout page. */
+.rp-workout > .rd-chartcard { flex: 1 1 34%; min-height: 110px; padding: 8px 12px 6px; gap: 4px; }
+.rp-workout.nolist > .rd-chartcard { flex: 1 1 auto; }
+.rp .rd-chart-head { gap: 2px 12px; min-height: 0; }
+.rp .rd-key { font-size: 11px; }
+.rp .rd-chart-h { height: 26px; }
+.rp-steps { flex: 1 1 40%; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain; padding: 4px !important; }
+.rp-step { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto minmax(0, auto); gap: 8px; align-items: center; min-height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; }
+.rp-step i { width: 9px; height: 9px; border-radius: 2px; }
+.rp-step b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-step span { color: var(--ink-2); white-space: nowrap; }
+.rp-step em { font-style: normal; font-size: 10.5px; color: var(--ink-3); text-align: right; }
+.rp-step.done b { color: var(--ink-3); }
+.rp-step.now { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1px var(--accent); }
+.rp-step.now em { color: var(--sel-ink); }
+.rp-ctl { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rp-ctl:empty { display: none; }
+.rp-ctl .rd-controls { display: contents; }
+.rp-ctl .rd-controls > span[style] { display: none; }
+.rp-ctl .rd-controls > .faint { flex: 1 1 0; min-width: 0; }
+.rp-ctl .seg { flex: 1 1 100%; display: flex; }
+.rp-ctl .seg button { flex: 1 1 auto; justify-content: center; min-height: 44px; padding: 0 8px; font-size: 13.5px; }
+.rp-ctl .rd-stepper > span { display: inline; }
+.rp-ctl .rd-stepper .btn { width: 44px; min-height: 44px; }
+.rp-skip { margin-left: auto; min-height: 44px; }
+@media (max-width: 380px) { .rp-ctl .rd-stepper > span { display: none; } }
+
+/* The pages' names at the foot. */
+.rp-dots { flex: none; display: flex; justify-content: center; gap: 4px; height: 28px; }
+.rp-dots button { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; background: none; border: 0; cursor: pointer; font: 500 10.5px var(--font); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.rp-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+.rp-dots .on { color: var(--ink); font-weight: 700; }
+.rp-dots .on i { background: var(--accent); }
+
+/* A short phone held upright: the second "then" line and the band's words give way. */
+@media (orientation: portrait) and (max-height: 720px) {
+  .rp .rd-band-words > span:first-child, .rp .rd-band-words > span:last-child { display: none; }
+  .rp .rd-band-words { justify-content: center; }
+  .rp .rd-msg { font-size: 14px; }
+  .rp .rd-card { padding: 8px 10px; }
+  .rp-page { gap: 6px; }
+  .rp-step { min-height: 24px; }
+}
+
+/* On its side. */
+@media (orientation: landscape) {
+  .rp-bar { min-height: 46px; padding-top: calc(var(--safe-t) + 2px); padding-bottom: 2px; }
+  .rp-title { min-width: 92px; }
+  .rp-away .rp-live-bar { display: flex; gap: 14px; flex: 0 1 auto; min-width: 0; margin-right: 4px; }
+  .rp-live-bar b { font-size: 19px; }
+  .rp-live-page { display: none; }
+  .rp-dots { height: 22px; }
+  .rp-page { padding-top: 2px; padding-bottom: 2px; }
+  .rp-ride { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.3fr) minmax(0, .6fr); grid-template-rows: minmax(0, 1fr); }
+  .rp-ride > .rd-hero { overflow-y: auto; }
+  .rp .rd-big { font-size: clamp(50px, 21vh, 92px); }
+  .rp .rd-target b { font-size: 17px; }
+  .rp .rd-big-pair .rd-big { font-size: clamp(36px, 15vh, 60px); }
+  .rp-ride > .rd-dial { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 12px; align-items: center; }
+  .rp-ride > .rd-dial > :first-child, .rp-ride > .rd-dial > .rd-next, .rp-ride > .rd-dial > .rd-dial-done, .rp-ride > .rd-dial > .rd-free-body { grid-column: 1 / -1; }
+  .rp .rd-dial > .rd-ring { grid-column: 1; width: clamp(104px, 37vh, 156px); height: clamp(104px, 37vh, 156px); margin: 0; align-self: center; }
+  .rp .rd-msg { grid-column: 2; justify-content: flex-start; margin: 0; min-height: 0; font-size: 16px; }
+  .rp .rd-msg .rd-cue { margin: 0; text-align: left; }
+  .rp .rd-next > div + div { display: grid; }
+  .rp .rd-free-v { font-size: clamp(40px, 16vh, 72px); }
+  .rp .rd-free-body p { display: none; }
+  .rp-tiles { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
+  .rp-tiles > div:nth-child(n + 4) { display: block; }
+  .rp-tile { padding: 3px 10px; display: flex; flex-direction: column; justify-content: center; }
+  .rp-tile b { font-size: clamp(20px, 6.6vh, 28px); }
+  .rp-tile em { min-height: 0; }
+  .rp-tile em:empty { display: none; }
+  .rp-grid { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); }
+  .rp-num b { font-size: clamp(20px, 7vh, 28px); }
+  .rp-num small { font-size: 11px; }
+  .rp-workout { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .rp-workout > .rd-chartcard { grid-column: 1; grid-row: 1; min-height: 0; }
+  .rp-workout > .rp-steps { grid-column: 2; grid-row: 1 / span 2; }
+  .rp-workout > .rp-ctl { grid-column: 1; grid-row: 2; }
+  .rp-workout.nolist > .rd-chartcard, .rp-workout.nolist > .rp-ctl { grid-column: 1 / -1; }
+  .rp-ctl .seg { flex: 1 1 auto; }
+  .rp-step { min-height: 23px; }
+}
+
+/* ── Before the ride on a phone: one screen (26 Nov 2026) ───────────────────────────────────────────────────────
+   Upright: the ride, your devices, how it runs, Start ride at the foot. On its side: the ride on the left, your
+   devices in the middle, the rest and Start ride on the right. The steps open over it. */
+.player.pp-frame { height: 100dvh; overflow: hidden; }
+.pp-banner { margin: calc(var(--safe-t) + 6px) 12px 0; padding: 6px 10px; font-size: 12px; line-height: 1.35; }
+.pp { flex: 1; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: calc(var(--safe-t) + 6px) 12px 8px; overflow-x: hidden; overflow-y: auto; }
+.pp-banner + .pp { padding-top: 6px; }
+.pp-ride { display: contents; }
+.pp-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.pp-head .btn, .pp-sheet-head .btn { flex: none; min-height: 44px; }
+.pp-title { min-width: 0; flex: 1; }
+.pp-title h1 { margin: 0; font-size: 16px; line-height: 1.15; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-title p { margin: 0; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-card { padding: 10px 12px; border-radius: 12px; }
+.pp .pl-h2 { font-size: 14px; line-height: 20px; }
+.pp .pl-figures { margin-top: 0; border: 0; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pp .pl-figures > div { padding: 0; border: 0; }
+.pp .pl-figures .caption { font-size: 9.5px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-fig { font-size: 17px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-fig small { font-size: 10px; }
+.pp-chart { display: block; width: 100%; margin: 8px 0 2px; padding: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.pp .pl-chart { margin-top: 0; grid-template-columns: minmax(0, 1fr); }
+.pp .pl-chart-y { display: none; }
+.pp .pl-chart .profile svg { height: 56px; }
+.pp .pl-chart-x { height: 12px; margin-top: 3px; font-size: 9.5px; }
+.pp-outline { display: none; }
+.pp-stepsline { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.pp-stepsline > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-link { flex: none; min-height: 28px; padding: 4px 0; background: none; border: 0; font: 600 12px var(--font); color: var(--accent); text-decoration: underline; cursor: pointer; }
+.pp-all { display: none; }
+.pp-ways { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 12px; line-height: 1.35; }
+.pp-ways b { display: block; }
+.pp-ways span { color: var(--ink-2); }
+.pp-devices { flex: none; min-width: 0; }
+.pp-devices .row.between { flex-wrap: wrap; gap: 2px 8px; }
+.pp-devices .pl-h2 { white-space: nowrap; }
+.pp .pl-pill { height: 22px; font-size: 11.5px; }
+.pp .pl-devgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.pp .pl-dev { position: relative; min-height: 56px; padding: 6px 10px; gap: 0; border-radius: 10px; justify-content: center; }
+.pp .pl-dev::after { content: ''; position: absolute; right: 10px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+.pp .pl-dev.connected::after { background: var(--good); }
+.pp .pl-dev.waiting::after { background: var(--warn); }
+.pp .pl-dev-k { order: 0; display: block; padding-right: 14px; font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-dev-chev, .pp .pl-dev-act { display: none; }
+.pp .pl-dev-v, .pp .pl-dev-ctl, .pp .pl-dev-none { order: 1; font-size: 18px; font-weight: 700; line-height: 1.2; color: var(--ink); font-stretch: 112%; letter-spacing: -0.01em; }
+.pp .pl-dev-none { color: var(--ink-2); font-size: 15px; }
+.pp .pl-dev-ctl.off { color: var(--warn); }
+.pp .pl-dev-v small { font-size: 10px; }
+.pp .pl-dev-v-pair { flex-wrap: nowrap; column-gap: 8px; align-items: baseline; }
+.pp .pl-dev-v-pair > span + span { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-dev-v-pair > span + span small { display: none; }
+.pp .pl-dev-v-pair > span + span::after { content: ' breaths/min'; font-size: 10px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; font-stretch: 100%; }
+.pp .pl-dev-name, .pp .pl-dev-hint { order: 2; font-size: 10.5px; font-weight: 400; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .pl-dev-s { order: 3; display: none; font-size: 10.5px; }
+.pp .pl-dev.waiting .pl-dev-s, .pp .pl-dev-s.warn { display: flex; }
+.pp .pl-dev-warn { order: 4; font-size: 10.5px; }
+.pp .pl-note { margin-top: 6px; padding-top: 6px; font-size: 11px; line-height: 1.35; }
+.pp .pl-dev-quiet { margin-top: 6px; padding: 6px 10px; font-size: 12px; flex-wrap: wrap; }
+.pp-right { flex: 1 0 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pp-runs { display: flex; flex-direction: column; gap: 8px; }
+.pp-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; color: var(--ink-2); }
+.pp-row > span:first-child { flex: none; min-width: 46px; }
+.pp-row .seg { flex: 1 1 auto; display: flex; }
+.pp-row .seg { min-width: 0; }
+.pp-row .seg button { flex: 1 1 auto; min-width: 0; justify-content: center; min-height: 44px; padding: 0 7px; font-size: 12.5px; line-height: 1.15; text-align: center; white-space: normal; }
+.pp-only { font-weight: 600; color: var(--ink); min-height: 44px; display: inline-flex; align-items: center; }
+.pp-says { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--ink-2); }
+.pp-tune { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+.pp-tune:empty { display: none; }
+.pp-pair { display: flex; align-items: center; gap: 6px; min-height: 44px; }
+.pp-beeps { margin-left: auto; }
+.pp .pl-stepper .btn { width: 44px; min-height: 44px; }
+.pp .pl-stepper b { min-width: 46px; font-size: 15px; }
+.pp .pl-start { flex: none; margin-top: auto; min-height: 54px; }
+.pp .pl-start-note { margin: -4px 0 0; font-size: 10.5px; }
+.pp .pl-blocked { margin-top: auto; padding: 10px 12px; gap: 10px; flex-wrap: wrap; }
+.pp .pl-blocked b { font-size: 14.5px; }
+.pp .pl-blocked p { font-size: 12.5px; }
+.pp .pl-blocked .btn { min-height: 44px; }
+.pp-sheet { position: fixed; inset: 0; z-index: 50; box-sizing: border-box; display: flex; flex-direction: column; background: var(--bg); padding: var(--safe-t) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px)); }
+.pp-sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 56px; }
+.pp-sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+.pp-sheet-body > p { margin: 0 0 8px; }
+.pp-sheet-says { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.pp-sheet .pl-step, .pp-sheet .pl-step.in-set { grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 10px; font-size: 13.5px; }
+.pp-sheet .pl-ramp .seg { flex-wrap: wrap; }
+
+/* A tall phone held upright has room to spare: the chart and the device boxes take it. */
+@media (orientation: portrait) and (min-height: 800px) {
+  .pp .pl-chart .profile svg { height: 84px; }
+  .pp .pl-dev { min-height: 64px; }
+  .pp-runs { gap: 10px; }
+}
+
+/* A short phone held upright: everything a little tighter, and each device's name gives way to its reading. */
+@media (orientation: portrait) and (max-height: 720px) {
+  .pp { gap: 6px; padding-bottom: 6px; }
+  .pp .pl-card { padding: 8px 10px; }
+  .pp .pl-chart .profile svg { height: 32px; }
+  .pp-link { min-height: 22px; padding: 2px 0; }
+  .pp-says { font-size: 11px; line-height: 1.3; }
+  .pp .pl-dev-hint { display: none; }
+  .pp-chart { margin-top: 6px; }
+  .pp .pl-devgrid { margin-top: 6px; gap: 5px; }
+  .pp .pl-dev { min-height: 42px; padding: 3px 10px; }
+  .pp .pl-dev.connected .pl-dev-name { display: none; }
+  .pp .pl-dev-v, .pp .pl-dev-ctl { font-size: 16px; }
+  .pp-runs { gap: 6px; }
+  .pp .pl-start { min-height: 46px; }
+  .pp .pl-start-note { display: none; }
+  .pp .pl-note { display: none; }
+}
+
+@media (orientation: landscape) {
+  .pp { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(0, 1.2fr) minmax(0, 1.05fr); grid-template-rows: minmax(0, 1fr); padding: max(16px, var(--safe-t)) max(12px, env(safe-area-inset-right, 0px)) 16px max(12px, env(safe-area-inset-left, 0px)); overflow: hidden; }
+  .pp-banner { margin: 6px max(12px, env(safe-area-inset-left, 0px)) 0; }
+  .pp-banner + .pp { padding-top: 8px; }
+  .pp-ride { display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .pp-ride > .pp-profile { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 6px; padding: 0; border: 0; background: none; }
+  .pp .pl-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pp-chart { margin-top: auto; padding-top: 8px; }
+  .pp-outline { display: flex; flex-direction: column; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+  .pp-outline > div { display: flex; align-items: center; gap: 7px; min-height: 21px; font-size: 12px; }
+  .pp-outline i { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+  .pp-outline b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-outline span { margin-left: auto; color: var(--ink-2); white-space: nowrap; }
+  .pp-stepsline { justify-content: flex-end; }
+  .pp-stepsline > span { display: none; }
+  .pp-all { display: inline; }
+  .pp-few { display: none; }
+  .pp-ways { margin-top: 10px; gap: 8px; }
+  .pp-devices { min-height: 0; }
+  .pp-devices > .pl-card { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
+  .pp .pl-devgrid { flex: 1; grid-auto-rows: minmax(0, 1fr); }
+  .pp-right { min-height: 0; }
+  .pp-runs { flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 5px; }
+  .pp .pl-dev { min-height: 0; overflow: hidden; padding: 4px 10px; }
+  .pp .pl-note { margin-top: 4px; padding-top: 4px; font-size: 10.5px; }
+  .pp .pl-blocked { flex: none; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 8px; }
+  .pp .pl-blocked-icon { display: none; }
+  .pp-pair { min-height: 40px; }
+  .pp-row > span:first-child { flex: 1 1 100%; font-size: 9.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+  .pp-tune { flex-direction: column; align-items: stretch; gap: 2px; }
+  .pp-pair { justify-content: space-between; }
+  .pp-beeps { margin-left: 0; }
+  .pp .pl-start, .pp .pl-blocked { margin-top: 0; }
+  .pp .pl-start-note { display: none; }
+}
+@media (orientation: landscape) and (max-height: 400px) {
+  .pp .pl-note { display: none; }
+}
+@media (orientation: landscape) and (max-width: 720px) {
+  .pp .pl-dev-none { font-size: 12.5px; }
+  .pp .pl-dev { padding: 3px 8px; }
+}

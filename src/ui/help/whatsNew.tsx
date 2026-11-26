@@ -11,6 +11,12 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26b', date: '26 November 2026, afternoon', items: [
+      { title: 'The ride on a phone, one screen at a time', text: 'While you ride, a phone now shows three pages that each fit the screen, upright or on its side: Ride, Numbers and Workout. Swipe sideways between them, or press a page\'s name at the foot. Nothing sits below the fold.', help: 'riding' },
+      { title: 'Before the ride, on one screen', text: 'On a phone the ride, your devices, how the ride runs and Start ride are all on one screen. Press the chart to see the steps, and press a device\'s box to choose or change it.', help: 'riding' },
+    ],
+  },
+  {
     id: '2026-11-26', date: '26 November 2026', items: [
       { title: 'A ride carries on when the app is not in front', text: 'On iPhone and iPad you can switch to another app or lock the screen during a ride: every reading is kept, the trainer keeps to its targets, and the screen catches up when you return. The Mac app and a browser tab carry on when hidden too.', help: 'riding' },
       { title: 'Help, rebuilt as pages', text: 'Help now opens on a few topics. Each page is one task: numbered steps, with a picture of the screen beside each, and the full detail folded away below. Press a picture to see it larger.', help: 'start' },

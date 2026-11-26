@@ -25,7 +25,7 @@ import { aiCues } from '../../coach/rideCues';
 import { coachConfig } from '../coachConfig';
 import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
-import { platform } from '../../player/platform';
+import { platform, phoneScreen } from '../../player/platform';
 import { APP_SHORT_NAME } from '../../appName';
 import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, wakeStrap, WAKE_WORDS, type SensorState, type WakeStep } from '../../player/hub';
 import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
@@ -99,14 +99,16 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   }
   const bt = bluetoothAvailable();
   if (!bt && !sim) return <Frame><NoBluetooth /></Frame>;
-  if (how === 'free') return <Frame fit><FreePre profile={profile} sim={sim} bt={bt} /></Frame>;
+  if (how === 'free') return <Frame fit bare={phoneScreen()}><FreePre profile={profile} sim={sim} bt={bt} /></Frame>;
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
-  return <Frame fit><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} history={rideHistory(data, workout)} /></Frame>;
+  return <Frame fit bare={phoneScreen()}><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} history={rideHistory(data, workout)} /></Frame>;
 }
 
-function Frame({ children, fit }: { children: ComponentChildren; fit?: boolean }) {
+function Frame({ children, fit, bare }: { children: ComponentChildren; fit?: boolean; bare?: boolean }) {
+  // On a phone the screen before the ride has its own short heading, so every point of height goes to the ride (26 Nov 2026).
+  if (bare) return <div class="player fit pp-frame">{children}</div>;
   return (
     <div class={`player${fit ? ' fit' : ''}`}>
       <header class="pl-head">
@@ -241,6 +243,121 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
     mode: trainerRuns ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   }); };
+
+  // On a phone, the screen before the ride is one screen (26 Nov 2026): the ride, your devices, how it runs, Start.
+  // The steps, the test's own choice and the longer explanations open over it.
+  const [phone] = useState(phoneScreen);
+  const [sheet, setSheet] = useState(false);
+  if (phone) {
+    const all = flattenSteps(shown.blocks);
+    const ladder = ridePowerZones(shownProfile);
+    const first = all[0];
+    const saved = planned ? 'saved to this session when you finish' : 'saved when you finish';
+    const startNote = first && !ramp ? `Starts with ${clock(first.seconds)} of ${(first.label ?? 'the first step').toLowerCase()} · ${saved}` : `${saved[0].toUpperCase()}${saved.slice(1)}`;
+    const outline = shown.blocks.map((b) => b.kind === 'step'
+      ? { name: b.label ?? `Zone ${powerZone(b.intensity, ladder)}`, time: clock(b.seconds), z: powerZone(b.intensity, ladder) }
+      : { name: `${b.label ?? 'Set'}${b.times > 1 ? ` × ${b.times}` : ''}`, time: `${clock(b.steps.reduce((a, st) => a + st.seconds, 0))}${b.times > 1 ? ' each' : ''}`, z: powerZone(Math.max(...b.steps.map((st) => st.intensity)), ladder) });
+    const says = !startable ? (choice.needsPower ? '' : 'Choices for the trainer appear here once what the ride needs is connected.')
+      : !trainerRuns ? (choice.mode === 'breath-self' ? 'You ride to each breathing zone with your gears.' : choice.mode === 'hr-self' ? 'You ride to each heart-rate zone with your gears.' : choice.says.replace(/^Ready\.\s*/, ''))
+      : byBreath ? (mode === 'erg' ? 'The trainer adjusts its resistance to keep your breathing in each zone.' : 'You ride to each breathing zone with your gears.')
+      : !power ? (mode === 'erg' ? 'The trainer adjusts its resistance to keep your heart rate in each zone.' : 'You ride to each heart-rate zone with your gears.')
+      : mode === 'erg' ? 'The trainer holds each step’s watts. You just pedal.' : mode === 'resistance' ? 'You hold each step’s watts with your gears, at the resistance you set.' : 'You hold each step’s watts with your gears, on a flat road.';
+    const more = trainerRuns && (byBreath || !power)
+      ? (mode === 'erg' ? (byBreath ? 'Steps under two minutes are held at steady watts, and the first few minutes are held while Antogo reads your strap for today.' : 'Steps under three minutes are held at steady watts.') : 'After 20 seconds outside the zone the screen says Reduce intensity or Increase intensity.')
+      : startable && !trainerRuns && (choice.mode === 'breath-self' || choice.mode === 'hr-self') ? 'After 20 seconds outside the zone the screen says Reduce intensity or Increase intensity.' : '';
+    const beeps = <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button>;
+    return (
+      <>
+        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth on ${thisDevice()} (check that it is turned on and allowed for ${APP_SHORT_NAME} in the Settings app): for now only the simulated sensors are available.` : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+        <main class="pp">
+          <div class="pp-ride pl-workout">
+            <div class="pp-head">
+              <button class="btn quiet" onClick={back}>‹ Back</button>
+              <div class="pp-title"><h1>{workout.name}</h1><p>{[planned ? (planned.date === today() ? 'Today' : fmtDate(planned.date)) : undefined, workout.subtitle].filter(Boolean).join(' · ')}</p></div>
+            </div>
+            <section class="pl-card pp-profile">
+              <div class="pl-figures">
+                <div><div class="caption">Duration</div><div class="pl-fig num">{ramp && <small>about </small>}{clock(s.seconds)}</div></div>
+                <div><div class="caption">Training load</div><div class="pl-fig num">{ramp && <small>about </small>}{s.tss}<small> TSS</small></div></div>
+                <div><div class="caption">Intensity</div><div class="pl-fig num">{s.intensityFactor.toFixed(2)}<small> of {power || byBreath ? 'FTP' : 'threshold'}</small></div></div>
+                {byBreath && profile.vt2Ve
+                  ? <div><div class="caption">Second breathing threshold</div><div class="pl-fig num">{Math.round(profile.vt2Ve)}<small> L/min</small></div></div>
+                  : <div><div class="caption">{power ? 'Your FTP' : 'Threshold'}</div>{(power ? ftpKnown : lthrKnown) ? <div class="pl-fig num">{power ? profile.ftp : profile.lthr}<small>{power ? ' W' : ' bpm'}</small></div> : <div class="pl-fig" style="font-size:15px">not known yet</div>}</div>}
+              </div>
+              <button class="pp-chart" aria-label="See the steps" onClick={() => setSheet(true)}>
+                <WorkoutChart workout={shown} profile={shownProfile} basis={basis} seconds={s.seconds} known={ramp || (basis === 'power' ? ftpKnown : lthrKnown)} />
+              </button>
+              <div class="pp-outline">
+                {outline.slice(0, outline.length > 3 ? 2 : 3).map((o, i) => <div key={i}><i style={`background:${ZONE_VAR[o.z - 1]}`} /><b>{o.name}</b><span class="num">{o.time}</span></div>)}
+                {outline.length > 3 && <div class="faint">and {outline.length - 2} more</div>}
+              </div>
+              <div class="pp-stepsline">
+                <span>{ramp ? `Step size ${rampStep} W · press the chart for more` : `${all.length} steps · press the chart to see them`}</span>
+                <button class="pp-link" onClick={() => setSheet(true)}>{ramp ? 'The test ›' : <><span class="pp-all">All {all.length} steps</span><span class="pp-few">Steps</span> ›</>}</button>
+              </div>
+            </section>
+          </div>
+          <div class="pp-devices">
+            <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={startable} open={open} setOpen={setOpen} />
+          </div>
+          <div class="pp-right">
+            {!choice.needsPower && (
+              <section class="pl-card pp-runs">
+                <div class="pp-row">
+                  <span>Ride by</span>
+                  {allowsHr || (strapOn && !workout.test) ? (
+                    <div class="seg" role="group" aria-label="Targets by">
+                      <button class={power ? 'on' : ''} aria-pressed={power} onClick={() => pick('power')}>Power</button>
+                      {allowsHr && <button class={!power && !byBreath ? 'on' : ''} aria-pressed={!power && !byBreath} onClick={() => pick('hr')}>Heart rate</button>}
+                      {strapOn && !workout.test && <button class={byBreath ? 'on' : ''} aria-pressed={byBreath} disabled={!!whyNotBreath} title={whyNotBreath} onClick={() => pick('breath')}>Breathing</button>}
+                    </div>
+                  ) : <b class="pp-only">Power only</b>}
+                </div>
+                {trainerRuns && (
+                  <div class="pp-row">
+                    <span>Trainer</span>
+                    <div class="seg" role="group" aria-label="Trainer">
+                      {((power ? [['erg', 'ERG'], ['resistance', 'Resistance'], ['free', 'Free ride']] : [['erg', byBreath ? 'Adjusts to breathing' : 'Adjusts to heart rate'], ['resistance', 'Resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
+                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {says && <p class="pp-says">{says}</p>}
+                {startable && (
+                  <div class="pp-tune">
+                    {trainerRuns && mode === 'resistance' ? <div class="pp-pair"><span>Level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>
+                      : trainerRuns && mode === 'erg' && power && !workout.test ? <div class="pp-pair"><span>Intensity</span><StepperSmall value={`${Math.round(scale * 100)}%`} onDown={() => setScale(Math.max(0.5, Math.round((scale - 0.01) * 100) / 100))} onUp={() => setScale(Math.min(1.5, Math.round((scale + 0.01) * 100) / 100))} label="workout intensity" /></div>
+                      : null}
+                    <div class="pp-pair pp-beeps"><span><span class="pp-all">Beeps before each step</span><span class="pp-few">Beeps</span></span>{beeps}</div>
+                  </div>
+                )}
+              </section>
+            )}
+            {blocked ? <Blocked b={blocked} alternatives={choice.needsPower ? alternatives : []} /> : (
+              <>
+                <button class="btn primary pl-start" onClick={start}>Start ride</button>
+                <p class="pl-start-note">{startNote}</p>
+              </>
+            )}
+          </div>
+        </main>
+        {sheet && (
+          <div class="pp-sheet" role="dialog" aria-label="The workout">
+            <div class="pp-sheet-head"><div class="pp-title"><h1>{workout.name}</h1><p>{when}</p></div><button class="btn" onClick={() => setSheet(false)}>Close</button></div>
+            <div class="pp-sheet-body">
+              {prepared.by === 'ai' && <p class="faint small">The cues on this ride were written for you by your AI.</p>}
+              {strapOn && whyNotBreath && !workout.test && <p class="faint small">{whyNotBreath}</p>}
+              {unknownNumber && isTest && <p class="faint small">Your {unknownNumber === 'ftp' ? 'FTP' : 'threshold heart rate'} is not known yet: this test finds it. Ride the warm-up easy and the test effort as hard as you can hold evenly; the trainer doesn't hold a target.</p>}
+              {says && <p class="pp-sheet-says"><b>How the ride runs.</b> {says}{more ? ` ${more}` : ''}</p>}
+              {ramp && <RampCard step={rampStep} onStep={pickRampStep} ftp={rampFtp} ergOff={!trainerRuns || mode !== 'erg'} startable={startable} />}
+              <StepList workout={shown} profile={shownProfile} basis={basis} byBreath={byBreath} />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -456,6 +573,56 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
     mode: free.control ? mode : 'self',
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   });
+  const [phone] = useState(phoneScreen);
+  if (phone) {
+    return (
+      <>
+        {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth on ${thisDevice()} (check that it is turned on and allowed for ${APP_SHORT_NAME} in the Settings app): for now only the simulated sensors are available.` : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}
+        <main class="pp">
+          <div class="pp-ride pl-workout">
+            <div class="pp-head">
+              <button class="btn quiet" onClick={back}>‹ Back</button>
+              <div class="pp-title"><h1>Free ride</h1><p>No workout: ride as you like</p></div>
+            </div>
+            <section class="pl-card pp-profile pp-free">
+              <p class="pp-says">Recorded and saved like any other ride, on today's calendar as a ride of its own. It counts toward your training load.</p>
+              <div class="pp-ways">
+                <div><b>Set resistance</b><span>A road of a fixed steepness, levels 0 to 10.</span></div>
+                <div><b>Hold watts</b><span>The trainer holds the watts you choose (ERG).</span></div>
+                <div><b>Free ride</b><span>A flat road.</span></div>
+              </div>
+            </section>
+          </div>
+          <div class="pp-devices">
+            <Ready sensors={sensors} sources={sources} profile={profile} sim={sim} bt={bt} allSet={free.ready} open={open} setOpen={setOpen} />
+          </div>
+          <div class="pp-right">
+            <section class="pl-card pp-runs">
+              {free.control && free.ready ? (
+                <>
+                  <div class="pp-row">
+                    <span>Trainer</span>
+                    <div class="seg" role="group" aria-label="Trainer">
+                      {([['resistance', 'Set resistance'], ['erg', 'Hold watts'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
+                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <p class="pp-says">You can change any of these as you ride.</p>
+                  <div class="pp-tune">
+                    {mode === 'resistance' && <div class="pp-pair"><span>Level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>}
+                    {mode === 'erg' && <div class="pp-pair"><span>Watts to hold</span><StepperSmall value={`${watts} W`} onDown={() => setWatts(Math.max(50, watts - 5))} onUp={() => setWatts(Math.min(600, watts + 5))} label="watts to hold" /></div>}
+                  </div>
+                </>
+              ) : <p class="pp-says">{free.says.replace(/^Ready\.\s*/, '')}</p>}
+            </section>
+            <button class="btn primary pl-start" disabled={!free.ready} onClick={start}>Start ride</button>
+            <p class="pl-start-note">{free.ready ? 'Saved when you finish' : 'Connect what the ride needs to start'}</p>
+          </div>
+        </main>
+      </>
+    );
+  }
   return (
     <>
       {!bt && <div class="pl-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth on ${thisDevice()} (check that it is turned on and allowed for ${APP_SHORT_NAME} in the Settings app): for now only the simulated sensors are available.` : inApp() ? "The app can't reach Bluetooth on this computer: only the simulated sensors are available. Check that Bluetooth is turned on and that the app is allowed to use it." : "This browser can't reach Bluetooth: only the simulated sensors are available. For real sensors, use Chrome or Edge on a computer."}</div>}

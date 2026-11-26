@@ -51,12 +51,23 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await page.getByRole('button', { name: 'Choose your trainer' }).click();
   await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();
   await looksRight(s, info, 'The player, ready');
+  // On a phone the screen before the ride is one screen, with Start ride in view.
+  if (info.project.name.startsWith('phone')) { await expect(page.locator('.pp')).toBeVisible(); await expect(page.getByRole('button', { name: 'Start ride' })).toBeInViewport(); }
   const rideName = (await page.locator('.pl-workout h1').innerText()).trim();
   const rideSeconds = await page.locator('.pl-figures .pl-fig').first().innerText().then((t) => t.split(':').map(Number).reduce((a, b) => a * 60 + b, 0));
   // From here the page's clock is ours to run forward.
   await page.getByRole('button', { name: 'Start ride' }).click();
   await page.clock.runFor(3 * 60_000);
   await looksRight(s, info, 'Riding');
+  // On a phone the ride is three pages of one screen each (26 Nov 2026): each is reached, and none runs below the fold.
+  if (info.project.name.startsWith('phone')) {
+    for (const name of ['Numbers', 'Workout', 'Ride']) {
+      await page.locator('.rp-dots button', { hasText: name }).click();
+      await expect(page.locator('.rp-dots button.on')).toHaveText(name);
+      expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), `${name} fits the screen`).toBe(true);
+    }
+    await expect(page.getByRole('button', { name: 'Skip this step ›' })).toBeAttached();
+  }
   // Far enough to count as the session (five minutes and a fifth of the ride), then ended early, as a rider may.
   await page.clock.runFor(Math.max(6 * 60, rideSeconds / 5 + 60) * 1000);
   await page.getByRole('button', { name: 'End ride' }).first().click();

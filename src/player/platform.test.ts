@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { platformOf } from './platform';
+import { isPhoneScreen, platformOf } from './platform';
 
 describe('what the app is running on', () => {
   it('knows an iPhone', () => {
@@ -20,4 +20,17 @@ describe('what the app is running on', () => {
   it('knows Android', () => {
     expect(platformOf('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', 5)).toBe('android');
   });
+});
+
+describe('a phone-sized screen', () => {
+  it('is every current iPhone, upright or on its side', () => {
+    for (const [w, h] of [[375, 667], [390, 844], [393, 852], [402, 874], [430, 932], [440, 956]]) {
+      expect(isPhoneScreen(w, h)).toBe(true);
+      expect(isPhoneScreen(h, w)).toBe(true);
+    }
+  });
+  it('is not a tablet or a computer', () => {
+    for (const [w, h] of [[744, 1133], [820, 1180], [1024, 1366], [1280, 800], [1920, 1080]]) expect(isPhoneScreen(w, h)).toBe(false);
+  });
+  it('is not a screen of no size', () => { expect(isPhoneScreen(0, 0)).toBe(false); });
 });

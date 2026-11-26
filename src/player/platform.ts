@@ -1,4 +1,5 @@
 import { APP_SHORT_NAME } from '../appName';
+import { appKind } from '../shell';
 /**
  * What the app is running on, as far as riding with a trainer is concerned.
  * An iPhone can never reach Bluetooth from a browser, so the player is not
@@ -21,8 +22,8 @@ export function platform(): Platform {
   return platformOf(navigator.userAgent ?? '', navigator.maxTouchPoints ?? 0);
 }
 
-/** Whether to offer "Ride indoors on the trainer" here at all. */
-export const playerOffered = (): boolean => platform() !== 'iphone';
+/** Whether to offer "Ride indoors on the trainer" here at all: everywhere but an iPhone's browser. The iPhone app has Bluetooth of its own (25 Nov 2026). */
+export const playerOffered = (): boolean => platform() !== 'iphone' || appKind() === 'ios';
 
 /** Where a trainer-only workout (the Ramp Test) can be ridden, said on a device that can't run the player. */
 export const TRAINER_ONLY_ELSEWHERE = `Ride this on a computer with Chrome, from ${APP_SHORT_NAME}.`;

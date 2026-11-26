@@ -1,3 +1,4 @@
+import { APP_SHORT_NAME } from '../appName';
 import { appKind, inApp, thisDevice } from '../shell';
 import { useEffect, useState } from 'preact/hooks';
 import { Fold } from './Fold';
@@ -32,7 +33,7 @@ export function PlayerSettings() {
 
   return (
     <Fold title="Ride player" summary={`${devices.length ? `${devices.length} device${devices.length === 1 ? '' : 's'} remembered` : 'No devices remembered yet'}${sim ? ' · practice mode on' : ''}`}>
-      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. {appKind() === 'ios' ? 'On iPhone and iPad, Bluetooth trainers and sensors come in the next version of the app.' : inApp() ? `It uses this computer's Bluetooth${bluetoothAvailable() ? '' : ' (which the app can’t reach here)'}.` : `It needs Chrome or Edge on a computer${bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}.`} Everything here belongs to {thisDevice()} only.</p>
+      <p class="muted small" style="margin-bottom:12px">Riding a workout indoors with a smart trainer, from <b>Ride indoors on the trainer</b> on Today or on a ride's page. {appKind() === 'ios' ? `It uses ${thisDevice()}'s own Bluetooth; you are asked once whether ${APP_SHORT_NAME} may use it.` : inApp() ? `It uses this computer's Bluetooth${bluetoothAvailable() ? '' : ' (which the app can’t reach here)'}.` : `It needs Chrome or Edge on a computer${bluetoothAvailable() ? '' : ' (this browser can’t reach Bluetooth)'}.`} Everything here belongs to {thisDevice()} only.</p>
       <div class="panel">
         <b class="small">Your trainer and sensors on {thisDevice()}</b>
         {devices.length ? (

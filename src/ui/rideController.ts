@@ -5,6 +5,7 @@
  * recording every five seconds so a closed browser loses almost nothing.
  * Screens subscribe and redraw.
  */
+import { appKeepAwake } from '../shell';
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
@@ -190,6 +191,7 @@ let hiddenSince = 0;
 async function holdScreenOn() {
   try {
     const nav = navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<{ release(): Promise<void> }> } };
+    appKeepAwake(true);
     wake = await nav.wakeLock?.request('screen');
   } catch { /* not offered: the screen may dim */ }
 }
@@ -592,6 +594,7 @@ export async function endRide(): Promise<Recording | undefined> {
   offControl = undefined;
   removeEventListener('beforeunload', onLeave);
   document.removeEventListener('visibilitychange', onVisible);
+  appKeepAwake(false);
   try { await wake?.release(); } catch { /* already released */ }
   wake = undefined;
   const rec: Recording = { ...snapshot(a), status: 'finished' };

@@ -1,5 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { SavedGarminKey } from './sync/garminPersonal';
+import { chooserBus } from './player/ble/chooserBus';
+import { installNativeBluetooth, type NativeBluetooth } from './player/ble/native';
 
 /**
  * Antogo as an installed app (23 Nov 2026; iPhone and iPad from 24 Nov). The same pages run in a browser and inside
@@ -28,6 +30,8 @@ interface AppSide {
   shareFiles?(files: Array<{ name: string; mime: string; data: Uint8Array }>): Promise<boolean>;
   /** iPhone and iPad: ask one of the services the rider connects (Intervals.icu, Garmin, their AI) through the app's own side. */
   serviceFetch?(url: string, init?: NetInit): Promise<NetReply>;
+  /** iPhone and iPad: keep the screen on (a ride in progress), or let it dim again. */
+  keepAwake?(on: boolean): Promise<void>;
 }
 interface NetInit { method?: string; headers?: Record<string, string>; body?: Uint8Array }
 interface NetReply { status: number; type: string; body: Uint8Array }
@@ -36,7 +40,8 @@ export interface FoundDevice { id: string; name: string }
 
 // ---- iPhone and iPad: the native plugin, in the app's own shape ----------------------------------------------------
 
-interface NativePlugin {
+interface NativePlugin extends NativeBluetooth {
+  keepAwake(o: { on: boolean }): Promise<void>;
   fetch(o: { url: string; method: string; headers: Record<string, string>; body?: string }): Promise<{ status: number; type: string; body: string }>;
   keyRead(): Promise<{ saved?: string }>;
   keySave(o: { saved: string }): Promise<void>;
@@ -59,6 +64,8 @@ function iOS(): AppSide | null {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return null;
   } catch { return null; }
   const plugin = registerPlugin<NativePlugin>('AntogoNative');
+  // The iPhone's Bluetooth, offered to the player in the shape a browser's has (25 Nov 2026).
+  installNativeBluetooth(plugin);
   const ask = async (url: string, init?: NetInit): Promise<NetReply> => {
     const r = await plugin.fetch({ url, method: init?.method ?? 'GET', headers: init?.headers ?? {}, ...(init?.body ? { body: b64(init.body) } : {}) });
     return { status: r.status, type: r.type, body: r.body ? unb64(r.body) : new Uint8Array() };
@@ -80,6 +87,10 @@ function iOS(): AppSide | null {
     },
     keyForget: async () => { await plugin.keyForget(); return true; },
     shareFiles: async (files) => (await plugin.share({ files: files.map((f) => ({ name: f.name, data: b64(f.data) })) })).completed,
+    // Antogo's own "Choose a device" list, fed by the app's search.
+    onBluetooth: (fn) => chooserBus.watch(fn),
+    chooseBluetooth: async (id) => chooserBus.pick(id),
+    keepAwake: async (on) => { await plugin.keepAwake({ on }); },
   };
   return iosSide;
 }
@@ -164,6 +175,9 @@ export const appBluetooth = {
   /** The device picked, by id; an empty id stops the search. */
   choose: (id: string): Promise<boolean> => side()?.chooseBluetooth?.(id) ?? Promise.resolve(false),
 };
+
+/** iPhone and iPad: keep the screen on during a ride, and let it dim again after. Nothing to do elsewhere (the page asks the browser itself). */
+export const appKeepAwake = (on: boolean): void => { void side()?.keepAwake?.(on).catch(() => undefined); };
 
 /** The Mac app's engine notices: the full list of Chromium's licences, opened in the rider's browser. */
 export const appNotices = {

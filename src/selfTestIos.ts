@@ -12,8 +12,13 @@ import { appKey, garminFetch } from './shell';
 import { db, getSetting, setSetting } from './data/db';
 import { makeBackup } from './data/backup';
 import { GARMIN_KEY_SETTING, runGarminTest } from './sync/garminPersonal';
+import { chooseDevice } from './player/ble/web';
+import { chooserBus } from './player/ble/chooserBus';
+import { playerOffered } from './player/platform';
 
 interface TestSide {
+  btState(): Promise<{ state: string }>;
+  keepAwake(o: { on: boolean }): Promise<void>;
   selfTest(): Promise<{ requested: boolean; run?: string }>;
   report(o: { name: string; text: string }): Promise<void>;
 }
@@ -70,6 +75,24 @@ export async function runIosSelfTest(): Promise<void> {
       try { await garminFetch('https://example.com/'); } catch { return true; }
       throw new Error('example.com was asked');
     });
+    // Bluetooth for the ride player (25 Nov 2026). Apple's simulator has no Bluetooth, so what is checked here is that
+    // the app's own side answers, that the pages are offered it, and that Bluetooth which can't be used is said in words.
+    await check('The ride player is offered on this device', async () => playerOffered());
+    await check("The app's own side offers Bluetooth to the pages", async () => 'bluetooth' in navigator && !!navigator.bluetooth);
+    let bluetooth = 'unknown';
+    await check("Asking for Bluetooth's state is answered", async () => { bluetooth = (await side.btState()).state; return `it answered "${bluetooth}"`; });
+    await check('Bluetooth that cannot be used is said to the rider, and nothing is searched for', async () => {
+      if (bluetooth === 'on') return 'Bluetooth is on here, so there was nothing to say';
+      let said = '';
+      chooserBus.watchProblems((p) => { said = p; });
+      let chose = false;
+      try { await chooseDevice('trainer'); chose = true; } catch { /* as it should */ }
+      chooserBus.watchProblems(() => undefined);
+      if (chose) throw new Error('a device was handed back');
+      if (!said) throw new Error('nothing was said');
+      return `said "${said}"`;
+    });
+    await check('The screen can be kept on for a ride, and let go again', async () => { await side.keepAwake({ on: true }); await side.keepAwake({ on: false }); return true; });
   } else {
     await check('Data is still there after closing and opening the app', async () => !!(await getSetting(MARK, null)));
     await check('The key is still in the password store after opening the app again', async () => (await appKey.read())?.key === KEY);

@@ -21,10 +21,17 @@ export interface NativeBluetooth {
   btRead(o: { id: string; service: string; characteristic: string }): Promise<{ data: string }>;
   btWrite(o: { id: string; service: string; characteristic: string; data: string; withResponse: boolean }): Promise<void>;
   btNotify(o: { id: string; service: string; characteristic: string; on: boolean }): Promise<void>;
+  /** A ride is on (or over): what to write to the trainer, and when, while the app is not in front. */
+  btKeep(o: { on: boolean; id?: string; service?: string; characteristic?: string; writes?: Array<{ at: number; data: string }>; rejoin?: string[] }): Promise<void>;
+  /** Back in front: everything the devices sent meanwhile, with its time, and what was written to the trainer. */
+  btTake(): Promise<{ held: boolean; packets: KeptPacket[]; wrote: Array<{ at: number; data: string }> }>;
   addListener(event: 'btFound', fn: (e: { devices: Array<{ id: string; name?: string; services?: string[] }> }) => void): unknown;
   addListener(event: 'btValue', fn: (e: { id: string; service: string; characteristic: string; data: string }) => void): unknown;
   addListener(event: 'btDisconnected', fn: (e: { id: string }) => void): unknown;
 }
+
+/** One thing a device sent, or its link dropping (`gone`) or returning (`back`), kept with its time while the app was not in front. */
+export interface KeptPacket { t: number; id: string; service?: string; characteristic?: string; data?: string; gone?: boolean; back?: boolean; /** Already handed to the pages as it arrived. */ sent?: boolean }
 
 /** A service or characteristic by its full name in lower case, from a 16-bit number or any spelling of the name. */
 export function fullUuid(u: number | string): string {
@@ -47,6 +54,12 @@ export function matches(d: { name?: string; services?: string[] }, filters: Filt
     && (f.namePrefix == null || (d.name ?? '').startsWith(f.namePrefix))
     && (!!f.services?.length || f.name != null || f.namePrefix != null));
 }
+
+let replay: { value(p: KeptPacket): void; dropped(e: { id: string }): void } | undefined;
+/** Hand a kept packet to whatever is listening for that device, as a live one is. */
+export const replayKept = (p: KeptPacket): void => replay?.value(p);
+/** Tell whatever holds a device that its link is gone (it dropped while the app was not in front and has not come back). */
+export const replayDropped = (id: string): void => replay?.dropped({ id });
 
 const KNOWN_KEY = 'antogoBluetoothKnown';
 const readKnown = (): FoundDevice[] => { try { return JSON.parse(localStorage.getItem(KNOWN_KEY) ?? '[]') as FoundDevice[]; } catch { return []; } };
@@ -104,21 +117,25 @@ export function makeBluetooth(side: NativeBluetooth): Bluetooth {
     return d;
   };
 
-  side.addListener('btValue', (e) => {
+  const value = (e: { id: string; service: string; characteristic: string; data: string }) => {
     const ch = chars.get(key(e.id, e.service, e.characteristic));
     if (!ch) return;
     const b = unb64(e.data);
     ch.value = new DataView(b.buffer);
     ch.dispatchEvent(new Event('characteristicvaluechanged'));
-  });
-  side.addListener('btDisconnected', (e) => {
+  };
+  const dropped = (e: { id: string }) => {
     const d = devices.get(e.id);
     if (!d) return;
     d.gatt.connected = false;
     // What was subscribed is gone with the link; the next connection subscribes afresh.
     for (const k of [...chars.keys()]) if (k.startsWith(`${e.id}|`)) chars.delete(k);
     d.dispatchEvent(new Event('gattserverdisconnected'));
-  });
+  };
+  side.addListener('btValue', value);
+  side.addListener('btDisconnected', dropped);
+  // What was kept while the app was not in front is handed to the same listeners, as if it were arriving now.
+  replay = { value: (p) => { if (p.service && p.characteristic && p.data != null) value({ id: p.id, service: p.service, characteristic: p.characteristic, data: p.data }); }, dropped };
 
   let searching: { filters: Filter[]; seen: Map<string, { id: string; name?: string; services?: string[] }> } | undefined;
   side.addListener('btFound', (e) => {

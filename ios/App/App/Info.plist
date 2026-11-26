@@ -64,6 +64,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Antogo uses Bluetooth to connect to your smart trainer, power meter, heart-rate strap and other sensors when you ride.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

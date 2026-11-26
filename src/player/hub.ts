@@ -6,7 +6,7 @@
  */
 import { getSetting, setSetting } from '../data/db';
 import { attach, chooseDevice, knownDevice, type Driver } from './ble/web';
-import { cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/parse';
+import { cmdRequestControl, cmdSetTargetPower, cmdSimulation, cmdStart, type Range } from './ble/parse';
 import { BUSY_WARNING, NO_CONTROL_WARNING, ROLLR_WARNING, rollrCheck, type Metric, type Reading, type SensorKind, type SensorSnapshot, type SensorStatus } from './sources';
 import { SimRider, type RiderNumbers } from './sim';
 import { reportsOf } from './devices';
@@ -60,6 +60,8 @@ function onReading(id: string, r: Omit<Reading, 'at'>): void {
   if (!s) return;
   const reading: Reading = { ...r, at: Date.now() };
   if (!s.simulated) learn(id, r);
+  // After this reading is in place.
+  if (!s.simulated && readingListeners.size) queueMicrotask(() => readingListeners.forEach((l) => l()));
   if (r.ve != null) strapState(id).lastBreathAt = reading.at;
   const patch: Partial<SensorState> = { reading };
   if (s.kind === 'trainer') {
@@ -559,6 +561,26 @@ export function commandTrainer(cmd: TrainerCommand): void {
     } catch { /* a dropped trainer: the next command, after it reconnects, carries the target again */ }
   });
 }
+
+/**
+ * The same commands as bytes for the trainer, each with its moment (26 Nov 2026): what the iPhone's and iPad's own side
+ * writes to the trainer while the app's pages are stopped. Null when there is no real trainer under control.
+ */
+export function trainerWrites(cmds: Array<{ at: number; command: TrainerCommand }>): { id: string; writes: Array<{ at: number; bytes: Uint8Array }>; rejoin: Uint8Array[] } | null {
+  const t = controlledTrainer();
+  if (!t || t.simulated) return null;
+  const writes = cmds.map(({ at, command }) => {
+    let watts = 'erg' in command ? command.erg : 0;
+    if ('erg' in command && t.powerRange) watts = Math.max(t.powerRange.min, Math.min(t.powerRange.max, watts));
+    return { at, bytes: 'erg' in command ? cmdSetTargetPower(watts) : cmdSimulation(command.grade) };
+  });
+  // A trainer that dropped and came back has forgotten who controls it: control is asked for and the session started again first.
+  return { id: t.id, writes, rejoin: [cmdRequestControl(), cmdStart()] };
+}
+
+/** Called on every reading from a real sensor: the ride moves on by the readings as well as by the clock, so a page the system has slowed still keeps time. */
+const readingListeners = new Set<() => void>();
+export function onAnyReading(fn: () => void): () => void { readingListeners.add(fn); return () => { readingListeners.delete(fn); }; }
 
 /** A new ride starts the trainer again with its first command. */
 export function resetTrainerSession(): void { started = false; }

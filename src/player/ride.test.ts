@@ -319,3 +319,38 @@ describe('the calm power marker', () => {
     expect(s.state).toBe('under');
   });
 });
+
+describe('what the trainer will be asked for from here on (26 Nov 2026)', () => {
+  const profile = { ftp: 200 } as never;
+  const workout = { id: 'w', name: 'Three steps', kind: 'ride', blocks: [{ kind: 'step', seconds: 60, intensity: 0.5, label: 'Easy' }, { kind: 'step', seconds: 60, intensity: 1, label: 'Hard' }, { kind: 'step', seconds: 60, intensity: 0.6, label: 'Easy again' }] } as never;
+  const riding = () => {
+    const timeline = buildTimeline(workout, profile);
+    const e = new RideEngine({ timeline, ftp: 200, basis: 'power', mode: 'erg', autoPause: true, guard: true }, 0);
+    let now = 0;
+    for (let i = 0; i < 8; i++) { now += 1000; e.tick(now, { watts: 100, cadence: 90, canMove: true }); }
+    return { e, now };
+  };
+  it('lists each change of target with its moment, and leaves the ride itself untouched', () => {
+    const { e, now } = riding();
+    const before = JSON.stringify({ timer: e.timer, samples: e.samples.length, events: e.events.length, phase: e.phase, position: e.position });
+    const ahead = e.foresee(now, 400);
+    expect(JSON.stringify({ timer: e.timer, samples: e.samples.length, events: e.events.length, phase: e.phase, position: e.position })).toBe(before);
+    const ergs = ahead.filter((x) => 'erg' in x.command).map((x) => ({ after: Math.round((x.at - now) / 1000), erg: (x.command as { erg: number }).erg }));
+    expect(ergs.map((x) => x.erg)).toEqual([200, 120]);
+    // The first step has 60 s, of which the ride has done those since its countdown ended.
+    const left = 60 - e.position;
+    expect(ergs[0].after).toBeGreaterThanOrEqual(left);
+    expect(ergs[0].after).toBeLessThanOrEqual(left + 1);
+    expect(ergs[1].after - ergs[0].after).toBe(60);
+    // The ride then gives the same commands itself, at the same seconds.
+    const real: Array<{ after: number; erg: number }> = [];
+    let t = now;
+    for (let i = 1; i <= 400; i++) { t += 1000; const c = e.tick(t, { watts: 100, cadence: 90, canMove: true }).command; if (c && 'erg' in c) real.push({ after: i, erg: c.erg }); }
+    expect(real).toEqual(ergs);
+  });
+  it('has nothing to foresee for a paused ride', () => {
+    const { e, now } = riding();
+    e.pause(now);
+    expect(e.foresee(now, 300)).toEqual([]);
+  });
+});

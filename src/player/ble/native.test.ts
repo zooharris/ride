@@ -46,6 +46,8 @@ function standIn(state: 'on' | 'off' | 'denied' = 'on') {
       // A trainer answers every control-point command: 0x80, the command, 1 for done.
       if (characteristic === CP) setTimeout(() => emit('btValue', { id, service, characteristic, data: b64([0x80, bytes[0], 0x01]) }), 1);
     },
+    btKeep: async () => undefined,
+    btTake: async () => ({ held: false, packets: [], wrote: [] }),
     btNotify: async ({ id, characteristic, on }) => { if (on) notifying.add(`${id}|${characteristic}`); else notifying.delete(`${id}|${characteristic}`); },
     addListener: ((event: string, fn: (e: never) => void) => { (listeners[event] ??= []).push(fn); }) as NativeBluetooth['addListener'],
   };

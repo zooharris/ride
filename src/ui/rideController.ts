@@ -5,7 +5,11 @@
  * recording every five seconds so a closed browser loses almost nothing.
  * Screens subscribe and redraw.
  */
-import { appKeepAwake } from '../shell';
+import { appKeepAwake, appRideKeeper } from '../shell';
+import { APP_SHORT_NAME } from '../appName';
+import { catchUp } from '../player/catchUp';
+import { replayDropped, replayKept } from '../player/ble/native';
+import { onAnyReading, trainerWrites } from '../player/hub';
 import type { Basis, PlannedWorkout, Profile, Workout } from '../engine/types';
 import { newId } from '../engine/workout';
 import { today } from '../engine/load';
@@ -110,6 +114,12 @@ const recent: number[] = [];
 const recentHr: number[] = [];
 const recentBreath: Array<{ ve: number; br?: number; tv?: number }> = [];
 let offControl: (() => void) | undefined;
+let offReading: (() => void) | undefined;
+/** True while the ride is being run through time it missed: nothing is sent to the trainer, said or sounded for seconds already gone. */
+let replaying = false;
+/** True while what was kept in the background is being fetched: the ordinary loop waits for it. */
+let returning = false;
+let keptAt = 0;
 export const HR_TABLE = 'hrPowerTable';
 
 /** The trainer came back after a dropout: start its session again and give it the current target at once. */
@@ -169,6 +179,10 @@ export function startRide(setup: RideSetup): void {
   offControl = onTrainerControl(trainerBack);
   lastTick = now;
   timer = setInterval(loop, 250);
+  // The ride also moves on with each reading: where the system slows a page's clock (a tab not in front), the devices still keep time.
+  offReading?.();
+  offReading = onAnyReading(loop);
+  refreshKeeper();
   // The strap brief: a session is started on the breathing strap, as the Tymewear app does.
   void strapRideStart();
   void putRecording(rec);
@@ -182,9 +196,61 @@ function onLeave(e: BeforeUnloadEvent) {
 function onVisible() {
   if (document.visibilityState === 'visible' && active && active.engine.phase !== 'finished') void holdScreenOn();
   if (document.visibilityState === 'visible' && active && active.engine.phase !== 'finished' && hiddenSince && Date.now() - hiddenSince > 5000) {
-    toast({ ok: false, text: 'Keep this tab in front while riding: the browser slows a tab in the background.' });
+    // Only said where time was truly lost: the app for iPhone and iPad carries on in the background, and a browser tab keeps time by its devices' readings.
+    if (lostMs > 5000) toast({ ok: false, text: `The ride stopped for ${Math.round(lostMs / 1000)} seconds while this was not in front: nothing was recorded then. Keep it in front, or use the app.` });
   }
+  lostMs = 0;
   hiddenSince = document.visibilityState === 'hidden' ? Date.now() : 0;
+  if (document.visibilityState === 'visible' && appRideKeeper.can()) void backInFront();
+}
+let lostMs = 0;
+
+/**
+ * What the iPhone's and iPad's own side should do while the app is not in front: keep every reading, and keep the
+ * trainer to the ride's coming targets. Told again whenever the rider changes something, and every twenty seconds.
+ */
+function refreshKeeper(): void {
+  if (!appRideKeeper.can()) return;
+  const a = active;
+  keptAt = Date.now();
+  if (!a || a.engine.phase === 'finished') { appRideKeeper.keep(null); return; }
+  // A ride steered by heart rate or by breathing has no targets to foresee: the trainer holds what it has.
+  const steered = a.setup.basis === 'hr' || !!a.setup.byBreath;
+  const ahead = steered ? [] : a.engine.foresee(Date.now(), Math.min(4 * 3600, Math.max(600, a.engine.total - a.engine.position + 600)));
+  const plan = trainerWrites(ahead);
+  appRideKeeper.keep(plan ?? { writes: [], rejoin: [] });
+}
+
+/**
+ * Back in front on an iPhone or iPad: the ride is run through the time its pages were stopped, with every reading
+ * the app's own side kept, and then carries on live. The trainer is given the target for now.
+ */
+async function backInFront(): Promise<void> {
+  const a = active;
+  if (!a || a.engine.phase === 'finished' || returning) return;
+  returning = true;
+  try {
+    const kept = await appRideKeeper.take();
+    if (active !== a || (a.engine.phase as string) === 'finished') return;
+    const from = lastTick, to = Date.now();
+    if (kept && to - from >= 2000) {
+      const real = Date.now;
+      replaying = true;
+      let out: ReturnType<typeof catchUp> | undefined;
+      try {
+        out = catchUp({ from, to, packets: kept.packets, deliver: replayKept, second: (at) => { lastTick = at; second(at); }, setClock: (ms) => { Date.now = ms == null ? real : () => ms; } });
+      } finally { Date.now = real; replaying = false; }
+      // A device that dropped while away and has not come back is reached for again, as it is when in front.
+      out?.stillGone.forEach(replayDropped);
+      if (out && out.seconds >= 10) {
+        const m = Math.floor(out.seconds / 60), sec = out.seconds % 60;
+        toast({ ok: true, text: `The ride carried on while ${APP_SHORT_NAME} was not in front: ${m ? `${m} min ` : ''}${sec} s recorded.` });
+      }
+    }
+    push();
+    save();
+    refreshKeeper();
+  } finally { returning = false; emit(); }
 }
 let hiddenSince = 0;
 
@@ -198,18 +264,23 @@ async function holdScreenOn() {
 
 /** Every quarter second: run one engine second for each whole second gone by (catching up after a slow moment, at most five). */
 function loop() {
-  if (!active) return;
+  if (!active || replaying || returning) return;
+  const keeper = appRideKeeper.can();
+  // iPhone and iPad, not in front: the app's own side is keeping the ride; the pages take it back up on return.
+  if (keeper && document.visibilityState === 'hidden') return;
   const now = Date.now();
   let due = Math.floor((now - lastTick) / 1000);
   if (due <= 0) return;
-  if (due > 5) { lastTick = now - 5000; due = 5; }
+  if (keeper && due > 5 && active.engine.phase !== 'finished') { void backInFront(); return; }
+  if (due > 5) { lostMs += (due - 5) * 1000; lastTick = now - 5000; due = 5; }
+  if (keeper && now - keptAt > 20_000) refreshKeeper();
   for (let i = 0; i < due; i++) { lastTick += 1000; second(lastTick); }
   emit();
 }
 
 function second(now: number) {
   const a = active!;
-  const src = pickSources(getSensors(), Date.now(), getSlots());
+  const src = pickSources(getSensors(), now, getSlots());
   a.live = { watts: src.watts?.value, cadence: src.cadence?.value, speedKmh: src.speedKmh?.value, bpm: src.bpm?.value, ve: src.ve?.value, br: src.br?.value, tv: src.tv?.value, ie: src.ie?.value };
   if (a.live.ve != null) {
     recentBreath.push({ ve: a.live.ve, br: a.live.br, tv: a.live.tv });
@@ -218,7 +289,7 @@ function second(now: number) {
     a.breathStrapId ??= src.ve!.from;
   } else recentBreath.length = 0;
   a.shownBreath = recentBreath.length ? breathShown(recentBreath) : undefined;
-  watchBreath(a, now);
+  if (!replaying) watchBreath(a, now);
   if (a.live.watts != null) { recent.push(a.live.watts); while (recent.length > a.setup.smoothing) recent.shift(); }
   a.shownWatts = recent.length ? Math.round(recent.reduce((x, y) => x + y, 0) / recent.length) : undefined;
   if (a.live.bpm != null) { recentHr.push(a.live.bpm); while (recentHr.length > Math.max(30, a.setup.smoothing)) recentHr.shift(); }
@@ -227,7 +298,8 @@ function second(now: number) {
   const byHr = a.setup.basis === 'hr';
   const byBreath = !!a.setup.byBreath;
   const step = a.engine.step;
-  if (byBreath) breathSecond(a, now, step);
+  // Time already gone is recorded, not steered: the trainer held what it had.
+  if (byBreath && !replaying) breathSecond(a, now, step);
   // A new step starts its label and cue afresh, so a target change is not met with a stale verdict.
   if (step && step.index !== a.bandStep) { a.band = { count: 0 }; a.bandStep = step.index; a.cueState = { lastTone: a.cueState.lastTone, hist: a.cueState.hist }; a.cue = undefined; }
   if (!byHr && !byBreath && a.live.watts != null && a.engine.phase === 'riding') {
@@ -237,7 +309,7 @@ function second(now: number) {
       a.band = settle(a.band, bandOf(a.markerWatts, b.low, b.high));
     }
   }
-  if (byHr && a.timeline.length && (a.engine.mode === 'erg' || a.hrLost)) steerByHr(a, now, step, a.live.bpm != null ? lastHr(30) : undefined);
+  if (!replaying && byHr && a.timeline.length && (a.engine.mode === 'erg' || a.hrLost)) steerByHr(a, now, step, a.live.bpm != null ? lastHr(30) : undefined);
   const adjusting = byHr && a.timeline.length > 0 && a.engine.mode === 'erg';
   if (byHr && a.live.bpm != null && a.engine.phase === 'riding') {
     a.markerBpm = ewma(a.markerBpm, a.live.bpm);
@@ -251,7 +323,7 @@ function second(now: number) {
       if (c.cue && c.cue !== a.cue) a.engine.mark(now, 'cue', c.cue);
       a.cueState = c.state;
       a.cue = c.cue;
-      if (c.tone && a.setup.sound) beep('count');
+      if (c.tone && a.setup.sound && !replaying) beep('count');
     }
   }
   if (byHr && (a.engine.phase !== 'riding' || adjusting)) a.cue = undefined;
@@ -260,6 +332,7 @@ function second(now: number) {
   // Pedalling again after an auto-pause carries on as the Resume button does: free to rise again.
   if (wasPaused && a.engine.phase === 'riding' && a.hr) a.hr = { ...a.hr, st: hrResumed(a.hr.st) };
   if (wasPaused && a.engine.phase === 'riding' && a.breath) a.breath = { ...a.breath, st: breathResumed(a.breath.st) };
+  if (replaying) { if (a.engine.timer % 5 === 0) save(); return; }
   if (out.command) commandTrainer(out.command);
   if (out.beep && a.setup.sound) beep(out.beep);
   if (out.note) toast({ ok: true, text: out.note });
@@ -573,6 +646,8 @@ function push() {
   if (!a) return;
   const cmd = a.engine.commandNow(Date.now(), a.live.cadence);
   if (cmd) commandTrainer(cmd);
+  // The rider changed something: the targets kept for the background are worked out afresh.
+  refreshKeeper();
   emit();
 }
 
@@ -594,6 +669,9 @@ export async function endRide(): Promise<Recording | undefined> {
   offControl = undefined;
   removeEventListener('beforeunload', onLeave);
   document.removeEventListener('visibilitychange', onVisible);
+  offReading?.();
+  offReading = undefined;
+  appRideKeeper.keep(null);
   appKeepAwake(false);
   try { await wake?.release(); } catch { /* already released */ }
   wake = undefined;

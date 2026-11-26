@@ -1,7 +1,8 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { SavedGarminKey } from './sync/garminPersonal';
 import { chooserBus } from './player/ble/chooserBus';
-import { installNativeBluetooth, type NativeBluetooth } from './player/ble/native';
+import { fullUuid, installNativeBluetooth, type KeptPacket, type NativeBluetooth } from './player/ble/native';
+import { CHAR, SERVICE } from './player/ble/gatt';
 
 /**
  * Antogo as an installed app (23 Nov 2026; iPhone and iPad from 24 Nov). The same pages run in a browser and inside
@@ -30,6 +31,10 @@ interface AppSide {
   shareFiles?(files: Array<{ name: string; mime: string; data: Uint8Array }>): Promise<boolean>;
   /** iPhone and iPad: ask one of the services the rider connects (Intervals.icu, Garmin, their AI) through the app's own side. */
   serviceFetch?(url: string, init?: NetInit): Promise<NetReply>;
+  /** iPhone and iPad: a ride is on, with what to write to the trainer and when while the app is not in front; null when the ride is over. */
+  rideKeep?(plan: RidePlan | null): Promise<void>;
+  /** iPhone and iPad: back in front: what the devices sent meanwhile. */
+  rideTake?(): Promise<{ held: boolean; packets: KeptPacket[]; wrote: number }>;
   /** iPhone and iPad: how Bluetooth stands for Antogo, found out without asking the rider anything. */
   bluetoothStanding?(): Promise<BluetoothStanding>;
   /** iPhone and iPad: keep the screen on (a ride in progress), or let it dim again. */
@@ -37,6 +42,8 @@ interface AppSide {
 }
 interface NetInit { method?: string; headers?: Record<string, string>; body?: Uint8Array }
 interface NetReply { status: number; type: string; body: Uint8Array }
+/** The trainer's coming targets for a ride in progress: which trainer, each command with its moment, and what a trainer that dropped and returned is told first. Empty writes: only keep what the devices send. */
+export interface RidePlan { id?: string; writes: Array<{ at: number; bytes: Uint8Array }>; rejoin: Uint8Array[] }
 /** Bluetooth for Antogo on an iPhone or iPad: not asked about yet, refused, allowed and on, or allowed and off. */
 export type BluetoothStanding = 'notAsked' | 'denied' | 'on' | 'off' | 'unsupported';
 /** A Bluetooth device the app's search has found. */
@@ -96,6 +103,12 @@ function iOS(): AppSide | null {
     onBluetooth: (fn) => chooserBus.watch(fn),
     chooseBluetooth: async (id) => chooserBus.pick(id),
     keepAwake: async (on) => { await plugin.keepAwake({ on }); },
+    rideKeep: async (plan) => {
+      if (!plan) { await plugin.btKeep({ on: false }); return; }
+      await plugin.btKeep({ on: true, id: plan.id, service: fullUuid(SERVICE.ftms), characteristic: fullUuid(CHAR.controlPoint),
+        writes: plan.writes.map((w) => ({ at: w.at, data: b64(w.bytes) })), rejoin: plan.rejoin.map((r) => b64(r)) });
+    },
+    rideTake: async () => { const r = await plugin.btTake(); return { held: r.held, packets: r.packets, wrote: r.wrote.length }; },
     bluetoothStanding: async () => {
       const { allowed } = await plugin.btAllowed();
       if (allowed === 'notAsked') return 'notAsked';
@@ -186,6 +199,17 @@ export const appBluetooth = {
   watch: (fn: (found: FoundDevice[]) => void): void => { side()?.onBluetooth?.(fn); },
   /** The device picked, by id; an empty id stops the search. */
   choose: (id: string): Promise<boolean> => side()?.chooseBluetooth?.(id) ?? Promise.resolve(false),
+};
+
+/**
+ * iPhone and iPad: a ride that carries on when the app is not in front (26 Nov 2026). iOS stops an app's pages when
+ * the app leaves the screen, so the app's own side keeps what the devices send and keeps the trainer to its targets,
+ * and the pages take it all back in when the rider returns. Elsewhere the pages keep running, and there is nothing to keep.
+ */
+export const appRideKeeper = {
+  can: (): boolean => !!side()?.rideKeep && !!side()?.rideTake,
+  keep: (plan: RidePlan | null): void => { void side()?.rideKeep?.(plan).catch(() => undefined); },
+  take: async (): Promise<{ held: boolean; packets: KeptPacket[]; wrote: number } | null> => (await side()?.rideTake?.().catch(() => null)) ?? null,
 };
 
 /** iPhone and iPad: how Bluetooth stands for Antogo, without asking the rider; null elsewhere (a browser and the Mac app answer for themselves). */

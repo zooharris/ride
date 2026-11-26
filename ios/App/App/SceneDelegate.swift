@@ -78,6 +78,8 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "btRead", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "btWrite", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "btNotify", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "btKeep", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "btTake", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "keepAwake", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "selfTest", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "report", returnType: CAPPluginReturnPromise),
@@ -215,6 +217,11 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private lazy var bluetooth: AntogoBluetooth = {
         let b = AntogoBluetooth()
         b.send = { [weak self] event, data in self?.notifyListeners(event, data: data) }
+        // The ride carries on when the app is not in front (26 Nov 2026): iOS stops the pages then, so this side is
+        // told when the app leaves the screen and when it returns.
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak b] _ in b?.inFront = false }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak b] _ in b?.inFront = true }
         return b
     }()
     private func onMain(_ work: @escaping () -> Void) { DispatchQueue.main.async(execute: work) }
@@ -240,6 +247,8 @@ public class AntogoNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func btRead(_ call: CAPPluginCall) { onMain { self.bluetooth.read(call) } }
     @objc func btWrite(_ call: CAPPluginCall) { onMain { self.bluetooth.write(call) } }
     @objc func btNotify(_ call: CAPPluginCall) { onMain { self.bluetooth.notify(call) } }
+    @objc func btKeep(_ call: CAPPluginCall) { onMain { self.bluetooth.keep(call) } }
+    @objc func btTake(_ call: CAPPluginCall) { onMain { self.bluetooth.take(call) } }
 
     @objc func keepAwake(_ call: CAPPluginCall) {
         let on = call.getBool("on") ?? false
@@ -300,6 +309,122 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     private var readCalls: [String: [CAPPluginCall]] = [:]
     private var writeCalls: [String: [CAPPluginCall]] = [:]
     private var notifyCalls: [String: [CAPPluginCall]] = [:]
+
+    /*
+     A ride that carries on when the app is not in front (26 Nov 2026). iOS stops an app's pages when the app leaves
+     the screen, but with the Bluetooth background mode it still runs this side each time a device sends something.
+     While a ride is on (`keeping`), everything the devices send is kept here with its time. In front, it is also
+     handed to the pages as it arrives; not in front, it is only kept, and the trainer is written its coming targets
+     (`plan`) as each falls due. Back in front, the pages take what was kept and run the ride through the time they
+     missed. This side knows nothing of what the bytes mean.
+     */
+    var inFront = true {
+        didSet {
+            if inFront == oldValue { return }
+            if !inFront && keeping { startClock() } else { stopClock() }
+        }
+    }
+    private var keeping = false
+    private var kept: [[String: Any]] = []
+    private var keptLimit = 600_000
+    private var plan: [(at: Double, data: Data)] = []
+    private var planDevice: UUID?
+    private var planService: CBUUID?
+    private var planCharacteristic: CBUUID?
+    private var rejoin: [Data] = []
+    private var wrote: [[String: Any]] = []
+    private var clock: DispatchSourceTimer?
+    /// What the pages asked each device to send, so a device that drops while the app is not in front can be asked again.
+    private var listening: [UUID: Set<String>] = [:]
+    private var rejoining: Set<UUID> = []
+
+    private static func nowMs() -> Double { return Date().timeIntervalSince1970 * 1000 }
+
+    func keep(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        if !on {
+            keeping = false
+            plan = []
+            kept = []
+            wrote = []
+            rejoining = []
+            stopClock()
+            call.resolve()
+            return
+        }
+        keeping = true
+        planDevice = call.getString("id").flatMap { UUID(uuidString: $0) }
+        planService = call.getString("service").map { CBUUID(string: $0) }
+        planCharacteristic = call.getString("characteristic").map { CBUUID(string: $0) }
+        var next: [(at: Double, data: Data)] = []
+        for w in call.getArray("writes", JSObject.self) ?? [] {
+            if let at = w["at"] as? Double, let b64 = w["data"] as? String, let d = Data(base64Encoded: b64) {
+                next.append((at: at, data: d))
+            } else if let at = w["at"] as? Int, let b64 = w["data"] as? String, let d = Data(base64Encoded: b64) {
+                next.append((at: Double(at), data: d))
+            }
+        }
+        plan = next.sorted { $0.at < $1.at }
+        rejoin = (call.getArray("rejoin", String.self) ?? []).compactMap { Data(base64Encoded: $0) }
+        // In front, the pages have everything up to now: only the last little while is held on to.
+        if inFront {
+            let cut = AntogoBluetooth.nowMs() - 30_000
+            if let first = kept.first?["t"] as? Double, first < cut { kept.removeAll { (($0["t"] as? Double) ?? 0) < cut } }
+        } else {
+            startClock()
+        }
+        call.resolve()
+    }
+
+    /// Back in front: what was kept, and what was written to the trainer meanwhile.
+    func take(_ call: CAPPluginCall) {
+        inFront = true
+        let out: [String: Any] = ["held": keeping, "packets": kept, "wrote": wrote]
+        kept = []
+        wrote = []
+        call.resolve(out)
+    }
+
+    private func startClock() {
+        if clock != nil { return }
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now() + 1, repeating: 1.0)
+        t.setEventHandler { [weak self] in self?.writeDue() }
+        t.resume()
+        clock = t
+    }
+    private func stopClock() {
+        clock?.cancel()
+        clock = nil
+    }
+
+    private func planTarget() -> (CBPeripheral, CBCharacteristic)? {
+        guard let id = planDevice, let p = peripherals[id], p.state == .connected,
+              let svcId = planService, let chrId = planCharacteristic, let svc = service(p, svcId) else { return nil }
+        let want = AntogoBluetooth.full(chrId)
+        guard let c = svc.characteristics?.first(where: { AntogoBluetooth.full($0.uuid) == want }) else { return nil }
+        return (p, c)
+    }
+
+    /// Not in front, with a ride on: the trainer is written each target as it falls due. Called every second and on every reading.
+    private func writeDue() {
+        if inFront || !keeping || plan.isEmpty { return }
+        let now = AntogoBluetooth.nowMs()
+        var latest: (at: Double, data: Data)?
+        while let first = plan.first, first.at <= now {
+            latest = first
+            plan.removeFirst()
+        }
+        // Several fallen due at once (the app was not run for a moment): only the newest matters to the trainer.
+        guard let due = latest, let target = planTarget() else { return }
+        target.0.writeValue(due.data, for: target.1, type: .withResponse)
+        wrote.append(["at": now, "data": due.data.base64EncodedString()])
+    }
+
+    private func keepNote(_ entry: [String: Any]) {
+        if kept.count >= keptLimit { kept.removeFirst(kept.count / 10) }
+        kept.append(entry)
+    }
 
     // MARK: names
 
@@ -460,6 +585,8 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         peripheral.delegate = self
         servicesKnown.remove(peripheral.identifier)
         connectCalls.removeValue(forKey: peripheral.identifier)?.resolve()
+        // A device this side reached for again while the app was not in front: find its services and ask for its readings.
+        if rejoining.contains(peripheral.identifier) { peripheral.discoverServices(nil) }
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -467,6 +594,17 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        // Not in front, with a ride on: the pages are stopped and cannot reach for the device again, so this side does,
+        // and asks it for the same readings when it returns. The pages are told of the gap when they come back.
+        if keeping && !inFront && !(listening[peripheral.identifier] ?? []).isEmpty && central.state == .poweredOn {
+            let id = peripheral.identifier
+            keepNote(["t": AntogoBluetooth.nowMs(), "id": id.uuidString, "gone": true])
+            servicesKnown.remove(id)
+            rejoining.insert(id)
+            peripheral.delegate = self
+            central.connect(peripheral, options: nil)
+            return
+        }
         dropped(peripheral, why: error?.localizedDescription ?? "The device disconnected.")
     }
 
@@ -511,6 +649,12 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         servicesKnown.insert(id)
         let waiting = serviceWaiters.removeValue(forKey: id) ?? []
         waiting.forEach { $0() }
+        if rejoining.contains(id) {
+            let wanted = Set((listening[id] ?? []).compactMap { name -> String? in name.split(separator: "|").first.map { String($0) } })
+            for svc in peripheral.services ?? [] where wanted.contains(AntogoBluetooth.full(svc.uuid)) {
+                peripheral.discoverCharacteristics(nil, for: svc)
+            }
+        }
     }
 
     private func service(_ p: CBPeripheral, _ uuid: CBUUID) -> CBService? {
@@ -540,6 +684,7 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if error == nil && rejoining.contains(peripheral.identifier) { rejoined(peripheral, service) }
         let waiting = characteristicCalls.removeValue(forKey: key(peripheral, service.uuid)) ?? []
         if let error = error {
             waiting.forEach { $0.reject(error.localizedDescription) }
@@ -547,6 +692,29 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         }
         let names = (service.characteristics ?? []).map { AntogoBluetooth.full($0.uuid) }
         waiting.forEach { $0.resolve(["characteristics": names]) }
+    }
+
+    /// A device back after dropping while the app was not in front: its readings are asked for again, and a trainer is
+    /// told who controls it and given the target for now.
+    private func rejoined(_ p: CBPeripheral, _ svc: CBService) {
+        let id = p.identifier
+        let svcName = AntogoBluetooth.full(svc.uuid)
+        for c in svc.characteristics ?? [] where (listening[id] ?? []).contains(svcName + "|" + AntogoBluetooth.full(c.uuid)) {
+            p.setNotifyValue(true, for: c)
+        }
+        if id == planDevice, let planSvc = planService, AntogoBluetooth.full(planSvc) == svcName, let target = planTarget() {
+            let c = target.1
+            for data in rejoin { p.writeValue(data, for: c, type: .withResponse) }
+            let now = AntogoBluetooth.nowMs()
+            // The last target written before the drop, if any, is given again; the next falls due by the clock.
+            if let last = wrote.last, let b64 = last["data"] as? String, let data = Data(base64Encoded: b64) {
+                p.writeValue(data, for: c, type: .withResponse)
+                wrote.append(["at": now, "data": b64])
+            }
+        }
+        keepNote(["t": AntogoBluetooth.nowMs(), "id": id.uuidString, "back": true])
+        // One note of its return is enough, however many of its services answer.
+        if (p.services ?? []).last?.uuid == svc.uuid { rejoining.remove(id) }
     }
 
     // MARK: reading, writing, listening
@@ -592,6 +760,10 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         guard let svc = characteristic.service else { return }
         let waiting = notifyCalls.removeValue(forKey: key(peripheral, svc.uuid, characteristic.uuid)) ?? []
+        if error == nil {
+            let name = AntogoBluetooth.full(svc.uuid) + "|" + AntogoBluetooth.full(characteristic.uuid)
+            if characteristic.isNotifying { listening[peripheral.identifier, default: []].insert(name) } else { listening[peripheral.identifier]?.remove(name) }
+        }
         if let error = error { waiting.forEach { $0.reject(error.localizedDescription) } } else { waiting.forEach { $0.resolve() } }
     }
 
@@ -609,12 +781,20 @@ final class AntogoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if error != nil { return }
         // What a device sends unasked goes to the pages as it comes; the answer to a read is not sent twice.
         if characteristic.isNotifying || !answeredARead {
-            send?("btValue", [
+            var entry: [String: Any] = [
                 "id": peripheral.identifier.uuidString,
                 "service": AntogoBluetooth.full(svc.uuid),
                 "characteristic": AntogoBluetooth.full(characteristic.uuid),
                 "data": data,
-            ])
+            ]
+            if inFront { send?("btValue", entry) }
+            // A ride is on: the reading is kept with its time, marked when the pages have had it already.
+            if keeping {
+                entry["t"] = AntogoBluetooth.nowMs()
+                if inFront { entry["sent"] = true }
+                keepNote(entry)
+                writeDue()
+            }
         }
     }
 }

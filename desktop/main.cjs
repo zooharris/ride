@@ -45,7 +45,8 @@ let choose = null;
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 380, minHeight: 560, backgroundColor: '#0B0E14', title: 'Antogo Cycling',
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    // backgroundThrottling off (26 Nov 2026): a ride carries on at full pace when the window is hidden, minimised or behind another.
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   // A link to anywhere else opens in the rider's browser; the app's window only ever shows the app.
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); return { action: 'deny' }; });

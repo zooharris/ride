@@ -18,6 +18,8 @@ import { playerOffered } from './player/platform';
 
 interface TestSide {
   btState(): Promise<{ state: string }>;
+  btKeep(o: { on: boolean; id?: string; service?: string; characteristic?: string; writes?: Array<{ at: number; data: string }>; rejoin?: string[] }): Promise<void>;
+  btTake(): Promise<{ held: boolean; packets: unknown[]; wrote: unknown[] }>;
   keepAwake(o: { on: boolean }): Promise<void>;
   selfTest(): Promise<{ requested: boolean; run?: string }>;
   report(o: { name: string; text: string }): Promise<void>;
@@ -91,6 +93,15 @@ export async function runIosSelfTest(): Promise<void> {
       if (chose) throw new Error('a device was handed back');
       if (!said) throw new Error('nothing was said');
       return `said "${said}"`;
+    });
+    await check('A ride can be handed to the app\'s own side for the background, and taken back', async () => {
+      await side.btKeep({ on: true, id: '00000000-0000-0000-0000-000000000001', service: '00001826-0000-1000-8000-00805f9b34fb', characteristic: '00002ad9-0000-1000-8000-00805f9b34fb', writes: [{ at: Date.now() + 60_000, data: btoa('\u0005\u00c8\u0000') }], rejoin: [btoa('\u0000')] });
+      const during = await side.btTake();
+      if (!during.held) throw new Error('the ride was not being kept');
+      await side.btKeep({ on: false });
+      const after = await side.btTake();
+      if (after.held) throw new Error('the ride was still being kept after it ended');
+      return `kept ${during.packets.length} readings with no devices here`;
     });
     await check('The screen can be kept on for a ride, and let go again', async () => { await side.keepAwake({ on: true }); await side.keepAwake({ on: false }); return true; });
   } else {

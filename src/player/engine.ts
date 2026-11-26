@@ -308,6 +308,36 @@ export class RideEngine {
     this.event(this.wall(now), 'intensity', this.freeWatts);
   }
 
+  /**
+   * What the trainer will be asked for from here on, if the rider keeps riding as now (26 Nov 2026): each change of
+   * command with the moment it falls due, for up to `seconds` ahead. It is worked out on a copy of the ride, so the
+   * ride itself is untouched. An iPhone or iPad keeps the trainer to these while the app is not in front and its
+   * pages are stopped. A ride steered by heart rate or breathing has no schedule to foresee (the copy holds the
+   * watts it has now), and a paused or finished ride has none either.
+   */
+  foresee(now: number, seconds: number, live: Live = { cadence: 90, canMove: true }): Array<{ at: number; command: TrainerCommand }> {
+    if (this.phase !== 'riding' && this.phase !== 'countdown') return [];
+    const twin = Object.assign(Object.create(Object.getPrototypeOf(this)) as RideEngine, this) as unknown as { [k: string]: unknown } & RideEngine;
+    // The copy rides on its own timeline and its own records, so nothing it does reaches the ride.
+    (twin as unknown as { o: EngineOptions }).o = { ...this.o, autoPause: false, timeline: this.o.timeline.map((x) => ({ ...x })) };
+    twin.samples = [];
+    twin.laps = [];
+    twin.events = [];
+    (twin as unknown as { guardState: GuardState }).guardState = { ...this.guardState };
+    (twin as unknown as { openLap?: Lap }).openLap = this.openLap ? { ...this.openLap } : undefined;
+    const out: Array<{ at: number; command: TrainerCommand }> = [];
+    for (let k = 1; k <= seconds; k++) {
+      const at = now + k * 1000;
+      const step = twin.step;
+      // Power as asked, so a test that ends when the legs give out does not end in the copy.
+      const watts = step && !step.step.allOut ? ergWatts(step, this.o.ftp, twin.scale) : live.watts;
+      const t = twin.tick(at, { ...live, watts });
+      if (t.command) out.push({ at, command: t.command });
+      if (twin.workoutDone && !t.command && k > 5 && twin.step == null) break;
+    }
+    return out;
+  }
+
   /** Something the controller noticed, for the record (a heart-rate cue). */
   mark(now: number, type: RideEvent['type'], value?: RideEvent['value']): void { this.event(this.wall(now), type, value); }
 

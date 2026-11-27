@@ -34,9 +34,9 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   await page.getByRole('button', { name: 'Start ride' }).click();
   await page.clock.runFor(3 * 60_000);
   await looksRight(s, info, 'Riding');
-  // On a phone the ride is three pages of one screen each (26 Nov 2026): each is reached, and none runs below the fold.
+  // On a phone the ride is two pages of one screen each (27 Nov 2026): each is reached, and none runs below the fold.
   if (info.project.name.startsWith('phone')) {
-    for (const name of ['Numbers', 'Workout', 'Ride']) {
+    for (const name of ['Workout', 'Ride']) {
       await page.locator('.rp-dots button', { hasText: name }).click();
       await expect(page.locator('.rp-dots button.on')).toHaveText(name);
       expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), `${name} fits the screen`).toBe(true);

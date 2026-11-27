@@ -4,12 +4,12 @@ import { phoneFaults, type Room } from '../src/ui/phoneFit';
 
 /**
  * A phone's screens fit a phone (26 Nov 2026). Each iPhone is stood in for with its real room: the screen less the
- * space the clock, the notch and the home bar take, upright and on its side. Before the ride, the ride's three pages
+ * space the clock, the notch and the home bar take, upright and on its side. Before the ride, the ride's two pages
  * and Ride complete's two must each sit inside that room: nothing below the fold, nothing under the notch, no label
  * cut off, and on its side the same margin above as below. Written after a build that was only ever measured against
  * the bare glass, and did not fit.
  */
-interface Phone { name: string; w: number; h: number; top: number; bottom: number; side: number; low: number }
+interface Phone { name: string; w: number; h: number; top: number; bottom: number; side: number; low: number; sideTop?: number }
 const PHONES: Phone[] = [
   { name: 'iPhone 16 Pro', w: 402, h: 874, top: 62, bottom: 34, side: 62, low: 21 },
   { name: 'iPhone 16', w: 393, h: 852, top: 59, bottom: 34, side: 59, low: 21 },
@@ -18,7 +18,7 @@ const PHONES: Phone[] = [
 ];
 
 async function hold(page: Page, p: Phone, side: boolean): Promise<Room> {
-  const room = side ? { t: 0, b: p.low, l: p.side, r: p.side } : { t: p.top, b: p.bottom, l: 0, r: 0 };
+  const room = side ? { t: p.sideTop ?? 0, b: p.low, l: p.side, r: p.side } : { t: p.top, b: p.bottom, l: 0, r: 0 };
   await page.setViewportSize(side ? { width: p.h, height: p.w } : { width: p.w, height: p.h });
   await page.evaluate((m) => {
     let el = document.getElementById('stand-in-room');
@@ -36,6 +36,24 @@ async function faults(page: Page, room: Room, side: boolean): Promise<string[]> 
 }
 
 const shots = process.env.PHONE_SHOTS;
+
+/** Before the ride: a simulated heart-rate monitor and breathing strap, chosen as a rider chooses real ones. */
+async function wear(page: Page): Promise<void> {
+  for (const [slot, item] of [['Heart rate', /Simulated heart/i], ['Breathing', /Simulated breathing/i]] as const) {
+    await page.locator('.pl-dev', { hasText: slot }).first().click();
+    await page.getByRole('menuitem', { name: item }).click();
+  }
+  await expect(page.getByRole('button', { name: 'Start ride' })).toBeVisible();
+}
+
+/** While riding: the words a ride may bring that are longer than the day's ride happened to have. */
+async function stretch(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll('.rb-step .rd-cue')) el.textContent = 'Ease in. Let the legs find their rhythm before anything is asked of them today.';
+    for (const el of document.querySelectorAll('.rp-step.now b, .rp-step.next b')) el.textContent = 'Sweet spot, over and under the line';
+    for (const el of document.querySelectorAll('.rp-name')) el.textContent = 'Cowpasture and Taylorstown';
+  });
+}
 
 test('before the ride, the ride and Ride complete each fit every iPhone, upright and on its side', async ({ page }, info) => {
   test.skip(info.project.name !== 'phone-night', 'a phone only');
@@ -85,11 +103,18 @@ test('before the ride, the ride and Ride complete each fit every iPhone, upright
   await expect(page.getByRole('button', { name: 'Start ride' })).toBeVisible();
   await look('Before the ride', []);
   await hold(page, PHONES[0], false);
+  // A heart-rate monitor and a breathing strap as well, so the ride shows all four readings beside the big number.
+  await wear(page);
   await page.getByRole('button', { name: 'Start ride' }).click();
   await page.clock.runFor(9 * 60_000);
-  await look('Riding', ['Ride', 'Numbers', 'Workout']);
+  await look('Riding', ['Ride', 'Workout']);
   await hold(page, PHONES[0], false);
-  await page.clock.runFor(8 * 60_000);
+  // An hour in, with a cue of two lines and a step whose name is long: the longest things these pages are asked to hold.
+  await page.clock.runFor(55 * 60_000);
+  await stretch(page);
+  await look('Riding, an hour in', ['Ride', 'Workout']);
+  await hold(page, PHONES[0], false);
+  await page.clock.runFor(4 * 60_000);
   await page.getByRole('button', { name: 'End ride' }).first().click();
   await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
   await look('Ride complete', ['Summary', 'Details']);
@@ -128,11 +153,12 @@ test('before the ride, the ride and Ride complete each fit an upright iPad on on
   await openFirstRide(page, true);
   await page.getByRole('link', { name: 'Ride indoors on the trainer' }).first().click();
   const wrong: string[] = [];
-  const look = async (where: string) => {
-    for (const p of PADS) {
-      const room = await hold(page, p, false);
-      for (const f of await faults(page, room, false)) wrong.push(`${where} · ${p.name}: ${f}`);
-      if (shots) await page.screenshot({ path: `${shots}/pad-${where}-${p.name}.png`.replace(/ /g, '-') });
+  const look = async (where: string, sideToo = false) => {
+    for (const p of PADS) for (const side of sideToo ? [false, true] : [false]) {
+      const room = await hold(page, side ? { ...p, sideTop: p.top, low: p.bottom } : p, side);
+      if (side) await expect(page.locator('.rside')).toBeVisible();
+      for (const f of await faults(page, room, false)) wrong.push(`${where} · ${p.name}${side ? ' on its side' : ''}: ${f}`);
+      if (shots) await page.screenshot({ path: `${shots}/pad-${where}-${p.name}${side ? '-side' : ''}.png`.replace(/ /g, '-') });
     }
     await hold(page, PADS[0], false);
   };
@@ -142,16 +168,17 @@ test('before the ride, the ride and Ride complete each fit an upright iPad on on
   await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();
   await expect(page.getByRole('button', { name: 'Start ride' })).toBeVisible();
   await look('Before the ride');
+  await wear(page);
   await page.getByRole('button', { name: 'Start ride' }).click();
   await page.clock.runFor(9 * 60_000);
   await expect(page.locator('.rpad')).toBeVisible();
-  await look('Riding');
-  // Turned on its side, the iPad has the wide screen; upright again, the one screen.
-  await page.setViewportSize({ width: 1180, height: 820 });
-  await expect(page.locator('.rpad')).toHaveCount(0);
-  await hold(page, PADS[0], false);
+  // Upright and on its side, each on one screen; turned back upright mid-ride, the upright screen again.
+  await look('Riding', true);
   await expect(page.locator('.rpad')).toBeVisible();
-  await page.clock.runFor(8 * 60_000);
+  await page.clock.runFor(55 * 60_000);
+  await stretch(page);
+  await look('Riding, an hour in', true);
+  await page.clock.runFor(4 * 60_000);
   await page.getByRole('button', { name: 'End ride' }).first().click();
   await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
   await expect(page.locator('.rcpad')).toBeVisible();

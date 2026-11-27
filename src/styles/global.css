@@ -2293,7 +2293,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 }
 .pl-pick { max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 16px); }
 
-/* ── The ride on a phone: three pages of one screen each (26 Nov 2026) ──────────────────────────────────────────
+/* ── The ride on a phone: pages of one screen each (26 Nov 2026; two pages from 27 Nov) ──────────────────────────────────────────
    Ride, Numbers, Workout: swiped sideways, each fitting the screen upright or on its side, clear of the clock,
    the notch and the home bar. The cards inside are the wide screen's own, resized here. */
 .player.rp { height: 100dvh; overflow: hidden; --uh: calc(100dvh - var(--safe-t) - var(--safe-b)); }
@@ -2349,24 +2349,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rp .rd-free-v { font-size: clamp(48px, calc(var(--uh) * 0.0945), 96px); }
 .rp .rd-free-body { gap: 6px; }
 .rp .rd-free-btns .btn { height: 44px; }
-.rp-tiles { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.rp-tiles > div:nth-child(n + 4) { display: none; }
-.rp-tile { min-width: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 7px 10px; }
-.rp-tile .caption { display: block; font-size: 10px; white-space: nowrap; }
-.rp-tile > div { white-space: nowrap; }
-.rp-tile b { font-size: clamp(24px, calc(var(--uh) * 0.0378), 30px); font-stretch: 112%; line-height: 1.05; }
-.rp-tile small { font-size: 11px; color: var(--ink-2); margin-left: 3px; }
-.rp-tile em { display: block; min-height: 1.3em; font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-br { color: color-mix(in srgb, var(--accent) 70%, var(--ink)); }
-
-/* The Numbers page. */
-.rp-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 8px; }
-.rp-num { min-width: 0; display: flex; flex-direction: column; justify-content: center; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px; overflow: hidden; }
-.rp-num .caption { font-size: 10.5px; line-height: 1.2; }
-.rp-num > div { white-space: nowrap; }
-.rp-num b { font-size: clamp(21px, calc(var(--uh) * 0.0389), 32px); font-stretch: 112%; letter-spacing: -0.02em; }
-.rp-num small { font-size: 13px; color: var(--ink-2); }
-.rp-num em { font-style: normal; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 
 /* The Workout page. */
 .rp-workout > .rd-chartcard { flex: 1 1 34%; min-height: 110px; padding: 8px 12px 6px; gap: 4px; }
@@ -2377,18 +2360,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 /* A long ride's chart: every other time along the foot, and the last one kept inside the card. */
 .rp .rd-chart-x:has(span:nth-child(7)) span:nth-child(even):not(.now) { display: none; }
 .rp .rd-chart-x span[style*="left:100%"], .rp .rd-chart-x span[style*="left: 100%"] { transform: translateX(-100%) !important; }
-.rp-steps { flex: 1 1 40%; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain; padding: 4px !important; }
-.rp-step { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto minmax(0, auto); gap: 8px; align-items: center; min-height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; }
-.rp-step i { width: 9px; height: 9px; border-radius: 2px; }
-.rp-step-n { min-width: 0; display: flex; flex-direction: column; }
-.rp-step b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rp-step small { display: none; font-size: 10.5px; line-height: 1.2; color: var(--ink-2); white-space: nowrap; }
-.rp-step u { text-decoration: none; }
-.rp-step span { color: var(--ink-2); white-space: nowrap; }
-.rp-step em { font-style: normal; font-size: 10.5px; color: var(--ink-3); text-align: right; }
-.rp-step.done b { color: var(--ink-3); }
-.rp-step.now { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1px var(--accent); }
-.rp-step.now em { color: var(--sel-ink); }
 .rp-ctl { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .rp-ctl:empty { display: none; }
 .rp-ctl .rd-controls { display: contents; }
@@ -2415,7 +2386,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .rp .rd-msg { font-size: 14px; }
   .rp .rd-card { padding: 8px 10px; }
   .rp-page { gap: 6px; }
-  .rp-step { min-height: 24px; }
 }
 
 /* On its side. */
@@ -2428,7 +2398,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .rp-live-page { display: none; }
   .rp-dots { height: 22px; }
   .rp-page { padding-top: 2px; padding-bottom: 2px; }
-  .rp-ride { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.3fr) minmax(0, .6fr); grid-template-rows: minmax(0, 1fr); }
   .rp-ride > .rd-hero { overflow-y: auto; }
   .rp .rd-big { font-size: clamp(50px, calc(var(--uh) * 0.2205), 92px); }
   .rp .rd-target b { font-size: 17px; }
@@ -2441,18 +2410,9 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .rp .rd-next > div + div { display: grid; }
   .rp .rd-free-v { font-size: clamp(40px, calc(var(--uh) * 0.168), 72px); }
   .rp .rd-free-body p { display: none; }
-  .rp-tiles { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
-  .rp-tiles > div:nth-child(n + 4) { display: block; }
-  .rp-tile { padding: 3px 10px; display: flex; flex-direction: column; justify-content: center; }
-  .rp-tile b { font-size: clamp(20px, calc(var(--uh) * 0.0693), 28px); }
-  .rp-tile em { min-height: 0; }
-  .rp-tile em:empty { display: none; }
-  .rp-grid { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); }
-  .rp-num b { font-size: clamp(20px, calc(var(--uh) * 0.0735), 28px); }
-  .rp-num small { font-size: 11px; }
   .rp-workout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .rp-workout > .rd-chartcard { grid-column: 1; grid-row: 1; min-height: 0; }
-  .rp-workout > .rp-steps { grid-column: 2; grid-row: 1 / span 2; }
+  .rp-workout > .rb-list { grid-column: 2; grid-row: 1 / span 2; }
   .rp-workout > .rp-ctl { grid-column: 1; grid-row: 2; }
   .rp-workout.nolist > .rd-chartcard, .rp-workout.nolist > .rp-ctl { grid-column: 1 / -1; }
   .rp .rd-smooth { display: none; }
@@ -2465,10 +2425,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .rp-skip { padding: 0 8px; font-size: 12.5px; white-space: nowrap; }
   .rp-ctl .seg { flex: 1 1 auto; }
   .rp-skip { margin-left: 0; flex: none; }
-  .rp-step { grid-template-columns: 9px minmax(0, 1fr) auto; min-height: 23px; }
-  .rp-step u, .rp-step em { display: none; }
-  .rp-step.now { min-height: 36px; }
-  .rp-step.now small { display: block; }
 }
 
 /* ── Before the ride on a phone: one screen (26 Nov 2026) ───────────────────────────────────────────────────────
@@ -2824,42 +2780,187 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rpad-body { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 4px 20px 10px; }
 .rpad .rd-card { padding: 14px 18px; }
 .rpad-body > .rd-hero { flex: none; overflow: visible; }
-.rpad .rd-big { font-size: clamp(110px, calc(var(--uh) * .13), 170px); }
+.rpad .rd-big { font-size: clamp(96px, calc(var(--uh) * .108), 150px); }
 .rpad .rd-big-pair .rd-big { font-size: clamp(70px, calc(var(--uh) * .085), 110px); }
 .rpad .rd-target { font-size: 14px; }
 .rpad .rd-target b { font-size: 24px; }
 .rpad .rd-band-words { font-size: 12px; }
-.rpad-mid { flex: none; height: clamp(200px, calc(var(--uh) * .195), 250px); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; }
-.rpad-mid > .rd-dial { min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 14px; align-items: center; }
-.rpad-mid > .rd-dial > :first-child, .rpad-mid > .rd-dial > .rd-next, .rpad-mid > .rd-dial > .rd-dial-done, .rpad-mid > .rd-dial > .rd-free-body { grid-column: 1 / -1; }
-.rpad .rd-dial > .rd-ring { grid-column: 1; flex: none; width: clamp(104px, calc(var(--uh) * .105), 140px); height: clamp(104px, calc(var(--uh) * .105), 140px); margin: 0; align-self: center; }
-.rpad .rd-msg { grid-column: 2; justify-content: flex-start; margin: 0; min-height: 0; }
-.rpad .rd-msg .rd-cue { margin: 0; text-align: left; }
-.rpad-mid > .rd-free { min-height: 0; overflow: hidden; }
-.rpad .rd-msg { font-size: 17px; }
-.rpad .rd-next > div { font-size: 13.5px; }
-.rpad .rd-next > div + div { display: grid; }
-.rpad .rp-tiles { grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 10px; }
-.rpad .rp-tiles > div:nth-child(n + 4) { display: flex; }
-.rpad .rp-tiles > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.rpad .rp-tile { display: flex; flex-direction: column; justify-content: center; padding: 8px 14px; }
-.rpad .rp-tile .caption { font-size: 11px; }
-.rpad .rp-tile b { font-size: clamp(34px, calc(var(--uh) * .04), 48px); }
-.rpad .rp-tile small { font-size: 13px; }
-.rpad .rp-tile em { font-size: 12px; }
-.rpad-sums { flex: none; display: grid; grid-template-columns: repeat(var(--n, 8), minmax(0, 1fr)); gap: 8px 10px; padding: 12px 16px !important; }
-.rpad-sums > div { min-width: 0; }
-.rpad-sums .caption { display: block; font-size: 9.5px; letter-spacing: .03em; line-height: 1.15; }
-.rpad-sums b { font-size: 18px; font-stretch: 112%; white-space: nowrap; }
-.rpad-sums small { font-size: 10.5px; color: var(--ink-2); }
 .rpad-body > .rd-chartcard { flex: none; min-height: 0; height: calc((100vw - 76px) / 4.6 + 78px); padding: 10px 18px 8px; gap: 4px; }
-.rpad .rp-steps.cols { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 4), minmax(30px, 1fr)); column-gap: 14px; align-items: center; padding: 8px !important; }
-.rpad .rp-step { grid-template-columns: 9px minmax(0, 1fr) auto; min-height: 30px; max-height: 48px; height: 100%; padding: 0 10px; border-radius: 8px; font-size: 13.5px; }
-.rpad .rp-step u, .rpad .rp-step em { display: none; }
-.rpad .rp-step.now small { display: block; }
 .rpad .rp-ctl { flex-wrap: nowrap; gap: 10px; }
 .rpad .rp-ctl .seg { flex: 1 1 auto; }
 .rpad .rp-skip { margin-left: 0; flex: none; white-space: nowrap; }
+
+/* ── One ride design in three shapes (27 Nov 2026) ────────────────────────────────────────────────────────────
+   A phone's two pages, an upright iPad, an iPad on its side. The parts are the same in each: the step in its ring
+   with the ride's elapsed time, the readings grouped by subject, the ride so far, and the whole list of steps. */
+.rb-step { display: flex; flex-direction: column; min-height: 0; }
+.rb-step-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.rb-step-head .caption { white-space: nowrap; }
+.rb-step-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+.rb-ring { position: relative; flex: none; width: var(--ring, 118px); height: var(--ring, 118px); }
+.rb-ring svg { display: block; width: 100%; height: 100%; }
+.rb-ring-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.rb-ring-text b { font-size: calc(var(--ring, 118px) * .27); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+.rb-ring-text b.long { font-size: calc(var(--ring, 118px) * .19); }
+.rb-ring-text span { margin-top: 3px; font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.rb-elapsed { flex: 1 1 0; min-width: 0; container: rbel / inline-size; }
+.rb-elapsed .caption { display: block; font-size: 10px; }
+.rb-elapsed > b { display: block; margin: 3px 0 6px; font-size: min(var(--el, 40px), 34cqw); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+.rb-elapsed > b.long { font-size: min(var(--el, 40px), 24cqw); }
+.rb-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.rb-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ink-2); }
+.rb-small { display: flex; flex-wrap: wrap; gap: 0 5px; margin-top: 4px; font-size: 11px; line-height: 1.3; color: var(--ink-3); }
+.rb-small span { white-space: nowrap; }
+.rb-small span:first-child:not(:only-child)::after { content: ' ·'; }
+.rb-thisstep span:first-child::after { content: none !important; }
+@container rbel (max-width: 150px) { .rb-thisstep { display: none; } }
+.rb .rb-step .rd-msg { flex: none; min-height: calc(2 * 1.35em); margin-top: 6px; }
+.rb .rb-step .rd-msg .rd-cue { max-width: none; }
+
+.rb-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 8px; min-height: 0; container: rbc / size; }
+.rb-cards.n3 > :first-child { grid-column: 1 / -1; }
+.rb-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+.rb-card .caption { font-size: 10.5px; white-space: nowrap; }
+.rb-v { white-space: nowrap; line-height: 1.08; }
+.rb-v b { font-size: min(var(--rv, 34px), var(--rvq, 999px)); font-stretch: 112%; letter-spacing: -0.02em; }
+.rb-v small { margin-left: 5px; font-size: 13px; color: var(--ink-2); }
+.rb-note, .rb-brief { font-style: normal; font-size: 11.5px; line-height: 1.25; color: var(--ink-3); }
+.rb-note { white-space: nowrap; }
+.rb-brief { display: none; }
+.rb-foot { display: flex; flex-wrap: wrap; gap: 0 12px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); }
+.rb-foot span { white-space: nowrap; }
+.rb-foot b { color: var(--ink); }
+
+.rb-sofar { flex: none; display: grid; grid-template-columns: repeat(var(--n, 4), auto); justify-content: space-between; gap: 2px 10px; }
+.rb-sofar-h { grid-column: 1 / -1; }
+.rb-sofar-h span + span { display: none; }
+.rb-sofar > div { min-width: 0; }
+.rb-sofar > div .caption { display: block; font-size: 9.5px; letter-spacing: .03em; white-space: nowrap; }
+.rb-sofar > div > div { white-space: nowrap; }
+.rb-sofar b { font-size: 19px; font-stretch: 112%; }
+.rb-sofar small { font-size: 11px; color: var(--ink-2); }
+
+.rb-list { display: flex; flex-direction: column; min-height: 0; padding: 4px !important; }
+.rb-list > .caption { flex: none; padding: 8px 8px 4px; }
+.rp-steps { flex: 1 1 0; min-height: 0; position: relative; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.rp-step { flex: 1 0 auto; box-sizing: border-box; display: grid; grid-template-columns: 11px minmax(0, 1fr) auto; gap: 9px; align-items: center; min-height: 24px; max-height: 40px; padding: 2px 8px; border-radius: 7px; font-size: 13px; }
+.rp-step > i { justify-self: center; width: 9px; height: 9px; border-radius: 2px; }
+.rp-step-n { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; line-height: 1.2; }
+.rp-step b { font-weight: 600; overflow-wrap: anywhere; }
+.rp-step small { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.rp-step > span { color: var(--ink-2); white-space: nowrap; }
+.rp-step.done b { font-weight: 500; color: var(--ink-3); }
+.rp-step.now { max-height: 58px; background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1px var(--accent); }
+.rp-step.now small { font-weight: 600; color: var(--sel-ink); }
+
+/* A phone, upright: the Ride page. */
+.rphone .rd-hero > .row { flex-wrap: wrap; }
+.rphone .rd-hero > .row > .caption { overflow: visible; text-overflow: clip; }
+@media (max-width: 380px) { .rphone .rd-smooth { display: none; } }
+.rphone { --ring: clamp(92px, calc(var(--uh) * .15), 124px); --el: clamp(32px, calc(var(--uh) * .052), 42px); --rv: clamp(26px, calc(var(--uh) * .044), 36px); }
+.rphone .rp-ride > .rb-step, .rphone .rp-ride > .rd-dial, .rphone .rp-ride > .rd-free { flex: none; }
+.rphone .rp-ride > .rb-cards { flex: 1 1 0; --rvq: 20cqh; }
+.rphone .rb-card { padding: 4px 12px; }
+.rphone .rp-workout > .rb-list { flex: 1 1 40%; }
+@container rbc (max-height: 236px) { .rb-foot, .rb-note { display: none; } .rb-brief { display: block; white-space: nowrap; } }
+@container rbc (max-height: 148px) { .rb-brief { display: none; } }
+/* A very short phone: each reading on one line, its name on the left and its value on the right. */
+@container rbc (max-height: 104px) { .rb-card { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; } }
+@media (orientation: landscape) and (max-width: 720px) { .rp-away .rp-live-bar > div:nth-child(3), .rp-away .rp-sub { display: none; } }
+.rphone .rd-big { font-size: clamp(56px, calc(var(--uh) * .115), 100px); }
+@media (orientation: portrait) and (max-height: 720px) {
+  .rphone { --ring: 84px; }
+  .rphone .rb-sofar-h { display: none; }
+  .rphone .rb-step-body { margin-top: 2px; }
+  .rphone .rd-big { font-size: clamp(54px, calc(var(--uh) * .105), 80px); }
+  .rphone .rd-target > .faint { display: none; }
+  .rphone .rb-sofar { padding-top: 6px; padding-bottom: 6px; }
+}
+
+/* A phone on its side: the big number, the step, the readings; the ride so far in a line beneath. */
+@media (orientation: landscape) {
+  .rphone { --ring: clamp(86px, calc(var(--uh) * .29), 110px); --el: 34px; --rv: clamp(20px, calc(var(--uh) * .064), 26px); }
+  .rphone .rp-ride { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1.04fr); grid-template-rows: minmax(0, 1fr) auto; gap: 6px 8px; }
+  .rphone .rp-ride > .rb-step { justify-content: center; }
+  .rphone .rb-step-body { flex: none; gap: 12px; }
+  .rphone .rb-step .rd-msg { font-size: 13.5px; min-height: calc(2 * 1.3em); line-height: 1.3; margin-top: 4px; }
+  .rphone .rb-cards { gap: 6px; --rvq: 999px; }
+  .rphone .rb-card { padding: 4px 10px; }
+  .rphone .rb-card .caption { font-size: 9.5px; }
+  .rphone .rb-v small { margin-left: 3px; font-size: 10.5px; }
+  .rphone .rb-note, .rphone .rb-foot { display: none; }
+  .rphone .rb-brief { display: block; font-size: 10.5px; }
+  .rphone .rp-ride > .rb-sofar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 12px; }
+  .rphone .rb-sofar-h span:first-child { display: none; }
+  .rphone .rb-sofar-h span + span { display: inline; }
+  .rphone .rb-sofar > div { display: flex; align-items: baseline; gap: 6px; }
+  .rphone .rb-sofar b { font-size: 15px; }
+  .rphone .rp-step { min-height: 23px; }
+}
+
+/* An upright iPad. */
+.rpad { --ring: clamp(118px, calc(var(--uh) * .115), 150px); --el: clamp(42px, calc(var(--uh) * .044), 56px); --rv: clamp(38px, calc(var(--uh) * .042), 54px); }
+.rb-two { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; }
+.rb-left, .rb-right { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.rb-left > .rb-step, .rb-left > .rd-dial, .rb-left > .rd-free { flex: none; }
+.rb-left > .rb-list { flex: 1 1 0; }
+.rb-two.nolist .rb-left > * { flex: 1 1 0; }
+.rb-right > .rb-cards { flex: 1 1 0; gap: 10px; }
+.rpad .rb-step-body, .rside .rb-step-body { gap: 20px; }
+.rpad .rb-ring-text span, .rside .rb-ring-text span { font-size: 11.5px; }
+.rpad .rb-elapsed .caption, .rside .rb-elapsed .caption, .rpad .rb-card .caption, .rside .rb-card .caption { font-size: 11px; }
+.rpad .rb-small, .rside .rb-small { font-size: 12.5px; }
+.rpad .rb-bar, .rside .rb-bar { height: 6px; }
+.rpad .rb-step .rd-msg { font-size: 17px; }
+.rpad .rb-v small, .rside .rb-v small { font-size: 15px; }
+.rpad .rb-note, .rside .rb-note { font-size: 13px; }
+.rpad .rb-foot, .rside .rb-foot { margin-top: 8px; padding-top: 8px; font-size: 13px; }
+.rpad .rb-sofar, .rside .rb-sofar { gap: 4px 8px; }
+.rside .rb-sofar > div .caption { font-size: 10px; }
+.rpad .rb-sofar > div .caption { letter-spacing: .02em; }
+.rpad .rb-sofar b, .rside .rb-sofar b { font-size: 22px; }
+.rpad .rp-step, .rside .rp-step { min-height: 26px; padding: 2px 10px; font-size: 14px; }
+.rpad .rp-step small, .rside .rp-step small { font-size: 12px; }
+
+/* On an iPad the target sits beside the big number, not under it. */
+.rpad .rd-hero, .rside .rd-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; }
+.rpad .rd-hero > *, .rside .rd-hero > * { grid-column: 1 / -1; }
+.rpad .rd-hero > .rd-big, .rpad .rd-hero > .rd-big-pair, .rside .rd-hero > .rd-big, .rside .rd-hero > .rd-big-pair { grid-column: 1; grid-row: 2; }
+.rpad .rd-hero > .rd-target, .rside .rd-hero > .rd-target { grid-column: 2; grid-row: 2; align-self: end; max-width: 46cqw; margin: 0 0 6px; flex-direction: column; align-items: flex-end; gap: 0; text-align: right; }
+.rside .rd-hero > .rd-target { max-width: 170px; }
+
+/* An iPad on its side: the same, with the list of steps down the right-hand side. */
+.rside { --ring: clamp(104px, calc(var(--uh) * .15), 132px); --el: clamp(38px, calc(var(--uh) * .058), 50px); --rv: clamp(30px, calc(var(--uh) * .05), 44px); }
+.rside .rp-bar { min-height: 56px; padding-left: 20px; padding-right: 20px; }
+.rside .rp-name { font-size: 19px; }
+.rside .rp-sub { font-size: 12.5px; }
+.rside .rp-bar .btn { min-height: 48px; padding: 0 18px; }
+.rside .rd-card { padding: 12px 16px; }
+.rside-body { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 2.8fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 10px; padding: 4px 20px 10px; }
+.rside-body.nolist { grid-template-columns: minmax(0, 1fr); }
+.rside-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.rside-top { flex: none; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 10px; }
+.rside-top > .rd-hero { overflow: visible; }
+.rside .rd-big { font-size: clamp(60px, calc(var(--uh) * .105), 92px); }
+.rside .rb-step .rd-msg { min-height: calc(2 * 1.3em); line-height: 1.3; font-size: clamp(14.5px, calc(var(--uh) * .021), 17px); }
+.rside .rb-sofar { padding-top: 8px; padding-bottom: 8px; }
+.rside-main > .rb-cards { flex: 1 0 clamp(96px, calc(var(--uh) * .145), 112px); grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; container-name: rbs; }
+.rside .rb-card { padding: 5px 16px; }
+.rside .rb-foot { margin-top: 1px; padding-top: 0; border-top: 0; }
+.rside-main > .rb-cards.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rside .rb-cards.n3 > :first-child { grid-column: auto; }
+.rside-main > .rd-chartcard { flex: 0 1 calc((100vw - 50px) * .737 / 4.6 + 64px); min-height: 132px; padding: 8px 16px 6px; gap: 4px; }
+.rside-body.nolist .rside-main > .rd-chartcard { flex-basis: calc((100vw - 76px) / 4.6 + 64px); }
+.rside-body > .rb-list { grid-column: 2; grid-row: 1; }
+.rside-body > .rp-ctl { grid-column: 1 / -1; flex-wrap: nowrap; gap: 10px; }
+.rside .rp-ctl .seg { flex: 1 1 auto; }
+.rside .rp-ctl .seg button { padding: 0 8px; font-size: 13.5px; }
+.rside .rp-ctl .rd-stepper > span { display: inline; }
+.rside .rp-ctl .rd-stepper .btn { width: 44px; }
+.rside .rp-skip { margin-left: 0; flex: none; padding: 0 14px; font-size: 13.5px; white-space: nowrap; }
+.rside .rd-smooth { display: inline; }
+.rside .rd-target { font-size: 14px; }
+.rside .rd-target b { font-size: 22px; }
 
 /* Ride complete. */
 .player.rp.rc.rcpad { padding-top: calc(var(--safe-t) + 10px); }

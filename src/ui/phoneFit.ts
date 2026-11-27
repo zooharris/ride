@@ -16,12 +16,12 @@ export function phoneFaults({ room, side }: { room: Room; side: boolean }): stri
   const seen = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < H && here(el) && !el.closest('.rd-overlay'); };
   const words = (el: Element) => (el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
   // A page of the pager, or the screen before the ride, must not need scrolling.
-  for (const el of document.querySelectorAll('.rp-page, .pp, .rpad-body, .rcpad-body')) if (seen(el) && el.scrollHeight > el.clientHeight + 1) out.push(`${el.className} runs ${el.scrollHeight - el.clientHeight}px below its foot`);
+  for (const el of document.querySelectorAll('.rp-page, .pp, .rpad-body, .rside-body, .rcpad-body')) if (seen(el) && el.scrollHeight > el.clientHeight + 1) out.push(`${el.className} runs ${el.scrollHeight - el.clientHeight}px below its foot`);
   // Everything a rider reads or presses sits inside the room. (What is inside a list that scrolls in its own box is the box's business.)
   const boxes = '.rp-steps, .rc-eff, .rc-cues, .pp-padlist';
-  for (const el of document.querySelectorAll('.pp-runs, .pp-devices > .pl-card, .pp-ride')) if (seen(el) && el.scrollHeight > el.clientHeight + 1) out.push(`${el.className} holds ${el.scrollHeight - el.clientHeight}px more than it shows`);
+  for (const el of document.querySelectorAll('.pp-runs, .pp-devices > .pl-card, .pp-ride, .rb-card, .rb-step, .rside-main, .rb-left, .rb-right')) if (seen(el) && el.scrollHeight > el.clientHeight + 1) out.push(`${el.className} holds ${el.scrollHeight - el.clientHeight}px more than it shows`);
   let top = H, low = 0;
-  for (const el of document.querySelectorAll('.player button, .player .caption, .player b, .player h1, .player h2, .player .rd-card, .player .pl-card, .player .pl-dev, .player .rp-tile, .player .rp-num, .player .pl-banner')) {
+  for (const el of document.querySelectorAll('.player button, .player .caption, .player b, .player h1, .player h2, .player .rd-card, .player .pl-card, .player .pl-dev, .player .rb-card, .player .pl-banner')) {
     if (!seen(el) || el.parentElement?.closest(boxes)) continue;
     const r = el.getBoundingClientRect();
     top = Math.min(top, r.top); low = Math.max(low, r.bottom);
@@ -36,7 +36,7 @@ export function phoneFaults({ room, side }: { room: Room; side: boolean }): stri
     }
   }
   // No number or label running out of its own cell into the next.
-  for (const el of document.querySelectorAll('.player .rd-figs > div, .player .rp-num, .player .rp-tile, .player .pl-figures > div, .player .rp-live > div, .player .pp-pair, .player .pp-row')) {
+  for (const el of document.querySelectorAll('.player .rd-figs > div, .player .rb-card, .player .rb-sofar > div, .player .rb-elapsed, .player .rb-step-head, .player .pl-figures > div, .player .rp-live > div, .player .pp-pair, .player .pp-row')) {
     if (seen(el) && el.scrollWidth > el.clientWidth + 1) out.push(`"${words(el)}" runs out of its cell`);
   }
   // No words cut off with dots, but a name too long for its line: a workout's subtitle, a device's own name.

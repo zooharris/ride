@@ -3,7 +3,7 @@
 // It starts a stand-in for Garmin on this machine, installs the test build of the app in an iPhone and an iPad
 // simulator, opens it twice with the self-test asked for (the pages' side is src/selfTestIos.ts), reads the results
 // the app writes, and takes a picture of each screen. Anything that fails stops the iOS build being uploaded.
-// Then, on the iPhone, the app tours its own ride screens and a picture is taken of each (src/tourIos.ts).
+// Then, on each, the app tours its own ride screens and a picture is taken of each (src/tourIos.ts).
 //
 //   node scripts/ios-selftest.mjs <path to App.app>
 import { createServer } from 'node:http';
@@ -62,7 +62,7 @@ async function waitFor(udid, name, seconds) {
 }
 
 const tourNotes = [];
-async function tour(d) {
+async function tour(d, tag) {
   run(['simctl', 'uninstall', d.udid, BUNDLE]);
   run(['simctl', 'install', d.udid, APP]);
   run(['simctl', 'launch', '--terminate-running-process', d.udid, BUNDLE], { SIMCTL_CHILD_ANTOGO_TOUR: '1' });
@@ -76,23 +76,23 @@ async function tour(d) {
       if (taken.has(f)) continue;
       taken.add(f);
       const stop = f.replace(/^antogo-tour-/, '').replace(/\.txt$/, '');
-      run(['simctl', 'io', d.udid, 'screenshot', join(OUT, `tour-${stop}.png`)]);
+      run(['simctl', 'io', d.udid, 'screenshot', join(OUT, `tour-${tag}-${stop}.png`)]);
       let found = {};
       try { found = JSON.parse(readFileSync(join(docs, f), 'utf8')); } catch { /* still being written */ }
       const faults = found.faults ?? [];
-      tourNotes.push(`${stop}: ${found.width}x${found.height}, room ${JSON.stringify(found.room)}: ${faults.length ? faults.join('; ') : 'fits'}`);
+      tourNotes.push(`${tag} ${stop}: ${found.width}x${found.height}, room ${JSON.stringify(found.room)}: ${faults.length ? faults.join('; ') : 'fits'}`);
       // Tell the app the picture is taken, so it moves on to its next stop.
       writeFileSync(join(docs, `${f}.taken`), '');
     }
     const done = join(docs, 'antogo-tour-done.txt');
     if (existsSync(done)) {
       const r = JSON.parse(readFileSync(done, 'utf8'));
-      if (!r.ok) { run(['simctl', 'io', d.udid, 'screenshot', join(OUT, 'tour-stopped.png')]); tourNotes.push(`The tour stopped at ${r.where} (${r.at}): ${r.error}. On the screen: ${r.screen}`); }
-      else tourNotes.push(`The tour finished: ${r.stops} stops.`);
+      if (!r.ok) { run(['simctl', 'io', d.udid, 'screenshot', join(OUT, `tour-${tag}-stopped.png`)]); tourNotes.push(`${tag}: the tour stopped at ${r.where} (${r.at}): ${r.error}. On the screen: ${r.screen}`); }
+      else tourNotes.push(`${tag}: the tour finished, ${r.stops} stops.`);
       break;
     }
   }
-  if (!taken.size) tourNotes.push('The tour made no stops.');
+  if (!taken.size) tourNotes.push(`${tag}: the tour made no stops.`);
   run(['simctl', 'terminate', d.udid, BUNDLE]);
 }
 
@@ -114,11 +114,27 @@ for (const kind of ['iPhone', 'iPad']) {
   // The tour of the phone's ride screens (26 Nov 2026): a fresh copy of the app walks itself through the screen before
   // a ride, the ride's three pages and Ride complete's two, upright and on its side, and a picture is taken at each
   // stop. The pictures are for looking at before a phone build is called ready; nothing here stops a publish.
-  if (kind === 'iPhone') {
-    try { await tour(d); } catch (e) { tourNotes.push(`The tour did not finish: ${e.message}`); }
-  }
+  // From 27 Nov 2026 the iPad takes the tour too, and so does a second size of iPhone when the machine has one.
+  try { await tour(d, kind === 'iPhone' ? 'phone' : 'ipad'); } catch (e) { tourNotes.push(`${kind}: the tour did not finish: ${e.message}`); }
   run(['simctl', 'shutdown', d.udid]);
 }
+try {
+  const all = JSON.parse(run(['simctl', 'list', 'devices', 'available', '-j'])).devices;
+  const runtimes = Object.keys(all).filter((r) => /iOS/.test(r)).sort().reverse();
+  let other;
+  for (const want of [/^iPhone SE/, /^iPhone \d+e$/, /^iPhone \d+ Pro Max$/, /^iPhone \d+ Plus$/]) {
+    for (const r of runtimes) { other = all[r].find((x) => want.test(x.name)); if (other) break; }
+    if (other) break;
+  }
+  if (other) {
+    console.log(`A second iPhone: ${other.name}`);
+    try { run(['simctl', 'boot', other.udid]); } catch { /* already booted */ }
+    run(['simctl', 'bootstatus', other.udid, '-b']);
+    run(['simctl', 'install', other.udid, APP]);
+    await tour(other, 'phone2');
+    run(['simctl', 'shutdown', other.udid]);
+  } else tourNotes.push('phone2: no second size of iPhone on this machine.');
+} catch (e) { tourNotes.push(`phone2: the tour did not finish: ${e.message}`); }
 srv.close();
 
 writeFileSync(join(OUT, 'results.json'), JSON.stringify({ results, garminStandInSaw: seen }, null, 2));

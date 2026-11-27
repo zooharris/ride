@@ -12,7 +12,7 @@ import { notify } from '../store';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { phoneScreen } from '../../player/platform';
-import { usePadUpright } from '../usePad';
+import { usePadSide, usePadUpright } from '../usePad';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
 import { breathBand, cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
@@ -76,11 +76,12 @@ function useRideKeys(): void {
   }, []);
 }
 
-/** The ride, while riding. A phone gets three pages of one screen each (26 Nov 2026); everything larger, the one wide screen. */
+/** The ride, while riding. A phone gets two pages of one screen each, an iPad one screen upright or on its side (27 Nov 2026); a computer, the wide screen. */
 export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
   const [phone] = useState(phoneScreen);
   const pad = usePadUpright();
-  return phone ? <RidingPhone ride={ride} profile={profile} /> : pad ? <RidingPhone ride={ride} profile={profile} pad /> : <RidingWide ride={ride} profile={profile} />;
+  const side = usePadSide();
+  return phone || pad || side ? <RideBoard ride={ride} profile={profile} shape={phone ? 'phone' : pad ? 'pad' : 'side'} /> : <RidingWide ride={ride} profile={profile} />;
 }
 
 function RidingWide({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
@@ -212,7 +213,7 @@ function RidingWide({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
   );
 }
 
-// ── Riding on a phone: three pages of one screen each (26 Nov 2026) ──────────────────────────────────────────────
+// ── Riding on a phone and on an iPad: one design in three shapes (27 Nov 2026) ──────────────────────────────────────────────
 
 /** A step's target as words, and its colour, by what the ride is ridden by. */
 function stepTarget(ride: ActiveRide, profile: Profile, s: TimelineStep): { text: string; colour: string } {
@@ -224,8 +225,8 @@ function stepTarget(ride: ActiveRide, profile: Profile, s: TimelineStep): { text
   };
 }
 
-/** The workout's steps as a list, with the one being ridden marked and kept in view. */
-function PhoneSteps({ ride, profile, cols }: { ride: ActiveRide; profile: Profile; cols?: number }) {
+/** The workout's steps as a list: done ones ticked, the one being ridden marked with its target and kept in view, the next one named. */
+function PhoneSteps({ ride, profile, title }: { ride: ActiveRide; profile: Profile; title?: boolean }) {
   const e = ride.engine;
   const tl = ride.timeline;
   const cur = e.step?.index ?? (e.workoutDone ? tl.length : -1);
@@ -237,24 +238,28 @@ function PhoneSteps({ ride, profile, cols }: { ride: ActiveRide; profile: Profil
     if (b && el) b.scrollTop = Math.max(0, el.offsetTop - b.clientHeight / 2 + el.offsetHeight / 2);
   }, [cur]);
   return (
-    <div class={`rd-card rp-steps${cols ? ' cols' : ''}`} style={cols ? `--rows:${Math.ceil(tl.length / cols)};--cols:${cols}` : undefined} ref={box} role="list" aria-label="Steps">
-      {tl.map((s) => {
-        const t = stepTarget(ride, profile, s);
-        const state = s.index < cur ? 'done' : s.index === cur ? 'now' : '';
-        return (
-          <div key={s.index} role="listitem" class={`rp-step ${state}`}>
-            <i style={`background:${t.colour}`} />
-            <div class="rp-step-n"><b>{s.name}</b>{state === 'now' && <small class="num">{t.text} · now</small>}</div>
-            <span class="num">{mmss(s.seconds)}<u> · {t.text}</u></span>
-            <em>{state === 'done' ? 'Done' : state === 'now' ? 'Now' : ''}</em>
-          </div>
-        );
-      })}
-    </div>
+    <section class="rd-card rb-list">
+      {title && <span class="caption">The {tl.length} steps</span>}
+      <div class="rp-steps" ref={box} role="list" aria-label="Steps">
+        {tl.map((s) => {
+          const t = stepTarget(ride, profile, s);
+          const state = s.index < cur ? 'done' : s.index === cur ? 'now' : s.index === cur + 1 ? 'next' : '';
+          return (
+            <div key={s.index} role="listitem" class={`rp-step ${state}`}>
+              {state === 'done' ? <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--good)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Done"><path d="M2 6.5l2.6 2.6L10 3.4" /></svg> : <i style={`background:${t.colour}`} />}
+              <div class="rp-step-n"><b>{s.name}</b>{state === 'now' && <small class="num">Now · {t.text}</small>}{state === 'next' && <small>Next</small>}</div>
+              <span class="num">{mmss(s.seconds)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
 interface Cell { label: string; value: string | number; unit?: string; note?: string; cls?: string }
+/** One of the readings beside the big number: its live value, a line about it, and what the ride has made of it so far. */
+interface Reading extends Cell { key: string; foot?: [string, string][]; brief?: string }
 
 /** A phone's pages: a strip that snaps from one to the next, the page kept when the phone is turned. */
 function usePages(count: number) {
@@ -284,14 +289,71 @@ function usePages(count: number) {
   return { pager, page, goTo, onScroll };
 }
 
-function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profile; pad?: boolean }) {
+/**
+ * The step being ridden (27 Nov 2026): its time left inside a ring that fills as the step goes by, the ride's elapsed
+ * time beside it with how much of the ride is done, and the workout's cue beneath. What comes next is in the step
+ * list, so it is not repeated here.
+ */
+function StepBox({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
+  const e = ride.engine;
+  const step = e.step;
+  if (!step) return <Dial ride={ride} step={undefined} profile={profile} />;
+  const done = e.position - step.start;
+  const left = step.end - e.position;
+  const frac = Math.max(0, Math.min(1, done / step.seconds));
+  const bz = ride.setup.byBreath ? breathBand(step, profile, e.scale)?.zone : undefined;
+  const z = bz ?? (ride.setup.basis === 'hr' ? hrZoneOf(step, profile) : step.zone);
+  const colour = bz ? breathZoneVar(bz) : ZONE_VAR[z - 1];
+  const total = step.ramp ? 0 : totalSeconds(ride.timeline);
+  const R = 52, C = 2 * Math.PI * R;
+  const leftText = mmss(left), elapsed = mmss(e.timer);
+  return (
+    <section class="rd-card rb-step">
+      <div class="rb-step-head">
+        <span class="caption">{step.ramp ? `Ramp step ${step.ramp}` : `Step ${step.index + 1} of ${ride.timeline.length}${step.setNote ? ` · ${step.setNote}` : ''}`}</span>
+        <span class="rd-zone" style={`--c:${colour}`}>{bz ? 'Breathing zone' : 'Zone'} {z}{step.ramp ? '' : ` · ${step.name}`}</span>
+      </div>
+      <div class="rb-step-body">
+        <div class="rb-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <g transform="rotate(-90 60 60)" fill="none" stroke-width="8">
+              <circle cx="60" cy="60" r={R} stroke="var(--line)" />
+              <circle cx="60" cy="60" r={R} stroke={colour} stroke-linecap="round" stroke-dasharray={`${C * frac} ${C}`} />
+            </g>
+          </svg>
+          <div class="rb-ring-text"><b class={`num${leftText.length > 5 ? ' long' : ''}`}>{leftText}</b><span>left in step</span></div>
+        </div>
+        <div class="rb-elapsed">
+          <span class="caption">Elapsed</span>
+          <b class={`num${elapsed.length > 5 ? ' long' : ''}`}>{elapsed}</b>
+          {total > 0 && <>
+            <div class="rb-bar" aria-hidden="true"><i style={`width:${Math.max(0, Math.min(100, (e.position / total) * 100))}%`} /></div>
+            <div class="rb-small num"><span>of {clock(total)}</span><span>{mmss(total - e.position)} to go</span></div>
+          </>}
+          <div class="rb-small rb-thisstep num"><span>This step:</span><span>{mmss(done)} of {mmss(step.seconds)} done</span></div>
+        </div>
+      </div>
+      <div class="rd-msg" aria-live="polite">
+        {step.ramp ? <p class="rd-cue">Hold it as long as you can. Press <b>Stop the test</b> when you can't.</p>
+          : cueAt(step, done) ? <p key={`${step.index}|${cueAt(step, done)}`} class="rd-cue rd-cue-own">{cueAt(step, done)}</p>
+          : <p class="rd-cue rd-cue-default">{step.cadence ? `Hold about ${step.cadence} rpm.` : step.work ? 'Settle in and hold it steady.' : 'Easy: spin and recover.'}</p>}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The ride on a phone and on an iPad (27 Nov 2026): one design in three shapes. A phone has two pages of one screen
+ * each, Ride and Workout; an iPad, upright or on its side, has everything on one screen. Each shows the big number,
+ * the step in its ring with the ride's elapsed time, the other readings grouped by subject, the ride so far, the
+ * ride's profile, and the whole list of steps.
+ */
+function RideBoard({ ride, profile, shape }: { ride: ActiveRide; profile: Profile; shape: 'phone' | 'pad' | 'side' }) {
   const { sensors } = useSensors();
   useRideKeys();
   const e = ride.engine;
   const tl = ride.timeline;
   const step = e.step;
-  const next = e.next;
-  const then = next ? tl[next.index + 1] : undefined;
   const byHr = ride.setup.basis === 'hr';
   const byBreath = !!ride.setup.byBreath;
   const t = totals(e.samples, profile.ftp, profile.lthr, undefined, ride.setup.basis);
@@ -307,7 +369,7 @@ function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profil
   const avgVe = ves.length ? Math.round(ves.reduce((x, y) => x + y, 0) / ves.length) : undefined;
   const lost = sensors.filter((s) => s.status === 'lost');
 
-  const { pager, page, goTo, onScroll } = usePages(3);
+  const { pager, page, goTo, onScroll } = usePages(2);
 
   const dash = '—';
   const bpm = ride.live.bpm != null ? Math.round(ride.live.bpm) : undefined;
@@ -317,7 +379,7 @@ function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profil
   const st = step && !step.step.allOut ? ride.band.state : undefined;
   const zoneWord = st === 'on' ? 'in zone' : st === 'under' ? 'below zone' : st === 'over' ? 'above zone' : undefined;
 
-  // The live readings in brief, for the pages that are not the Ride page.
+  // The live readings in brief, for the Workout page.
   const first: Cell = byBreath ? { label: `Breathing${zoneWord && breathBand(step!, profile, e.scale) ? ` · ${zoneWord}` : ''}`, value: ride.veNow != null ? Math.round(ride.veNow) : dash, unit: 'L/min' }
     : byHr ? { label: `Heart rate${zoneWord && lthrKnown ? ` · ${zoneWord}` : ''}`, value: ride.shownBpm ?? dash, unit: 'bpm', cls: 'rd-hr' }
     : { label: `Power${st && !isUnknown(profile, 'ftp') ? ` · ${st === 'on' ? 'on target' : st}` : ''}`, value: ride.shownWatts ?? dash, unit: 'W' };
@@ -329,124 +391,143 @@ function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profil
     </div>
   );
 
-  // The Ride page's small tiles: the live readings the big number is not.
+  // The readings the big number is not, grouped by subject: heart rate beside breathing, cadence beside speed.
   const hz = bpm && lthrKnown ? hrZone(bpm / profile.lthr, rideHrZones(profile)) : undefined;
-  const hrT: Cell = { label: 'Heart rate', value: bpm ?? dash, unit: 'bpm', note: hz ? `Zone ${hz}` : '', cls: 'rd-hr' };
-  const pwT: Cell = { label: 'Power', value: ride.shownWatts ?? dash, unit: 'W' };
-  const cadT: Cell = { label: 'Cadence', value: cadence ?? dash, unit: 'rpm', note: step?.cadence ? `Target ${step.cadence}` : '' };
-  const spT: Cell = { label: 'Speed', value: speed ?? dash, unit: speedUnit(profile) };
-  const brT: Cell | undefined = strap ? { label: 'Breathing', value: ride.shownBreath?.ve != null ? Math.round(ride.shownBreath.ve) : dash, unit: 'L/min', note: ride.shownBreath?.br != null ? `${brShown(ride.shownBreath.br)} a minute` : '', cls: 'rp-br' } : undefined;
-  const tiles = (byBreath ? [pwT, hrT, cadT, spT] : byHr ? [pwT, cadT, brT, spT] : [hrT, cadT, brT, spT]).filter((c): c is Cell => !!c);
+  const dist = distText(t.distanceM, profile);
+  const hrR: Reading = { key: 'hr', label: 'Heart rate', value: bpm ?? dash, unit: 'bpm', cls: 'rd-hr', note: hz ? `Zone ${hz}` : '',
+    foot: t.avgHr != null ? [['Average', `${t.avgHr}`], ['Highest', `${t.maxHr ?? dash}`]] : undefined, brief: t.avgHr != null ? `avg ${t.avgHr} · max ${t.maxHr ?? dash}` : hz ? `Zone ${hz}` : '' };
+  const pwR: Reading = { key: 'pw', label: 'Power', value: ride.shownWatts ?? dash, unit: 'W', note: hasPower ? '' : 'No power source',
+    foot: hasPower ? [['Average', `${t.avgPower} W`]] : undefined, brief: hasPower ? `avg ${t.avgPower} W` : '' };
+  const brR: Reading | undefined = strap ? { key: 'br', label: 'Breathing', value: ride.shownBreath?.ve != null ? Math.round(ride.shownBreath.ve) : dash, unit: 'L/min', cls: 'rp-br',
+    note: ride.shownBreath?.br != null ? `${brShown(ride.shownBreath.br)} breaths a minute` : '', foot: avgVe != null ? [['Average', `${avgVe} L/min`]] : undefined,
+    brief: ride.shownBreath?.br != null ? `${brShown(ride.shownBreath.br)} a minute` : '' } : undefined;
+  const cadR: Reading = { key: 'cad', label: 'Cadence', value: cadence ?? dash, unit: 'rpm', note: step?.cadence ? `Target ${step.cadence} rpm` : 'Any comfortable cadence', brief: step?.cadence ? `Target ${step.cadence}` : '' };
+  const spR: Reading = { key: 'sp', label: 'Speed', value: speed ?? dash, unit: speedUnit(profile), note: `Distance ${dist}`, brief: dist };
+  const readings = (byBreath ? [pwR, hrR, cadR, spR] : byHr ? [pwR, brR, cadR, spR] : [hrR, brR, cadR, spR]).filter((c): c is Reading => !!c);
 
-  // The Numbers page: every total, and the readings a total is not kept for.
-  const dist = distText(t.distanceM, profile).split(' ');
-  const nums: Cell[] = [
-    { label: 'Elapsed', value: mmss(e.timer), note: planned ? `of ${clock(planned.seconds)}` : '' },
-    { label: 'Training load', value: t.tss, unit: planned ? '' : 'TSS', note: planned ? `of ${planned.tss} planned` : '' },
-    ...(zoneTime ? [{ label: 'Time in target zone', value: mmss(zoneTime.seconds), note: zoneTime.share != null ? `${pct(zoneTime.share)} of steps` : '' }] : []),
-    { label: 'Average heart rate', value: t.avgHr ?? dash, unit: 'bpm' },
-    { label: 'Highest heart rate', value: t.maxHr ?? dash, unit: 'bpm' },
-    ...(hasPower || !byHr ? [
-      { label: 'Average power', value: t.avgPower ?? dash, unit: 'W' },
-      { label: 'Normalized power', value: t.np ?? dash, unit: 'W' },
-      { label: 'Work done', value: t.kj ?? dash, unit: 'kJ' },
-    ] : []),
-    { label: 'Cadence', value: cadence ?? dash, unit: 'rpm' },
-    { label: 'Speed', value: speed ?? dash, unit: speedUnit(profile) },
-    { label: 'Distance', value: dist[0], unit: dist[1] },
-    ...(strap ? [
-      { label: 'Average ventilation', value: avgVe ?? dash, unit: 'L/min' },
-      { label: 'Breaths', value: ride.shownBreath?.br != null ? brShown(ride.shownBreath.br) : dash, unit: 'a minute', note: ride.shownBreath?.tv != null ? `${ride.shownBreath.tv.toFixed(1)} L a breath` : '' },
-    ] : []),
-  ];
+  // The ride so far: the totals that suit what the ride is ridden by.
+  const load: Cell = { label: 'Training load', value: t.tss, unit: planned ? `of ${planned.tss}` : 'TSS' };
+  const power3: Cell[] = [{ label: 'Avg power', value: t.avgPower ?? dash, unit: 'W' }, { label: 'Normalized', value: t.np ?? dash, unit: 'W' }, { label: 'Work done', value: t.kj ?? dash, unit: 'kJ' }];
+  const soFar: Cell[] = byBreath ? [{ label: 'Avg breathing', value: avgVe ?? dash, unit: 'L/min' }, ...power3.filter((c) => c.label !== 'Normalized'), load]
+    : byHr ? [...(zoneTime ? [{ label: 'In zone', value: mmss(zoneTime.seconds), unit: zoneTime.share != null ? pct(zoneTime.share) : '' }] : []), { label: 'Average', value: t.avgHr ?? dash, unit: 'bpm' }, { label: 'Highest', value: t.maxHr ?? dash, unit: 'bpm' }, load]
+    : [...power3, load];
 
-  const names = ['Ride', 'Numbers', tl.length ? 'Workout' : 'Chart'];
+  const names = ['Ride', tl.length ? 'Workout' : 'Chart'];
   const list = tl.length > 0 && !testing;
-  const sub = [`${mmss(e.timer)}${planned ? ` of ${clock(planned.seconds)}` : ''}`, ride.setup.workout?.subtitle].filter(Boolean).join(' · ');
-  const heroCard = <>
-          {byBreath ? <BreathHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : byHr ? <HrHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : <Hero ride={ride} profile={profile} trainerOk={!!trainer} bare />}
-  </>;
-  const stepCard = <>
-          {tl.length ? <Dial ride={ride} step={step} next={next} then={then} profile={profile} /> : <FreeCard ride={ride} trainerOk={!!trainer} phone />}
-  </>;
-  const chartCard = <>
-          <section class="rd-card rd-chartcard">
-            <div class="rd-chart-head">
-              <span class="caption">{tl.length ? 'Workout' : 'Your ride'}</span>
-              {byBreath && breathZones(profile) ? <>
-                <span class="rd-key"><i class="ln br" />Your breathing</span>
-                {tl.length > 0 && <span class="rd-key"><i class="bx" />Target</span>}
-                {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
-              </> : byHr ? <>
-                <span class="rd-key"><i class="ln hr" />Your heart rate</span>
-                {tl.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}
-                {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
-              </> : <>
-                <span class="rd-key"><i class="ln" />Your power</span>
-                {tl.length > 0 && <span class="rd-key"><i class="bx" />Target</span>}
-                <span class="rd-key"><i class="ln hr" />Heart rate</span>
-              </>}
-            </div>
-            <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={byBreath ? 'breath' : ride.setup.basis} />
-          </section>
-  </>;
-  const controls = <>
-          <div class="rp-ctl">
-            {byBreath ? <BreathControls ride={ride} trainerOk={!!trainer} /> : byHr ? <HrControls ride={ride} trainerOk={!!trainer} /> : <PowerControls ride={ride} trainerOk={!!trainer} />}
-            {step && !step.ramp && <button class="btn quiet rp-skip" aria-label="Skip this step ›" onClick={skipStep}><span>Skip<span class="rp-skip-more"> this step</span> ›</span></button>}
-          </div>
-  </>;
+  const heroCard = byBreath ? <BreathHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : byHr ? <HrHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : <Hero ride={ride} profile={profile} trainerOk={!!trainer} bare />;
+  const stepCard = tl.length ? <StepBox ride={ride} profile={profile} /> : <FreeCard ride={ride} trainerOk={!!trainer} phone={shape === 'phone'} />;
+  const cards = (
+    <div class={`rb-cards n${readings.length}`}>
+      {readings.map((c) => (
+        <div key={c.key} class="rd-card rb-card">
+          <span class="caption">{c.label}</span>
+          <div class="rb-v"><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div>
+          {c.note && <em class="rb-note">{c.note}</em>}
+          {c.foot && <div class="rb-foot">{c.foot.map(([k, v]) => <span key={k}>{k} <b class="num">{v}</b></span>)}</div>}
+          <em class="rb-brief num">{c.brief}</em>
+        </div>
+      ))}
+    </div>
+  );
+  const soFarRow = (
+    <section class="rd-card rb-sofar" style={`--n:${soFar.length}`}>
+      <span class="caption rb-sofar-h"><span>The ride so far</span><span>So far</span></span>
+      {soFar.map((c) => <div key={c.label}><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div></div>)}
+    </section>
+  );
+  const chartCard = (
+    <section class="rd-card rd-chartcard">
+      <div class="rd-chart-head">
+        <span class="caption">{tl.length ? 'Workout' : 'Your ride'}</span>
+        {byBreath && breathZones(profile) ? <>
+          <span class="rd-key"><i class="ln br" />Your breathing</span>
+          {tl.length > 0 && <span class="rd-key"><i class="bx" />Target</span>}
+          {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+        </> : byHr ? <>
+          <span class="rd-key"><i class="ln hr" />Your heart rate</span>
+          {tl.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}
+          {hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+        </> : <>
+          <span class="rd-key"><i class="ln" />Your power</span>
+          {tl.length > 0 && <span class="rd-key"><i class="bx" />Target</span>}
+          <span class="rd-key"><i class="ln hr" />Heart rate</span>
+        </>}
+      </div>
+      <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={byBreath ? 'breath' : ride.setup.basis} />
+    </section>
+  );
+  const controls = (
+    <div class="rp-ctl">
+      {byBreath ? <BreathControls ride={ride} trainerOk={!!trainer} /> : byHr ? <HrControls ride={ride} trainerOk={!!trainer} /> : <PowerControls ride={ride} trainerOk={!!trainer} />}
+      {step && !step.ramp && <button class="btn quiet rp-skip" aria-label="Skip this step ›" onClick={skipStep}><span>Skip<span class="rp-skip-more"> this step</span> ›</span></button>}
+    </div>
+  );
   const overlays = <>
-      {e.phase === 'countdown' && <div class="rd-overlay"><div class="rd-count num">{e.countdownLeft || 'Go'}</div><p>Get pedalling</p></div>}
-      {paused && (
-        <div class="rd-overlay" role="dialog" aria-label="Paused">
-          <div class="rd-paused">
-            <h2>{e.isAutoPaused ? 'Paused: you stopped pedalling' : 'Paused'}</h2>
-            <p class="muted">{e.isAutoPaused ? 'Start pedalling and the ride carries on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
-            <div class="row" style="gap:10px;justify-content:center;margin-top:16px">
-              <button class="btn primary rd-resume" onClick={resumeRide}>Resume</button>
-              <button class="btn" onClick={() => void askEnd()}>End ride</button>
-            </div>
+    {e.phase === 'countdown' && <div class="rd-overlay"><div class="rd-count num">{e.countdownLeft || 'Go'}</div><p>Get pedalling</p></div>}
+    {paused && (
+      <div class="rd-overlay" role="dialog" aria-label="Paused">
+        <div class="rd-paused">
+          <h2>{e.isAutoPaused ? 'Paused: you stopped pedalling' : 'Paused'}</h2>
+          <p class="muted">{e.isAutoPaused ? 'Start pedalling and the ride carries on, or press Resume.' : 'The clock has stopped and the trainer has let go.'}</p>
+          <div class="row" style="gap:10px;justify-content:center;margin-top:16px">
+            <button class="btn primary rd-resume" onClick={resumeRide}>Resume</button>
+            <button class="btn" onClick={() => void askEnd()}>End ride</button>
           </div>
         </div>
-      )}
+      </div>
+    )}
   </>;
   const notices = <>
-      {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
-      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no breaths, and Antogo could not wake it. Take it off for a minute and put it back on; Antogo keeps trying. The ride keeps recording.</div>}
-
+    {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
+    {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no breaths, and Antogo could not wake it. Take it off for a minute and put it back on; Antogo keeps trying. The ride keeps recording.</div>}
   </>;
+  const bar = (
+    <header class="rp-bar">
+      <div class="rp-title">
+        <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
+        <div class="rp-sub num">{tl.length ? (ride.setup.workout?.subtitle ?? '') : `${mmss(e.timer)} · ride as you like`}</div>
+      </div>
+      {shape === 'phone' && live('rp-live-bar')}
+      {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
+      <button class="btn" onClick={() => void askEnd()}>End ride</button>
+      <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
+    </header>
+  );
 
-  // An upright iPad (26 Nov 2026): everything on one screen, with no pages. The ride's profile keeps one proportion
-  // wherever it is drawn, and the room it leaves goes to the step list.
-  if (pad) {
-    const four = (byBreath ? [pwT, hrT, cadT, spT] : byHr ? [pwT, cadT, spT, brT] : [hrT, cadT, spT, brT]).filter((c): c is Cell => !!c);
-    const sums = nums.filter((c) => c.label !== 'Cadence' && c.label !== 'Speed');
+  // An upright iPad: everything on one screen. The step and the list of steps on the left, the readings on the right.
+  if (shape === 'pad') {
     return (
-      <div class="player ride rp rpad">
-        <header class="rp-bar">
-        <div class="rp-title">
-          <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
-          <div class="rp-sub num">{sub}</div>
-        </div>
-        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
-        <button class="btn" onClick={() => void askEnd()}>End ride</button>
-        <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
-        </header>
+      <div class="player ride rp rb rpad">
+        {bar}
         {notices}
         <div class="rpad-body">
           {heroCard}
-          <div class="rpad-mid">
-            {stepCard}
-            <div class="rp-tiles">
-              {four.map((c) => <div key={c.label} class="rp-tile"><span class="caption">{c.label}</span><div><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div><em>{c.note}</em></div>)}
-            </div>
-          </div>
-          <div class="rd-card rpad-sums" style={`--n:${sums.length}`}>
-            {sums.map((c) => <div key={c.label}><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div></div>)}
+          <div class={`rb-two${list ? '' : ' nolist'}`}>
+            <div class="rb-left">{stepCard}{list && <PhoneSteps ride={ride} profile={profile} title />}</div>
+            <div class="rb-right">{cards}{soFarRow}</div>
           </div>
           {chartCard}
-          {list && <PhoneSteps ride={ride} profile={profile} cols={3} />}
+          {controls}
+        </div>
+        {overlays}
+      </div>
+    );
+  }
+
+  // An iPad on its side: the same, with the list of steps down the right-hand side.
+  if (shape === 'side') {
+    return (
+      <div class="player ride rp rb rside">
+        {bar}
+        {notices}
+        <div class={`rside-body${list ? '' : ' nolist'}`}>
+          <div class="rside-main">
+            <div class="rside-top">{heroCard}{stepCard}</div>
+            {cards}
+            {soFarRow}
+            {chartCard}
+          </div>
+          {list && <PhoneSteps ride={ride} profile={profile} title />}
           {controls}
         </div>
         {overlays}
@@ -455,47 +536,26 @@ function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profil
   }
 
   return (
-    <div class={`player ride rp${page ? ' rp-away' : ''}`}>
-      <header class="rp-bar">
-        <div class="rp-title">
-          <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
-          <div class="rp-sub num">{sub}</div>
-        </div>
-        {live('rp-live-bar')}
-        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
-        <button class="btn" onClick={() => void askEnd()}>End ride</button>
-        <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
-      </header>
+    <div class={`player ride rp rb rphone${page ? ' rp-away' : ''}`}>
+      {bar}
       {notices}
-
       <div class="rp-pages" ref={pager} onScroll={onScroll}>
         <section class="rp-page rp-ride" aria-label={names[0]}>
           {heroCard}
           {stepCard}
-          <div class="rp-tiles">
-            {tiles.map((c) => <div key={c.label} class="rp-tile"><span class="caption">{c.label}</span><div><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div><em>{c.note}</em></div>)}
-          </div>
+          {cards}
+          {soFarRow}
         </section>
-
-        <section class="rp-page rp-numbers" aria-label={names[1]}>
-          {live('rp-live-page')}
-          <div class="rp-grid" style={`--cols:${Math.ceil(nums.length / (nums.length > 10 ? 3 : 2))}`}>
-            {nums.map((c) => <div key={c.label} class="rp-num"><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div>{c.note && <em>{c.note}</em>}</div>)}
-          </div>
-        </section>
-
-        <section class={`rp-page rp-workout${list ? '' : ' nolist'}`} aria-label={names[2]}>
+        <section class={`rp-page rp-workout${list ? '' : ' nolist'}`} aria-label={names[1]}>
           {live('rp-live-page')}
           {chartCard}
           {list && <PhoneSteps ride={ride} profile={profile} />}
           {controls}
         </section>
       </div>
-
       <nav class="rp-dots" aria-label="Pages">
         {names.map((n, i) => <button key={n} class={page === i ? 'on' : ''} aria-current={page === i ? 'page' : undefined} onClick={() => goTo(i)}><i />{n}</button>)}
       </nav>
-
       {overlays}
     </div>
   );

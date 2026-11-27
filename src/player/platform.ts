@@ -30,7 +30,7 @@ export const TRAINER_ONLY_ELSEWHERE = `Ride this on a computer with Chrome, from
 
 /**
  * A phone-sized screen, by the device's own screen and not the window: the shorter side of every current phone is
- * well under 500 points, and of every tablet well over. The ride is laid out as three pages on these (26 Nov 2026).
+ * well under 500 points, and of every tablet well over. The ride is laid out as pages of one screen each on these (26 Nov 2026).
  */
 export const isPhoneScreen = (width: number, height: number): boolean => Math.min(width, height) > 0 && Math.min(width, height) < 500;
 

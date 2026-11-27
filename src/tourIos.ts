@@ -1,8 +1,9 @@
 /**
- * A tour of the phone's ride screens inside Apple's iPhone simulator (26 Nov 2026). Runs only in the test build the
+ * A tour of the ride's screens inside Apple's iPhone and iPad simulators (26 Nov 2026; the iPad, and a ride by heart
+ * rate, from 27 Nov). Runs only in the test build the
  * publishing machine starts there, when that machine asks for it; the app riders get never runs it (its native side
  * always answers "not asked"). It sets up a made-up rider as a rider would, by pressing the app's own buttons, turns
- * on the simulated trainer, and stops at each screen (before the ride, the ride's three pages, Ride complete's two)
+ * on the simulated trainer, and stops at each screen (before the ride, the ride's pages, Ride complete's)
  * upright and on its side. At each stop it writes what it finds; the publishing machine takes a picture of the
  * screen there. Those pictures show the screens with the real clock, notch and home bar, which no browser test has,
  * and are looked at before a phone build is called ready.
@@ -139,24 +140,48 @@ export async function runTour(side: TourSide): Promise<void> {
 
     where = 'riding';
     await press('button', 'Start ride');
-    await until('the ride to begin', () => document.querySelector('.rp-dots') && !document.querySelector('.rd-overlay'), 30);
+    await until('the ride to begin', () => document.querySelector('.player.ride') && !document.querySelector('.rd-overlay'), 30);
     await sleep(14000);
-    for (const p of ['Ride', 'Numbers', 'Workout']) { await pageNamed(p); await stop(`riding-${p.toLowerCase()}-upright`, false); }
+    // A phone's ride is two pages; an iPad's is one screen, with no pages to turn.
+    const paged = () => !!find('.rp-dots button', /./);
+    const each = async (what: string, names: string[], sideways: boolean) => {
+      if (!paged()) { await stop(`${what}-${sideways ? 'side' : 'upright'}`, sideways); return; }
+      for (const p of names) { await pageNamed(p); await stop(`${what}-${p.toLowerCase()}-${sideways ? 'side' : 'upright'}`, sideways); }
+    };
+    await each('riding', ['Ride', 'Workout'], false);
     await turn(true);
-    for (const p of ['Workout', 'Numbers', 'Ride']) { await pageNamed(p); await stop(`riding-${p.toLowerCase()}-side`, true); }
+    await each('riding', ['Workout', 'Ride'], true);
     await turn(false);
 
     where = 'ending the ride';
-    await press('.rp-bar button', 'End ride');
+    await press('button', 'End ride');
     await until('Ride complete', () => find('button', 'Save ride'), 30);
-    await stop('complete-summary-upright', false);
-    await pageNamed('Details');
-    await stop('complete-details-upright', false);
+    await each('complete', ['Summary', 'Details'], false);
     await turn(true);
-    await stop('complete-details-side', true);
-    await pageNamed('Summary');
-    await stop('complete-summary-side', true);
+    await each('complete', ['Details', 'Summary'], true);
     await turn(false);
+
+    // The same ride by heart rate: heart rate is the big number, and power takes a reading's place.
+    where = 'a ride by heart rate';
+    await press('button', /^Discard ride/);
+    await goTo('#/today');
+    await goTo(`#/play/workout/${id}`);
+    await until('the screen before the ride', () => document.querySelector('.pp'), 30);
+    await sleep(800);
+    const byHr = find('.pp-row .seg button', 'Heart rate');
+    if (byHr) {
+      if (byHr.getAttribute('aria-pressed') !== 'true') { byHr.click(); await sleep(600); }
+      await until('Start ride', () => { const b = find('button', 'Start ride') as HTMLButtonElement | undefined; return b && !b.disabled ? b : undefined; }, 30);
+      await press('button', 'Start ride');
+      await until('the ride to begin', () => document.querySelector('.player.ride') && !document.querySelector('.rd-overlay'), 30);
+      await sleep(12000);
+      await each('riding-by-heart-rate', ['Ride', 'Workout'], false);
+      await turn(true);
+      await each('riding-by-heart-rate', ['Ride'], true);
+      await turn(false);
+      await press('button', 'End ride');
+      await until('Ride complete', () => find('button', 'Save ride'), 30);
+    }
     await side.report({ name: 'antogo-tour-done.txt', text: JSON.stringify({ ok: true, stops: n }) });
   } catch (e) {
     await side.report({ name: 'antogo-tour-done.txt', text: JSON.stringify({ ok: false, stops: n, where, error: (e as Error).message, at: location.hash, screen: said(document.body).slice(0, 600) }) }).catch(() => undefined);

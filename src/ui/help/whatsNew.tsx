@@ -11,6 +11,13 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-27a', date: '27 November 2026', items: [
+      { title: 'One ride screen, on iPhone and iPad alike', text: 'While you ride, an iPhone and an iPad now show the same things in the same order: the big number; the step you are on, with its time left in a ring that fills as the step goes by and the ride\'s elapsed time beside it; your other readings, heart rate beside breathing and cadence beside speed; the ride so far; the ride\'s profile; and every step, with the ones done ticked and the next one named.', help: 'riding' },
+      { title: 'Two pages on an iPhone', text: 'The iPhone\'s ride is now two pages, Ride and Workout, in place of three. Everything that was on the Numbers page is on Ride.' },
+      { title: 'An iPad on its side', text: 'Held on its side, an iPad now has its own ride screen, with the list of steps down the right-hand side. Average and highest heart rate sit with your heart rate.' },
+    ],
+  },
+  {
     id: '2026-11-26f', date: '26 November 2026, night', items: [
       { title: 'The ride player on an upright iPad, on one screen', text: 'Held upright, an iPad now shows each of the player\'s screens whole, with nothing to scroll. Before the ride: what the ride is for, its profile, every step, your devices, the settings and Start ride. While riding: the big number, the step and its cue, your readings, the totals, the workout\'s profile, the step list and the trainer\'s controls. Ride complete: the numbers, the ride, each effort beside what the cues said, and Save ride. Turned on its side, the iPad keeps the wide screen.', help: 'riding' },
       { title: 'The ride\'s profile keeps its shape', text: 'On the upright iPad the profile is drawn at one proportion on all three screens, and no longer stretches to fill spare room.' },

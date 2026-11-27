@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
-import { go, looksRight, makePlan, open, setUp, type Session } from './rider';
+import { answers, go, looksRight, makePlan, open, setUp, type Session } from './rider';
 import type { Ledger } from './standin';
 
 /**
@@ -15,7 +15,7 @@ const note = (l: Ledger) => l.events.find((e) => e.name === NOTE);
 async function otherDevice(browser: Browser, info: TestInfo): Promise<Page> {
   const fresh = await browser.newContext({ serviceWorkers: 'block', baseURL: info.project.use.baseURL, viewport: info.project.use.viewport ?? undefined });
   const page = await fresh.newPage();
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   return page;
 }
 
@@ -114,7 +114,7 @@ test('restore at first run from a backup file the rider picks: told what it hold
   const fresh = await browser.newContext({ serviceWorkers: 'block', baseURL: info.project.use.baseURL, viewport: info.project.use.viewport ?? undefined });
   const p2 = await fresh.newPage();
   const asked: string[] = [];
-  p2.on('dialog', (d) => { asked.push(d.message()); void d.accept(); });
+  await answers(p2, asked);
   const s2 = await open(p2, 'new');
   await reloads(p2, () => p2.getByLabel('Choose a backup file').setInputFiles(file));
   expect(asked[0]).toMatch(/^This backup was made on .+ \(today\)\./);
@@ -180,7 +180,7 @@ test('"keep this device separate": set up afresh, the saved copy untouched; turn
   expect(wrote).toEqual([]);
   // Turned on: the rider is told what happens, the plan from the other device arrives, and the note is written by this one too.
   const asked: string[] = [];
-  p2.on('dialog', (d) => asked.push(d.message()));
+  await answers(p2, asked);
   await p2.getByRole('button', { name: 'Keep in step with my other devices' }).click();
   await expect(p2.locator('main')).toContainText('In step with your other devices through Intervals.icu.');
   expect(asked[0]).toContain('are combined now with the saved copy');

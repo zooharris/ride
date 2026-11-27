@@ -57,6 +57,7 @@ import { correctRecording, fixSig } from '../../engine/corrections';
 import { CorrectActivity, CorrectionsInForce } from '../CorrectActivity';
 import { NumbersGrid } from '../NumbersGrid';
 import { AddFilesButton } from '../AddFiles';
+import { ask } from '../ask';
 
 export function Rides({ data, id }: { data: AppData; id?: string }) {
   const profile = data.profile!;
@@ -339,7 +340,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
     const home = p.plannedFor ?? p.date;
     const past = home < today() ? ' (missed, as its day has passed)' : '';
     const where = p.plannedFor ? ` on ${shortDay(p.plannedFor)}` : '';
-    if (!confirm(`Was this ${clock(r.seconds)} ${r.name} recording a different workout, not ${w.name}?\n\n${w.name} goes back to to-do${where}${past}. The recording stays as a separate activity and still counts toward your training load. The app will not match it to this session again.`)) return;
+    if (!await ask(`Was this ${clock(r.seconds)} ${r.name} recording a different workout, not ${w.name}?\n\n${w.name} goes back to to-do${where}${past}. The recording stays as a separate activity and still counts toward your training load. The app will not match it to this session again.`)) return;
     setBusy(true);
     await unmatchRecording(p.id);
     notify();
@@ -348,7 +349,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   };
   const undoLogged = async () => {
     if (!p || !w) return;
-    if (!confirm(`Mark ${w.name} as not done?\n\nIts record here is removed, and the activity the app created for it in Intervals.icu is deleted. It goes back to to-do.`)) return;
+    if (!await ask(`Mark ${w.name} as not done?\n\nIts record here is removed, and the activity the app created for it in Intervals.icu is deleted. It goes back to to-do.`)) return;
     setBusy(true);
     await undoHandLog(p);
     notify();
@@ -359,7 +360,7 @@ function RideDetail({ ride: r, data }: { ride: Ride; data: AppData }) {
   const hubActions = null;
   const deleteIt = async () => {
     const also = p && w ? `\n\n${w.name} goes back to to-do${p.plannedFor ? ` on ${shortDay(p.plannedFor)}` : ''}${(p.plannedFor ?? p.date) < today() ? ' (missed, as its day has passed)' : ''}.` : '';
-    if (!confirm(`Delete ${r.name} (${fmtDate(r.date)}, ${clock(r.seconds)})?\n\nIt is deleted from Intervals.icu and from this app, and cannot be brought back here.${also}`)) return;
+    if (!await ask(`Delete ${r.name} (${fmtDate(r.date)}, ${clock(r.seconds)})?\n\nIt is deleted from Intervals.icu and from this app, and cannot be brought back here.${also}`)) return;
     setBusy(true);
     try {
       await deleteRecording(r.id);
@@ -652,7 +653,7 @@ function MatchByHand({ ride: r, data }: { ride: Ride; data: AppData }) {
     if (!chosen) return;
     const kindNote = chosen.w.kind !== r.sport ? ` It will count as ${KIND_LABEL[chosen.w.kind].toLowerCase()}.` : '';
     const moves = chosen.p.date !== r.date ? ` It moves to ${shortDay(r.date)}, the day you did it.` : '';
-    if (!confirm(`Match this ${clock(r.seconds)} ${r.name} recording to ${chosen.w.name} (${fmtDate(chosen.p.date)})?\n\nThat session is marked done with it.${moves}${kindNote} You can undo it with This was a different workout.`)) return;
+    if (!await ask(`Match this ${clock(r.seconds)} ${r.name} recording to ${chosen.w.name} (${fmtDate(chosen.p.date)})?\n\nThat session is marked done with it.${moves}${kindNote} You can undo it with This was a different workout.`)) return;
     setBusy(true);
     try { await matchByHand(chosen.p, chosen.w, r); notify(); toast({ ok: true, text: `Matched to ${chosen.w.name}.` }); }
     catch (e) { toast({ ok: false, text: `Not matched: ${(e as Error).message}` }); }
@@ -682,7 +683,7 @@ function AboutActivity({ data, streamsReady, ride: r, replaced, breathSensor }: 
   const [keepable, setKeepable] = useState<string | undefined>();
   useEffect(() => { void keepableRecording(r, replaced).then((x) => setKeepable(x?.id)); }, [r.id, replaced?.playerActivityId, replaced?.recordingId]);
   const keepOurs = async () => {
-    if (!confirm(`Keep Antogo's recording of ${replaced!.name} instead?\n\nAntogo's is saved to Intervals.icu and completes the session. This recording from your device stays in its own app and Intervals.icu, left out of training load so the ride counts once.`)) return;
+    if (!await ask(`Keep Antogo's recording of ${replaced!.name} instead?\n\nAntogo's is saved to Intervals.icu and completes the session. This recording from your device stays in its own app and Intervals.icu, left out of training load so the ride counts once.`)) return;
     setBusy(true);
     const res = await keepVeloiqInstead(keepable!, r.id);
     setBusy(false);

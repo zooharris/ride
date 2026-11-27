@@ -11,6 +11,7 @@ import { APP_SHORT_NAME } from '../appName';
 import { fmtDate } from './derived';
 import { notify } from './store';
 import { toast } from './Toast';
+import { ask } from './ask';
 
 /**
  * Antogo's own history of a threshold, in Settings beside its number (22 Nov 2026): a dated list the rider can see and
@@ -64,21 +65,21 @@ export function ThresholdHistoryPanel({ kind, stamp, onChanged, open }: { kind: 
     if (!(value >= K.lo && value <= K.hi)) return `${K.what[0].toUpperCase()}${K.what.slice(1)} is usually between ${K.lo} and ${K.hi}.`;
     return undefined;
   };
-  const save = (was: string | null) => {
+  const save = async (was: string | null) => {
     const v = Number(draft.value);
     const bad = check(draft.from, v);
     if (bad) { toast({ ok: false, text: bad }); return; }
-    if (was == null && list.some((e) => e.from === draft.from) && !confirm(`There is already an entry from ${day(draft.from)}. Replace it?`)) return;
+    if (was == null && list.some((e) => e.from === draft.from) && !await ask(`There is already an entry from ${day(draft.from)}. Replace it?`)) return;
     void act(was == null ? `Added: ${v} ${K.unit} from ${day(draft.from)}.` : `Changed to ${v} ${K.unit} from ${day(draft.from)}.`, () => (was == null ? setHistoryEntry(K.key, draft.from, v) : changeHistoryEntry(K.key, was, draft.from, v)));
   };
-  const remove = (e: ThresholdEntry) => {
-    if (!confirm(`Remove the entry "${e.value} ${K.unit} from ${day(e.from)}"?\n\nActivities from that day on are then scored with the entry before it${list.length === 1 ? ' (there is none: your setting now is used)' : ''}. You can add it again.`)) return;
+  const remove = async (e: ThresholdEntry) => {
+    if (!await ask(`Remove the entry "${e.value} ${K.unit} from ${day(e.from)}"?\n\nActivities from that day on are then scored with the entry before it${list.length === 1 ? ' (there is none: your setting now is used)' : ''}. You can add it again.`)) return;
     void act('Removed.', () => removeHistoryEntry(K.key, e.from));
   };
-  const use = (s: Suggestion) => {
+  const use = async (s: Suggestion) => {
     const inside = sorted(h).filter((e) => e.from > s.from && (!s.to || e.from <= s.to)).length;
     const open = !s.to ? `\n\nThis stretch has no end yet, so every entry of ${APP_SHORT_NAME}'s from ${day(s.from)} on is replaced, and your FTP in Settings becomes ${s.value} W.` : '';
-    if (!confirm(`Use your device's ${s.value} W ${periodWords(s, day)}?\n\n${APP_SHORT_NAME}'s history takes ${s.value} W for that stretch${inside ? `, in place of the ${inside === 1 ? 'entry' : `${inside} entries`} inside it` : ''}, and carries on after it as it was.${open} The rides in it are worked out again.`)) return;
+    if (!await ask(`Use your device's ${s.value} W ${periodWords(s, day)}?\n\n${APP_SHORT_NAME}'s history takes ${s.value} W for that stretch${inside ? `, in place of the ${inside === 1 ? 'entry' : `${inside} entries`} inside it` : ''}, and carries on after it as it was.${open} The rides in it are worked out again.`)) return;
     void act(`${s.value} W used ${periodWords(s, day)}.`, () => useDevicePeriod(s));
   };
   const choose = async (v: FtpScoring) => {

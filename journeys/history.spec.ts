@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { go, looksRight, setUp } from './rider';
+import { answers, go, looksRight, setUp } from './rider';
 
 /**
  * Stage 0 (22 Nov 2026): the whole history kept on this device, an activity that arrives with no detail (shown from
@@ -33,7 +33,7 @@ test('the whole history kept; an activity with no detail shown from its kept fil
 test('the Garmin key test page: save a key, show it, copy it, test it, forget it', async ({ page, context }, info) => {
   const s = await setUp(page, 'power');
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   await go(page, '#/settings');
   await page.getByRole('button', { name: /^History/ }).click();
   await page.getByRole('link', { name: 'Garmin, with your personal key' }).click();

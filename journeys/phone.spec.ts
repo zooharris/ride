@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { go, makePlan, openFirstRide, setUp, simulatedTrainer } from './rider';
+import { answers, go, makePlan, openFirstRide, setUp, simulatedTrainer } from './rider';
 import { phoneFaults, type Room } from '../src/ui/phoneFit';
 
 /**
@@ -58,7 +58,7 @@ async function stretch(page: Page): Promise<void> {
 test('before the ride, the ride and Ride complete each fit every iPhone, upright and on its side', async ({ page }, info) => {
   test.skip(info.project.name !== 'phone-night', 'a phone only');
   test.setTimeout(300_000);
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   const noon = new Date(); noon.setHours(12, 0, 0, 0);
   await page.clock.install({ time: noon });
   await setUp(page, 'power');
@@ -141,7 +141,7 @@ const PADS: Phone[] = [
 test('before the ride, the ride and Ride complete each fit an upright iPad on one screen', async ({ page }, info) => {
   test.skip(info.project.name !== 'tablet-day', 'a tablet only');
   test.setTimeout(300_000);
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   const noon = new Date(); noon.setHours(12, 0, 0, 0);
   await page.clock.install({ time: noon });
   await setUp(page, 'power');

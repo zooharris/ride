@@ -10,6 +10,7 @@ import { createManualActivity } from '../sync/intervals';
 import { undoHandLog } from '../sync/records';
 import { WhatYouDid } from './DoneRecord';
 import { toast } from './Toast';
+import { ask } from './ask';
 
 /**
  * A session on its planning page. Not done: log it by hand (one tap for done,
@@ -52,7 +53,7 @@ export function SessionLog({ planned, workout, defaultMinutes, recording, units,
 
   async function undo() {
     const remote = planned.manualActivityId ? ', and the activity the app created for it in Intervals.icu is deleted' : '';
-    if (!confirm(`Mark ${workout.name} as not done?\n\nIts record here is removed${remote}. It goes back to to-do.`)) return;
+    if (!await ask(`Mark ${workout.name} as not done?\n\nIts record here is removed${remote}. It goes back to to-do.`)) return;
     setBusy(true);
     await undoHandLog(planned);
     notify();

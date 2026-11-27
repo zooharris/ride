@@ -20,6 +20,7 @@ import { useRecommended } from '../useRecommended';
 import { acceptRecommended } from '../judgeService';
 import { AwayFields, GOAL_KIND_LABEL, GoalFields, WeekFields } from '../PlanForm';
 import { NameSheet } from '../NameSheet';
+import { ask } from '../ask';
 
 const statusOfPlan = (p: ActivePlan) => { const t = today(); return p.goalDate < t ? 'finished' : p.start > t ? 'upcoming' : 'current'; };
 const goalLine = (p: ActivePlan) => p.goal.kind === 'event' ? `${p.goal.name || 'Event'} on ${fmtDate(p.goal.date, { month: 'long', day: 'numeric' })}` : GOAL_KIND_LABEL[p.goal.kind];
@@ -65,7 +66,7 @@ export function PlanPage({ data, id, editing }: { data: AppData; id: string; edi
   }
   async function cancel() {
     const pending = sessions.filter((x) => x.date >= today() && x.status !== 'completed').length;
-    if (!confirm(`Cancel “${plan!.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
+    if (!await ask(`Cancel “${plan!.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
     try { await cancelPlan(data, plan!.id); go('plan'); } finally { setBusy(false); }
   }

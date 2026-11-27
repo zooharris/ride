@@ -7,6 +7,7 @@ import { forget, removeSimulated, savedDevices, SIM_KEY, type SavedDevice } from
 import { KIND_WORD } from '../player/sources';
 import { bluetoothAvailable } from '../player/ble/web';
 import { DEFAULT_PREFS, loadPrefs, PREF, type Prefs } from './screens/Player';
+import { ask } from './ask';
 
 /**
  * Settings → Ride player: the trainer and sensors this computer remembers, and
@@ -26,7 +27,7 @@ export function PlayerSettings() {
     setSim(on);
   };
   const drop = async (d: SavedDevice) => {
-    if (!confirm(`Forget ${d.name} on ${thisDevice()}?\n\nIt disconnects now. To use it again, add it again on the ride screen.`)) return;
+    if (!await ask(`Forget ${d.name} on ${thisDevice()}?\n\nIt disconnects now. To use it again, add it again on the ride screen.`)) return;
     await forget(d.id);
     load();
   };

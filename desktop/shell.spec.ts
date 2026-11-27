@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { standIn, watchProblems } from '../journeys/standin';
-import { go } from '../journeys/rider';
+import { answers, go } from '../journeys/rider';
 import { encodeFitActivity } from '../src/export/activityFiles';
 import type { Ride } from '../src/engine/types';
 
@@ -123,7 +123,7 @@ test('a plan made in the app is backed up, and restored into a fresh copy of the
   // A fresh copy of the app, as on another computer: empty, then restored.
   const b = await launch();
   await setUpNew(b.page);
-  b.page.on('dialog', (d) => void d.accept());
+  await answers(b.page);
   await go(b.page, '#/settings');
   await b.page.getByRole('button', { name: /^Across your devices, and backup/ }).click();
   await b.page.locator('input[type=file][accept*="json"]').setInputFiles(file);
@@ -222,7 +222,7 @@ test('Garmin, which gives a web page no answer, answers the app; and the key is 
   // Still there, and still hidden, when the app is opened again; and gone when forgotten.
   const again = await launch({ data: r.data, garmin: base });
   await go(again.page, '#/garmin-key');
-  again.page.on('dialog', (d) => void d.accept());
+  await answers(again.page);
   await again.page.getByRole('button', { name: 'Show', exact: true }).click();
   await expect(again.page.getByLabel('Your Garmin personal key')).toHaveText(KEY);
   await again.page.getByRole('button', { name: 'Forget' }).click();

@@ -61,8 +61,9 @@ export async function runIosTour(): Promise<void> {
 
 /** The tour itself, given the side that turns the screen and writes what is found (the app's own, or a stand-in when the tour is tried in a browser). */
 export async function runTour(side: TourSide): Promise<void> {
-  // No one is there to answer "End the ride?".
+  // No one is there to answer "End the ride?": the app's own question is answered OK as soon as it is drawn.
   window.confirm = () => true;
+  setInterval(() => { document.querySelector<HTMLButtonElement>('.ask .btn.primary')?.click(); }, 300);
   let n = 0;
   let where = 'opening';
   const stop = async (name: string, sideways: boolean) => {

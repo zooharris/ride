@@ -10,6 +10,7 @@ import { appBluetooth, appKind, inApp } from './shell';
 import { BluetoothChooser } from './ui/BluetoothChooser';
 import { DevicesQuestion } from './ui/DevicesQuestion';
 import { WhatsNewSheet } from './ui/help/whatsNew';
+import { AskHost } from './ui/ask';
 import { startGarmin } from './sync/garminAuto';
 
 // New versions are checked for on every launch, every 15 minutes while open, and whenever the app
@@ -44,4 +45,4 @@ if (appKind() === 'ios') setTimeout(() => { void import('./selfTestIos').then((m
 // And the tour of the phone's ride screens it asks for there, for the pictures looked at before a phone build is called ready.
 if (appKind() === 'ios') setTimeout(() => { void import('./tourIos').then((m) => m.runIosTour()); }, 2500);
 // The installed app shows its own list for choosing a Bluetooth device, over whatever screen asked for one.
-render(<><App />{appBluetooth.can() && <BluetoothChooser />}<DevicesQuestion /><WhatsNewSheet /></>, document.getElementById('app')!);
+render(<><App />{appBluetooth.can() && <BluetoothChooser />}<DevicesQuestion /><WhatsNewSheet /><AskHost /></>, document.getElementById('app')!);

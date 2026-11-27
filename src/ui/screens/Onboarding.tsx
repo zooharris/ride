@@ -16,6 +16,7 @@ import { addDays, today } from '../../engine/load';
 import { deviceRegion, distUnitsOf, legacyUnits, mastersFor, miles, pounds, unitsForRegion, weightUnitsOf, type DistUnits, type WeightUnits } from '../../engine/units';
 import { maxHrFromAge, standIns } from '../../engine/known';
 import { fmtDate } from '../derived';
+import { ask } from '../ask';
 
 /**
  * First run. Nothing is required but the rider's own answers (25 Nov 2026): the first screen leads straight to setup,
@@ -147,7 +148,7 @@ export function Onboarding() {
     try {
       const sum = await backupSummaryOf(f);
       if (!sum.ok) { setErr(sum.words); input.value = ''; return; }
-      if (!confirm(`${backupMade(sum.exportedAt)}\n\nIt holds ${sum.words}.\n\nRestore it? Everything in it is brought onto ${thisDevice()} as it was then, and ${APP_SHORT_NAME} opens with it.\n\nYour other devices are not changed. If ${APP_SHORT_NAME} finds its saved copy from them, it asks what to do, and if you keep this device in step, the newer version of each thing is kept.`)) { input.value = ''; return; }
+      if (!await ask(`${backupMade(sum.exportedAt)}\n\nIt holds ${sum.words}.\n\nRestore it? Everything in it is brought onto ${thisDevice()} as it was then, and ${APP_SHORT_NAME} opens with it.\n\nYour other devices are not changed. If ${APP_SHORT_NAME} finds its saved copy from them, it asks what to do, and if you keep this device in step, the newer version of each thing is kept.`)) { input.value = ''; return; }
       setBusy(true);
       await restoreBackupFile(f, 'device');
       // If a saved copy from the rider's other devices turns up, the choice is asked at once.

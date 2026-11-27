@@ -46,6 +46,7 @@ import type { UnsureNumber } from '../../engine/types';
 import { distUnitsOf, legacyUnits, miles, pounds, setPackUnit, weightUnitsOf } from '../../engine/units';
 import { SEND_GENERAL, UploadSteps, useDestinations } from '../Destinations';
 import { destinationWords, lastUploadWords } from '../../sync/destinations';
+import { ask } from '../ask';
 
 
 /** The saved copy's size as Intervals.icu stores it, in words: a measure only, since no limit is published to compare it with. */
@@ -72,7 +73,7 @@ export function Settings({ data }: { data: AppData }) {
     const words = choice === 'sync'
       ? `Keep ${thisDevice()} in step with your other devices?\n\nIts plans, calendar, workouts, day notes and settings are combined now with the saved copy in your Intervals.icu account: where both have the same thing, the newer change is kept. From then on, a change made on any of your devices reaches the others.`
       : `Keep ${thisDevice()} separate?\n\nIt stops reading and writing the saved copy in your Intervals.icu account. What is on it now stays. A plan you make here stays here, and changes on your other devices don't arrive. It still uses Intervals.icu for your history and for sending sessions to your devices. You can turn keeping in step back on here at any time.`;
-    if (!confirm(words)) return;
+    if (!await ask(words)) return;
     setBusy(true);
     try { setDevices(await chooseDevices(choice, c?.apiKey ? c : null)); setStanding(await deviceStanding()); notify(); } finally { setBusy(false); }
   }
@@ -127,8 +128,8 @@ export function Settings({ data }: { data: AppData }) {
   const [savedKey, setSavedKey] = useState('');
   const [savedAuto, setSavedAuto] = useState(false);
   const dirty = JSON.stringify(p) !== JSON.stringify(data.profile) || claudeKey !== savedKey || coachAuto !== savedAuto || provider !== savedProvider || model !== savedModel;
-  function discard() {
-    if (!confirm('Discard the changes on this page?')) return;
+  async function discard() {
+    if (!await ask('Discard the changes on this page?')) return;
     setP(data.profile!); setClaudeKey(savedKey); setCoachAuto(savedAuto); setProvider(savedProvider); setModel(savedModel); setMsg(null);
   }
   // Sense checks for the single-number boxes (12 Nov): wide human ranges, never one rider's numbers.
@@ -204,7 +205,7 @@ export function Settings({ data }: { data: AppData }) {
   }
 
   async function disconnect() {
-    if (!confirm('Disconnect Intervals.icu?\n\nThe athlete ID and API key are removed from this device and syncing stops until you connect again. Your activities, calendar and plans stay as they are here.')) return;
+    if (!await ask('Disconnect Intervals.icu?\n\nThe athlete ID and API key are removed from this device and syncing stops until you connect again. Your activities, calendar and plans stay as they are here.')) return;
     await setSetting('intervals', null);
     setConnected(false);
     await db.sync.clear();
@@ -245,7 +246,7 @@ export function Settings({ data }: { data: AppData }) {
         : mode === 'add'
           ? `${head}Restore from it?\n\n${thisDevice().replace(/^t/, 'T')} is in step with your other devices, so nothing newer is replaced. The backup is combined with what you have now: where both hold the same thing, the newer version is kept, and what you have deleted since stays deleted. ${ADDED_WORDS}\n\nTo go back to exactly how things were in this backup instead, cancel and use "Put everything back as it was".`
           : `${head}Restore it?\n\nThe profile, settings, calendar, workouts, plans and day notes on ${thisDevice()} are replaced with the backup's, as they were then. ${ADDED_WORDS}\n\nYour other devices are not changed.${standing === 'separate' ? '' : ` If ${thisDevice()} is later kept in step with them, the newer version of each thing is kept.`}`;
-      if (!confirm(words)) { input.value = ''; return; }
+      if (!await ask(words)) { input.value = ''; return; }
       const r = await restoreBackupFile(f, mode);
       if (mode === 'device' && !(await getSetting<string | null>('deviceChoice', null))) await setSetting('devicesAsk', true);
       notify();
@@ -539,7 +540,7 @@ function NoteLock({ devices, onChange, busy, setBusy, setMsg }: { devices: Devic
   }
 
   async function turnOff() {
-    if (!confirm('Turn encryption off? The note in Intervals.icu will be written in the clear on the next sync, and your other devices will stop asking for the passphrase. Are you sure?')) return;
+    if (!await ask('Turn encryption off? The note in Intervals.icu will be written in the clear on the next sync, and your other devices will stop asking for the passphrase. Are you sure?')) return;
     setBusy(true);
     try {
       await clearLock();
@@ -783,7 +784,7 @@ function ImportsList() {
   if (!list.length) return null;
   const words = (b: ImportBatch) => [b.rides.length ? `${b.rides.length} ${b.rides.length === 1 ? 'activity' : 'activities'}` : '', b.wellness.length ? `${b.wellness.length} ${b.wellness.length === 1 ? 'day' : 'days'} of wellness` : ''].filter(Boolean).join(' and ');
   const undo = async (b: ImportBatch) => {
-    if (!confirm(`Undo this?\n\nIt takes out the ${words(b)} that were added from ${b.label} on ${new Date(b.at).toLocaleDateString()}. Everything that was here before stays. This can't be reversed, though you can bring the files in again.`)) return;
+    if (!await ask(`Undo this?\n\nIt takes out the ${words(b)} that were added from ${b.label} on ${new Date(b.at).toLocaleDateString()}. Everything that was here before stays. This can't be reversed, though you can bring the files in again.`)) return;
     setBusy(true);
     try { await undoImport(b.id); notify(); } finally { setBusy(false); load(); }
   };

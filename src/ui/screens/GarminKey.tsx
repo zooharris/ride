@@ -8,6 +8,7 @@ import { MAC_DOWNLOAD, appKey, garminFetch, inApp, thisDevice } from '../../shel
 import { garminKeyChanged, loadGarminState, setGarminOn, watchGarmin, type GarminState } from '../../sync/garminSource';
 import { fetchGarmin } from '../../sync/garminAuto';
 import { APP_SHORT_NAME } from '../../appName';
+import { ask } from '../ask';
 
 /**
  * Test a Garmin personal key (22 Nov 2026, Stage 0). Garmin shows a key once, when it is made, so the page keeps it
@@ -63,7 +64,7 @@ export function GarminKey() {
     else window.prompt(`Copy the ${what.toLowerCase()}:`, text);
   };
   const forget = async () => {
-    if (!confirm('Forget the Garmin key on this device?\n\nIt is removed from this app. Garmin will not show it again: unless you have it somewhere else, you would have to make a new one in Garmin Connect.')) return;
+    if (!await ask('Forget the Garmin key on this device?\n\nIt is removed from this app. Garmin will not show it again: unless you have it somewhere else, you would have to make a new one in Garmin Connect.')) return;
     if (app) { await appKey.forget(); await setGarminOn(false); await garminKeyChanged(); }
     await db.settings.delete(GARMIN_KEY_SETTING);
     setSaved(null); setShown(false); setSteps([]);

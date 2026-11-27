@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { go, looksRight, setUp } from './rider';
+import { answers, go, looksRight, setUp } from './rider';
 import { encodeFitActivity } from '../src/export/activityFiles';
 
 /**
@@ -65,7 +65,7 @@ test('bring in activity files: a new one, the same again, and an export with wel
   await go(page, '#/progress');
   await looksRight(s, info, 'Progress with activities brought in');
   // Each run is listed in Settings and can be undone: the export's activity and its day of wellness go, the first file's stays.
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   await go(page, '#/settings');
   await page.getByRole('button', { name: /^History/ }).click();
   const list = page.locator('.imports-list');

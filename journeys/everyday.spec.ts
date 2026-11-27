@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { go, looksRight, makePlan, open, setUp } from './rider';
+import { answers, go, looksRight, makePlan, open, setUp } from './rider';
 
 /** Journeys 3 to 8: what a rider does most days, each from a fresh setup. */
 
@@ -164,7 +164,7 @@ test('export one activity; back up everything, then restore it into a fresh brow
   const fresh = await browser.newContext({ serviceWorkers: 'block', baseURL: info.project.use.baseURL, viewport: info.project.use.viewport ?? undefined });
   const p2 = await fresh.newPage();
   const s2 = await setUp(p2, 'new');
-  p2.on('dialog', (d) => void d.accept());
+  await answers(p2);
   await go(p2, '#/settings');
   await p2.getByRole('button', { name: /^Across your devices, and backup/ }).click();
   await p2.locator('input[type=file][accept*="json"]').setInputFiles(file!);

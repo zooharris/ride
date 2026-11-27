@@ -19,6 +19,7 @@ import { PageHead } from '../PageHead';
 import { ExThumb } from '../ExercisePictures';
 import { toast } from '../Toast';
 import { AddList, ChipPicker, ExerciseSheet, InsertHere, countsOf, type AddItem } from '../ExerciseAdd';
+import { ask } from '../ask';
 
 /** Build a strength, mobility or walk session by hand. */
 export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind: Exclude<SessionKind, 'ride' | 'other'>; id?: string; copyId?: string }) {
@@ -40,13 +41,13 @@ export function SessionBuilder({ data, kind, id, copyId }: { data: AppData; kind
   const snapshot = () => JSON.stringify({ name, purpose, exercises, minutes, packLb, effort, hrLow, hrHigh });
   const initial = useRef(snapshot());
   const dirty = snapshot() !== initial.current;
-  function reset() {
-    if (dirty && !confirm('Reset the builder to where it started? Your edits here will be lost.')) return;
+  async function reset() {
+    if (dirty && !await ask('Reset the builder to where it started? Your edits here will be lost.')) return;
     const s0 = JSON.parse(initial.current) as { name: string; purpose: string; exercises: Exercise[]; minutes: number; packLb: number; effort: number; hrLow: number; hrHigh: number };
     setName(s0.name); setPurpose(s0.purpose); setExercises(s0.exercises); setMinutes(s0.minutes); setPackLb(s0.packLb); setEffort(s0.effort); setHrLow(s0.hrLow); setHrHigh(s0.hrHigh);
   }
-  function cancel() {
-    if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
+  async function cancel() {
+    if (dirty && !await ask('Leave without saving? Your edits here will be lost.')) return;
     goBack('library');
   }
   const walkSpec = { minutes, zoneLow: hrLow, zoneHigh: hrHigh, packKg: packLb ? packLb / 2.2 : undefined };

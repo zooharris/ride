@@ -17,6 +17,45 @@ export async function open(page: Page, kind: RiderKind, shared?: Ledger): Promis
   return { page, ledger, problems };
 }
 
+/**
+ * The app's own yes-or-no questions (27 Nov 2026) are answered OK as they appear, as the browser's pop-ups were, and
+ * their words are kept for a journey that checks what was asked.
+ */
+const sinks = new WeakMap<Page, string[][]>();
+export async function answers(page: Page, asked?: string[]): Promise<void> {
+  const had = sinks.get(page);
+  if (had) { if (asked) had.push(asked); return; }
+  const mine: string[][] = asked ? [asked] : [];
+  sinks.set(page, mine);
+  const heard = (words: string) => { for (const a of mine) a.push(words); };
+  page.on('dialog', (d) => void d.accept());
+  await page.exposeFunction('__asked', heard);
+  // Answered from inside the page, so that a journey waiting on a reload or a download is not left waiting on the question...
+  const watch = () => {
+    setInterval(() => {
+      const q = document.querySelector<HTMLElement>('.ask');
+      if (!q || q.dataset.seen) return;
+      q.dataset.seen = '1';
+      void (window as unknown as { __asked?: (w: string) => void }).__asked?.(q.dataset.words ?? '');
+      q.querySelector<HTMLButtonElement>('.ask-btns .btn.primary')?.click();
+    }, 120);
+  };
+  await page.addInitScript(watch);
+  await page.evaluate(watch).catch(() => undefined);
+  // ...and from outside it, for a journey that holds the page's clock still.
+  // The two can meet at the same question: whichever comes second finds it gone, and lets it be.
+  await page.addLocatorHandler(page.locator('.ask'), async (q) => {
+    const quick = { timeout: 600 };
+    const seen = await q.getAttribute('data-seen', quick).catch(() => '1');
+    if (!seen) {
+      const words = await q.getAttribute('data-words', quick).catch(() => null);
+      await q.evaluate((el) => { (el as HTMLElement).dataset.seen = '1'; }, undefined, quick).catch(() => undefined);
+      if (words != null) heard(words);
+    }
+    await q.locator('.ask-btns .btn.primary').click(quick).catch(() => undefined);
+  }, { noWaitAfter: true });
+}
+
 /** First-run setup, through to Today. */
 export async function setUp(page: Page, kind: RiderKind): Promise<Session> {
   const s = await open(page, kind);

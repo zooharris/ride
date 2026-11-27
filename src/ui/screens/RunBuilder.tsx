@@ -15,6 +15,7 @@ import { deleteWorkoutEverywhere } from '../planService';
 import { PageHead } from '../PageHead';
 import { toast } from '../Toast';
 import { miles } from '../../engine/units';
+import { ask } from '../ask';
 
 /** A step as the builder edits it: minutes and seconds, a band by name, an optional repeat with its recovery. */
 interface Row { min: number; sec: number; band: RunBandKey; label: string; repeat: number; recMin: number; recSec: number; recBand: RunBandKey }
@@ -50,13 +51,13 @@ export function RunBuilder({ data, id, copyId }: { data: AppData; id?: string; c
   const snapshot = () => JSON.stringify({ name, purpose, where, rows });
   const initial = useRef(snapshot());
   const dirty = snapshot() !== initial.current;
-  function reset() {
-    if (dirty && !confirm('Reset the builder to where it started? Your edits here will be lost.')) return;
+  async function reset() {
+    if (dirty && !await ask('Reset the builder to where it started? Your edits here will be lost.')) return;
     const s0 = JSON.parse(initial.current) as { name: string; purpose: string; where: 'outdoor' | 'treadmill'; rows: Row[] };
     setName(s0.name); setPurpose(s0.purpose); setWhere(s0.where); setRows(s0.rows);
   }
-  function cancel() {
-    if (dirty && !confirm('Leave without saving? Your edits here will be lost.')) return;
+  async function cancel() {
+    if (dirty && !await ask('Leave without saving? Your edits here will be lost.')) return;
     goBack('library');
   }
 

@@ -15,6 +15,7 @@ import { toast } from '../Toast';
 import { NumberBox } from '../NumberBox';
 import { knownFtp } from '../../engine/known';
 import { TrainsLine } from '../RideTrains';
+import { ask } from '../ask';
 
 /** A row in the editor: either a single step or a repeated set of steps. */
 type Row = { id: string; kind: 'step'; minutes: number; pct: number; pctHigh?: number; label: string; cadence?: number }
@@ -64,12 +65,12 @@ export function Builder({ data, id, copyId }: { data: AppData; id?: string; copy
   useEffect(() => { setSaved(null); }, [rows, name]);
   const initial = useRef({ name, purpose, family, rows: JSON.stringify(rows) });
   const dirty = name !== initial.current.name || purpose !== initial.current.purpose || family !== initial.current.family || JSON.stringify(rows) !== initial.current.rows;
-  function reset() {
-    if (dirty && !confirm('Reset the builder to where it started? Your edits here will be lost.')) return;
+  async function reset() {
+    if (dirty && !await ask('Reset the builder to where it started? Your edits here will be lost.')) return;
     setName(initial.current.name); setPurpose(initial.current.purpose); setFamily(initial.current.family); setRows(JSON.parse(initial.current.rows));
   }
-  function cancel() {
-    if (dirty && !saved && !confirm('Leave without saving? Your edits here will be lost.')) return;
+  async function cancel() {
+    if (dirty && !saved && !await ask('Leave without saving? Your edits here will be lost.')) return;
     goBack('library');
   }
 

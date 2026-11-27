@@ -6,6 +6,7 @@ import { currentRide, subscribeRide } from './rideController';
 import { clock } from '../engine/workout';
 import { notify } from './store';
 import { toast } from './Toast';
+import { ask } from './ask';
 
 /**
  * On Today: a ride the browser closed in the middle of (save it or discard
@@ -31,7 +32,7 @@ export function RideNotices() {
     notify();
   };
   const discard = async (r: Recording) => {
-    if (!confirm(`Discard ${r.name}?\n\nThe part you rode won't be saved anywhere.`)) return;
+    if (!await ask(`Discard ${r.name}?\n\nThe part you rode won't be saved anywhere.`)) return;
     await deleteRecording(r.id);
     load();
   };

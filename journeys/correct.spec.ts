@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { go, looksRight, setUp } from './rider';
+import { answers, go, looksRight, setUp } from './rider';
 import { encodeFitActivity } from '../src/export/activityFiles';
 
 /**
@@ -49,7 +49,7 @@ async function openIntervalsRide(page: Page) {
 
 test('the FTP history: add an entry in the past, and a ride\'s numbers change; then correct one ride only, and undo it', async ({ page }, info) => {
   const s = await setUp(page, 'power');
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   // The history was filled in from the activities already here: one figure all year.
   let box = await ftpHistory(page);
   await expect(box.locator('.th-list')).toContainText('255 W');
@@ -110,7 +110,7 @@ test('the FTP history: add an entry in the past, and a ride\'s numbers change; t
 test('files that carry FTP settings: the summary before scoring, the setting changed and back, the device\'s figure used for a period', async ({ page }, info) => {
   test.setTimeout(150_000);
   const s = await setUp(page, 'power');
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   await ftpHistory(page);
   // Two rides whose files say the device had 244 W set.
   const sheet = await addFiles(page, [{ name: 'one.fit', buffer: fit(daysAgo(40), 244) }, { name: 'two.fit', buffer: fit(daysAgo(33), 244) }]);
@@ -160,7 +160,7 @@ test('files that carry FTP settings: the summary before scoring, the setting cha
 test('correct an activity: leave out its power, trim it and restore it, move its start; each undone', async ({ page }, info) => {
   test.setTimeout(150_000);
   const s = await setUp(page, 'hr');
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   const sheet = await addFiles(page, [{ name: 'ride.fit', buffer: fit(daysAgo(2, 6)) }]);
   await expect(sheet.locator('.import-result')).toContainText('1 new activity');
   await sheet.getByRole('button', { name: 'Close' }).click();

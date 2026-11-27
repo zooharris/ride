@@ -26,6 +26,7 @@ import { PlanTimeline } from '../Glance';
 import { AwayFields, GoalFields, WeekFields } from '../PlanForm';
 import type { AwayRange } from '../../engine/planner';
 import { NameSheet } from '../NameSheet';
+import { ask } from '../ask';
 
 
 interface Saved { goal: Goal; availability: Availability; masters: boolean }
@@ -119,7 +120,7 @@ export function Plan({ data }: { data: AppData }) {
 
   async function cancel(p: ActivePlan) {
     const pending = data.planned.filter((x) => x.date >= today() && x.status !== 'completed' && x.planId === p.id).length;
-    if (!confirm(`Cancel “${p.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
+    if (!await ask(`Cancel “${p.name}”? ${pending} planned session${pending === 1 ? '' : 's'} from today onward will be removed from the calendar, from Intervals.icu and from your devices. Sessions already done, and anything you added by hand, are kept.`)) return;
     setBusy(true);
     try { await cancelPlan(data, p.id); setCheck(null); await refreshPlans(); } finally { setBusy(false); }
   }
@@ -141,7 +142,7 @@ export function Plan({ data }: { data: AppData }) {
 
   const DEFAULT_AV: Availability = { hours: weekShape(profile.hoursPerWeek), outdoor: [true, false, false, false, false, false, true], noBike: [false, false, false, false, false, false, false], equipment: ['bodyweight'], pins: [] };
   async function resetForm() {
-    if (!confirm('Reset the goal and your week to what was last saved?')) return;
+    if (!await ask('Reset the goal and your week to what was last saved?')) return;
     const saved = await getSetting<Saved | null>('planRequest', null);
     if (saved && saved.availability.equipment) { setGoal(saved.goal); setAv(saved.availability); setMasters(saved.masters); }
     else { setGoal(DEFAULT_GOAL); setAv(DEFAULT_AV); setMasters(profile.masters); }

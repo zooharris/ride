@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { go, looksRight, makePlan, openFirstRide, setUp, simulatedTrainer } from './rider';
+import { answers, go, looksRight, makePlan, openFirstRide, setUp, simulatedTrainer } from './rider';
 
 /**
  * Journey 2: Today's session in the ride player on the simulated trainer, ridden to the end, saved, and done.
@@ -9,7 +9,7 @@ test('ride the day\'s session on the simulated trainer, save it, see it done', a
   // The slowest journey: run on a phone at night, a tablet and a laptop by day only.
   test.skip(!['phone-night', 'tablet-day', 'laptop-day'].includes(info.project.name), 'ridden on three sizes only');
   test.setTimeout(240_000);
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   // The page's clock starts at midday, so the ride run forward below never crosses midnight whenever the journey runs (23 Nov 2026).
   const noon = new Date(); noon.setHours(12, 0, 0, 0);
   await page.clock.install({ time: noon });
@@ -102,7 +102,7 @@ test('pause a ride on a phone', async ({ page }, info) => {
 test('a rider with no data service saves rides from the player', async ({ page }, info) => {
   test.skip(!info.project.name.startsWith('laptop'), 'the player with a trainer is a laptop journey');
   const s = await setUp(page, 'new');
-  page.on('dialog', (d) => void d.accept());   // "End the ride?"
+  await answers(page);   // "End the ride?"
   await simulatedTrainer(page);
   await page.clock.install({ time: new Date(new Date().setHours(12, 0, 0, 0)) });
   const rideFor = async (minutes: number) => {

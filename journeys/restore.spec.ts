@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
-import { go, looksRight, makePlan, open, setUp, type Session } from './rider';
+import { answers, go, looksRight, makePlan, open, setUp, type Session } from './rider';
 import type { Ledger } from './standin';
 
 /**
@@ -63,7 +63,7 @@ async function newDevice(browser: Browser, info: TestInfo, shared?: Ledger): Pro
   const fresh = await browser.newContext({ serviceWorkers: 'block', baseURL: info.project.use.baseURL, viewport: info.project.use.viewport ?? undefined });
   const page = await fresh.newPage();
   const asked: string[] = [];
-  page.on('dialog', (d) => { asked.push(d.message()); void d.accept(); });
+  await answers(page, asked);
   const wrote: string[] = [];
   page.on('request', (r) => { if (r.method() !== 'GET' && /\/events/.test(r.url()) && (r.postData() ?? '').includes(NOTE)) wrote.push(`${r.method()} ${r.url()}`); });
   const s = await open(page, 'power', shared);
@@ -118,7 +118,7 @@ test('an old file on a new device, "decide later", then kept separate: the saved
 test('in step, an old file restored the ordinary way: nothing newer is replaced', async ({ page }, info) => {
   const a = await firstDeviceWithAnOldFile(page);
   const asked: string[] = [];
-  page.on('dialog', (d) => { asked.push(d.message()); void d.accept(); });
+  await answers(page, asked);
   await section(page);
   await expect(page.locator('main')).toContainText('never replaces anything newer');
   await looksRight(a.s, info, 'Settings, restore on a device in step');
@@ -142,7 +142,7 @@ test('in step, "put everything back as it was": warned first, then the backup wi
   await nameIs(b.page, '9');
 
   const asked: string[] = [];
-  page.on('dialog', (d) => { asked.push(d.message()); void d.accept(); });
+  await answers(page, asked);
   await section(page);
   await reloads(page, () => page.getByLabel('Put everything back as it was').setInputFiles(a.oldFile));
   expect(asked[0]).toMatch(/^This backup was made on .+ \(today\)\./);
@@ -163,7 +163,7 @@ test('a file newer than the saved copy: its newer data reaches the others', asyn
   const a = await setUp(page, 'power');
   await syncNow(page, a);
   // Kept separate from here, so what follows never reaches the saved copy; then changed, and backed up to a file.
-  page.on('dialog', (d) => void d.accept());
+  await answers(page);
   await page.getByRole('button', { name: 'Keep this device separate' }).click();
   await expect(await section(page, false)).toContainText('Separate: this device keeps its own data');
   await rename(page, '11');

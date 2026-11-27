@@ -26,6 +26,7 @@ import { fitnessFromRides, fitnessOn, fmtDate, plannedOn, weekStart } from './de
 import type { AppData } from './store';
 import { alreadyOnDay, findWorkout, getCurrentEquipment, loadAppData, notify, readyMade } from './store';
 import { sameSessionName } from '../engine/units';
+import { ask } from './ask';
 
 /** The plan in force: what was asked for, and the fitness line it expected. */
 export interface ActivePlan {
@@ -592,7 +593,7 @@ export async function deleteWorkoutEverywhere(w: Pick<Workout, 'id' | 'name'>): 
   const entries = await db.planned.where('workoutId').equals(w.id).toArray();
   const sent = entries.filter((p) => p.icuEventId && p.status !== 'completed');
   const where = entries.length ? ` It comes off ${entries.length === 1 ? 'the calendar day it is on' : `the ${entries.length} calendar days it is on`}${sent.length ? `, and off Intervals.icu and your devices for the ${sent.length === 1 ? 'one' : sent.length} not yet done` : ''}.` : '';
-  if (!confirm(`Delete ${w.name}?${where}`)) return false;
+  if (!await ask(`Delete ${w.name}?${where}`)) return false;
   const c = sent.length ? await credentials() : null;
   for (const p of sent) if (c) { try { await deleteEvent(c, p.icuEventId!); } catch { /* a stale event in Intervals.icu is harmless */ } }
   await db.planned.bulkDelete(entries.map((p) => p.id));
@@ -607,7 +608,7 @@ export async function removePlanned(id: string, mine: Workout[]): Promise<boolea
   const w = findWorkout(mine, p.workoutId);
   const what = `${w?.name ?? 'this session'} from ${fmtDate(p.date)}`;
   const also = p.status === 'completed' ? ' The recording stays in Intervals.icu and in your activities; only the calendar entry goes.' : p.icuEventId ? ' It will also be removed from Intervals.icu and your devices.' : '';
-  if (!confirm(`Remove ${what}?${also}`)) return false;
+  if (!await ask(`Remove ${what}?${also}`)) return false;
   if (p.icuEventId && p.status !== 'completed') {
     const c = await credentials();
     if (c) { try { await deleteEvent(c, p.icuEventId); } catch { /* the app's record is what matters; a stale event is harmless */ } }

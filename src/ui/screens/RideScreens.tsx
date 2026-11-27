@@ -34,6 +34,7 @@ import { isUnknown } from '../../engine/known';
 import {
   answerBreath, answerHr, carryOnWithout, clearRide, nudgeBreath, currentRide, endRide, lapNow, pauseRide, resumeRide, setRideEffort, setRideFreeWatts, setRideLevel, setRideMode, setRideScale, skipStep, stopTest, subscribeRide, type ActiveRide,
 } from '../rideController';
+import { ask } from '../ask';
 
 export function useRide(): ActiveRide | undefined {
   const [, set] = useState(0);
@@ -52,7 +53,7 @@ function fullScreen() {
 }
 
 async function askEnd() {
-  if (!confirm('End the ride?\n\nYou\'ll see your summary next, where you save it.')) return;
+  if (!await ask('End the ride?\n\nYou\'ll see your summary next, where you save it.')) return;
   await endRide();
 }
 
@@ -1170,7 +1171,7 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
         </section>
   );
   const discard = async () => {
-    if (!confirm('Discard this ride?\n\nIt won\'t be saved anywhere.')) return;
+    if (!await ask('Discard this ride?\n\nIt won\'t be saved anywhere.')) return;
     await deleteRecording(rec.id);
     clearRide();
     go('today');

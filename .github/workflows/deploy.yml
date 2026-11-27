@@ -3,8 +3,9 @@ name: Build, publish the web version, and make the Mac and iPhone apps
 on:
   push:
     # main publishes; a build-* branch runs every check and makes the apps without publishing the web version or the Mac release.
-    # preview (27 Nov 2026) runs the checks only: its pages are published in minutes by preview.yml, and no app is made.
-    branches: [main, 'build-*', preview]
+    # web (27 Nov 2026) is the working line: its pages are published to the web version in minutes by web.yml, and this
+    # workflow runs every check on them alongside, without making an app. A release is the web line brought onto main.
+    branches: [main, 'build-*', web]
     # Documents and source art are not the app: changing them must not publish a new version.
     paths-ignore: ['docs/**', 'art/**', '**/*.md']
   workflow_dispatch:
@@ -75,7 +76,7 @@ jobs:
   # is published: an unsigned file is never published in place of a signed one.
   mac:
     needs: build
-    if: github.ref != 'refs/heads/preview'
+    if: github.ref != 'refs/heads/web'
     runs-on: macos-latest
     env:
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -181,7 +182,7 @@ jobs:
   # It does not hold up the web version or the Mac app: a failure here leaves TestFlight's last build where it was.
   ios:
     needs: build
-    if: github.ref != 'refs/heads/preview'
+    if: github.ref != 'refs/heads/web'
     runs-on: macos-latest
     env:
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -283,23 +284,19 @@ jobs:
       group: pages-site
       cancel-in-progress: false
     steps:
-      # The site holds the public version and, one folder down, the preview. The "site" branch keeps the pages as last
-      # published, so that each can be replaced without losing the other.
+      # A release publishes the web version too, with both version files new. The "site" branch keeps the pages as last
+      # published; web.yml reads the release's version.json from it.
       - uses: actions/download-artifact@v4
         with:
           name: pages-built
           path: site
-      - name: Keep the preview beside the public version
+      - name: Record the pages as published
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           test -f site/index.html
-          if git clone -q --depth 1 --branch site "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" old 2>/dev/null && [ -d old/preview ]; then
-            cp -r old/preview site/preview
-          fi
-          rm -rf old
           cd site
           git init -q -b site
           git add -A

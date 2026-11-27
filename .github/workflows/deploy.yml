@@ -3,7 +3,8 @@ name: Build, publish the web version, and make the Mac and iPhone apps
 on:
   push:
     # main publishes; a build-* branch runs every check and makes the apps without publishing the web version or the Mac release.
-    branches: [main, 'build-*']
+    # preview (27 Nov 2026) runs the checks only: its pages are published in minutes by preview.yml, and no app is made.
+    branches: [main, 'build-*', preview]
     # Documents and source art are not the app: changing them must not publish a new version.
     paths-ignore: ['docs/**', 'art/**', '**/*.md']
   workflow_dispatch:
@@ -68,15 +69,13 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
   # The Mac app: one file, built on a Mac, holding the pages built above. Signed with the maker's Developer ID and checked
   # by Apple (notarized) since 24 Nov 2026, so it opens with a double-click. A missing secret stops it before anything
   # is published: an unsigned file is never published in place of a signed one.
   mac:
     needs: build
+    if: github.ref != 'refs/heads/preview'
     runs-on: macos-latest
     env:
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -182,6 +181,7 @@ jobs:
   # It does not hold up the web version or the Mac app: a failure here leaves TestFlight's last build where it was.
   ios:
     needs: build
+    if: github.ref != 'refs/heads/preview'
     runs-on: macos-latest
     env:
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -278,7 +278,37 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # One publish to the site at a time, whether it is this one or the preview's.
+    concurrency:
+      group: pages-site
+      cancel-in-progress: false
     steps:
+      # The site holds the public version and, one folder down, the preview. The "site" branch keeps the pages as last
+      # published, so that each can be replaced without losing the other.
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-built
+          path: site
+      - name: Keep the preview beside the public version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -f site/index.html
+          if git clone -q --depth 1 --branch site "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" old 2>/dev/null && [ -d old/preview ]; then
+            cp -r old/preview site/preview
+          fi
+          rm -rf old
+          cd site
+          git init -q -b site
+          git add -A
+          git -c user.name="Antogo publishing" -c user.email="actions@users.noreply.github.com" commit -qm "The pages as published"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" site
+          rm -rf .git
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
       # The Mac app's file, once the web version is out: the newest release's file is what the download link gives.

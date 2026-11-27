@@ -2299,7 +2299,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .player.rp { height: 100dvh; overflow: hidden; --uh: calc(100dvh - var(--safe-t) - var(--safe-b)); }
 .rp-bar { flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: calc(var(--safe-t) + 4px) 12px 4px 12px; }
 .rp-title { flex: 1 1 0; min-width: 0; }
-.rp-name { font-size: 16px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-name { font-size: 16px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
 .rp-sub { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-bar .btn { flex: none; min-height: 44px; padding: 0 14px; }
 .rp-live { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; }
@@ -2481,7 +2481,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .pp-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .pp-head .btn, .pp-sheet-head .btn { flex: none; min-height: 44px; }
 .pp-title { min-width: 0; flex: 1; }
-.pp-title h1 { margin: 0; font-size: 16px; line-height: 1.15; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A ride's name is never cut off: one too long for its line takes a second (found by the fit check, 26 Nov 2026). */
+.pp-title h1 { margin: 0; font-size: 16px; line-height: 1.15; font-weight: 700; overflow-wrap: anywhere; }
 .pp-title p { margin: 0; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp .pl-card { padding: 10px 12px; border-radius: 12px; }
 .pp .pl-h2 { font-size: 14px; line-height: 20px; }
@@ -2740,6 +2741,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 }
 @media (orientation: landscape) and (max-width: 720px) {
   .rp-skip-more { display: none; }
+  .pp-head .btn { padding: 0 8px; }
+  .pp-head { gap: 4px; }
   .pp .pl-fig small { display: block; }
   .pp .pl-chart .profile svg { height: 70px; }
   .pp-all { display: none; }

@@ -2718,7 +2718,13 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   .player.rp.rc { padding-top: var(--land-t); }
   .rc-sum { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.05fr); grid-template-rows: minmax(0, 1fr); }
   .rc-top { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 0; overflow: hidden; }
-  .rc-head h1 { font-size: 20px; margin-bottom: 4px; }
+  .rc-head h1 { font-size: 18px; margin-bottom: 4px; }
+  .rc-head .eyebrow { font-size: 9.5px; }
+  .rc-pills { gap: 4px; }
+  .rc-pills .pill, .rc-pills .rd-state { min-height: 20px; padding: 1px 8px; font-size: 10.5px; line-height: 1.2; }
+  .rc-top .rd-figs b { font-size: 19px; }
+  .rc-top .rd-figs .caption { font-size: 8.5px; }
+  .rc-top .rd-figs small { font-size: 9.5px; }
   .rc-top .rd-fig-note { display: block; }
   .rc-top .rd-fig-note i { display: none; }
   .rc-top .rd-figs { flex: 1 1 0; min-height: 0; background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 8px 0 0; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: space-around; gap: 4px 10px; }

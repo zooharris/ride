@@ -93,6 +93,13 @@ test('before the ride, the ride and Ride complete each fit every iPhone, upright
   await page.getByRole('button', { name: 'End ride' }).first().click();
   await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
   await look('Ride complete', ['Summary', 'Details']);
+  // And with a long name and a long verdict, whatever the day's ride happened to be called (26 Nov 2026: a publish was
+  // stopped twice by a ride whose name was longer than the one these screens had been tried with).
+  await page.evaluate(() => {
+    for (const h of document.querySelectorAll('.rc-head h1, .rp-name')) h.textContent = 'Cowpasture and Taylorstown';
+    for (const p of document.querySelectorAll('.rc-pills')) if (p.firstElementChild) p.firstElementChild.textContent = "Goes on today's calendar as done";
+  });
+  await look('Ride complete, a long name', ['Summary', 'Details']);
   expect(wrong, wrong.join('\n')).toEqual([]);
 });
 

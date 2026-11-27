@@ -95,3 +95,59 @@ test('before the ride, the ride and Ride complete each fit every iPhone, upright
   await look('Ride complete', ['Summary', 'Details']);
   expect(wrong, wrong.join('\n')).toEqual([]);
 });
+
+/**
+ * The same for an upright iPad (26 Nov 2026): each of the player's screens on one screen, at the three sizes of iPad,
+ * with the clock's and the home bar's space taken out. Turned on its side the iPad gets the wide screens.
+ */
+const PADS: Phone[] = [
+  { name: 'iPad 11-inch', w: 820, h: 1180, top: 24, bottom: 20, side: 0, low: 0 },
+  { name: 'iPad mini', w: 744, h: 1133, top: 24, bottom: 20, side: 0, low: 0 },
+  { name: 'iPad 13-inch', w: 1032, h: 1376, top: 24, bottom: 20, side: 0, low: 0 },
+];
+
+test('before the ride, the ride and Ride complete each fit an upright iPad on one screen', async ({ page }, info) => {
+  test.skip(info.project.name !== 'tablet-day', 'a tablet only');
+  test.setTimeout(300_000);
+  page.on('dialog', (d) => void d.accept());
+  const noon = new Date(); noon.setHours(12, 0, 0, 0);
+  await page.clock.install({ time: noon });
+  await setUp(page, 'power');
+  await makePlan(page);
+  await simulatedTrainer(page);
+  await go(page, '#/calendar');
+  const list = page.getByRole('button', { name: 'List', exact: true });
+  if (await list.isVisible()) await list.click();
+  await openFirstRide(page, true);
+  await page.getByRole('link', { name: 'Ride indoors on the trainer' }).first().click();
+  const wrong: string[] = [];
+  const look = async (where: string) => {
+    for (const p of PADS) {
+      const room = await hold(page, p, false);
+      for (const f of await faults(page, room, false)) wrong.push(`${where} · ${p.name}: ${f}`);
+      if (shots) await page.screenshot({ path: `${shots}/pad-${where}-${p.name}.png`.replace(/ /g, '-') });
+    }
+    await hold(page, PADS[0], false);
+  };
+  await expect(page.locator('.pp.pad')).toBeVisible();
+  await look('Before the ride, nothing connected');
+  await page.getByRole('button', { name: 'Choose your trainer' }).click();
+  await page.getByRole('menuitem', { name: /Simulated smart trainer/i }).click();
+  await expect(page.getByRole('button', { name: 'Start ride' })).toBeVisible();
+  await look('Before the ride');
+  await page.getByRole('button', { name: 'Start ride' }).click();
+  await page.clock.runFor(9 * 60_000);
+  await expect(page.locator('.rpad')).toBeVisible();
+  await look('Riding');
+  // Turned on its side, the iPad has the wide screen; upright again, the one screen.
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await expect(page.locator('.rpad')).toHaveCount(0);
+  await hold(page, PADS[0], false);
+  await expect(page.locator('.rpad')).toBeVisible();
+  await page.clock.runFor(8 * 60_000);
+  await page.getByRole('button', { name: 'End ride' }).first().click();
+  await expect(page.getByRole('button', { name: 'Save ride' }).first()).toBeVisible();
+  await expect(page.locator('.rcpad')).toBeVisible();
+  await look('Ride complete');
+  expect(wrong, wrong.join('\n')).toEqual([]);
+});

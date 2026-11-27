@@ -11,6 +11,12 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26f', date: '26 November 2026, night', items: [
+      { title: 'The ride player on an upright iPad, on one screen', text: 'Held upright, an iPad now shows each of the player\'s screens whole, with nothing to scroll. Before the ride: what the ride is for, its profile, every step, your devices, the settings and Start ride. While riding: the big number, the step and its cue, your readings, the totals, the workout\'s profile, the step list and the trainer\'s controls. Ride complete: the numbers, the ride, each effort beside what the cues said, and Save ride. Turned on its side, the iPad keeps the wide screen.', help: 'riding' },
+      { title: 'The ride\'s profile keeps its shape', text: 'On the upright iPad the profile is drawn at one proportion on all three screens, and no longer stretches to fill spare room.' },
+    ],
+  },
+  {
     id: '2026-11-26e', date: '26 November 2026, late', items: [
       { title: 'The Mac app steps aside for its own update', text: 'When a newer version has been downloaded, the button now reads Quit and open the installer. The app closes as the disk image opens, so dragging the new one into Applications works first time; before, the Mac refused because the old one was still running.' },
     ],

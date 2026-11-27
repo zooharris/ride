@@ -12,6 +12,7 @@ import { notify } from '../store';
 import { go } from '../router';
 import { useSensors } from './Player';
 import { phoneScreen } from '../../player/platform';
+import { usePadUpright } from '../usePad';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
 import { breathBand, cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
@@ -78,7 +79,8 @@ function useRideKeys(): void {
 /** The ride, while riding. A phone gets three pages of one screen each (26 Nov 2026); everything larger, the one wide screen. */
 export function Riding({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
   const [phone] = useState(phoneScreen);
-  return phone ? <RidingPhone ride={ride} profile={profile} /> : <RidingWide ride={ride} profile={profile} />;
+  const pad = usePadUpright();
+  return phone ? <RidingPhone ride={ride} profile={profile} /> : pad ? <RidingPhone ride={ride} profile={profile} pad /> : <RidingWide ride={ride} profile={profile} />;
 }
 
 function RidingWide({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
@@ -223,7 +225,7 @@ function stepTarget(ride: ActiveRide, profile: Profile, s: TimelineStep): { text
 }
 
 /** The workout's steps as a list, with the one being ridden marked and kept in view. */
-function PhoneSteps({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
+function PhoneSteps({ ride, profile, cols }: { ride: ActiveRide; profile: Profile; cols?: number }) {
   const e = ride.engine;
   const tl = ride.timeline;
   const cur = e.step?.index ?? (e.workoutDone ? tl.length : -1);
@@ -235,7 +237,7 @@ function PhoneSteps({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
     if (b && el) b.scrollTop = Math.max(0, el.offsetTop - b.clientHeight / 2 + el.offsetHeight / 2);
   }, [cur]);
   return (
-    <div class="rd-card rp-steps" ref={box} role="list" aria-label="Steps">
+    <div class={`rd-card rp-steps${cols ? ' cols' : ''}`} style={cols ? `--rows:${Math.ceil(tl.length / cols)};--cols:${cols}` : undefined} ref={box} role="list" aria-label="Steps">
       {tl.map((s) => {
         const t = stepTarget(ride, profile, s);
         const state = s.index < cur ? 'done' : s.index === cur ? 'now' : '';
@@ -282,7 +284,7 @@ function usePages(count: number) {
   return { pager, page, goTo, onScroll };
 }
 
-function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
+function RidingPhone({ ride, profile, pad }: { ride: ActiveRide; profile: Profile; pad?: boolean }) {
   const { sensors } = useSensors();
   useRideKeys();
   const e = ride.engine;
@@ -361,39 +363,13 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
   const names = ['Ride', 'Numbers', tl.length ? 'Workout' : 'Chart'];
   const list = tl.length > 0 && !testing;
   const sub = [`${mmss(e.timer)}${planned ? ` of ${clock(planned.seconds)}` : ''}`, ride.setup.workout?.subtitle].filter(Boolean).join(' · ');
-  return (
-    <div class={`player ride rp${page ? ' rp-away' : ''}`}>
-      <header class="rp-bar">
-        <div class="rp-title">
-          <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
-          <div class="rp-sub num">{sub}</div>
-        </div>
-        {live('rp-live-bar')}
-        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
-        <button class="btn" onClick={() => void askEnd()}>End ride</button>
-        <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
-      </header>
-      {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
-      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no breaths, and Antogo could not wake it. Take it off for a minute and put it back on; Antogo keeps trying. The ride keeps recording.</div>}
-
-      <div class="rp-pages" ref={pager} onScroll={onScroll}>
-        <section class="rp-page rp-ride" aria-label={names[0]}>
+  const heroCard = <>
           {byBreath ? <BreathHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : byHr ? <HrHero ride={ride} profile={profile} trainerOk={!!trainer} bare /> : <Hero ride={ride} profile={profile} trainerOk={!!trainer} bare />}
+  </>;
+  const stepCard = <>
           {tl.length ? <Dial ride={ride} step={step} next={next} then={then} profile={profile} /> : <FreeCard ride={ride} trainerOk={!!trainer} phone />}
-          <div class="rp-tiles">
-            {tiles.map((c) => <div key={c.label} class="rp-tile"><span class="caption">{c.label}</span><div><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div><em>{c.note}</em></div>)}
-          </div>
-        </section>
-
-        <section class="rp-page rp-numbers" aria-label={names[1]}>
-          {live('rp-live-page')}
-          <div class="rp-grid" style={`--cols:${Math.ceil(nums.length / (nums.length > 10 ? 3 : 2))}`}>
-            {nums.map((c) => <div key={c.label} class="rp-num"><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div>{c.note && <em>{c.note}</em>}</div>)}
-          </div>
-        </section>
-
-        <section class={`rp-page rp-workout${list ? '' : ' nolist'}`} aria-label={names[2]}>
-          {live('rp-live-page')}
+  </>;
+  const chartCard = <>
           <section class="rd-card rd-chartcard">
             <div class="rd-chart-head">
               <span class="caption">{tl.length ? 'Workout' : 'Your ride'}</span>
@@ -413,18 +389,14 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
             </div>
             <RideChart timeline={rampView(tl, e.position)} samples={e.samples} profile={profile} position={e.position} live by={byBreath ? 'breath' : ride.setup.basis} />
           </section>
-          {list && <PhoneSteps ride={ride} profile={profile} />}
+  </>;
+  const controls = <>
           <div class="rp-ctl">
             {byBreath ? <BreathControls ride={ride} trainerOk={!!trainer} /> : byHr ? <HrControls ride={ride} trainerOk={!!trainer} /> : <PowerControls ride={ride} trainerOk={!!trainer} />}
             {step && !step.ramp && <button class="btn quiet rp-skip" aria-label="Skip this step ›" onClick={skipStep}><span>Skip<span class="rp-skip-more"> this step</span> ›</span></button>}
           </div>
-        </section>
-      </div>
-
-      <nav class="rp-dots" aria-label="Pages">
-        {names.map((n, i) => <button key={n} class={page === i ? 'on' : ''} aria-current={page === i ? 'page' : undefined} onClick={() => goTo(i)}><i />{n}</button>)}
-      </nav>
-
+  </>;
+  const overlays = <>
       {e.phase === 'countdown' && <div class="rd-overlay"><div class="rd-count num">{e.countdownLeft || 'Go'}</div><p>Get pedalling</p></div>}
       {paused && (
         <div class="rd-overlay" role="dialog" aria-label="Paused">
@@ -438,6 +410,93 @@ function RidingPhone({ ride, profile }: { ride: ActiveRide; profile: Profile }) 
           </div>
         </div>
       )}
+  </>;
+  const notices = <>
+      {lost.length > 0 && <div class="rd-lost">{lost.map((s) => s.name).join(' and ')} lost: reconnecting… The ride keeps recording.</div>}
+      {ride.breathQuiet && !lost.some((s) => s.kind === 'breath') && <div class="rd-lost">Breathing strap: no breaths, and Antogo could not wake it. Take it off for a minute and put it back on; Antogo keeps trying. The ride keeps recording.</div>}
+
+  </>;
+
+  // An upright iPad (26 Nov 2026): everything on one screen, with no pages. The ride's profile keeps one proportion
+  // wherever it is drawn, and the room it leaves goes to the step list.
+  if (pad) {
+    const four = (byBreath ? [pwT, hrT, cadT, spT] : byHr ? [pwT, cadT, spT, brT] : [hrT, cadT, spT, brT]).filter((c): c is Cell => !!c);
+    const sums = nums.filter((c) => c.label !== 'Cadence' && c.label !== 'Speed');
+    return (
+      <div class="player ride rp rpad">
+        <header class="rp-bar">
+        <div class="rp-title">
+          <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
+          <div class="rp-sub num">{sub}</div>
+        </div>
+        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
+        <button class="btn" onClick={() => void askEnd()}>End ride</button>
+        <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
+        </header>
+        {notices}
+        <div class="rpad-body">
+          {heroCard}
+          <div class="rpad-mid">
+            {stepCard}
+            <div class="rp-tiles">
+              {four.map((c) => <div key={c.label} class="rp-tile"><span class="caption">{c.label}</span><div><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div><em>{c.note}</em></div>)}
+            </div>
+          </div>
+          <div class="rd-card rpad-sums" style={`--n:${sums.length}`}>
+            {sums.map((c) => <div key={c.label}><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div></div>)}
+          </div>
+          {chartCard}
+          {list && <PhoneSteps ride={ride} profile={profile} cols={3} />}
+          {controls}
+        </div>
+        {overlays}
+      </div>
+    );
+  }
+
+  return (
+    <div class={`player ride rp${page ? ' rp-away' : ''}`}>
+      <header class="rp-bar">
+        <div class="rp-title">
+          <div class="rp-name">{ride.setup.workout?.name ?? 'Free ride'}</div>
+          <div class="rp-sub num">{sub}</div>
+        </div>
+        {live('rp-live-bar')}
+        {onRamp && <button class="btn rd-stoptest" onClick={stopTest}>Stop the test</button>}
+        <button class="btn" onClick={() => void askEnd()}>End ride</button>
+        <button class="btn primary rd-pause" onClick={() => (paused ? resumeRide() : pauseRide())}>{paused ? 'Resume' : 'Pause'}</button>
+      </header>
+      {notices}
+
+      <div class="rp-pages" ref={pager} onScroll={onScroll}>
+        <section class="rp-page rp-ride" aria-label={names[0]}>
+          {heroCard}
+          {stepCard}
+          <div class="rp-tiles">
+            {tiles.map((c) => <div key={c.label} class="rp-tile"><span class="caption">{c.label}</span><div><b class={`num ${c.cls ?? ''}`}>{c.value}</b><small>{c.unit}</small></div><em>{c.note}</em></div>)}
+          </div>
+        </section>
+
+        <section class="rp-page rp-numbers" aria-label={names[1]}>
+          {live('rp-live-page')}
+          <div class="rp-grid" style={`--cols:${Math.ceil(nums.length / (nums.length > 10 ? 3 : 2))}`}>
+            {nums.map((c) => <div key={c.label} class="rp-num"><span class="caption">{c.label}</span><div><b class="num">{c.value}</b>{c.unit && <small> {c.unit}</small>}</div>{c.note && <em>{c.note}</em>}</div>)}
+          </div>
+        </section>
+
+        <section class={`rp-page rp-workout${list ? '' : ' nolist'}`} aria-label={names[2]}>
+          {live('rp-live-page')}
+          {chartCard}
+          {list && <PhoneSteps ride={ride} profile={profile} />}
+          {controls}
+        </section>
+      </div>
+
+      <nav class="rp-dots" aria-label="Pages">
+        {names.map((n, i) => <button key={n} class={page === i ? 'on' : ''} aria-current={page === i ? 'page' : undefined} onClick={() => goTo(i)}><i />{n}</button>)}
+      </nav>
+
+      {overlays}
     </div>
   );
 }
@@ -1007,6 +1066,8 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const hasPower = t.avgPower != null;
   const when = new Date(rec.startMs);
   const [phone] = useState(phoneScreen);
+  const pad = usePadUpright();
+  const brief = phone || pad;
   const { pager, page, goTo, onScroll } = usePages(2);
 
   const pick = async (n: number) => {
@@ -1039,11 +1100,11 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   const rideChart = (
         <section class="rd-card rd-chartcard">
           <div class="rd-chart-head"><span class="caption">The ride</span>{byBreath ? <>
-            <span class="rd-key"><i class="ln br" />{phone ? 'Your breathing' : 'Your breathing, 30-second average'}</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{phone ? 'Target' : 'Breathing target'}</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
+            <span class="rd-key"><i class="ln br" />{brief ? 'Your breathing' : 'Your breathing, 30-second average'}</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{brief ? 'Target' : 'Breathing target'}</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
           </> : byHr ? <>
             <span class="rd-key"><i class="ln hr" />Your heart rate</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />Target zone</span>}{hasPower && <span class="rd-key"><i class="ln" />Power</span>}
           </> : <>
-            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{phone ? 'Target' : 'Target, coloured by zone'}</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
+            <span class="rd-key"><i class="ln" />Your power</span>{timeline.length > 0 && <span class="rd-key"><i class="bx" />{brief ? 'Target' : 'Target, coloured by zone'}</span>}<span class="rd-key"><i class="ln hr" />Heart rate</span>
           </>}</div>
           <RideChart timeline={timeline} samples={rec.samples} profile={asRidden} by={by} />
         </section>
@@ -1080,9 +1141,9 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
   </>;
   const whenWords = `${when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
   // The efforts' columns: on a phone, three after the step's name, in fewer words.
-  const heads = byBreath ? (phone ? ['Effort', 'Ventilation', 'In zone', 'Heart rate'] : ['Step', 'Average ventilation', 'Time in breathing zone', 'Average power', 'Average heart rate'])
-    : byHr ? (phone ? ['Effort', 'Heart rate', 'In zone', 'Highest'] : ['Step', 'Average heart rate', 'Time in zone', 'Highest heart rate', ...(hasPower ? ['Average power'] : [])])
-    : phone ? ['Effort', 'Power', 'On target', 'Heart rate'] : ['Step', 'Average power', 'Time on target', 'Average heart rate', 'Highest heart rate'];
+  const heads = byBreath ? (brief ? ['Effort', 'Ventilation', 'In zone', 'Heart rate'] : ['Step', 'Average ventilation', 'Time in breathing zone', 'Average power', 'Average heart rate'])
+    : byHr ? (brief ? ['Effort', 'Heart rate', 'In zone', 'Highest'] : ['Step', 'Average heart rate', 'Time in zone', 'Highest heart rate', ...(hasPower ? ['Average power'] : [])])
+    : brief ? ['Effort', 'Power', 'On target', 'Heart rate'] : ['Step', 'Average power', 'Time on target', 'Average heart rate', 'Highest heart rate'];
   const good = (s: StepStats) => `num ${s.onTarget != null && s.onTarget >= 0.8 ? 'good' : ''}`;
   const share = (s: StepStats) => (s.onTarget != null ? pct(s.onTarget) : '—');
   const w = (v?: number) => (v != null ? `${v} W` : '—');
@@ -1099,20 +1160,20 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
               {named(s, breathZoneVar(breathBand(s.step, asRidden)?.zone ?? 1))}
               <td class="num">{s.avgVe != null ? `${Math.round(s.avgVe)} L/min` : '—'}</td>
               <td class={good(s)}>{share(s)}</td>
-              {!phone && <td class="num">{w(s.avgPower)}</td>}
+              {!brief && <td class="num">{w(s.avgPower)}</td>}
               <td class="num">{hr(s.avgHr)}</td>
             </> : byHr ? <>
               {named(s, ZONE_VAR[hrZoneOf(s.step, profile) - 1])}
               <td class="num">{hr(s.avgHr)}</td>
               <td class={good(s)}>{share(s)}</td>
               <td class="num">{hr(s.maxHr)}</td>
-              {hasPower && !phone && <td class="num">{w(s.avgPower)}</td>}
+              {hasPower && !brief && <td class="num">{w(s.avgPower)}</td>}
             </> : <>
               {named(s, ZONE_VAR[s.step.zone - 1])}
               <td class="num">{w(s.avgPower)}</td>
               <td class={good(s)}>{share(s)}</td>
               <td class="num">{hr(s.avgHr)}</td>
-              {!phone && <td class="num">{hr(s.maxHr)}</td>}
+              {!brief && <td class="num">{hr(s.maxHr)}</td>}
             </>}
           </tr>
         ))}</tbody>
@@ -1145,6 +1206,48 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
     {state === 'waiting' && <p class="faint small rc-kept">The ride is kept on {thisDevice()} and tried again each time the app opens.</p>}
   </>;
 
+  const headBlock = (
+    <div class="rc-head">
+      <p class="eyebrow"><span>{testKind ? 'Test complete' : 'Ride complete'}{recovered ? ', recovered' : ''}</span> · <span>{whenWords}</span></p>
+      <h1>{rec.name}</h1>
+      <div class="rc-pills">{verdict}</div>
+    </div>
+  );
+  const feelCard = (
+    <div class="rd-card rc-feel">
+      <div class="rc-feel-head"><h2 class="pl-h2">How hard did that feel?</h2><span class="faint small">Optional</span></div>
+      {chips}
+      <div class="rd-effort-words faint small"><span>Very easy</span><span>All out</span></div>
+    </div>
+  );
+
+  // An upright iPad (26 Nov 2026): one screen, no pages. The ride drawn at its one proportion; the efforts beside
+  // what the cues said; how it felt beside Save, Download and Discard.
+  if (pad) {
+    return (
+      <div class="player rp rc rcpad">
+        <div class="rcpad-body">
+          {headBlock}
+          {figCard}
+          {rideChart}
+          <div class={`rcpad-two rcpad-detail${test || !cueLines.length ? ' one' : ''}`}>
+            {test ? <div class="rd-card rc-eff"><TestResults result={test} profile={profile} onChange={changeTest} /></div> : <>
+              <div class="rd-card rc-eff">{efforts}{finding}</div>
+              {cueLines.length > 0 && <div class="rd-card rc-cues">
+                <h2 class="pl-h2">{cueTitle}</h2>
+                <ol>{cueLines.map((l, i) => <li key={i}><span class="num faint">{mmss(l.t)}</span><span>{l.text}</span></li>)}</ol>
+              </div>}
+            </>}
+          </div>
+          <div class="rcpad-two">
+            {feelCard}
+            <div class="rc-act">{actions}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // A phone (26 Nov 2026): two pages of one screen each, Summary and Details, swiped like the ride's own.
   if (phone) {
     const names = ['Summary', test ? 'Result' : 'Details'];
@@ -1153,20 +1256,12 @@ export function RideDone({ rec, workout, planned, timeline, profile, recovered }
         <div class="rp-pages" ref={pager} onScroll={onScroll}>
           <section class="rp-page rc-sum" aria-label={names[0]}>
             <div class="rc-top">
-              <div class="rc-head">
-                <p class="eyebrow"><span>{testKind ? 'Test complete' : 'Ride complete'}{recovered ? ', recovered' : ''}</span> · <span>{whenWords}</span></p>
-                <h1>{rec.name}</h1>
-                <div class="rc-pills">{verdict}</div>
-              </div>
+              {headBlock}
               {figCard}
             </div>
             {rideChart}
             <div class="rc-act">
-              <div class="rd-card rc-feel">
-                <div class="rc-feel-head"><h2 class="pl-h2">How hard did that feel?</h2><span class="faint small">Optional</span></div>
-                {chips}
-                <div class="rd-effort-words faint small"><span>Very easy</span><span>All out</span></div>
-              </div>
+              {feelCard}
               {actions}
             </div>
           </section>

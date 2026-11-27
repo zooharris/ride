@@ -26,6 +26,9 @@ import { coachConfig } from '../coachConfig';
 import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform, phoneScreen } from '../../player/platform';
+import { usePadUpright } from '../usePad';
+import { targetBand, breathBand } from '../../player/timeline';
+const mmss = (sec: number) => clock(Math.max(0, Math.round(sec)));
 import { APP_SHORT_NAME } from '../../appName';
 import { addSensor, addSimulated, breathDetails, connectSaved, disconnect, getSensors, getSlots, knownNow, loadSlots, restoreSaved, savedDevices, setRiderNumbers, setSlot, SIM_KEY, subscribe, wakeStrap, WAKE_WORDS, type SensorState, type WakeStep } from '../../player/hub';
 import { breathQuiet, pickSources, type Metric, type Supplied } from '../../player/sources';
@@ -64,6 +67,7 @@ function back(): void {
  * whole window, without the app's menu.
  */
 export function Player({ data, parts }: { data: AppData; parts: string[] }) {
+  const pad = usePadUpright();
   const profile = data.profile!;
   const [, how, id] = parts;
   const planned = how === 'planned' ? data.planned.find((p) => p.id === id) : undefined;
@@ -99,11 +103,11 @@ export function Player({ data, parts }: { data: AppData; parts: string[] }) {
   }
   const bt = bluetoothAvailable();
   if (!bt && !sim) return <Frame><NoBluetooth /></Frame>;
-  if (how === 'free') return <Frame fit bare={phoneScreen()}><FreePre profile={profile} sim={sim} bt={bt} /></Frame>;
+  if (how === 'free') return <Frame fit bare={phoneScreen() || pad}><FreePre profile={profile} sim={sim} bt={bt} /></Frame>;
   if (!workout || workout.kind !== 'ride') {
     return <Frame><div class="pl-empty"><Empty title="That ride isn't here" action={<button class="btn" onClick={back}>Back</button>}>It may have been removed from your calendar or your workouts on another device.</Empty></div></Frame>;
   }
-  return <Frame fit bare={phoneScreen()}><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} history={rideHistory(data, workout)} /></Frame>;
+  return <Frame fit bare={phoneScreen() || pad}><PreRide workout={workout} planned={planned} profile={profile} sim={sim} bt={bt} mine={data.mine} history={rideHistory(data, workout)} /></Frame>;
 }
 
 function Frame({ children, fit, bare }: { children: ComponentChildren; fit?: boolean; bare?: boolean }) {
@@ -247,8 +251,9 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
   // On a phone, the screen before the ride is one screen (26 Nov 2026): the ride, your devices, how it runs, Start.
   // The steps, the test's own choice and the longer explanations open over it.
   const [phone] = useState(phoneScreen);
+  const pad = usePadUpright();
   const [sheet, setSheet] = useState(false);
-  if (phone) {
+  if (phone || pad) {
     const all = flattenSteps(shown.blocks);
     const ladder = ridePowerZones(shownProfile);
     const first = all[0];
@@ -266,16 +271,22 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
       ? (mode === 'erg' ? (byBreath ? 'Steps under two minutes are held at steady watts, and the first few minutes are held while Antogo reads your strap for today.' : 'Steps under three minutes are held at steady watts.') : 'After 20 seconds outside the zone the screen says Reduce intensity or Increase intensity.')
       : startable && !trainerRuns && (choice.mode === 'breath-self' || choice.mode === 'hr-self') ? 'After 20 seconds outside the zone the screen says Reduce intensity or Increase intensity.' : '';
     const beeps = <button class={`pl-switch${prefs.sound ? ' on' : ''}`} role="switch" aria-checked={prefs.sound} aria-label="Beeps before each step" onClick={() => setSound(!prefs.sound)}><i /></button>;
+    // An upright iPad has room for every step, named with its length and target (26 Nov 2026).
+    const padSteps = pad && !ramp ? buildTimeline(shown, shownProfile).map((st) => {
+      const bb = byBreath ? breathBand(st, shownProfile, scale) : undefined;
+      return { index: st.index, name: st.name, seconds: st.seconds, target: bb?.text ?? targetBand(st, basis, shownProfile, scale).text, colour: ZONE_VAR[st.zone - 1] };
+    }) : [];
     return (
       <>
         {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth (check it is on, and allowed for ${APP_SHORT_NAME}, in the Settings app): simulated sensors only.` : "This browser can't reach Bluetooth: only the simulated sensors are available."}</div>}
-        <main class="pp">
+        <main class={`pp${pad ? ' pad' : ''}`}>
           <div class="pp-ride pl-workout">
             <div class="pp-head">
               <button class="btn quiet" onClick={back}>‹ Back</button>
               <div class="pp-title"><h1>{workout.name}</h1><p>{[planned ? (planned.date === today() ? 'Today' : fmtDate(planned.date)) : undefined, workout.subtitle].filter(Boolean).join(' · ')}</p></div>
             </div>
             <section class="pl-card pp-profile">
+              {pad && workout.purpose && <p class="pp-purpose"><b>What this ride is for.</b> {workout.purpose}</p>}
               <div class="pl-figures">
                 <div><div class="caption">Duration</div><div class="pl-fig num">{ramp && <small>about </small>}{clock(s.seconds)}</div></div>
                 <div><div class="caption">Training load</div><div class="pl-fig num">{ramp && <small>about </small>}{s.tss}<small> TSS</small></div></div>
@@ -291,6 +302,14 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
                 {outline.slice(0, outline.length > 3 ? 2 : 3).map((o, i) => <div key={i}><i style={`background:${ZONE_VAR[o.z - 1]}`} /><b>{o.name}</b><span class="num">{o.time}</span></div>)}
                 {outline.length > 3 && <div class="faint">and {outline.length - 2} more</div>}
               </div>
+              {pad && !ramp && (
+                <div class="pp-padsteps">
+                  <div class="caption">The {padSteps.length} steps</div>
+                  <div class="pp-padlist" style={`--rows:${Math.ceil(padSteps.length / 2)}`}>
+                    {padSteps.map((st) => <div key={st.index}><i style={`background:${st.colour}`} /><b>{st.name}</b><span class="num">{mmss(st.seconds)} · {st.target}</span></div>)}
+                  </div>
+                </div>
+              )}
               <div class="pp-stepsline">
                 <span>{ramp ? `Step size ${rampStep} W · press the chart for more` : `${all.length} steps · press the chart to see them`}</span>
                 <button class="pp-link" onClick={() => setSheet(true)}>{ramp ? 'The test ›' : <><span class="pp-all">All {all.length} steps</span><span class="pp-few">Steps</span> ›</>}</button>
@@ -574,11 +593,12 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
     sound: prefs.sound, autoPause: prefs.autoPause, guard: prefs.guard, smoothing: prefs.smoothing,
   });
   const [phone] = useState(phoneScreen);
-  if (phone) {
+  const pad = usePadUpright();
+  if (phone || pad) {
     return (
       <>
         {!bt && <div class="pl-banner pp-banner">{appKind() === 'ios' ? `${APP_SHORT_NAME} can't reach Bluetooth (check it is on, and allowed for ${APP_SHORT_NAME}, in the Settings app): simulated sensors only.` : "This browser can't reach Bluetooth: only the simulated sensors are available."}</div>}
-        <main class="pp">
+        <main class={`pp${pad ? ' pad' : ''}`}>
           <div class="pp-ride pl-workout">
             <div class="pp-head">
               <button class="btn quiet" onClick={back}>‹ Back</button>

@@ -11,6 +11,11 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-26e', date: '26 November 2026, late', items: [
+      { title: 'The Mac app steps aside for its own update', text: 'When a newer version has been downloaded, the button now reads Quit and open the installer. The app closes as the disk image opens, so dragging the new one into Applications works first time; before, the Mac refused because the old one was still running.' },
+    ],
+  },
+  {
     id: '2026-11-26d', date: '26 November 2026, night', items: [
       { title: 'Paused, said once', text: 'When you stop pedalling and the ride pauses itself, only the Paused panel appears: the extra message that said the same thing is gone, and so is the one that announced the ride carrying on. Start pedalling and the ride carries on, or press Resume.', help: 'riding' },
       { title: 'Save, Download and Discard on both pages after a ride', text: 'On a phone, Ride complete\'s Details page now ends with the same three buttons as Summary, in the same place.', help: 'riding' },

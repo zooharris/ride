@@ -388,7 +388,7 @@ test('a newer version is downloaded by the app itself: once, with its progress s
   await start.click();
   await expect(r.page.getByText('The newer Antogo is downloaded.').first()).toBeVisible({ timeout: 20_000 });
   await expect(r.page.getByText(/Downloads folder as Antogo 999\.dmg/).first()).toBeVisible();
-  await expect(r.page.getByRole('button', { name: 'Open' }).first()).toBeVisible();
+  await expect(r.page.getByRole('button', { name: 'Quit and open the installer' }).first()).toBeVisible();
   expect(readdirSync(r.downloads).sort()).toEqual(['Antogo 999.dmg', 'Antogo.dmg']);
   expect(readFileSync(join(r.downloads, 'Antogo 999.dmg')).equals(file)).toBe(true);
   expect(readFileSync(join(r.downloads, 'Antogo.dmg'), 'utf8')).toBe('an earlier version');

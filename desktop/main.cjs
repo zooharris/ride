@@ -77,6 +77,7 @@ app.whenReady().then(() => {
     folder: () => downloadsTo || app.getPath('downloads'),
     send: (s) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:state', s); },
     openPath: (p) => shell.openPath(p),
+    quit: () => app.quit(),
     test: !app.isPackaged && process.env.ANTOGO_UPDATE_LATEST ? { latest: process.env.ANTOGO_UPDATE_LATEST } : {},
   });
   ipcMain.handle('update:state', (e) => { fromApp(e); return updater.state(); });

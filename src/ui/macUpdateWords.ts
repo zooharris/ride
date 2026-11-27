@@ -15,7 +15,7 @@ export function updateWords(s: MacUpdate, app: string): { head: string; text: st
     case 'starting': return { head: 'Starting the download…', text: '' };
     case 'downloading': return { head: `Downloading the newer ${app}…`, text: s.total ? `${megabytes(s.received ?? 0)} of ${megabytes(s.total)} MB` : `${megabytes(s.received ?? 0)} MB so far` };
     case 'checking': return { head: 'Checking the download…', text: '' };
-    case 'done': return { head: s.already ? `The newer ${app} is already downloaded.` : `The newer ${app} is downloaded.`, text: `It is in your Downloads folder as ${s.name ?? 'Antogo.dmg'}. Open it, then drag ${app} into Applications, replacing this one. Your data stays.` };
+    case 'done': return { head: s.already ? `The newer ${app} is already downloaded.` : `The newer ${app} is downloaded.`, text: `It is in your Downloads folder as ${s.name ?? 'Antogo.dmg'}. Press Quit and open the installer: ${app} closes and the disk image opens. Drag ${app} into Applications, choose Replace, and open it again. Your data stays.` };
     case 'failed': return { head: 'The download did not finish:', text: `${s.why ?? 'something went wrong'}.` };
     default: return { head: `A newer ${app} for the Mac is ready.`, text: 'Download it, then replace this one in Applications. Your data stays.' };
   }

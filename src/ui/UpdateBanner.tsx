@@ -28,7 +28,7 @@ export function MacUpdateLine({ compact }: { compact?: boolean }) {
       </span>
       {s.state === 'idle' && <button class="btn primary sm" onClick={() => { void applyUpdate(); }}>{compact ? 'A newer version is ready: download' : 'Download'}</button>}
       {going && <button class="btn sm" disabled={s.state === 'checking'} onClick={() => { void appUpdate.cancel(); }}>Cancel</button>}
-      {s.state === 'done' && <button class="btn primary sm" onClick={() => { void appUpdate.open(); }}>Open</button>}
+      {s.state === 'done' && <button class="btn primary sm" onClick={() => { void appUpdate.open(); }}>Quit and open the installer</button>}
       {s.state === 'failed' && <button class="btn primary sm" onClick={() => { void applyUpdate(); }}>Try again</button>}
       {/* Whatever stopped it, the old way still works: the same file, through the rider's browser. */}
       {s.state === 'failed' && <button class="btn sm" onClick={() => { window.open(MAC_DOWNLOAD, '_blank'); }}>Download in my browser</button>}

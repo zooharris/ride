@@ -41,9 +41,10 @@ function why(e) {
 
 /**
  * net: something with fetch (Electron's own); folder(): where downloads go; send(state): tells the pages;
+ * quit(): closes the app (after the downloaded file is opened, so it can be replaced);
  * openPath(p): opens a file as the Finder would; test: the app's own tests may name another place to ask.
  */
-function createUpdater({ net, folder, send, openPath, test = {} }) {
+function createUpdater({ net, folder, send, openPath, quit, test = {} }) {
   let current = { state: 'idle' };
   let busy = false;
   let ctl = null;
@@ -114,12 +115,18 @@ function createUpdater({ net, folder, send, openPath, test = {} }) {
     state: () => current,
     start,
     cancel: () => { if (busy && ctl) ctl.abort(); return true; },
-    /** Open the downloaded file, as a double-click in the Finder would. */
+    /**
+     * Open the downloaded file, as a double-click in the Finder would, then close this app (26 Nov 2026): a running
+     * app cannot be replaced, so with it still open the drag into Applications was refused until the rider quit it.
+     */
     open: async () => {
       if (current.state !== 'done' || !current.name) return false;
       const p = path.join(folder(), current.name);
       if (!fs.existsSync(p)) { set({ state: 'failed', why: 'the downloaded file is no longer in your Downloads folder' }); return false; }
-      return (await openPath(p)) === '';
+      const ok = (await openPath(p)) === '';
+      // Long enough for the disk image's window to appear before this one goes.
+      if (ok && quit) setTimeout(quit, 1500);
+      return ok;
     },
   };
 }

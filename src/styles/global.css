@@ -2948,7 +2948,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rside .rb-card { padding: 5px 16px; }
 .rside .rb-foot { margin-top: 1px; padding-top: 0; border-top: 0; }
 /* The smallest iPad on its side: each reading keeps one line beneath it. */
-@media (max-height: 770px) { .rside-main > .rb-cards { flex-basis: 80px; } .rside .rb-note, .rside .rb-foot { display: none; } .rside .rb-brief { display: block; white-space: nowrap; } }
+@media (max-height: 770px) { .rside-main > .rb-cards { flex-basis: 90px; } .rside-main > .rd-chartcard { min-height: 108px; } .rside .rb-note, .rside .rb-foot { display: none; } .rside .rb-brief { display: block; white-space: nowrap; } }
 .rside-main > .rb-cards.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .rside .rb-cards.n3 > :first-child { grid-column: auto; }
 .rside-main > .rd-chartcard { flex: 0 1 calc((100vw - 50px) * .737 / 4.6 + 64px); min-height: 132px; padding: 8px 16px 6px; gap: 4px; }

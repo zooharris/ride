@@ -1,0 +1,32 @@
+phone 01-before-nothing-connected: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 02-before-upright: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 03-before-side: 874x402, room {"t":0,"r":62,"b":20,"l":62}: fits
+phone 04-riding-ride-upright: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 05-riding-workout-upright: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 06-riding-workout-side: 874x402, room {"t":0,"r":62,"b":20,"l":62}: fits
+phone 07-riding-ride-side: 874x402, room {"t":0,"r":62,"b":20,"l":62}: fits
+phone 08-complete-summary-upright: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 09-complete-details-upright: 402x874, room {"t":62,"r":0,"b":34,"l":0}: fits
+phone 10-complete-details-side: 874x402, room {"t":0,"r":62,"b":20,"l":62}: fits
+phone 11-complete-summary-side: 874x402, room {"t":0,"r":62,"b":20,"l":62}: fits
+phone: the tour stopped at a ride by heart rate (#/play/workout/trail-ss-4x10): waited 30 s for Start ride. On the screen: ‹ BackAldieSweet Spot 4 x 10Duration2:00:00Training load105 TSSIntensity0.73 of thresholdThresholdnot known yetthreshold00:0015:0030:0045:001:00:001:15:001:30:001:45:002:00:00Warm up, build gently15:00Pickup1:00and 6 more15 steps · press the chart to see themAll 15 stepsSteps ›Your devicesNot ready yetSmart trainerTrainer⌄Simulated trainerIn controlConnectedChange…Power⌄Simulated trainer134 WConnectedChange…Heart rate⌄Simulated heart rate112 bpmConnectedChange…Cadence⌄Simulated trainer89 rpmConnectedChange…Speed⌄Simulated trainer14.6 mphConnectedChange…Breathing strapBreathing⌄Not connectedOpt
+ipad 01-before-nothing-connected: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: fits
+ipad 02-before-upright: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: fits
+ipad 03-before-side: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: off centre: 44px above, 56px below
+ipad 04-riding-upright: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: fits
+ipad 05-riding-side: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: fits
+ipad 06-complete-upright: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: fits
+ipad 07-complete-side: 1032x1376, room {"t":32,"r":0,"b":20,"l":0}: off centre: 58px above, 32px below
+ipad: the tour stopped at a ride by heart rate (#/play/workout/trail-ss-4x10): waited 30 s for Start ride. On the screen: ‹ BackAldieSweet Spot 4 x 10What this ride is for. Same total work as 2 x 20, broken into four. Easier on the head, slightly harder on the legs because the recoveries are short.Duration2:00:00Training load105 TSSIntensity0.73 of thresholdThresholdnot known yetthreshold00:0015:0030:0045:001:00:001:15:001:30:001:45:002:00:00Warm up, build gently15:00Pickup1:00and 6 moreThe 15 stepsWarm up, build gently15:00 · 133–141 bpmPickup1:00 · 156 bpmEasy3:00 · 133 bpmPickup1:00 · 156 bpmEasy5:00 · 133 bpmSweet spot10:00 · 151–154 bpmEasy between5:00 · 133 bpmSweet spot10:00 · 151–154 bpmEasy between5:00 ·
+phone2 01-before-nothing-connected: 390x844, room {"t":47,"r":0,"b":34,"l":0}: fits
+phone2 02-before-upright: 390x844, room {"t":47,"r":0,"b":34,"l":0}: pp runs 9px below its foot
+phone2 03-before-side: 844x390, room {"t":0,"r":47,"b":20,"l":47}: pp runs 6px below its foot; "Start ride" is 6px under the home bar
+phone2 04-riding-ride-upright: 390x844, room {"t":47,"r":0,"b":34,"l":0}: fits
+phone2 05-riding-workout-upright: 390x844, room {"t":47,"r":0,"b":34,"l":0}: fits
+phone2 06-riding-workout-side: 844x390, room {"t":0,"r":47,"b":20,"l":47}: fits
+phone2 07-riding-ride-side: 844x390, room {"t":0,"r":47,"b":20,"l":47}: fits
+phone2 08-complete-summary-upright: 390x844, room {"t":47,"r":0,"b":34,"l":0}: fits
+phone2 09-complete-details-upright: 390x844, room {"t":47,"r":0,"b":34,"l":0}: fits
+phone2 10-complete-details-side: 844x390, room {"t":0,"r":47,"b":20,"l":47}: fits
+phone2 11-complete-summary-side: 844x390, room {"t":0,"r":47,"b":20,"l":47}: fits
+phone2: the tour stopped at a ride by heart rate (#/play/workout/trail-ss-4x10): waited 30 s for Start ride. On the screen: ‹ BackAldieSweet Spot 4 x 10Duration2:00:00Training load105 TSSIntensity0.73 of thresholdThresholdnot known yetthreshold00:0015:0030:0045:001:00:001:15:001:30:001:45:002:00:00Warm up, build gently15:00Pickup1:00and 6 more15 steps · press the chart to see themAll 15 stepsSteps ›Your devicesNot ready yetSmart trainerTrainer⌄Simulated trainerIn controlConnectedChange…Power⌄Simulated trainer129 WConnectedChange…Heart rate⌄Simulated heart rate114 bpmConnectedChange…Cadence⌄Simulated trainer91 rpmConnectedChange…Speed⌄Simulated trainer14.4 mphConnectedChange…Breathing strapBreathing⌄Not connectedOpt

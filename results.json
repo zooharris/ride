@@ -1,0 +1,280 @@
+{
+  "results": [
+    {
+      "device": "iPhone 17 Pro",
+      "ok": true,
+      "run": "1",
+      "checks": [
+        {
+          "name": "The pages run from inside the app",
+          "ok": true
+        },
+        {
+          "name": "Nothing fetched from outside when the app opened",
+          "ok": true
+        },
+        {
+          "name": "Data is kept on the device",
+          "ok": true
+        },
+        {
+          "name": "Storage the system keeps",
+          "ok": true,
+          "detail": "persist() answered false"
+        },
+        {
+          "name": "The Garmin key is kept in the password store",
+          "ok": true
+        },
+        {
+          "name": "The key is not in the app's data",
+          "ok": true
+        },
+        {
+          "name": "The key is not in a backup",
+          "ok": true
+        },
+        {
+          "name": "Garmin (a stand-in) answers the app's own side",
+          "ok": true,
+          "detail": "4 of 4 steps answered"
+        },
+        {
+          "name": "The app's own side refuses an address that isn't a connected service",
+          "ok": true
+        },
+        {
+          "name": "The ride player is offered on this device",
+          "ok": true
+        },
+        {
+          "name": "The app's own side offers Bluetooth to the pages",
+          "ok": true
+        },
+        {
+          "name": "Asking for Bluetooth's state is answered",
+          "ok": true,
+          "detail": "it answered \"unsupported\""
+        },
+        {
+          "name": "Bluetooth that cannot be used is said to the rider, and nothing is searched for",
+          "ok": true,
+          "detail": "said \"unsupported\""
+        },
+        {
+          "name": "A ride can be handed to the app's own side for the background, and taken back",
+          "ok": true,
+          "detail": "kept 0 readings with no devices here"
+        },
+        {
+          "name": "The screen can be kept on for a ride, and let go again",
+          "ok": true
+        },
+        {
+          "name": "The page is shown at its own size, not enlarged",
+          "ok": true,
+          "detail": "scale 1, page 402 wide on a screen 402 wide"
+        }
+      ],
+      "insets": {
+        "top": "62px",
+        "right": "0px",
+        "bottom": "34px",
+        "left": "0px",
+        "width": 402,
+        "height": 874
+      },
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+    },
+    {
+      "device": "iPhone 17 Pro",
+      "ok": true,
+      "run": "2",
+      "checks": [
+        {
+          "name": "The pages run from inside the app",
+          "ok": true
+        },
+        {
+          "name": "Nothing fetched from outside when the app opened",
+          "ok": true
+        },
+        {
+          "name": "Data is still there after closing and opening the app",
+          "ok": true
+        },
+        {
+          "name": "The key is still in the password store after opening the app again",
+          "ok": true
+        },
+        {
+          "name": "Forgetting the key removes it",
+          "ok": true
+        },
+        {
+          "name": "The page is shown at its own size, not enlarged",
+          "ok": true,
+          "detail": "scale 1, page 402 wide on a screen 402 wide"
+        }
+      ],
+      "insets": {
+        "top": "62px",
+        "right": "0px",
+        "bottom": "34px",
+        "left": "0px",
+        "width": 402,
+        "height": 874
+      },
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+    },
+    {
+      "device": "iPad Pro 13-inch (M5)",
+      "ok": true,
+      "run": "1",
+      "checks": [
+        {
+          "name": "The pages run from inside the app",
+          "ok": true
+        },
+        {
+          "name": "Nothing fetched from outside when the app opened",
+          "ok": true
+        },
+        {
+          "name": "Data is kept on the device",
+          "ok": true
+        },
+        {
+          "name": "Storage the system keeps",
+          "ok": true,
+          "detail": "persist() answered false"
+        },
+        {
+          "name": "The Garmin key is kept in the password store",
+          "ok": true
+        },
+        {
+          "name": "The key is not in the app's data",
+          "ok": true
+        },
+        {
+          "name": "The key is not in a backup",
+          "ok": true
+        },
+        {
+          "name": "Garmin (a stand-in) answers the app's own side",
+          "ok": true,
+          "detail": "4 of 4 steps answered"
+        },
+        {
+          "name": "The app's own side refuses an address that isn't a connected service",
+          "ok": true
+        },
+        {
+          "name": "The ride player is offered on this device",
+          "ok": true
+        },
+        {
+          "name": "The app's own side offers Bluetooth to the pages",
+          "ok": true
+        },
+        {
+          "name": "Asking for Bluetooth's state is answered",
+          "ok": true,
+          "detail": "it answered \"unsupported\""
+        },
+        {
+          "name": "Bluetooth that cannot be used is said to the rider, and nothing is searched for",
+          "ok": true,
+          "detail": "said \"unsupported\""
+        },
+        {
+          "name": "A ride can be handed to the app's own side for the background, and taken back",
+          "ok": true,
+          "detail": "kept 0 readings with no devices here"
+        },
+        {
+          "name": "The screen can be kept on for a ride, and let go again",
+          "ok": true
+        },
+        {
+          "name": "The page is shown at its own size, not enlarged",
+          "ok": true,
+          "detail": "scale 1, page 1032 wide on a screen 1032 wide"
+        }
+      ],
+      "insets": {
+        "top": "32px",
+        "right": "0px",
+        "bottom": "20px",
+        "left": "0px",
+        "width": 1032,
+        "height": 1376
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+    },
+    {
+      "device": "iPad Pro 13-inch (M5)",
+      "ok": true,
+      "run": "2",
+      "checks": [
+        {
+          "name": "The pages run from inside the app",
+          "ok": true
+        },
+        {
+          "name": "Nothing fetched from outside when the app opened",
+          "ok": true
+        },
+        {
+          "name": "Data is still there after closing and opening the app",
+          "ok": true
+        },
+        {
+          "name": "The key is still in the password store after opening the app again",
+          "ok": true
+        },
+        {
+          "name": "Forgetting the key removes it",
+          "ok": true
+        },
+        {
+          "name": "The page is shown at its own size, not enlarged",
+          "ok": true,
+          "detail": "scale 1, page 1032 wide on a screen 1032 wide"
+        }
+      ],
+      "insets": {
+        "top": "32px",
+        "right": "0px",
+        "bottom": "20px",
+        "left": "0px",
+        "width": 1032,
+        "height": 1376
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+    }
+  ],
+  "garminStandInSaw": [
+    "POST /personalapitoken-service/personal-api/personal-api-key/token",
+    "GET /userprofile-service/userprofile/settings",
+    "GET /activitylist-service/activities/search/activities",
+    "GET /hrv-service/hrv/daily/2026-11-21/2026-11-27",
+    "GET /sleep-service/sleep/dailySleepSummariesByDate",
+    "GET /usersummary-service/v2/dailysummaries",
+    "GET /hrv-service/hrv/daily/2025-11-21/2025-11-27",
+    "GET /hrv-service/hrv/daily/2024-11-21/2024-11-27",
+    "GET /hrv-service/hrv/daily/2023-11-22/2023-11-28",
+    "GET /hrv-service/hrv/daily/2021-11-22/2021-11-28",
+    "POST /personalapitoken-service/personal-api/personal-api-key/token",
+    "GET /userprofile-service/userprofile/settings",
+    "GET /activitylist-service/activities/search/activities",
+    "GET /hrv-service/hrv/daily/2026-11-21/2026-11-27",
+    "GET /sleep-service/sleep/dailySleepSummariesByDate",
+    "GET /usersummary-service/v2/dailysummaries",
+    "GET /hrv-service/hrv/daily/2025-11-21/2025-11-27",
+    "GET /hrv-service/hrv/daily/2024-11-21/2024-11-27",
+    "GET /hrv-service/hrv/daily/2023-11-22/2023-11-28",
+    "GET /hrv-service/hrv/daily/2021-11-22/2021-11-28"
+  ]
+}

@@ -13,6 +13,7 @@ import { go } from '../router';
 import { useSensors } from './Player';
 import { phoneScreen } from '../../player/platform';
 import { usePadSide, usePadUpright } from '../usePad';
+import { TrainerSeg } from '../TrainerSeg';
 import { controlledTrainer, type SensorState } from '../../player/hub';
 import { cleanName } from '../../player/devices';
 import { breathBand, cueAt, hrZoneOf, rampView, targetBand, totalSeconds, type TimelineStep } from '../../player/timeline';
@@ -290,8 +291,8 @@ function usePages(count: number) {
 }
 
 /**
- * The step being ridden (27 Nov 2026): its time left inside a ring that fills as the step goes by, the ride's elapsed
- * time beside it with how much of the ride is done, and the workout's cue beneath. What comes next is in the step
+ * The step being ridden (27 Nov 2026): its time left, the larger number, inside a ring that fills as the step goes by;
+ * the ride's own time beside it, smaller, with how much of the ride is done; and the workout's cue beneath. What comes next is in the step
  * list, so it is not repeated here.
  */
 function StepBox({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
@@ -321,16 +322,15 @@ function StepBox({ ride, profile }: { ride: ActiveRide; profile: Profile }) {
               <circle cx="60" cy="60" r={R} stroke={colour} stroke-linecap="round" stroke-dasharray={`${C * frac} ${C}`} />
             </g>
           </svg>
-          <div class="rb-ring-text"><b class={`num${leftText.length > 5 ? ' long' : ''}`}>{leftText}</b><span>left in step</span></div>
+          <div class="rb-ring-text"><b class={`num${leftText.length > 5 ? ' long' : ''}`}>{leftText}</b><span>left in step</span><small class="num">of {mmss(step.seconds)}</small></div>
         </div>
         <div class="rb-elapsed">
-          <span class="caption">Elapsed</span>
+          <span class="caption">Ride time</span>
           <b class={`num${elapsed.length > 5 ? ' long' : ''}`}>{elapsed}</b>
           {total > 0 && <>
             <div class="rb-bar" aria-hidden="true"><i style={`width:${Math.max(0, Math.min(100, (e.position / total) * 100))}%`} /></div>
             <div class="rb-small num"><span>of {clock(total)}</span><span>{mmss(total - e.position)} to go</span></div>
           </>}
-          <div class="rb-small rb-thisstep num"><span>This step:</span><span>{mmss(done)} of {mmss(step.seconds)} done</span></div>
         </div>
       </div>
       <div class="rd-msg" aria-live="polite">
@@ -837,9 +837,7 @@ function HrControls({ ride, trainerOk }: { ride: ActiveRide; trainerOk: boolean 
     <>
       {trainerOk && e.mode !== 'self' && (
         <div class="rd-controls">
-          <div class="seg" role="group" aria-label="Trainer">
-            {((ride.timeline.length ? ['erg', 'resistance', 'free'] : ['resistance', 'free']) as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'erg' ? 'Adjusts to heart rate' : m === 'resistance' ? 'Set resistance' : 'Free ride'}</button>)}
-          </div>
+          <TrainerSeg modes={ride.timeline.length ? ['erg', 'resistance', 'free'] : ['resistance', 'free']} value={e.mode} onPick={setRideMode} by="hr" />
           <span style="flex:1" />
           {ride.timeline.length > 0 && e.mode === 'resistance' && <Stepper label="Level" value={`${e.level}`} onDown={() => setRideLevel(e.level - 1)} onUp={() => setRideLevel(e.level + 1)} />}
         </div>
@@ -855,9 +853,7 @@ function BreathControls({ ride, trainerOk }: { ride: ActiveRide; trainerOk: bool
     <>
       {trainerOk && e.mode !== 'self' && (
         <div class="rd-controls">
-          <div class="seg" role="group" aria-label="Trainer">
-            {(['erg', 'resistance', 'free'] as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'erg' ? 'Adjusts to breathing' : MODE_WORD[m]}</button>)}
-          </div>
+          <TrainerSeg modes={['erg', 'resistance', 'free']} value={e.mode} onPick={setRideMode} by="breath" />
         </div>
       )}
       {trainerOk && e.mode !== 'self' && (e.mode === 'erg' || e.mode === 'resistance') && (
@@ -878,9 +874,7 @@ function PowerControls({ ride, trainerOk }: { ride: ActiveRide; trainerOk: boole
   return (
     <div class="rd-controls">
       {trainerOk ? (
-        <div class="seg" role="group" aria-label="Trainer">
-          {(['erg', 'resistance', 'free'] as TrainerMode[]).map((m) => <button key={m} class={e.mode === m ? 'on' : ''} aria-pressed={e.mode === m} onClick={() => setRideMode(m)}>{m === 'erg' ? (ride.timeline.length ? 'ERG' : 'Hold watts') : m === 'resistance' ? 'Resistance' : 'Free ride'}</button>)}
-        </div>
+        <TrainerSeg modes={['erg', 'resistance', 'free']} value={e.mode} onPick={setRideMode} by="power" free={!ride.timeline.length} />
       ) : <span class="faint small">{ride.timeline.length ? "You're riding to the targets yourself." : 'Riding with your gears.'}</span>}
       <span style="flex:1" />
       {!ride.timeline.length ? null : e.mode === 'resistance' && trainerOk ? (
@@ -1031,24 +1025,30 @@ export function RideChart({ timeline, samples, profile, position, live, by = 'po
     <div class="rd-chart">
       <div class="rd-chart-pw">
         <svg class="rd-chart-p" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={byBreath ? "Breathing over the workout's breathing targets" : byHr ? "Heart rate over the workout's zones" : "Power over the workout's targets"}>
+          {/* A bar chart on every kind of ride (27 Nov 2026): each step is a bar in its zone colour. Steps to come are
+              near full strength, the one being ridden is full strength with an outline, finished ones are dimmed. By
+              heart rate or breathing the bar rises to the top of the step's zone, and its brighter cap is the zone itself. */}
           {timeline.map((s, i) => {
-            const done = position != null && s.start < position;
-            const op = done || !live ? 0.42 : 0.2;
-            if (byBreath) {
-              const b = bBands[i];
+            const now = live && position != null && s.start <= position && position < s.end;
+            const op = !live ? 0.7 : now ? 1 : position != null && s.end <= position ? 0.38 : 0.82;
+            const bx = x(s.start), bw = Math.max(0.5, x(s.end) - x(s.start) - 1.6);
+            const edge = (top: number) => now && <rect x={bx} y={top} width={bw} height={Math.max(1, H - top)} fill="none" stroke="var(--ink)" stroke-width="1.5" vector-effect="non-scaling-stroke" />;
+            if (byBreath || byHr) {
+              const b = byBreath ? bBands[i] : bands[i];
               if (!b) return null;
-              const y1 = y(b.high), y0 = b.low ? y(b.low) : H;
-              return <rect key={s.index} x={x(s.start)} y={y1} width={Math.max(0.5, x(s.end) - x(s.start) - 0.6)} height={Math.max(1, y0 - y1)} fill={breathZoneVar(b.zone)} opacity={op} />;
-            }
-            if (byHr) {
-              const b = bands[i];
-              const y1 = y(b.high), y0 = b.low ? y(b.low) : H;
-              return <rect key={s.index} x={x(s.start)} y={y1} width={Math.max(0.5, x(s.end) - x(s.start) - 0.6)} height={Math.max(1, y0 - y1)} fill={ZONE_VAR[hrZoneOf(s, profile) - 1]} opacity={op} />;
+              const fill = byBreath ? breathZoneVar(bBands[i]!.zone) : ZONE_VAR[hrZoneOf(s, profile) - 1];
+              const y1 = y(b.high), y0 = b.low ? Math.min(H, y(b.low)) : H;
+              return <g key={s.index}>
+                {y0 < H && <rect x={bx} y={y0} width={bw} height={H - y0} fill={fill} opacity={op * 0.42} />}
+                <rect x={bx} y={y1} width={bw} height={Math.max(1, y0 - y1)} fill={fill} opacity={op} />
+                {edge(y1)}
+              </g>;
             }
             const t = y(((s.low + s.high) / 2) * profile.ftp);
-            return <rect key={s.index} x={x(s.start)} y={t} width={Math.max(0.5, x(s.end) - x(s.start) - 0.6)} height={H - t} fill={ZONE_VAR[powerZone((s.low + s.high) / 2, ladder) - 1]} opacity={op} />;
+            return <g key={s.index}><rect x={bx} y={t} width={bw} height={H - t} fill={ZONE_VAR[powerZone((s.low + s.high) / 2, ladder) - 1]} opacity={op} />{edge(t)}</g>;
           })}
           {threshold > 0 && <line x1="0" x2={W} y1={y(threshold)} y2={y(threshold)} stroke="var(--ink-3)" stroke-dasharray="4 5" vector-effect="non-scaling-stroke" />}
+          {line && <polyline points={line} fill="none" stroke="var(--bg-2)" stroke-opacity="0.6" stroke-width="4.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
           {line && <polyline points={line} fill="none" stroke={byBreath ? 'var(--aqua)' : byHr ? 'var(--z6)' : 'var(--ink)'} stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />}
           {nowX != null && live && <line x1={nowX} x2={nowX} y1="0" y2={H} stroke="var(--today)" stroke-width="2" vector-effect="non-scaling-stroke" />}
         </svg>

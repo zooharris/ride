@@ -257,6 +257,13 @@ p { margin: 0; }
 .seg button.on { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 .seg button { display: inline-flex; align-items: center; gap: 6px; }
 .seg button svg { opacity: .8; }
+/* The trainer choice: equal parts, the same names on every ride; a line under each where there is room (27 Nov 2026). */
+.seg.tseg { display: flex; container: tseg / inline-size; }
+.seg.tseg button { flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: center; gap: 1px; padding: 7px 4px; }
+.seg.tseg button b { font-weight: 650; color: var(--ink); white-space: nowrap; }
+.seg.tseg button.on b { color: var(--sel-ink); }
+.seg.tseg button small { font-size: 10.5px; font-weight: 400; line-height: 1.15; color: var(--ink-3); white-space: nowrap; }
+@container tseg (max-width: 352px) { .seg.tseg button small { display: none; } }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 13px; background: transparent; color: var(--ink-2); cursor: pointer; }
 .chip.on { background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); color: var(--sel-ink); font-weight: 600; border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -2800,20 +2807,19 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rb-ring { position: relative; flex: none; width: var(--ring, 118px); height: var(--ring, 118px); }
 .rb-ring svg { display: block; width: 100%; height: 100%; }
 .rb-ring-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.rb-ring-text b { font-size: calc(var(--ring, 118px) * .27); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
-.rb-ring-text b.long { font-size: calc(var(--ring, 118px) * .19); }
-.rb-ring-text span { margin-top: 3px; font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.rb-ring-text b { font-size: calc(var(--ring, 118px) * .3); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+.rb-ring-text b.long { font-size: calc(var(--ring, 118px) * .2); }
+.rb-ring-text small { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.rb-ring-text span { margin-top: 3px; font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
 .rb-elapsed { flex: 1 1 0; min-width: 0; container: rbel / inline-size; }
 .rb-elapsed .caption { display: block; font-size: 10px; }
-.rb-elapsed > b { display: block; margin: 3px 0 6px; font-size: min(var(--el, 40px), 34cqw); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
-.rb-elapsed > b.long { font-size: min(var(--el, 40px), 24cqw); }
+.rb-elapsed > b { display: block; margin: 3px 0 6px; color: var(--ink-2); font-size: min(var(--el, 26px), 34cqw); font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+.rb-elapsed > b.long { font-size: min(var(--el, 26px), 24cqw); }
 .rb-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
-.rb-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ink-2); }
+.rb-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ink-3); }
 .rb-small { display: flex; flex-wrap: wrap; gap: 0 5px; margin-top: 4px; font-size: 11px; line-height: 1.3; color: var(--ink-3); }
 .rb-small span { white-space: nowrap; }
 .rb-small span:first-child:not(:only-child)::after { content: ' ·'; }
-.rb-thisstep span:first-child::after { content: none !important; }
-@container rbel (max-width: 150px) { .rb-thisstep { display: none; } }
 .rb .rb-step .rd-msg { flex: none; min-height: calc(2 * 1.35em); margin-top: 6px; }
 .rb .rb-step .rd-msg .rd-cue { max-width: none; }
 
@@ -2857,7 +2863,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rphone .rd-hero > .row { flex-wrap: wrap; }
 .rphone .rd-hero > .row > .caption { overflow: visible; text-overflow: clip; }
 @media (max-width: 380px) { .rphone .rd-smooth { display: none; } }
-.rphone { --ring: clamp(92px, calc(var(--uh) * .15), 124px); --el: clamp(32px, calc(var(--uh) * .052), 42px); --rv: clamp(26px, calc(var(--uh) * .044), 36px); }
+.rphone { --ring: clamp(100px, calc(var(--uh) * .155), 136px); --el: clamp(20px, calc(var(--uh) * .03), 26px); --rv: clamp(26px, calc(var(--uh) * .044), 36px); }
 .rphone .rp-ride > .rb-step, .rphone .rp-ride > .rd-dial, .rphone .rp-ride > .rd-free { flex: none; }
 .rphone .rp-ride > .rb-cards { flex: 1 1 0; --rvq: 20cqh; }
 .rphone .rb-card { padding: 4px 12px; }
@@ -2867,9 +2873,9 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 /* A very short phone: each reading on one line, its name on the left and its value on the right. */
 @container rbc (max-height: 104px) { .rb-card { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; } }
 @media (orientation: landscape) and (max-width: 720px) { .rp-away .rp-live-bar > div:nth-child(3), .rp-away .rp-sub { display: none; } }
-.rphone .rd-big { font-size: clamp(56px, calc(var(--uh) * .115), 100px); }
+.rphone .rd-big { font-size: clamp(56px, calc(var(--uh) * .105), 92px); }
 @media (orientation: portrait) and (max-height: 720px) {
-  .rphone { --ring: 84px; }
+  .rphone { --ring: 94px; }
   .rphone .rb-sofar-h { display: none; }
   .rphone .rb-step-body { margin-top: 2px; }
   .rphone .rd-big { font-size: clamp(54px, calc(var(--uh) * .105), 80px); }
@@ -2879,7 +2885,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 
 /* A phone on its side: the big number, the step, the readings; the ride so far in a line beneath. */
 @media (orientation: landscape) {
-  .rphone { --ring: clamp(86px, calc(var(--uh) * .29), 110px); --el: 34px; --rv: clamp(20px, calc(var(--uh) * .064), 26px); }
+  .rphone { --ring: clamp(92px, calc(var(--uh) * .31), 116px); --el: 22px; --rv: clamp(20px, calc(var(--uh) * .064), 26px); }
   .rphone .rp-ride { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1.04fr); grid-template-rows: minmax(0, 1fr) auto; gap: 6px 8px; }
   .rphone .rp-ride > .rb-step { justify-content: center; }
   .rphone .rb-step-body { flex: none; gap: 12px; }
@@ -2899,7 +2905,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 }
 
 /* An upright iPad. */
-.rpad { --ring: clamp(118px, calc(var(--uh) * .115), 150px); --el: clamp(42px, calc(var(--uh) * .044), 56px); --rv: clamp(38px, calc(var(--uh) * .042), 54px); }
+.rpad { --ring: clamp(136px, calc(var(--uh) * .14), 176px); --el: clamp(24px, calc(var(--uh) * .026), 32px); --rv: clamp(38px, calc(var(--uh) * .042), 54px); }
 .rb-two { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; }
 .rb-left, .rb-right { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .rb-left > .rb-step, .rb-left > .rd-dial, .rb-left > .rd-free { flex: none; }
@@ -2907,7 +2913,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rb-two.nolist .rb-left > * { flex: 1 1 0; }
 .rb-right > .rb-cards { flex: 1 1 0; gap: 10px; }
 .rpad .rb-step-body, .rside .rb-step-body { gap: 20px; }
-.rpad .rb-ring-text span, .rside .rb-ring-text span { font-size: 11.5px; }
+.rpad .rb-ring-text span, .rside .rb-ring-text span { font-size: 12.5px; }
+.rpad .rb-ring-text small, .rside .rb-ring-text small { font-size: 11.5px; }
 .rpad .rb-elapsed .caption, .rside .rb-elapsed .caption, .rpad .rb-card .caption, .rside .rb-card .caption { font-size: 11px; }
 .rpad .rb-small, .rside .rb-small { font-size: 12.5px; }
 .rpad .rb-bar, .rside .rb-bar { height: 6px; }
@@ -2930,7 +2937,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .rside .rd-hero > .rd-target { max-width: 170px; }
 
 /* An iPad on its side: the same, with the list of steps down the right-hand side. */
-.rside { --ring: clamp(104px, calc(var(--uh) * .15), 132px); --el: clamp(38px, calc(var(--uh) * .058), 50px); --rv: clamp(30px, calc(var(--uh) * .05), 44px); }
+.rside { --ring: clamp(112px, calc(var(--uh) * .16), 144px); --el: clamp(22px, calc(var(--uh) * .032), 28px); --rv: clamp(30px, calc(var(--uh) * .05), 44px); }
 .rside .rp-bar { min-height: 56px; padding-left: 20px; padding-right: 20px; }
 .rside .rp-name { font-size: 19px; }
 .rside .rp-sub { font-size: 12.5px; }

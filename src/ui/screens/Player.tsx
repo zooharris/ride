@@ -27,6 +27,7 @@ import { Riding, RideDone, useRide } from './RideScreens';
 import { bluetoothAvailable } from '../../player/ble/web';
 import { platform, phoneScreen } from '../../player/platform';
 import { usePadUpright } from '../usePad';
+import { TrainerSeg } from '../TrainerSeg';
 import { targetBand, breathBand } from '../../player/timeline';
 const mmss = (sec: number) => clock(Math.max(0, Math.round(sec)));
 import { APP_SHORT_NAME } from '../../appName';
@@ -335,11 +336,7 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
                 {trainerRuns && (
                   <div class="pp-row">
                     <span>Trainer</span>
-                    <div class="seg" role="group" aria-label="Trainer">
-                      {((power ? [['erg', 'ERG'], ['resistance', 'Resistance'], ['free', 'Free ride']] : [['erg', byBreath ? 'Adjusts to breathing' : 'Adjusts to heart rate'], ['resistance', 'Resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
-                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
-                      ))}
-                    </div>
+                    <TrainerSeg modes={['erg', 'resistance', 'free']} value={mode} onPick={setMode} by={power ? 'power' : byBreath ? 'breath' : 'hr'} />
                   </div>
                 )}
                 {says && <p class="pp-says">{says}</p>}
@@ -437,11 +434,7 @@ function PreRide({ workout: given, planned, profile, sim, bt, mine, history }: {
                   : <p class="pl-runs">You ride to each heart-rate zone with your gears. After 20 seconds outside the zone the screen says <b>Reduce intensity</b> or <b>Increase intensity</b>.</p>)}
                 <div class="pl-runs-row">
                   <span>Trainer</span>
-                  <div class="seg" role="group" aria-label="Trainer">
-                    {((power ? [['erg', 'Holds targets (ERG)'], ['resistance', 'Set resistance'], ['free', 'Free ride']] : [['erg', byBreath ? 'Adjusts to breathing' : 'Adjusts to heart rate'], ['resistance', 'Set resistance'], ['free', 'Free ride']]) as Array<[TrainerMode, string]>).map(([m, label]) => (
-                      <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
-                    ))}
-                  </div>
+                  <TrainerSeg modes={['erg', 'resistance', 'free']} value={mode} onPick={setMode} by={power ? 'power' : byBreath ? 'breath' : 'hr'} />
                 </div>
                 {mode === 'resistance' ? (
                   <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>
@@ -607,7 +600,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
             <section class="pl-card pp-profile pp-free">
               <p class="pp-says">Recorded and saved like any other ride, on today's calendar as a ride of its own. It counts toward your training load.</p>
               <div class="pp-ways">
-                <div><b>Set resistance</b><span>A road of a fixed steepness, levels 0 to 10.</span></div>
+                <div><b>Resistance</b><span>A road of a fixed steepness, levels 0 to 10.</span></div>
                 <div><b>Hold watts</b><span>The trainer holds the watts you choose (ERG).</span></div>
                 <div><b>Free ride</b><span>A flat road.</span></div>
               </div>
@@ -622,11 +615,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
                 <>
                   <div class="pp-row">
                     <span>Trainer</span>
-                    <div class="seg" role="group" aria-label="Trainer">
-                      {([['resistance', 'Set resistance'], ['erg', 'Hold watts'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
-                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
-                      ))}
-                    </div>
+                    <TrainerSeg modes={['resistance', 'erg', 'free']} value={mode} onPick={setMode} by="power" free />
                   </div>
                   <p class="pp-says">You can change any of these as you ride.</p>
                   <div class="pp-tune">
@@ -653,7 +642,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
           <p class="pl-sub">No workout: ride as you like</p>
           <p class="pl-free-text">The ride is recorded and saved like any other, and goes on today's calendar as a ride of its own. It counts toward your training load, and your plan takes it into account when it next checks itself.</p>
           <div class="pl-free-ways">
-            <div><b>Set resistance</b><span class="muted">A road of a fixed steepness, levels 0 to 10. Change gear as you like.</span></div>
+            <div><b>Resistance</b><span class="muted">A road of a fixed steepness, levels 0 to 10. Change gear as you like.</span></div>
             <div><b>Hold watts</b><span class="muted">The trainer holds the watts you choose (ERG), whatever gear you are in.</span></div>
             <div><b>Free ride</b><span class="muted">A flat road.</span></div>
           </div>
@@ -668,11 +657,7 @@ function FreePre({ profile, sim, bt }: { profile: Profile; sim: boolean; bt: boo
                 <>
                   <div class="pl-runs-row">
                     <span>Trainer</span>
-                    <div class="seg" role="group" aria-label="Trainer">
-                      {([['resistance', 'Set resistance'], ['erg', 'Hold watts'], ['free', 'Free ride']] as Array<[TrainerMode, string]>).map(([m, label]) => (
-                        <button key={m} class={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
-                      ))}
-                    </div>
+                    <TrainerSeg modes={['resistance', 'erg', 'free']} value={mode} onPick={setMode} by="power" free />
                   </div>
                   {mode === 'resistance' && <div class="pl-runs-row"><span>Resistance level</span><StepperSmall value={`${level}`} onDown={() => setLevel(Math.max(0, level - 1))} onUp={() => setLevel(Math.min(10, level + 1))} label="resistance level" /></div>}
                   {mode === 'erg' && <div class="pl-runs-row"><span>Watts to hold</span><StepperSmall value={`${watts} W`} onDown={() => setWatts(Math.max(50, watts - 5))} onUp={() => setWatts(Math.min(600, watts + 5))} label="watts to hold" /></div>}

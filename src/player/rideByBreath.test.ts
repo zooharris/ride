@@ -76,7 +76,7 @@ describe('which rides, and the player’s choice', () => {
     expect(rideSrc).toMatch(/Breathing has stopped arriving/);
     expect(rideSrc).toMatch(/Carry on by heart rate/);
     expect(rideSrc).toMatch(/Carry on by power/);
-    expect(rideSrc).toMatch(/'Adjusts to breathing'/);
+    expect(rideSrc).toMatch(/<TrainerSeg [^>]*by="breath"/);
   });
 });
 

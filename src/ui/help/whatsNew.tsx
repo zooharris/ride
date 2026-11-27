@@ -11,6 +11,13 @@ export interface NewsEntry { id: string; date: string; items: Array<{ title: str
 
 export const WHATS_NEW: NewsEntry[] = [
   {
+    id: '2026-11-27b', date: '27 November 2026', items: [
+      { title: 'The ride\'s profile is a bar chart on every ride', text: 'Each step is a bar in its zone colour, on rides by heart rate and by breathing as well as by power. Steps to come are bright, the one you are riding is outlined, and finished ones are dimmed. By heart rate or breathing, the brighter cap of each bar is the target zone.', help: 'riding' },
+      { title: 'The step\'s time is the big number', text: 'On iPhone and iPad the time left in the step is now the larger figure, in a bigger ring. The ride\'s own time sits beside it, smaller.' },
+      { title: 'ERG, Resistance, Free ride', text: 'The trainer choice has the same three names on every ride, in three equal parts, with a line under each where there is room. On a ride by heart rate or breathing, ERG means the trainer adjusts itself to keep you in the zone.' },
+    ],
+  },
+  {
     id: '2026-11-27a', date: '27 November 2026', items: [
       { title: 'One ride screen, on iPhone and iPad alike', text: 'While you ride, an iPhone and an iPad now show the same things in the same order: the big number; the step you are on, with its time left in a ring that fills as the step goes by and the ride\'s elapsed time beside it; your other readings, heart rate beside breathing and cadence beside speed; the ride so far; the ride\'s profile; and every step, with the ones done ticked and the next one named.', help: 'riding' },
       { title: 'Two pages on an iPhone', text: 'The iPhone\'s ride is now two pages, Ride and Workout, in place of three. Everything that was on the Numbers page is on Ride.' },

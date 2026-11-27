@@ -57,6 +57,18 @@ const hasPlan = async (page: Page) => { await go(page, '#/plan'); await expect(p
 const hasNoPlan = async (page: Page) => { await go(page, '#/plan'); await expect(page.getByText(/^As of today, /)).toBeVisible(); await expect(page.getByRole('heading', { name: 'Your plans' })).toHaveCount(0); };
 const standing = async (page: Page) => { await go(page, '#/settings'); return page.getByRole('button', { name: /^Across your devices, and backup/ }); };
 
+test('the numbers page takes what is typed a key at a time, the birth year included', async ({ page }) => {
+  await open(page, 'new');
+  await page.getByRole('button', { name: 'Set up Antogo' }).click();
+  // Typed as a rider types, one key at a time: filling a box in one go hid a fault in which each digit of the year was wiped.
+  const year = page.getByLabel('Birth year (optional)');
+  await year.pressSequentially('1968');
+  await expect(year).toHaveValue('1968');
+  const name = page.locator('#ob-name');
+  await name.pressSequentially('Nova');
+  await expect(name).toHaveValue('Nova');
+});
+
 test('the first screen asks for nothing: setup is one press away, and what can be connected is offered as optional', async ({ page }, info) => {
   const s = await open(page, 'new');
   await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();

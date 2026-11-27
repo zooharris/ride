@@ -104,6 +104,9 @@ export function Onboarding() {
   const [boxes, setBoxes] = useState<Record<UnsureNumber, Box>>(EMPTY);
   const [answered, setAnswered] = useState<Answered>({ ftp: false, lthr: false, maxHr: false, weightKg: false });
   const [hours, setHours] = useState<number | undefined>(undefined);
+  // The birth year as typed. The box shows this, not the year the profile holds: a year is only a year once all four
+  // digits are in, and showing the profile's value wiped each digit as it was typed (found 27 Nov 2026).
+  const [birth, setBirth] = useState<string | null>(null);
   const [hasPower, setHasPower] = useState<boolean | undefined>(undefined);
   const [hasHr, setHasHr] = useState<boolean | undefined>(undefined);
   const setUnits = (d: DistUnits, w: WeightUnits) => setP({ ...p, distUnits: d, weightUnits: w, units: legacyUnits(d, w) });
@@ -300,7 +303,7 @@ export function Onboarding() {
           <div class="form">
             <div class="field"><label for="ob-name">Name</label><input id="ob-name" value={p.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} /></div>
             <div class="field"><label for="ob-birth">Birth year (optional)</label>
-              <input id="ob-birth" type="number" inputMode="numeric" placeholder="e.g. 1975" value={p.birthYear ?? ''} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); upd('birthYear', v >= 1920 && v <= thisYear - 10 ? v : undefined); }} /></div>
+              <input id="ob-birth" type="number" inputMode="numeric" placeholder="e.g. 1975" value={birth ?? p.birthYear ?? ''} onInput={(e) => { const t = (e.target as HTMLInputElement).value; setBirth(t); const v = Number(t); upd('birthYear', v >= 1920 && v <= thisYear - 10 ? v : undefined); }} /></div>
           </div>
 
           <div class="field" style="margin-top:16px"><label>What do you ride with?</label>

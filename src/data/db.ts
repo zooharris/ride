@@ -139,8 +139,7 @@ class RideDb extends Dexie {
   imports!: Table<import('../import/importer').ImportBatch, string>;
 
   constructor() {
-    // The preview (27 Nov 2026) is served from the same site as the public web version, so it keeps a store of its own.
-    super(__PREVIEW__ ? 'ride-preview' : 'ride');
+    super('ride');
     this.version(1).stores({
       profile: 'id',
       settings: 'key',

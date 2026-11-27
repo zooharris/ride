@@ -83,8 +83,9 @@ async function publishedBuild(): Promise<string | undefined> {
   // iPhone and iPad: Apple's TestFlight or App Store tells the rider about a newer version; the app asks nobody.
   if (appKind() === 'ios') return undefined;
   try {
-    // The installed app asks the published web version, which is always built from the same pages as the newest app.
-    const res = await fetch(`${inApp() ? WEB_ADDRESS : import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' });
+    // The installed app asks for the newest release (version.json); the web version, for the newest web publish
+    // (web-version.json), which from 27 Nov 2026 runs ahead of the apps between releases.
+    const res = await fetch(`${inApp() ? `${WEB_ADDRESS}version.json` : `${import.meta.env.BASE_URL}web-version.json`}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return undefined;
     return ((await res.json()) as { build?: string }).build;
   } catch { return undefined; }

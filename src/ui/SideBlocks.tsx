@@ -30,9 +30,9 @@ export const SIDE_ORDER: SideBlock[] = ['today', 'week', 'coming', 'goal', 'last
  */
 export const LEFT_OUT: Record<SideBlock, string[]> = {
   today: ['today', 'calendar', 'plan'],
-  week: ['today', 'calendar', 'plan', 'progress'],
+  week: ['today', 'calendar', 'plan', 'progress', 'insights', 'lab'],
   coming: ['today', 'calendar', 'plan'],
-  goal: ['today', 'plan', 'progress'],
+  goal: ['today', 'plan', 'progress', 'insights', 'lab'],
   last: ['rides', 'calendar'],
 };
 /** The sync line is left out where the page shows it (Today's sync line, Settings). */

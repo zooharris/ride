@@ -86,11 +86,18 @@ test('Insights for a new rider: every answer too early, with what is needed, and
   await looksRight(s, info, 'Insights, a new rider');
 });
 
-test('today\'s Progress page is still there, as it was', async ({ page }, info) => {
+test('Progress lives on in the Lab: the overlay chart and every card brought over', async ({ page }, info) => {
   const s = await setUp(page, 'power');
+  // An old link to Progress opens the fitness chart with its overlay chips, in the Lab.
   await go(page, '#/progress');
-  await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fitness, with anything laid over it', level: 1 })).toBeVisible();
   await expect(page.locator('#fitness-card')).toBeVisible();
-  await expect(page.locator('.pg-cell')).not.toHaveCount(0);
-  await looksRight(s, info, 'Progress, unchanged');
+  await looksRight(s, info, 'The overlay chart in the Lab');
+  for (const id of ['weekload', 'aerobic', 'totals', 'tests']) {
+    await go(page, `#/lab/chart/${id}`);
+    await expect(page.locator('.pe-cell')).not.toHaveCount(0);
+  }
+  await looksRight(s, info, 'A Progress card in the Lab');
+  // Progress is no longer in the menu.
+  await expect(page.getByRole('link', { name: 'Progress', exact: true })).toHaveCount(0);
 });

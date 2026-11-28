@@ -87,13 +87,15 @@ test('the Lab for a new rider: empty frames and reasons, never a line they did n
   await expect(page.locator('.lb-row[data-measure="hrv"]')).toContainText('Needs overnight readings');
 });
 
+// Every tile on the Lab's front: the designed charts, then the Progress cards brought in whole (28 Nov 2026).
+const TILES = 18;
 const CHARTS = ['fitness', 'power', 'records', 'zones', 'heart', 'compare', 'breathing', 'durability', 'year', 'recovery', 'weight', 'pedal'];
 
 test('the Lab\'s designed charts: a tile each, drawn from the rider\'s own data, and each opens with its sentence, its reading and its figures', async ({ page }, info) => {
   test.setTimeout(240_000);
   const s = await setUp(page, 'power');
   await go(page, '#/lab');
-  await expect(page.locator('.lb-tile')).toHaveCount(CHARTS.length);
+  await expect(page.locator('.lb-tile')).toHaveCount(TILES);
   // The rider has no breathing sensor: that tile is an empty frame with the reason, and no line.
   const breathing = page.locator('.lb-tile[data-chart="breathing"]');
   await expect(breathing).toContainText('Needs a breathing sensor');
@@ -103,8 +105,8 @@ test('the Lab\'s designed charts: a tile each, drawn from the rider\'s own data,
   for (const id of CHARTS.filter((c) => c !== 'breathing')) {
     await go(page, `#/lab/chart/${id}`);
     await expect(page.locator('.lc-lead')).toBeVisible();
-    await expect(page.locator('.lc-how')).toContainText('How to read this');
-    await expect(page.locator('.lc-how')).toContainText('In plain words');
+    await expect(page.locator('.lc-how').first()).toContainText('How to read this');
+    await expect(page.locator('.lc-deep').first()).toContainText('In plain words');
     await expect(page.locator('.lc-body').first()).toBeVisible();
     await looksRight(s, info, `The Lab, chart ${id}`);
   }
@@ -138,8 +140,8 @@ test('the Lab\'s charts for a rider by heart rate and for a new rider: nothing d
 test('the Lab\'s charts for a new rider: every tile an empty frame with its reason', async ({ page }, info) => {
   const s = await setUp(page, 'new');
   await go(page, '#/lab');
-  await expect(page.locator('.lb-tile')).toHaveCount(CHARTS.length);
-  await expect(page.locator('.lb-tile.wait')).toHaveCount(CHARTS.length);
+  await expect(page.locator('.lb-tile')).toHaveCount(TILES);
+  await expect(page.locator('.lb-tile.wait')).toHaveCount(TILES);
   await expect(page.locator('.lb-tile-pic path, .lb-tile-pic rect, .lb-tile-pic circle')).toHaveCount(0);
   await looksRight(s, info, 'The Lab, charts, a new rider');
 });

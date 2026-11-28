@@ -329,7 +329,7 @@ export function Today({ data }: { data: AppData }) {
         <h2 style="margin-bottom:12px">Readiness</h2>
         <div class="panel readiness">
           <div class="rd-top">
-            <a href="#/progress?on=readiness,fatigue,load&r=6w" class="rd-dial-link" aria-label="Readiness over time"><ReadinessDial score={ready.score} band={ready.band} waiting={waiting} /></a>
+            <a href="#/lab/chart/overlay?on=readiness,fatigue,load&r=6w" class="rd-dial-link" aria-label="Readiness over time"><ReadinessDial score={ready.score} band={ready.band} waiting={waiting} /></a>
             <p class="rd-advice">{waiting ? gap : <>{bandText}.{gap && <> <span class="faint">{gap}</span></>}</>}</p>
           </div>
           <ReadinessRows data={data} date={date} series={series} drivers={ready.drivers} />
@@ -457,7 +457,7 @@ function FitnessTiles({ series }: { series: ReturnType<typeof fitnessFromRides> 
   const tile = (label: string, v: number | undefined, prev: number | undefined, color: string, help: string, signed = false) => {
     const d = v != null && prev != null ? Math.round(v) - Math.round(prev) : null;
     return (
-      <a class="stat stat-link" href="#/progress?on=fitness,fatigue,form" title={help} aria-label={`${label} over time`}>
+      <a class="stat stat-link" href="#/lab/chart/overlay?on=fitness,fatigue,form" title={help} aria-label={`${label} over time`}>
         <div class="v" style={`font-size:28px;line-height:32px;color:${color}`}>{v == null ? '–' : `${signed && v > 0 ? '+' : ''}${Math.round(v) < 0 ? '−' + Math.abs(Math.round(v)) : Math.round(v)}`}</div>
         <div class="l">{label}{d != null && <span class="delta" style={`color:${d === 0 ? 'var(--ink-3)' : 'var(--ink-2)'}`}>{d === 0 ? 'no change in 7 days' : `${d > 0 ? '▲' : '▼'} ${Math.abs(d)} in 7 days`}</span>}</div>
       </a>
@@ -485,13 +485,13 @@ function sleepDiff(h: number): string {
 
 /** Each readiness row opens Progress with that metric on the fitness chart, over six weeks. */
 const RD_LINK: Record<string, string> = {
-  HRV: '#/progress?on=hrv,fatigue,load&r=6w',
-  Sleep: '#/progress?on=sleep,fatigue,load&r=6w',
-  'Resting HR': '#/progress?on=restinghr,fatigue,load&r=6w',
-  Form: '#/progress?on=fitness,fatigue,form&r=6w',
-  'Sleeping HR': '#/progress?on=readiness,restinghr,load&r=6w',
-  'Breathing rate': '#/progress?on=readiness,fatigue,load&r=6w',
-  'Load climbing fast': '#/progress?on=readiness,fatigue,load&r=6w',
+  HRV: '#/lab/chart/overlay?on=hrv,fatigue,load&r=6w',
+  Sleep: '#/lab/chart/overlay?on=sleep,fatigue,load&r=6w',
+  'Resting HR': '#/lab/chart/overlay?on=restinghr,fatigue,load&r=6w',
+  Form: '#/lab/chart/overlay?on=fitness,fatigue,form&r=6w',
+  'Sleeping HR': '#/lab/chart/overlay?on=readiness,restinghr,load&r=6w',
+  'Breathing rate': '#/lab/chart/overlay?on=readiness,fatigue,load&r=6w',
+  'Load climbing fast': '#/lab/chart/overlay?on=readiness,fatigue,load&r=6w',
 };
 
 function ReadinessRows({ data, date, series, drivers }: { data: AppData; date: string; series: ReturnType<typeof fitnessFromRides>; drivers: ReadinessDriver[] }) {

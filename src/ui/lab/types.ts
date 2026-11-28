@@ -19,6 +19,8 @@ export interface LabChart {
   Page: (p: { L: LabData }) => preact.JSX.Element;
   /** The Insights question this chart bears on, for "What does this mean?". */
   question?: string;
+  /** The chart keeps its own period (a Progress card brought in whole), so the Lab's picker is not shown on its page. */
+  ownPeriod?: boolean;
   /** Words to find it by, beside its name. */
   words?: string;
 }

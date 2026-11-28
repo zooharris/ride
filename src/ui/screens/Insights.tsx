@@ -1,3 +1,4 @@
+import { ProgressCoach } from '../ProgressCoach';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AppData } from '../store';
 import { findWorkout } from '../store';
@@ -91,6 +92,7 @@ function Home({ L, answers, notShown }: { L: LabData; answers: Answer[]; notShow
     <>
       <PageHead eyebrow={fmtDate(L.t)} title="Insights" help="insights"><a class="lb-jump" href="#/lab">The Lab: every chart and measure</a></PageHead>
       <p class="in-hello">{hello} {answers.length ? (can ? `Here is what your data can answer today.` : 'It is early days: here is what Antogo will answer as your rides come in.') : 'Nothing is recorded yet.'}</p>
+      <div class="progress in-coach"><ProgressCoach coach={L.coach} /></div>
       <div class="in-cards">
         {answers.map((a) => (
           <a key={a.id} class={`in-card${a.strength === 'early' ? ' early' : ''}`} href={`#/insights/${a.id}`} data-question={a.id} data-strength={a.strength}>

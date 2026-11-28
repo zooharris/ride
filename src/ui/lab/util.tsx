@@ -28,7 +28,7 @@ export function dayTicks(from: string, to: string): Array<[number, string]> {
 }
 
 /** A small chart for a tile: lines and bars from plain arrays, drawn in the instrument look. Only what is passed is drawn. */
-export function Mini({ lines = [], bars, label, h = 64 }: { lines?: Array<{ vals: Array<number | null>; color?: string; dash?: string }>; bars?: { vals: number[]; color?: string; colors?: string[] }; label: string; h?: number }) {
+export function Mini({ lines = [], bars, label, h = 64 }: { lines?: Array<{ vals: Array<number | null>; color?: string; dash?: string; width?: number; area?: boolean; rainbow?: string[] }>; bars?: { vals: number[]; color?: string; colors?: string[] }; label: string; h?: number }) {
   const W = 300, padL = 4, padR = 6, padT = 6, base = h - 9;
   const all = [...lines.flatMap((l) => l.vals.filter((v): v is number => v != null)), ...(bars ? [0, ...bars.vals] : [])];
   let lo = Math.min(...all), hi = Math.max(...all);
@@ -47,7 +47,17 @@ export function Mini({ lines = [], bars, label, h = 64 }: { lines?: Array<{ vals
       {lines.map((l, k) => {
         let d = '', pen = false;
         l.vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i, l.vals.length).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
-        return <path key={k} d={d} fill="none" stroke={l.color ?? 'var(--accent)'} stroke-width="1.4" stroke-dasharray={l.dash} stroke-linejoin="round" vector-effect="non-scaling-stroke" />;
+        const gid = `mini-${label.replace(/[^a-z0-9]/gi, '').slice(0, 24)}-${k}`;
+        const col = l.color ?? 'var(--accent)';
+        const firstI = l.vals.findIndex((v) => v != null), lastI = l.vals.length - 1 - [...l.vals].reverse().findIndex((v) => v != null);
+        return <g key={k}>
+          {(l.area || l.rainbow) && <defs>
+            {l.rainbow && <linearGradient id={`${gid}-r`} x1="0" x2="1" y1="0" y2="0">{l.rainbow.map((c, j) => <stop key={j} offset={j / (l.rainbow!.length - 1)} style={`stop-color:${c}`} />)}</linearGradient>}
+            {l.area && <linearGradient id={`${gid}-a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" style={`stop-color:${col};stop-opacity:.3`} /><stop offset="1" style={`stop-color:${col};stop-opacity:0`} /></linearGradient>}
+          </defs>}
+          {l.area && firstI >= 0 && d && <path d={`${d}L${x(lastI, l.vals.length).toFixed(1)},${base}L${x(firstI, l.vals.length).toFixed(1)},${base}Z`} fill={l.rainbow ? `url(#${gid}-r)` : `url(#${gid}-a)`} opacity={l.rainbow ? 0.18 : 1} />}
+          <path d={d} fill="none" stroke={l.rainbow ? `url(#${gid}-r)` : col} stroke-width={l.width ?? 1.4} stroke-dasharray={l.dash} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        </g>;
       })}
       {n > 0 && null}
     </svg>

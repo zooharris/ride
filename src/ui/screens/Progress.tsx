@@ -82,7 +82,11 @@ const InfoCtx = createContext<{ open: string | null; set: (id: string | null) =>
 interface BigApi { open: (t: LargeTarget) => void; has: (measure: string) => boolean; inBig: boolean }
 const BigCtx = createContext<BigApi>({ open: () => {}, has: () => false, inBig: false });
 
-export function Progress({ data, params }: { data: AppData; params?: URLSearchParams }) {
+/**
+ * The Progress page's cards. Since 28 Nov 2026 they live in the Lab: `embed` draws just the cards named, with their
+ * own period picker and without the page's heading, ticker and coach panel, so nothing the page did is lost.
+ */
+export function Progress({ data, params, embed }: { data: AppData; params?: URLSearchParams; embed?: { only: string[] } }) {
   const profile = data.profile!;
   const t = today();
   // The chips and the range live in the URL (so Today can open this page with HRV on, and Back returns),
@@ -145,15 +149,16 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
     return out;
   }, [data.rides, profile]);
   // Which card or measure is open large: in the address, so Back from a day opened there returns to it.
-  const [big, setBig] = useState<LargeTarget | null>(() => { const id = params?.get('big'); return id ? { id, card: params?.get('bc') ?? id } : null; });
-  const openBig = (tg: LargeTarget) => { replaceQuery({ big: tg.id, bc: tg.card }, URL_KEYS); setBig(tg); };
-  const closeBig = () => { replaceQuery({}, [...URL_KEYS, 'bc']); setBig(null); };
+  const [big, setBig] = useState<LargeTarget | null>(() => { const id = embed ? null : params?.get('big'); return id ? { id, card: params?.get('bc') ?? id } : null; });
+  const openBig = (tg: LargeTarget) => { if (!embed) replaceQuery({ big: tg.id, bc: tg.card }, URL_KEYS); setBig(tg); };
+  const closeBig = () => { if (!embed) replaceQuery({}, [...URL_KEYS, 'bc']); setBig(null); };
   const bigApi: BigApi = { open: openBig, has: (m) => measures.count(m) >= 2, inBig: false };
 
   const [grid, gridW] = useWidth<HTMLDivElement>(960);
   const cols = gridW >= 900 ? 3 : gridW >= 600 ? 2 : 1;
 
   if (!data.rides.length) {
+    if (embed) return <div class="empty"><b>Nothing to chart yet.</b><p class="small muted">This fills in from your activities.</p></div>;
     return (
       <div>
         <PageHead title="Progress" help="progress" />
@@ -203,6 +208,25 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
   const columns = columnsFor(rest.map((c) => c.id), cols, heights);
   const byId = new Map(rest.map((c) => [c.id, c]));
 
+  const largeEl = big && (big.id.startsWith('card:')
+    ? (() => { const c = cards.find((x) => x.id === big.id.slice(5)); return c ? <BigCard title={CARD_TITLES[c.id] ?? ''} onClose={closeBig}><BigCtx.Provider value={{ ...bigApi, inBig: true }}>{c.el(true)}</BigCtx.Provider></BigCard> : null; })()
+    : measures.def(big.id) ? <LargeView measures={measures} target={big} pageFrom={from} pageTo={t} pageRange={range as LargeRange} rides={data.rides}
+        hardDays={hardDays} testDays={tests.map((x) => x.date)} asideDays={data.dayNotes.filter((n) => n.badWellness).map((n) => n.date)} coach={coach} onClose={closeBig} /> : null);
+  if (embed) {
+    const mine = cards.filter((c) => embed.only.includes(c.id));
+    return (
+      <InfoCtx.Provider value={{ open: openInfo, set: setOpenInfo }}>
+      <BigCtx.Provider value={bigApi}>
+        <div class="progress embed">
+          <div class="pe-head"><span class="small muted">The period for {mine.length === 1 ? 'this card' : 'these cards'}</span><RangePicker value={range} onChange={pick} keys={['6w', '3m', '6m', '1y', 'all']} /></div>
+          {mine.length ? mine.map((c) => <div key={c.id} class="pg-cell pe-cell">{c.el(c.id === 'fitness')}</div>) : <div class="empty"><b>Nothing to show here yet.</b><p class="small muted">This card appears once you have the data it needs.</p></div>}
+        </div>
+        {largeEl}
+      </BigCtx.Provider>
+      </InfoCtx.Provider>
+    );
+  }
+
   return (
     <InfoCtx.Provider value={{ open: openInfo, set: setOpenInfo }}>
     <BigCtx.Provider value={bigApi}>
@@ -225,10 +249,7 @@ export function Progress({ data, params }: { data: AppData; params?: URLSearchPa
           </div>
         </div>
       </div>
-      {big && (big.id.startsWith('card:')
-        ? (() => { const c = cards.find((x) => x.id === big.id.slice(5)); return c ? <BigCard title={CARD_TITLES[c.id] ?? ''} onClose={closeBig}><BigCtx.Provider value={{ ...bigApi, inBig: true }}>{c.el(true)}</BigCtx.Provider></BigCard> : null; })()
-        : measures.def(big.id) ? <LargeView measures={measures} target={big} pageFrom={from} pageTo={t} pageRange={range as LargeRange} rides={data.rides}
-            hardDays={hardDays} testDays={tests.map((x) => x.date)} asideDays={data.dayNotes.filter((n) => n.badWellness).map((n) => n.date)} coach={coach} onClose={closeBig} /> : null)}
+      {largeEl}
     </BigCtx.Provider>
     </InfoCtx.Provider>
   );

@@ -8,14 +8,13 @@ import { cachedRecording, corrected, recordingOf } from '../../sync/ownService';
 import { fetchPowerStream } from '../../sync/intervals';
 import { credentials } from '../../sync/syncService';
 import { weekStart } from '../derived';
-import { ZONE_VAR } from '../Profile';
+import { C, HZC } from './look';
 import { go } from '../router';
 import { ChartShell, Kv, Legend, Scope, type Series } from './Scope';
 import type { LabChart } from './types';
 import type { LabData } from './useLab';
 import { Mini, dayN, dayTicks, hm, longDay, mean, plural, sg, short } from './util';
 
-const INK = 'var(--ink)', MID = 'var(--ink-2)';
 const periodWords = (L: LabData) => (L.period === 'custom' ? 'these dates' : L.period === 'plan' ? 'this plan' : L.period === 'all' ? 'all your history' : `these ${PERIOD_LABEL[L.period]}`);
 
 // ---------- heart rate in full ----------
@@ -58,16 +57,17 @@ function HeartPage({ L }: { L: LabData }) {
   const rides = d ? L.rides.filter((r) => r.date === d && r.averageHr) : [];
   return (
     <ChartShell
+      context={<>Heart rate in full · {periodWords(L)}</>}
       lead={all ? <>Over {periodWords(L)} your heart spent <b>{Math.round((tot[0] + tot[1]) / all * 100)}%</b> of its recorded time in zones 1 and 2{hi[1] ? <>, and reached <b>{Math.round(hi[1])} bpm</b>{peak.length ? ' for thirty seconds' : ''} on {short(hi[0])}</> : null}.{half ? ` At ${Math.round(band!.lo * 100)} to ${Math.round(band!.hi * 100)}% of FTP it averaged ${Math.round(early)} bpm in the first half of the period and ${Math.round(late)} in the second.` : ''}</>
         : <>Heart rate on your rides over {periodWords(L)}.</>}
       readout={d ? <>
         <div class="lc-when">{longDay(d)}</div>
         {rides.length ? <Kv rows={rides.flatMap((r) => [{ name: r.name, value: `${Math.round(r.averageHr!)} bpm avg` }, ...(r.maxHr ? [{ name: 'Highest', value: `${Math.round(r.maxHr)} bpm` }] : [])])} /> : <p>No ride with heart rate that day.</p>}
-        {wk && <><hr /><div class="lc-when">Week of {short(wk.start)}</div><Kv rows={wk.seconds.slice(0, nz).map((s, z) => ({ name: `Heart-rate zone ${z + 1}`, value: s ? hm(s / 3600) : '–', color: ZONE_VAR[z], kind: 'block' as const })).reverse()} /></>}
+        {wk && <><hr /><div class="lc-when">Week of {short(wk.start)}</div><Kv rows={wk.seconds.slice(0, nz).map((s, z) => ({ name: `Heart-rate zone ${z + 1}`, value: s ? hm(s / 3600) : '–', color: HZC[Math.min(z, HZC.length - 1)], kind: 'block' as const })).reverse()} /></>}
       </> : <>
         <div class="lc-when">The whole period</div>
         <div class="lc-big">{hm(all / 3600)} <small>with heart rate</small></div>
-        <Kv rows={tot.slice(0, nz).map((s, z) => ({ name: `Heart-rate zone ${z + 1}`, value: s ? `${hm(s / 3600)} · ${Math.round(s / Math.max(1, all) * 100)}%` : '–', color: ZONE_VAR[z], kind: 'block' as const })).reverse()} />
+        <Kv rows={tot.slice(0, nz).map((s, z) => ({ name: `Heart-rate zone ${z + 1}`, value: s ? `${hm(s / 3600)} · ${Math.round(s / Math.max(1, all) * 100)}%` : '–', color: HZC[Math.min(z, HZC.length - 1)], kind: 'block' as const })).reverse()} />
         <p>Run a finger across any plot to read a day and its week.</p>
       </>}
       how={<>The first plot stacks the hours your heart spent in each of your heart-rate zones, week by week, every activity with heart rate together. The second shows each ride: its average heart rate as a filled point and the highest it reached as a ring, against your threshold heart rate.{band ? ' The third shows what your heart did at one steady level of power, ride by ride.' : ''}</>}
@@ -77,17 +77,17 @@ function HeartPage({ L }: { L: LabData }) {
     >
       <div><h3 class="lc-sub">Hours in each heart-rate zone <em>by week</em></h3>
         <Scope label="Hours in each heart-rate zone, by week" height={210} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="h" yMin={0}
-          stack={{ xs: weeks.map((w) => x(w.start) + 3), barW: 5, parts: Array.from({ length: nz }, (_, z) => ({ name: `Zone ${z + 1}`, color: ZONE_VAR[z], vals: weeks.map((w) => w.seconds[z] / 3600) })) }}
+          stack={{ xs: weeks.map((w) => x(w.start) + 3), barW: 5, parts: Array.from({ length: nz }, (_, z) => ({ name: `Zone ${z + 1}`, color: HZC[Math.min(z, HZC.length - 1)], vals: weeks.map((w) => w.seconds[z] / 3600) })) }}
           snap={weeks.map((w) => Math.max(0, x(w.start) + 3))} at={at} onAt={setAt} />
-        <Legend items={Array.from({ length: nz }, (_, z) => ({ name: `Zone ${z + 1}`, color: ZONE_VAR[z], kind: 'block' as const }))} /></div>
+        <Legend items={Array.from({ length: nz }, (_, z) => ({ name: `Zone ${z + 1}`, color: HZC[Math.min(z, HZC.length - 1)], kind: 'block' as const }))} /></div>
       <div><h3 class="lc-sub">Each ride <em>average, and the highest it reached</em></h3>
         <Scope label="Average and highest heart rate, ride by ride" height={190} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="bpm"
-          series={[{ name: 'Highest', kind: 'dots', pts: top.map(([dd, v]) => [x(dd), v]), color: MID, hollow: true, width: 2.6 }, { name: 'Average', kind: 'dots', pts: avg.map(([dd, v]) => [x(dd), v]), color: INK, width: 2.4 }]}
+          series={[{ name: 'Highest', kind: 'dots', pts: top.map(([dd, v]) => [x(dd), v]), color: C.watch, hollow: true, width: 2.8 }, { name: 'Average', kind: 'dots', pts: avg.map(([dd, v]) => [x(dd), v]), color: C.sprint, width: 2.8 }]}
           rules={L.profile.lthr ? [{ y: L.profile.lthr, label: `Threshold · ${L.profile.lthr} bpm` }] : []} snap={avg.map(([dd]) => x(dd))} at={at} onAt={setAt} onPick={(v) => { const r = L.rides.find((q) => q.date === addDays(L.from, v) && q.averageHr); if (r) go(`rides/${r.id}`); }} />
-        <Legend items={[{ name: 'Average of the ride', color: INK, kind: 'dot' }, { name: peak.length ? 'Highest held for 30 seconds' : 'Highest reached', color: MID, kind: 'ring' }, { name: 'Your threshold heart rate', color: MID, dash: '5 4' }]} /></div>
+        <Legend items={[{ name: 'Average of the ride', color: C.sprint, kind: 'dot' }, { name: peak.length ? 'Highest held for 30 seconds' : 'Highest reached', color: C.watch, kind: 'ring' }, { name: 'Your threshold heart rate', color: C.white, dash: '5 4' }]} /></div>
       {band && <div><h3 class="lc-sub">Heart rate at {Math.round(band.lo * 100)} to {Math.round(band.hi * 100)}% of FTP <em>the level of power most of your rides have; after the first ten minutes</em></h3>
         <Scope label="Heart rate at one steady level of power, ride by ride" height={170} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="bpm"
-          series={[{ name: 'Heart rate at that power', kind: 'dots', pts: band.pts.map((p) => [x(p.date), p.hr]), color: INK, width: 2.4 }]} snap={band.pts.map((p) => x(p.date))} at={at} onAt={setAt} /></div>}
+          series={[{ name: 'Heart rate at that power', kind: 'dots', pts: band.pts.map((p) => [x(p.date), p.hr]), color: C.sprint, width: 3 }]} snap={band.pts.map((p) => x(p.date))} at={at} onAt={setAt} /></div>}
     </ChartShell>
   );
 }
@@ -106,8 +106,8 @@ export const heartChart: LabChart = {
     return {
       mini: has ? <svg class="lb-spark" viewBox={`0 0 ${W} 64`} preserveAspectRatio="none" role="img" aria-label="Your hours in each heart-rate zone, week by week">
         <line class="lb-ax" x1="4" x2={W - 6} y1={base} y2={base} />
-        {weeks.map((w, k) => { let y = base; const bw = (W - 10) / n; return <g key={k}>{w.seconds.map((s, z) => { const hh = s / max * (base - 6); y -= hh; return s > 0 ? <rect key={z} x={4 + k * bw + bw * 0.14} width={bw * 0.72} y={y} height={hh} fill={ZONE_VAR[z]} /> : null; })}</g>; })}
-      </svg> : <Mini label="Your average heart rate, ride by ride" lines={[{ vals: avg.map((p) => p[1]), color: INK }]} />,
+        {weeks.map((w, k) => { let y = base; const bw = (W - 10) / n; return <g key={k}>{w.seconds.map((s, z) => { const hh = s / max * (base - 6); y -= hh; return s > 0 ? <rect key={z} x={4 + k * bw + bw * 0.14} width={bw * 0.72} y={y} height={hh} fill={HZC[Math.min(z, HZC.length - 1)]} /> : null; })}</g>; })}
+      </svg> : <Mini label="Your average heart rate, ride by ride" lines={[{ vals: avg.map((p) => p[1]), color: C.sprint, width: 1.8 }]} />,
       figure: avg.length ? `${Math.round(mean(avg.map((p) => p[1])))} bpm` : undefined, label: avg.length ? `average across ${plural(avg.length, 'day')} with rides` : 'no rides with heart rate in this period',
     };
   },
@@ -129,6 +129,7 @@ function BreathPage({ L }: { L: LabData }) {
   const val = (id: string) => (d ? M.values(id).get(d) : undefined);
   return (
     <ChartShell
+      context={<>Breathing across the season · {periodWords(L)}</>}
       lead={vt1.length || vt2.length ? <>Your breathing thresholds, as your tests read them: {vt1.length ? <>the first at <b>{Math.round(vt1[vt1.length - 1][1])} W</b>{chg(vt1) ? ` (${sg(chg(vt1)!)} W in this period)` : ''}</> : null}{vt1.length && vt2.length ? ', ' : ''}{vt2.length ? <>the second at <b>{Math.round(vt2[vt2.length - 1][1])} W</b>{chg(vt2) ? ` (${sg(chg(vt2)!)} W)` : ''}</> : null}. These are measured from your breathing, not worked out from power.</>
         : ve.length ? <>At endurance power you breathed <b>{ve[ve.length - 1][1].toFixed(0)} litres a minute</b> on your newest ride with a sensor{chg(ve) != null ? `, ${Math.abs(chg(ve)!) < 1 ? 'the same as' : `${Math.abs(chg(ve)!).toFixed(0)} ${chg(ve)! < 0 ? 'fewer' : 'more'} than`} at the start of ${periodWords(L)}` : ''}.</> : <>Breathing on your rides over {periodWords(L)}.</>}
       readout={d ? <>
@@ -147,13 +148,13 @@ function BreathPage({ L }: { L: LabData }) {
     >
       {(vt1.length > 0 || vt2.length > 0) && <div><h3 class="lc-sub">Both thresholds <em>each test that read them</em></h3>
         <Scope label="Breathing thresholds, each test" height={190} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="W"
-          series={[{ name: 'Second', kind: 'step', pts: vt2.map(([dd, v]) => [x(dd), v]), color: MID, dash: '5 3', width: 1.2 }, { name: 'First', kind: 'step', pts: vt1.map(([dd, v]) => [x(dd), v]), color: INK, width: 1.4 },
-            { name: 'Second', kind: 'dots', pts: vt2.map(([dd, v]) => [x(dd), v]), color: MID, hollow: true, width: 3 }, { name: 'First', kind: 'dots', pts: vt1.map(([dd, v]) => [x(dd), v]), color: INK, width: 3 }]} snap={snaps} at={at} onAt={setAt} />
-        <Legend items={[{ name: 'First threshold', color: INK, kind: 'dot' }, { name: 'Second threshold', color: MID, kind: 'ring' }]} /></div>}
+          series={[{ name: 'Second', kind: 'step', pts: vt2.map(([dd, v]) => [x(dd), v]), color: C.sprint, width: 1.8 }, { name: 'First', kind: 'step', pts: vt1.map(([dd, v]) => [x(dd), v]), color: C.end, width: 1.8 },
+            { name: 'Second', kind: 'dots', pts: vt2.map(([dd, v]) => [x(dd), v]), color: C.sprint, width: 4 }, { name: 'First', kind: 'dots', pts: vt1.map(([dd, v]) => [x(dd), v]), color: C.end, width: 4 }]} snap={snaps} at={at} onAt={setAt} />
+        <Legend items={[{ name: 'First threshold', color: C.end, kind: 'dot' }, { name: 'Second threshold', color: C.sprint, kind: 'dot' }]} /></div>}
       {ve.length > 0 && <div><h3 class="lc-sub">Air breathed at endurance power <em>each ride with a sensor</em></h3>
-        <Scope label="Air breathed each minute at endurance power, ride by ride" height={180} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="L/min" series={[{ name: 'Air breathed', kind: 'dots', pts: ve.map(([dd, v]) => [x(dd), v]), color: INK, width: 2.6 }]} snap={snaps} at={at} onAt={setAt} /></div>}
+        <Scope label="Air breathed each minute at endurance power, ride by ride" height={180} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="L/min" series={[{ name: 'Air breathed', kind: 'dots', pts: ve.map(([dd, v]) => [x(dd), v]), color: C.cyan, width: 2.8, opacity: 0.8 }, ...(ve.length >= 5 ? [{ name: 'Trend: the average of five rides', kind: 'line' as const, pts: ve.map(([dd], i) => { const w5 = ve.slice(Math.max(0, i - 4), i + 1); return [x(dd), w5.reduce((q, v) => q + v[1], 0) / w5.length] as [number, number]; }), color: C.cyan, width: 2.2, smooth: true, glow: true }] : [])]} snap={snaps} at={at} onAt={setAt} /></div>}
       {br.length > 0 && <div><h3 class="lc-sub">Breaths a minute at endurance power</h3>
-        <Scope label="Breaths a minute at endurance power, ride by ride" height={150} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="br/min" series={[{ name: 'Breaths a minute', kind: 'dots', pts: br.map(([dd, v]) => [x(dd), v]), color: INK, width: 2.6 }]} snap={snaps} at={at} onAt={setAt} /></div>}
+        <Scope label="Breaths a minute at endurance power, ride by ride" height={150} x0={0} x1={dayN(L.from, L.to)} xTicks={ticks} yUnit="br/min" series={[{ name: 'Breaths a minute', kind: 'dots', pts: br.map(([dd, v]) => [x(dd), v]), color: C.purple, width: 2.8 }]} snap={snaps} at={at} onAt={setAt} /></div>}
     </ChartShell>
   );
 }
@@ -167,7 +168,7 @@ export const breathChart: LabChart = {
   },
   tile: (L) => {
     const M = L.measures, ve = inRange(M.values('veEndurance'), L.from, L.to), v1 = inRange(M.values('vt1'), L.from, L.to);
-    return { mini: <Mini label="Air breathed at endurance power, ride by ride" lines={[{ vals: (ve.length ? ve : v1).map((p) => p[1]), color: INK }]} />,
+    return { mini: <Mini label="Air breathed at endurance power, ride by ride" lines={[{ vals: (ve.length ? ve : v1).map((p) => p[1]), color: C.cyan, width: 1.8 }]} />,
       figure: v1.length ? `${Math.round(v1[v1.length - 1][1])} W` : ve.length ? `${ve[ve.length - 1][1].toFixed(0)} L/min` : undefined, label: v1.length ? 'first breathing threshold' : ve.length ? 'air breathed at endurance power' : 'nothing in this period' };
   },
   Page: BreathPage,
@@ -197,6 +198,7 @@ function PedalPage({ L }: { L: LabData }) {
   const unit = useP ? 'W' : L.imperial ? 'mph' : 'km/h';
   return (
     <ChartShell
+      context={<>How you pedal · {periodWords(L)}</>}
       lead={<>Across {plural(rides.length, 'ride')} in {periodWords(L)} you pedalled at <b>{Math.round(cad)} rpm</b> on average{slope != null ? <>, {Math.abs(slope) < 1 ? 'much the same whether a ride was easy or hard' : `about ${Math.abs(slope).toFixed(0)} rpm ${slope > 0 ? 'faster' : 'slower'} for each 100 W harder a ride was`}</> : null}{coast.length ? <> and coasted for {Math.round(mean(coast.map((q) => q.coastingSeconds! / q.seconds * 100)))}% of your riding time</> : null}.</>}
       readout={r ? <>
         <div class="lc-when">{longDay(r.date)}</div>
@@ -210,12 +212,12 @@ function PedalPage({ L }: { L: LabData }) {
     >
       {xs.length >= 3 && <div><h3 class="lc-sub">Cadence against {useP ? 'power' : 'speed'} <em>each point a whole ride</em></h3>
         <Scope label={`Average cadence against average ${useP ? 'power' : 'speed'}, each ride a point`} height={260} x0={lo - pad} x1={hi + pad} xTicks={Array.from({ length: 6 }, (_, i) => { const v = lo + (hi - lo) * i / 5; return [v, `${useP ? Math.round(v) : v.toFixed(1)} ${unit}`] as [number, string]; })} yUnit="rpm"
-          series={[{ name: 'Each ride', kind: 'dots', pts: xs.map((q) => [xv(q), q.averageCadence!]), color: INK, width: 3 }]} rules={[{ y: cad, label: `Your average · ${Math.round(cad)} rpm` }]}
+          series={[{ name: 'Each ride', kind: 'dots', pts: xs.map((q) => [xv(q), q.averageCadence!]), color: C.purple, width: 3.4, opacity: 0.8 }]} rules={[{ y: cad, label: `Your average · ${Math.round(cad)} rpm` }]}
           snap={xs.map(xv)} at={at} onAt={(v) => { setAt(v); if (v != null) setAtDay(null); }} onPick={() => { if (r) go(`rides/${r.id}`); }} /></div>}
       <div><h3 class="lc-sub">Cadence, ride by ride</h3>
-        <Scope label="Average cadence, ride by ride" height={160} x0={0} x1={dayN(L.from, L.to)} xTicks={dayTicks(L.from, L.to)} yUnit="rpm" series={[{ name: 'Cadence', kind: 'dots', pts: rides.map((q) => [x(q.date), q.averageCadence!]), color: INK, width: 2.4 }]}
+        <Scope label="Average cadence, ride by ride" height={160} x0={0} x1={dayN(L.from, L.to)} xTicks={dayTicks(L.from, L.to)} yUnit="rpm" series={[{ name: 'Cadence', kind: 'dots', pts: rides.map((q) => [x(q.date), q.averageCadence!]), color: C.purple, width: 2.8, opacity: 0.8 }]}
           snap={rides.map((q) => x(q.date))} at={atDay} onAt={(v) => { setAtDay(v); if (v != null) setAt(null); }} /></div>
-      <Legend items={[{ name: 'A ride', color: INK, kind: 'dot' }, { name: 'Your average cadence', color: MID, dash: '5 4' }]} />
+      <Legend items={[{ name: 'A ride', color: C.purple, kind: 'dot' }, { name: 'Your average cadence', color: C.white, dash: '5 4' }]} />
     </ChartShell>
   );
 }
@@ -228,7 +230,7 @@ export const pedalChart: LabChart = {
   },
   tile: (L) => {
     const rides = pedalRides(L);
-    return { mini: <Mini label="Your average cadence, ride by ride" lines={[{ vals: rides.map((r) => r.averageCadence!), color: INK }]} />, figure: rides.length ? `${Math.round(mean(rides.map((r) => r.averageCadence!)))} rpm` : undefined, label: rides.length ? `average across ${plural(rides.length, 'ride')}` : 'no rides with cadence in this period' };
+    return { mini: <Mini label="Your average cadence, ride by ride" lines={[{ vals: rides.map((r) => r.averageCadence!), color: C.purple, width: 1.8 }]} />, figure: rides.length ? `${Math.round(mean(rides.map((r) => r.averageCadence!)))} rpm` : undefined, label: rides.length ? `average across ${plural(rides.length, 'ride')}` : 'no rides with cadence in this period' };
   },
   Page: PedalPage,
 };
@@ -260,6 +262,8 @@ function defaultPair(rides: Ride[]): [string, string] | undefined {
 }
 const compareRides = (L: LabData) => L.rides.filter((r) => r.sport === 'ride' && r.date >= L.from && r.date <= L.to && (r.averageHr || r.averagePower)).sort((a, b) => a.date.localeCompare(b.date));
 
+const sameDay = (a?: { id: string }, b?: { id: string }) => !a || !b || a.id === b.id;
+
 function ComparePage({ L }: { L: LabData }) {
   const rides = useMemo(() => compareRides(L), [L.rides, L.from, L.to]);
   const first = useMemo(() => defaultPair(rides), [rides]);
@@ -285,7 +289,11 @@ function ComparePage({ L }: { L: LabData }) {
   const ra = recs[ids[0]], rb = recs[ids[1]];
   const end = Math.max(1, ...(ra ?? []).map((p) => p.t), ...(rb ?? []).map((p) => p.t));
   const ticks: Array<[number, string]> = Array.from({ length: Math.floor(end / (end > 120 ? 30 : end > 50 ? 10 : 5)) + 1 }, (_, i) => { const v = i * (end > 120 ? 30 : end > 50 ? 10 : 5); return [v, `${v} min`]; });
-  const ser = (rec: typeof ra, key: 'w' | 'hr', color: string, dash?: string): Series => ({ name: key, kind: 'line', pts: (rec ?? []).filter((p) => p[key] != null).map((p) => [p.t, p[key]!]), color, dash, width: dash ? 1.2 : 1.6 });
+  const ser = (rec: typeof ra, key: 'w' | 'hr', color: string, later?: boolean): Series => ({ name: key, kind: 'line', pts: (rec ?? []).filter((p) => p[key] != null).map((p) => [p.t, p[key]!]), color, width: later ? 2 : 1.4, glow: later, area: later ? 0.1 : undefined });
+  // Beats a minute the later ride ran below the earlier, half-minute by half-minute, where both have a reading.
+  const hrB = new Map((rb ?? []).filter((p) => p.hr != null).map((p) => [p.t, p.hr!]));
+  const saved = sameDay(a, b) ? [] : (ra ?? []).filter((p) => p.hr != null && hrB.has(p.t)).map((p) => [p.t, (dayN(a!.date, b!.date) >= 0 ? p.hr! - hrB.get(p.t)! : hrB.get(p.t)! - p.hr!)] as [number, number]);
+  const savedAvg = saved.length ? saved.reduce((q, v) => q + v[1], 0) / saved.length : undefined;
   const hasW = [ra, rb].some((r) => r?.some((p) => p.w != null)), hasHr = [ra, rb].some((r) => r?.some((p) => p.hr != null));
   const pick = (which: 0 | 1) => (
     <label class="lc-pick">{which ? 'against' : 'Compare'} <select value={ids[which]} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; setIds(which ? [ids[0], v] : [v, ids[1]]); }}>
@@ -296,24 +304,26 @@ function ComparePage({ L }: { L: LabData }) {
   const loading = ra === undefined || rb === undefined, missing = ra === null || rb === null;
   return (
     <ChartShell
+      context={<>Two rides compared</>}
       lead={a && b ? <>{a.name === b.name ? <>The same ride, <b>{a.name}</b>, {plural(Math.abs(dayN(a.date, b.date)), 'day')} apart</> : <>{a.name} on {short(a.date)} against {b.name} on {short(b.date)}</>}{dW != null ? <>: average power {Math.abs(dW) < 1.5 ? 'the same' : `${Math.round(Math.abs(dW))} W ${dW > 0 ? 'higher' : 'lower'}`} the second time</> : null}{dH != null ? <>{dW != null ? ', ' : ': '}average heart rate <b>{Math.abs(dH) < 1 ? 'the same' : `${Math.round(Math.abs(dH))} beats ${dH > 0 ? 'higher' : 'lower'}`}</b></> : null}.</> : <>Choose two rides.</>}
       readout={<>
         <div class="lc-when">{at != null ? `${at} minutes in` : 'The whole of each ride'}</div>
         <Kv rows={[
-          { name: a ? `${short(a.date)}` : 'First', value: at != null ? `${pa?.w != null ? `${Math.round(pa.w)} W` : '–'} · ${pa?.hr != null ? `${Math.round(pa.hr)} bpm` : '–'}` : `${a?.averagePower ? `${Math.round(a.averagePower)} W` : '–'} · ${a?.averageHr ? `${Math.round(a.averageHr)} bpm` : '–'}`, color: MID, dash: '5 3' },
-          { name: b ? `${short(b.date)}` : 'Second', value: at != null ? `${pb?.w != null ? `${Math.round(pb.w)} W` : '–'} · ${pb?.hr != null ? `${Math.round(pb.hr)} bpm` : '–'}` : `${b?.averagePower ? `${Math.round(b.averagePower)} W` : '–'} · ${b?.averageHr ? `${Math.round(b.averageHr)} bpm` : '–'}`, color: INK },
+          { name: a ? `${short(a.date)}` : 'First', value: at != null ? `${pa?.w != null ? `${Math.round(pa.w)} W` : '–'} · ${pa?.hr != null ? `${Math.round(pa.hr)} bpm` : '–'}` : `${a?.averagePower ? `${Math.round(a.averagePower)} W` : '–'} · ${a?.averageHr ? `${Math.round(a.averageHr)} bpm` : '–'}`, color: C.grey, dash: '5 3' },
+          { name: b ? `${short(b.date)}` : 'Second', value: at != null ? `${pb?.w != null ? `${Math.round(pb.w)} W` : '–'} · ${pb?.hr != null ? `${Math.round(pb.hr)} bpm` : '–'}` : `${b?.averagePower ? `${Math.round(b.averagePower)} W` : '–'} · ${b?.averageHr ? `${Math.round(b.averageHr)} bpm` : '–'}`, color: C.gold },
         ]} />
         {a && <p><a href={`#/rides/${a.id}`}>Open {short(a.date)}</a>{b && <> · <a href={`#/rides/${b.id}`}>Open {short(b.date)}</a></>}</p>}
         {loading && <p>Reading the two recordings…</p>}
         {missing && <p>A ride here has no recording that could be read, so only its totals can be compared.</p>}
       </>}
-      legend={<><Legend items={[{ name: a ? `${short(a.date)} · ${a.name}` : 'First', color: MID, dash: '5 3' }, { name: b ? `${short(b.date)} · ${b.name}` : 'Second', color: INK }]} /><div class="lc-picks">{pick(0)}{pick(1)}</div></>}
-      how={<>Two rides laid over each other from their starts, averaged over each half-minute so they can be read. The dashed line is the earlier ride chosen, the solid line the later. Power is above, heart rate below. Run a finger across to read both at any minute.</>}
-      plain={<>When the power lines sit together and the solid heart-rate line sits under the dashed one, the same work cost your heart less the second time. That is fitness you can see. It is a fair comparison only for rides done the same way: the same workout, indoors, is best.</>}
+      legend={<><Legend items={[{ name: a ? `${short(a.date)} · ${a.name}` : 'First', color: C.grey }, { name: b ? `${short(b.date)} · ${b.name}` : 'Second', color: C.gold }, ...(saved.length ? [{ name: 'Heartbeats saved', color: C.good, kind: 'block' as const }] : [])]} /><div class="lc-picks">{pick(0)}{pick(1)}</div></>}
+      how={<>Two rides laid over each other from their starts, averaged over each half-minute so they can be read. The grey line is the first ride chosen, the coloured line the second. Power is above, heart rate below, and beneath them the beats a minute the later ride ran under the earlier: green where it cost fewer, orange where more. Run a finger across to read both at any minute.</>}
+      plain={<>When the power lines sit together and the coloured heart-rate line sits under the grey one, the same work cost your heart less the second time. That is fitness you can see. It is a fair comparison only for rides done the same way: the same workout, indoors, is best.</>}
       question={{ id: 'fitter', ask: 'Am I getting fitter?' }}
     >
-      {hasW && <div><h3 class="lc-sub">Power <em>half-minute averages</em></h3><Scope label="Power through the two rides" height={200} x0={0} x1={end} xTicks={ticks} yUnit="W" yMin={0} series={[ser(ra, 'w', MID, '5 3'), ser(rb, 'w', INK)]} snap={(rb ?? ra ?? []).map((p) => p.t)} at={at} onAt={setAt} /></div>}
-      {hasHr && <div><h3 class="lc-sub">Heart rate <em>half-minute averages</em></h3><Scope label="Heart rate through the two rides" height={200} x0={0} x1={end} xTicks={ticks} yUnit="bpm" series={[ser(ra, 'hr', MID, '5 3'), ser(rb, 'hr', INK)]} snap={(rb ?? ra ?? []).map((p) => p.t)} at={at} onAt={setAt} /></div>}
+      {hasW && <div><h3 class="lc-sub">Power <em>half-minute averages</em></h3><Scope label="Power through the two rides" height={200} x0={0} x1={end} xTicks={ticks} yUnit="W" yMin={0} title="Power" series={[ser(ra, 'w', C.grey), ser(rb, 'w', C.gold, true)]} snap={(rb ?? ra ?? []).map((p) => p.t)} at={at} onAt={setAt} /></div>}
+      {hasHr && <div><h3 class="lc-sub">Heart rate <em>half-minute averages</em></h3><Scope label="Heart rate through the two rides" height={200} x0={0} x1={end} xTicks={ticks} yUnit="bpm" title="Heart rate" series={[ser(ra, 'hr', C.grey), ser(rb, 'hr', C.sprint, true)]} snap={(rb ?? ra ?? []).map((p) => p.t)} at={at} onAt={setAt} /></div>}
+      {saved.length > 4 && <Scope title={`Heartbeats saved · the later ride below the earlier${savedAvg != null ? ` · ${sg(savedAvg, 1)} a minute on average` : ''}`} label="Heart rate of the earlier ride less the later, through the ride" height={150} x0={0} x1={end} xTicks={ticks} yUnit="bpm" series={[{ name: 'Heartbeats saved', kind: 'bars', pts: saved, color: C.good, barW: 0.5, opacity: 0.85, colorAt: (y) => (y >= 0 ? C.good : C.watch) }]} rules={[{ y: 0, color: C.grey2, dash: '0' }]} snap={saved.map((p) => p[0])} at={at} onAt={setAt} yFmt={(v) => sg(v)} />}
       {!hasW && !hasHr && !loading && <p class="lb-note">Neither ride has a recording that could be read.</p>}
     </ChartShell>
   );
@@ -330,7 +340,7 @@ export const compareChart: LabChart = {
     const a = pair && rides.find((r) => r.id === pair[0]), b = pair && rides.find((r) => r.id === pair[1]);
     const same = rides.filter((r) => a && r.name === (b ?? a).name);
     const dH = a?.averageHr && b?.averageHr ? b.averageHr - a.averageHr : undefined;
-    return { mini: <Mini label={same.length ? `Average heart rate each time you rode ${same[0].name}` : 'Nothing to compare in this period'} lines={[{ vals: same.map((r) => r.averageHr ?? null), color: INK }]} />,
+    return { mini: <Mini label={same.length ? `Average heart rate each time you rode ${same[0].name}` : 'Nothing to compare in this period'} lines={[{ vals: same.map((r) => r.averageHr ?? null), color: C.gold, width: 1.8 }]} />,
       figure: dH != null ? `${sg(dH)} bpm` : undefined, label: a && b ? (a.name === b.name ? `${a.name}: ${short(a.date)} against ${short(b.date)}` : `${short(a.date)} against ${short(b.date)}`) : 'fewer than two rides in this period' };
   },
   Page: ComparePage,

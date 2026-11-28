@@ -211,7 +211,7 @@ function ChartPage({ L, chart, pins }: { L: LabData; chart: LabChart; pins: Pins
   const ready = chart.ready(L);
   return (
     <>
-      <PageHead back={{ label: 'The Lab', href: '#/lab' }} title={chart.name} help="insights"><PinButton pins={pins} k={`c:${chart.id}`} name={chart.name} /><PeriodPicker L={L} /></PageHead>
+      <PageHead back={{ label: 'The Lab', href: '#/lab' }} title={chart.name} help="insights"><PinButton pins={pins} k={`c:${chart.id}`} name={chart.name} />{!chart.ownPeriod && <PeriodPicker L={L} />}</PageHead>
       {ready.state === 'none'
         ? <div class="lb-panel"><p class="lb-lead" style="margin:0 0 10px">There is nothing to draw here yet. {ready.why}.</p><EmptyFrame h={120} label={`${chart.name}: nothing to draw yet`} /></div>
         : <chart.Page L={L} />}

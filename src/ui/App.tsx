@@ -28,7 +28,6 @@ import { buildReads, readsInput } from './reads';
 import { ensureJudgment } from './judgeService';
 import { Plan } from './screens/Plan';
 import { PlanPage } from './screens/PlanPage';
-import { Progress } from './screens/Progress';
 import { Lab } from './screens/Lab';
 import { Insights } from './screens/Insights';
 import { Help } from './screens/Help';
@@ -48,9 +47,8 @@ const TABS = [
   { path: 'today', label: 'Today', icon: <Icon.sun /> },
   { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
   { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
-  { path: 'progress', label: 'Progress', icon: <Icon.progress /> },
-  // Insights and the Lab (27 Nov 2026) sit beside Progress until they are approved. The Lab's own entry is in the wide menu;
-  // on a phone it is reached from Insights, or first, by the "opens on" choice.
+  // Insights and the Lab took Progress's place in the menu on 28 Nov 2026; every Progress card lives on in the Lab. The Lab's
+  // own entry is in the wide menu; on a phone it is reached from Insights, or first, by the "opens on" choice.
   { path: 'insights', label: 'Insights', icon: <Icon.insights /> },
   { path: 'lab', label: 'The Lab', icon: <Icon.lab />, railOnly: true },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
@@ -194,7 +192,8 @@ export function App() {
       break;
     }
     case 'plan': screen = id ? <PlanPage data={data} id={id} editing={route.parts[2] === 'edit'} /> : <Plan data={data} />; break;
-    case 'progress': screen = <Progress data={data} params={route.params} />; break;
+    // An old link to Progress opens what took its place: the fitness chart with its overlays, in the Lab.
+    case 'progress': screen = <Lab key="progress" data={data} parts={['lab', 'chart', 'overlay']} />; break;
     case 'insights': screen = <Insights key={route.path} data={data} parts={route.parts} params={route.params} />; break;
     case 'lab': screen = <Lab key={route.path} data={data} parts={route.parts} />; break;
     case 'rides': screen = <Rides key={route.raw} data={data} id={id} />; break;

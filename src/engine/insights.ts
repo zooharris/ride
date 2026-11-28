@@ -377,7 +377,7 @@ export function profile(f: InsightFacts): Answer | NotShown {
 
 export function enough(f: InsightFacts): Answer {
   const t = f.today, span = daysApart(firstDay(f), t) + 1, n = f.rides.length;
-  if (!n || span < ENOUGH_DAYS) return early('enough', `Antogo needs four weeks on record to judge a habit. You have ${n} ${n === 1 ? 'activity' : 'activities'} over ${n ? span : 0} ${span === 1 ? 'day' : 'days'}.`, n ? `So far: ${hm(f.rides.reduce((s, r) => s + r.seconds, 0) / 3600)} of activity.` : 'Nothing is recorded yet.', ['fitter', 'ready'], n ? { value: `${n}`, label: n === 1 ? 'activity so far' : 'activities so far' } : undefined);
+  if (!n || span < ENOUGH_DAYS) return early('enough', `Antogo needs four weeks on record to judge a habit. You have ${n} ${n === 1 ? 'activity' : 'activities'} over ${n ? span : 0} ${n && span === 1 ? 'day' : 'days'}.`, n ? `So far: ${hm(f.rides.reduce((s, r) => s + r.seconds, 0) / 3600)} of activity.` : 'Nothing is recorded yet.', ['fitter', 'ready'], n ? { value: `${n}`, label: n === 1 ? 'activity so far' : 'activities so far' } : undefined);
   const last4 = f.rides.filter((r) => r.date > addDays(t, -28));
   const mins = last4.reduce((s, r) => s + r.seconds, 0) / 60 / 4;
   const pieces: Piece[] = [{

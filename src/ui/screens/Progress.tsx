@@ -7,7 +7,7 @@ import { footLthr, rideLadders, ridePowerZones, zonePosition } from '../../engin
 import type { HrNumbers } from '../../engine/mornings';
 import type { Profile } from '../../engine/types';
 /** The heart-rate numbers a day or a ride is judged by. */
-function hrNumbers(p?: Profile | null): HrNumbers { return p ? { ladders: rideLadders(p), footLthr: footLthr(p) } : {}; }
+export function hrNumbers(p?: Profile | null): HrNumbers { return p ? { ladders: rideLadders(p), footLthr: footLthr(p) } : {}; }
 import { createContext } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { AppData } from '../store';
@@ -457,7 +457,7 @@ export interface PageFacts {
   context: string[];
 }
 
-function pageFacts({ data, from, to, range, series, curves, tests, plan, earliest }: {
+export function pageFacts({ data, from, to, range, series, curves, tests, plan, earliest }: {
   data: AppData; from: string; to: string; range: RangeKey; series: Fitness[]; curves: PowerCurve[]; tests: TestEntry[]; plan: ActivePlan | null; earliest: string;
 }): PageFacts {
   const profile = data.profile!;
@@ -830,8 +830,8 @@ function ZonesCard({ rides, from, to, readout, coach }: { rides: Ride[]; from: s
 }
 
 /** Every ride's power curve, read once and kept: shared by the power curve, Records, Durability and Breathing. */
-interface CurvesState { curves: PowerCurve[]; building: boolean; prog: { done: number; total: number; error?: string } | null }
-function useCurves(data: AppData): CurvesState {
+export interface CurvesState { curves: PowerCurve[]; building: boolean; prog: { done: number; total: number; error?: string } | null }
+export function useCurves(data: AppData): CurvesState {
   const [curves, setCurves] = useState<PowerCurve[]>([]);
   const [prog, setProg] = useState<{ done: number; total: number; error?: string } | null>(null);
   useEffect(() => {
@@ -1321,7 +1321,7 @@ function MorningAfterCard({ data, from, to, readout, coach }: { data: AppData; f
   );
 }
 
-interface TestEntry { key: string; date: string; kind: 'ramp' | '20min'; result?: TestResult; rideId?: string }
+export interface TestEntry { key: string; date: string; kind: 'ramp' | '20min'; result?: TestResult; rideId?: string }
 
 /**
  * Every fitness test: rides matched to a test on the calendar or named like one,
@@ -1329,7 +1329,7 @@ interface TestEntry { key: string; date: string; kind: 'ramp' | '20min'; result?
  * Results come from the player's recording when it is here, else from the
  * ride's streams if this device has opened it (opening it fills them in).
  */
-function useTests(data: AppData): TestEntry[] {
+export function useTests(data: AppData): TestEntry[] {
   const [out, setOut] = useState<TestEntry[]>([]);
   useEffect(() => {
     let alive = true;

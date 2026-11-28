@@ -40,6 +40,12 @@ export interface MeasureDef {
   normal?: boolean;
 }
 
+/** More measures added on top of the standing list (the Lab, 27 Nov 2026): their definitions and how each is worked out. */
+export interface MeasureExtra {
+  defs: MeasureDef[];
+  compute: (id: string, base: Measures) => Values | undefined;
+}
+
 export interface MeasureInput {
   rides: Ride[];
   wellness: Wellness[];
@@ -107,8 +113,8 @@ export class Measures {
   private normals = new Map<string, Map<string, [number, number]>>();
   /** The first day of the rider's history (a ride or a morning). */
   readonly start: string;
-  constructor(private input: MeasureInput) {
-    this.defs = measureDefs(input);
+  constructor(readonly input: MeasureInput, private extra?: MeasureExtra) {
+    this.defs = extra ? [...measureDefs(input), ...extra.defs] : measureDefs(input);
     this.byId = new Map(this.defs.map((d) => [d.id, d]));
     // Rides and mornings may arrive in any order: take the true earliest of either.
     let first = '';
@@ -220,7 +226,7 @@ export class Measures {
         for (const [d, l] of acc) out.set(d, l.reduce((a, b) => a + b, 0) / l.length);
         return out;
       }
-      default: return out;
+      default: return this.extra?.compute(id, this) ?? out;
     }
   }
 }

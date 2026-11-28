@@ -29,6 +29,7 @@ import { ensureJudgment } from './judgeService';
 import { Plan } from './screens/Plan';
 import { PlanPage } from './screens/PlanPage';
 import { Progress } from './screens/Progress';
+import { Lab } from './screens/Lab';
 import { Help } from './screens/Help';
 import { Export } from './screens/Export';
 import { PrintView } from './screens/Print';
@@ -47,6 +48,9 @@ const TABS = [
   { path: 'calendar', label: 'Calendar', icon: <Icon.calendar /> },
   { path: 'rides', label: 'Activities', icon: <Icon.ride size={22} /> },
   { path: 'progress', label: 'Progress', icon: <Icon.progress /> },
+  // Insights and the Lab (27 Nov 2026) sit beside Progress until they are approved. The Lab's own entry is in the wide menu;
+  // on a phone it is reached from Insights, or first, by the "opens on" choice.
+  { path: 'lab', label: 'The Lab', icon: <Icon.lab />, railOnly: true },
   { path: 'library', label: 'Library', icon: <Icon.library /> },
   { path: 'plan', label: 'Plan', icon: <Icon.plan /> },
   { path: 'settings', label: 'Settings', icon: <Icon.settings />, railOnly: true, railFirst: true },
@@ -189,6 +193,7 @@ export function App() {
     }
     case 'plan': screen = id ? <PlanPage data={data} id={id} editing={route.parts[2] === 'edit'} /> : <Plan data={data} />; break;
     case 'progress': screen = <Progress data={data} params={route.params} />; break;
+    case 'lab': screen = <Lab key={route.path} data={data} parts={route.parts} />; break;
     case 'rides': screen = <Rides key={route.raw} data={data} id={id} />; break;
     case 'settings': screen = <Settings data={data} />; break;
     case 'export': screen = <Export data={data} />; break;

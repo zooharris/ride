@@ -3,6 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './ui/App';
 import './styles/font.css';
 import './styles/global.css';
+import './styles/lab.css';
 import { initTheme } from './ui/theme';
 import { startHistory } from './ui/router';
 import { checkForUpdate, setRegistration, setUpdateReady } from './ui/update';

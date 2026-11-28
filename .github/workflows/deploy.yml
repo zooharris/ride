@@ -297,6 +297,11 @@ jobs:
         run: |
           set -euo pipefail
           test -f site/index.html
+          # The preview (28 Nov 2026) lives one folder down in the same site. A release must not remove it.
+          if git clone -q --depth 1 --branch site "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" old 2>/dev/null && [ -d old/preview ]; then
+            rm -rf site/preview; cp -r old/preview site/preview
+          fi
+          rm -rf old
           cd site
           git init -q -b site
           git add -A

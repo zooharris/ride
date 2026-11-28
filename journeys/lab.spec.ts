@@ -54,6 +54,9 @@ test('the Lab: families, search, a pin, a family list, and a measure opened larg
   await expect(page.locator('.lb-row[data-measure="restingHr"]')).toBeVisible();
   // The opening choice is kept.
   await page.getByRole('radio', { name: 'The Lab' }).click();
+  await expect(page.getByRole('radio', { name: 'The Lab' })).toHaveAttribute('aria-checked', 'true');
+  // The choice is written to the device a moment after the press: let it land before the app is closed.
+  await page.waitForTimeout(400);
   await page.reload();
   await go(page, '#/lab');
   await expect(page.getByRole('radio', { name: 'The Lab' })).toHaveAttribute('aria-checked', 'true');

@@ -136,6 +136,7 @@
 .lc-body { display: grid; grid-template-columns: minmax(0, 1fr) 262px; gap: 16px; align-items: start; background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 .lc-body.wide { grid-template-columns: minmax(0, 1fr); }
 .lc-plot { min-width: 0; display: grid; gap: 8px; }
+.lc-plot > * { min-width: 0; }
 .lc-read { background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; align-content: start; font-size: 13px; min-height: 180px; }
 .lc-read p { margin: 0; color: var(--ink-2); }
 .lc-read a { color: var(--accent); }
@@ -144,9 +145,9 @@
 .lc-big { font: 600 28px/1 var(--font); letter-spacing: -0.02em; color: var(--ink); }
 .lc-big small { font-size: 13px; color: var(--ink-2); font-weight: 500; letter-spacing: 0; }
 .lc-kv { display: grid; gap: 6px; }
-.lc-kv div { display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); align-items: baseline; }
+.lc-kv div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; color: var(--ink-2); align-items: baseline; }
 .lc-kv span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
-.lc-kv b { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.lc-kv b { color: var(--ink); font-weight: 600; margin-left: auto; text-align: right; }
 .lc-seg { margin-top: 8px; width: fit-content; }
 .lc-seg button { padding: 5px 11px; font-size: 12.5px; }
 .lc-how { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 15px; color: var(--ink-2); font-size: 13.5px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; }
@@ -185,3 +186,34 @@ a.lc-rec[href]:hover { background: var(--bg-3); }
   .lc-rec { grid-template-columns: 52px minmax(0, 1fr); }
   .lc-rec-v { grid-column: 1 / -1; }
 }
+
+/* time in zones: the chosen weeks, zone by zone */
+.lc-zhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; }
+.lc-zhead .lc-seg { margin: 0; }
+.lc-zrows { display: grid; gap: 7px; margin-top: 4px; }
+.lc-zrow { display: grid; grid-template-columns: 150px minmax(60px, 1fr) 70px 130px; gap: 12px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.lc-zrow > span:first-child { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); white-space: nowrap; }
+.lc-zrow small { color: var(--ink-3); font-size: 12px; }
+.lc-zbar { position: relative; height: 12px; border-left: 1px solid var(--line-2); }
+.lc-zbar i { position: absolute; left: 0; top: 2px; bottom: 2px; opacity: .9; }
+.lc-zbar u { position: absolute; left: 0; top: 0; bottom: 0; border: 1.5px solid var(--ink); border-left: 0; box-sizing: border-box; }
+.lc-zrow b { color: var(--ink); font-weight: 600; text-align: right; white-space: nowrap; }
+.lc-zrow em { font-style: normal; color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+
+/* the year in days: four strengths of the accent, a hollow square for a blank day */
+.lc-day { fill: transparent; stroke: var(--line); stroke-width: 1; background: transparent; box-shadow: inset 0 0 0 1px var(--line); border-radius: 2px; }
+.lc-day.l1 { fill: color-mix(in srgb, var(--accent) 24%, transparent); background: color-mix(in srgb, var(--accent) 24%, transparent); stroke: none; }
+.lc-day.l2 { fill: color-mix(in srgb, var(--accent) 48%, transparent); background: color-mix(in srgb, var(--accent) 48%, transparent); stroke: none; }
+.lc-day.l3 { fill: color-mix(in srgb, var(--accent) 74%, transparent); background: color-mix(in srgb, var(--accent) 74%, transparent); stroke: none; }
+.lc-day.l4 { fill: var(--accent); background: var(--accent); stroke: none; }
+.lc-day.in { stroke: var(--ink-3); stroke-width: 1; }
+.lc-day.at { stroke: var(--ink); stroke-width: 1.6; }
+svg .lc-day { cursor: pointer; }
+
+@media (max-width: 760px) {
+  .lc-zrow { grid-template-columns: minmax(0, 1fr) auto; }
+  .lc-zbar { grid-column: 1 / -1; order: 3; }
+  .lc-zrow em { grid-column: 1 / -1; order: 4; }
+}
+.lc-picks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; color: var(--ink-2); font-size: 13px; }
+.lc-pick select { margin-left: 6px; max-width: 260px; }

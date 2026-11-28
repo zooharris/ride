@@ -27,7 +27,10 @@ function activities(days: number, withPower: boolean): Array<Record<string, unkn
       id: `i${1000 + n}`, start_date_local: `${d.toISOString().slice(0, 10)}T08:00:00`, name: long ? 'Long ride' : hard ? 'Intervals' : 'Endurance', type: 'Ride',
       moving_time: secs, elapsed_time: secs + 300, distance: secs * 8, total_elevation_gain: 400, icu_training_load: long ? 140 : hard ? 85 : 70,
       average_heartrate: hard ? 152 : 132, max_heartrate: hard ? 178 : 158, average_cadence: 88, average_speed: 8,
-      ...(withPower ? { icu_average_watts: hard ? 215 : 165, icu_weighted_avg_watts: hard ? 238 : 172, icu_ftp: 255, icu_intensity: hard ? 93 : 67, icu_eftp: hard ? 250 + (n % 6) : undefined } : {}),
+      // Time in zones (27 Nov 2026, for the Lab): mostly endurance, the interval day with time at threshold and above. A little different each week.
+      icu_hr_zone_times: hard ? [600, 1200, 600, 780 + (n % 5) * 30, 420 - (n % 5) * 30] : [secs * 0.2, secs * (0.62 + (n % 4) * 0.02), secs * (0.18 - (n % 4) * 0.02), 0, 0].map(Math.round),
+      ...(withPower ? { icu_average_watts: hard ? 215 : 165, icu_weighted_avg_watts: hard ? 238 : 172, icu_ftp: 255, icu_intensity: hard ? 93 : 67, icu_eftp: hard ? 250 + (n % 6) : undefined,
+        icu_zone_times: (hard ? [900, 900, 300, 900 + (n % 5) * 40, 480 - (n % 5) * 40, 120, 0] : [secs * 0.15, secs * (0.63 + (n % 4) * 0.02), secs * (0.17 - (n % 4) * 0.02), secs * 0.05, 0, 0, 0].map(Math.round)).map((s, z) => ({ id: `Z${z + 1}`, secs: s })) } : {}),
     });
   }
   // The last two weeks also have a walk and a strength session, so an activity of each kind is on record.

@@ -8,13 +8,9 @@ import { noticesPlugin } from './scripts/noticesPlugin';
 const BUILD = new Date().toISOString();
 
 // Served from https://<user>.github.io/ride/ — the base must match the repo name.
-// The preview (27 Nov 2026) is the same app built from the preview branch and served one folder down, with its own
-// data store, so work in progress can be looked at in minutes without touching the public version.
-const PREVIEW = !!process.env.ANTOGO_PREVIEW;
-const BASE = PREVIEW ? '/ride/preview/' : '/ride/';
 export default defineConfig({
-  define: { __BUILD__: JSON.stringify(BUILD), __PREVIEW__: JSON.stringify(PREVIEW) },
-  base: BASE,
+  define: { __BUILD__: JSON.stringify(BUILD) },
+  base: '/ride/',
   plugins: [
     preact(),
     // Open-source notices for what this build ships; the build stops if a shipped licence isn't allowed (24 Nov 2026).
@@ -27,15 +23,15 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
-        name: PREVIEW ? `${APP_NAME} Preview` : APP_NAME,
-        short_name: PREVIEW ? 'Preview' : APP_SHORT_NAME,
+        name: APP_NAME,
+        short_name: APP_SHORT_NAME,
         description: 'Adaptive cycling training and fitness. Better rides. Fitter you.',
         theme_color: '#141922',
         background_color: '#0B0E14',
         display: 'standalone',
         orientation: 'any',
-        start_url: BASE,
-        scope: BASE,
+        start_url: '/ride/',
+        scope: '/ride/',
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -50,9 +46,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Help's pictures come in three versions (computer, iPhone, iPad): a browser keeps the ones it has shown, not all of them.
         globIgnores: ['help/**'],
-        navigateFallback: `${BASE}index.html`,
-        // The public version must never answer for the preview's address.
-        navigateFallbackDenylist: PREVIEW ? [] : [/^\/ride\/preview\//],
+        navigateFallback: '/ride/index.html',
         // Map tiles already seen stay available offline for a month.
         runtimeCaching: [{
           urlPattern: /\/help\/[a-z-]+\.webp$/,

@@ -97,6 +97,7 @@ export function Onboarding() {
   const [creds, setCreds] = useState<IntervalsCredentials>({ athleteId: '', apiKey: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [working, setWorking] = useState<string | null>(null);
   const [found, setFound] = useState<AthleteNumbers | null>(null);
   const [hints, setHints] = useState<HistoryHints | null>(null);
   const [backup, setBackup] = useState<{ text: string; exportedAt: string } | null>(null);
@@ -145,18 +146,22 @@ export function Onboarding() {
     const f = input.files?.[0];
     if (!f) return;
     setErr(null);
+    // Said at once (28 Nov 2026): a large backup takes time to read, and a rider who sees nothing chooses the file again.
+    setBusy(true);
+    setWorking(`Reading ${f.name} (${f.size >= 1048576 ? `${(f.size / 1048576).toFixed(f.size >= 10485760 ? 0 : 1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`})…`);
     try {
       const sum = await backupSummaryOf(f);
       if (!sum.ok) { setErr(sum.words); input.value = ''; return; }
+      setWorking(null);
       if (!await ask(`${backupMade(sum.exportedAt)}\n\nIt holds ${sum.words}.\n\nRestore it? Everything in it is brought onto ${thisDevice()} as it was then, and ${APP_SHORT_NAME} opens with it.\n\nYour other devices are not changed. If ${APP_SHORT_NAME} finds its saved copy from them, it asks what to do, and if you keep this device in step, the newer version of each thing is kept.`)) { input.value = ''; return; }
-      setBusy(true);
+      setWorking('Restoring. With a long history this can take a minute or two. Keep this page open.');
       await restoreBackupFile(f, 'device');
       // If a saved copy from the rider's other devices turns up, the choice is asked at once.
       if (!(await getSetting<string | null>(DEVICE_CHOICE, null))) await setSetting(DEVICES_ASK, true);
       notify();
       location.hash = '/today';
       location.reload();
-    } catch (x) { setErr((x as Error).message); input.value = ''; } finally { setBusy(false); }
+    } catch (x) { setErr(`The backup could not be restored: ${(x as Error).message || 'the file could not be read'}.`); input.value = ''; } finally { setBusy(false); setWorking(null); }
   }
   /** The saved copy in Intervals.icu: this device takes it and stays in step with the rider's others. */
   async function joinDevices() {
@@ -228,6 +233,7 @@ export function Onboarding() {
           <h2>Welcome</h2>
           <p class="muted small" style="margin:6px 0 16px">A few questions about you and your riding, and {APP_SHORT_NAME} makes your plan. There is no account to make and nothing you have to connect.</p>
           {err && <div class="msg err" style="margin-bottom:12px">{err}</div>}
+          {working && <div class="msg" role="status" style="margin-bottom:12px">{working}</div>}
           <button class="btn primary block" onClick={() => setStep('review')} disabled={busy}>Set up {APP_SHORT_NAME}</button>
           <h3 style="margin:26px 0 4px;font-size:15px">Optional</h3>
           <p class="faint small" style="margin:0 0 12px">Only if they apply to you. Each can also be done later, in Settings.</p>

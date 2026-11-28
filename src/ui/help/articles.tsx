@@ -344,6 +344,21 @@ export const ARTICLES: Article[] = [
     ),
   },
   {
+    id: 'insights', topic: 'after', title: 'Insights and the Lab', summary: 'Your questions answered, and every figure behind the answers.',
+    related: ['progress', 'numbers'],
+    body: () => (
+      <>
+        <p class="h-lead">Insights answers the questions riders ask. The Lab holds every figure behind the answers.</p>
+        <Facts items={[
+          { title: 'Insights', text: 'One card for each question that can be answered for you today, with the answer in a sentence and how strong the evidence is.' },
+          { title: 'Why it says so', text: 'Open a card to see the evidence for the answer and any against it. Each piece has See the data.' },
+          { title: 'The Lab', text: 'Every chart and every measure, over any period. Search it, pin what you use most, and open any measure large to lay others over it.' },
+        ]} />
+        <Note kind="tip">A measure you have no data for stays empty and says what it needs. Nothing is filled in from other riders.</Note>
+      </>
+    ),
+  },
+  {
     id: 'numbers', topic: 'after', title: 'The numbers, explained', summary: 'FTP, TSS, zones and the rest, in plain words.', detail: 'numbers',
     related: ['progress', 'activities'],
     body: () => (

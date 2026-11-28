@@ -65,7 +65,7 @@ function Front({ L, pins, open }: { L: LabData; pins: Pins; open: (m: string) =>
   const withData = M.defs.filter((d) => readings(M, d.id) > 0).length;
   return (
     <>
-      <PageHead eyebrow={`${withData} of ${M.defs.length} measures have data`} title="The Lab"><PeriodPicker L={L} /></PageHead>
+      <PageHead eyebrow={`${withData} of ${M.defs.length} measures have data`} title="The Lab" help="insights"><PeriodPicker L={L} /></PageHead>
       <p class="lb-lead">Every figure Antogo holds for you, over any period, as a chart and as a table. Nothing here is estimated for you from other riders: a measure you have no data for stays empty, and says what it needs.</p>
       <div class="lb-top">
         <label class="lb-search"><span class="sr-only">Search the Lab</span><Icon.search size={16} />
@@ -161,7 +161,7 @@ function FamilyPage({ L, family, pins, open }: { L: LabData; family: LabFamily; 
   const none = list.filter((d) => readings(M, d.id) === 0);
   return (
     <>
-      <PageHead back={{ label: 'The Lab', href: '#/lab' }} eyebrow={`${have.length} of ${list.length} measures have data`} title={f.name}><PeriodPicker L={L} /></PageHead>
+      <PageHead back={{ label: 'The Lab', href: '#/lab' }} eyebrow={`${have.length} of ${list.length} measures have data`} title={f.name} help="insights"><PeriodPicker L={L} /></PageHead>
       <p class="lb-lead">{f.about} Open any measure to see it large, lay others over it, mark days, compare periods and download its figures.</p>
       {!!have.length && <div class="lb-rows">{have.map((d) => <MeasureRow key={d.id} L={L} def={d} pins={pins} open={open} />)}</div>}
       {!!none.length && (
@@ -211,7 +211,7 @@ function ChartPage({ L, chart, pins }: { L: LabData; chart: LabChart; pins: Pins
   const ready = chart.ready(L);
   return (
     <>
-      <PageHead back={{ label: 'The Lab', href: '#/lab' }} title={chart.name}><PinButton pins={pins} k={`c:${chart.id}`} name={chart.name} /><PeriodPicker L={L} /></PageHead>
+      <PageHead back={{ label: 'The Lab', href: '#/lab' }} title={chart.name} help="insights"><PinButton pins={pins} k={`c:${chart.id}`} name={chart.name} /><PeriodPicker L={L} /></PageHead>
       {ready.state === 'none'
         ? <div class="lb-panel"><p class="lb-lead" style="margin:0 0 10px">There is nothing to draw here yet. {ready.why}.</p><EmptyFrame h={120} label={`${chart.name}: nothing to draw yet`} /></div>
         : <chart.Page L={L} />}

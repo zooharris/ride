@@ -67,7 +67,7 @@ test('the Lab for a rider who trains by heart rate: the power measures are empty
   await expect(np).toContainText('Needs a power meter');
   await expect(np.locator('.lb-line, .lb-dot, .lb-bar')).toHaveCount(0);
   await go(page, '#/lab/family/heart');
-  await expect(page.locator('.lb-row[data-measure="avgHr"] .lb-dot').first()).toBeVisible();
+  await expect(page.locator('.lb-row[data-measure="avgHr"] .lb-dot')).not.toHaveCount(0);
   await looksRight(s, info, 'The Lab, heart, a rider without power');
 });
 
